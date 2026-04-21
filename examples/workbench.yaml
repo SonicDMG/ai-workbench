@@ -1,0 +1,20 @@
+# Minimal default config. Boots cleanly with no env vars.
+# For a full example including astra workspaces, see docs/examples/workbench.yaml.
+
+version: 1
+
+runtime:
+  port: 8080
+  logLevel: info
+
+workspaces:
+  - id: mock
+    description: "In-memory mock workspace"
+    driver: mock
+    vectorStores:
+      - id: demo-vectors
+        collection: demo_vectors
+        dimensions: 1536
+    catalogs:
+      - id: demo-docs
+        vectorStore: demo-vectors
