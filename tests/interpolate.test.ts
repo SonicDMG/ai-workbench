@@ -1,51 +1,53 @@
-import { describe, expect, test } from 'vitest';
-import { interpolate, MissingEnvError } from '../src/config/interpolate.js';
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: tests intentionally use plain strings containing ${VAR} to verify interpolation
 
-describe('interpolate', () => {
-  test('replaces ${VAR} with env value', () => {
-    expect(interpolate('hello ${NAME}', { NAME: 'world' })).toBe('hello world');
-  });
+import { describe, expect, test } from "vitest";
+import { interpolate, MissingEnvError } from "../src/config/interpolate.js";
 
-  test('supports multiple interpolations in one string', () => {
-    expect(interpolate('${A}/${B}', { A: 'foo', B: 'bar' })).toBe('foo/bar');
-  });
+describe("interpolate", () => {
+	test("replaces ${VAR} with env value", () => {
+		expect(interpolate("hello ${NAME}", { NAME: "world" })).toBe("hello world");
+	});
 
-  test('uses default when variable unset', () => {
-    expect(interpolate('${MISSING:-fallback}', {})).toBe('fallback');
-  });
+	test("supports multiple interpolations in one string", () => {
+		expect(interpolate("${A}/${B}", { A: "foo", B: "bar" })).toBe("foo/bar");
+	});
 
-  test('prefers env value over default', () => {
-    expect(interpolate('${NAME:-fallback}', { NAME: 'set' })).toBe('set');
-  });
+	test("uses default when variable unset", () => {
+		expect(interpolate("${MISSING:-fallback}", {})).toBe("fallback");
+	});
 
-  test('throws on unset variable without default', () => {
-    expect(() => interpolate('${MISSING}', {})).toThrow(MissingEnvError);
-  });
+	test("prefers env value over default", () => {
+		expect(interpolate("${NAME:-fallback}", { NAME: "set" })).toBe("set");
+	});
 
-  test('walks nested objects and arrays', () => {
-    const result = interpolate(
-      { a: '${X}', b: [{ c: '${Y:-def}' }] },
-      { X: '1' },
-    );
-    expect(result).toEqual({ a: '1', b: [{ c: 'def' }] });
-  });
+	test("throws on unset variable without default", () => {
+		expect(() => interpolate("${MISSING}", {})).toThrow(MissingEnvError);
+	});
 
-  test('passes non-string primitives through', () => {
-    expect(interpolate({ n: 42, b: true, z: null }, {})).toEqual({
-      n: 42,
-      b: true,
-      z: null,
-    });
-  });
+	test("walks nested objects and arrays", () => {
+		const result = interpolate(
+			{ a: "${X}", b: [{ c: "${Y:-def}" }] },
+			{ X: "1" },
+		);
+		expect(result).toEqual({ a: "1", b: [{ c: "def" }] });
+	});
 
-  test('MissingEnvError exposes variable + path', () => {
-    try {
-      interpolate({ a: { b: '${ABSENT}' } }, {});
-      expect.fail('should have thrown');
-    } catch (err) {
-      expect(err).toBeInstanceOf(MissingEnvError);
-      expect((err as MissingEnvError).variable).toBe('ABSENT');
-      expect((err as MissingEnvError).path).toBe('$.a.b');
-    }
-  });
+	test("passes non-string primitives through", () => {
+		expect(interpolate({ n: 42, b: true, z: null }, {})).toEqual({
+			n: 42,
+			b: true,
+			z: null,
+		});
+	});
+
+	test("MissingEnvError exposes variable + path", () => {
+		try {
+			interpolate({ a: { b: "${ABSENT}" } }, {});
+			expect.fail("should have thrown");
+		} catch (err) {
+			expect(err).toBeInstanceOf(MissingEnvError);
+			expect((err as MissingEnvError).variable).toBe("ABSENT");
+			expect((err as MissingEnvError).path).toBe("$.a.b");
+		}
+	});
 });
