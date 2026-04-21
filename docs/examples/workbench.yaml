@@ -1,0 +1,90 @@
+# Annotated sample workbench.yaml for AI Workbench.
+#
+# Full schema reference: docs/configuration.md
+
+version: 1
+
+runtime:
+  port: 8080
+  logLevel: info
+
+# Shared services. Individual workspaces may override these.
+# Not required in Phase 0 / 1.
+services:
+  chunking:
+    url: http://chunking:8080
+  embedding:
+    url: http://embedding:8080
+
+workspaces:
+
+  # Production workspace, backed by Astra.
+  - id: prod
+    description: "Production Astra DB"
+    driver: astra
+    astra:
+      endpoint: ${ASTRA_PROD_ENDPOINT}
+      token: ${ASTRA_PROD_TOKEN}
+      keyspace: default_keyspace
+    auth:
+      kind: bearer
+      tokens:
+        - ${WORKBENCH_PROD_TOKEN}
+    vectorStores:
+      - id: support-vectors
+        collection: support_vectors
+        dimensions: 1536
+        metric: cosine
+    catalogs:
+      - id: support-docs
+        description: "Customer-facing support docs"
+        vectorStore: support-vectors
+        chunker: default        # resolved from top-level `chunkers` (Phase 3+)
+        embedder: openai-small  # resolved from top-level `embedders` (Phase 3+)
+
+  # Development workspace, backed by a separate Astra instance.
+  - id: dev
+    description: "Development Astra DB"
+    driver: astra
+    astra:
+      endpoint: ${ASTRA_DEV_ENDPOINT}
+      token: ${ASTRA_DEV_TOKEN}
+    auth:
+      kind: bearer
+      tokens:
+        - ${WORKBENCH_DEV_TOKEN}
+    vectorStores:
+      - id: support-vectors
+        collection: support_vectors_dev
+        dimensions: 1536
+    catalogs:
+      - id: support-docs
+        vectorStore: support-vectors
+
+  # Mock workspace for local development and tests. No network required.
+  - id: mock
+    description: "In-memory mock"
+    driver: mock
+    auth:
+      kind: none
+    vectorStores:
+      - id: support-vectors
+        collection: support_vectors
+        dimensions: 1536
+    catalogs:
+      - id: support-docs
+        vectorStore: support-vectors
+
+# Embedders and chunkers are Phase 3+. Shown here as forward-looking config:
+#
+# embedders:
+#   - id: openai-small
+#     provider: openai
+#     model: text-embedding-3-small
+#     apiKey: ${OPENAI_API_KEY}
+#
+# chunkers:
+#   - id: default
+#     strategy: recursive
+#     chunkSize: 800
+#     chunkOverlap: 120
