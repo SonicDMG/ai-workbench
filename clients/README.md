@@ -1,59 +1,78 @@
-# Clients
+# Green Boxes
 
-Polyglot client libraries that wrap the **Workbench Astra Client** (the
-"green box" in the architecture diagram). Each language exposes the same
-operations against the same Astra Data API surface: `wb_*` table CRUD
-(control plane) and collection CRUD + search (data plane).
+Each directory under `clients/*-runtime/` is a **green box** — a
+language-native HTTP-API implementation of the AI Workbench runtime.
+Every green box exposes the same `/api/v1/*` surface and speaks Astra's
+Data API internally through its language-native client.
 
-## Why the same library in every language
-
-The AI Workbench runtime is TypeScript today, but the same operational
-shape — "create a workspace row", "list catalogs", "provision a vector
-collection" — needs to be callable from Python, Java, etc. Each language
-gets an idiomatic wrapper; all of them emit **byte-identical HTTP
-requests** to Astra's Data API.
-
-That byte-identical property is enforced by the
-[conformance suite](./conformance/README.md).
-
-## Layout
+The **TypeScript runtime is the default** and ships embedded with the
+UI at the repo root ([`../src/`](../src/)). Alternative-language
+runtimes live here. Which one the UI targets is decided at deploy time
+via the **`BACKEND_URL`** environment variable on the UI.
 
 ```
-clients/
-├── typescript/              # Will live in src/astra-client for now (PR-1a.2).
-│                            # Breaks out here once we cut an npm package.
-├── python/                  # workbench-astra-client (pip)
-├── conformance/             # cross-language contract tests
-│   ├── mock-astra/          # local HTTP server that mimics Astra Data API
-│   ├── scenarios.md         # ordered op sequences each client must replay
-│   ├── fixtures/            # captured, normalized request payloads
-│   └── normalize.mjs        # shared UUID/timestamp scrubber
-└── README.md                # this file
+Browser (UI)
+    │  BACKEND_URL=http://localhost:8080  (default = embedded TS runtime)
+    │  BACKEND_URL=http://py-runtime:8080 (alternative = Python runtime)
+    ▼
+Green box (HTTP server)        ← any language, same /api/v1/* contract
+    │
+    ▼
+Astra Data API (via language-native SDK: astrapy, astra-db-ts, …)
 ```
+
+## Current runtimes
+
+| Runtime | Location | Status | Astra SDK |
+|---|---|---|---|
+| TypeScript (default) | [`../src/`](../src/) | Operational skeleton; control-plane interface shipped | `@datastax/astra-db-ts` (pending) |
+| Python | [`python-runtime/`](./python-runtime/) | Scaffold — routes return 501 | `astrapy` (pending) |
+| Java | not yet started | — | `astra-db-java` |
+
+## Cross-runtime conformance
+
+Every green box must behave identically to users of `/api/v1/*`. We
+enforce this via blackbox conformance tests in
+[`conformance/`](./conformance/).
+
+Each runtime's test harness:
+1. Starts the runtime in-process, pointing its Astra config at
+   [`conformance/mock-astra`](./conformance/mock-astra).
+2. Runs the ordered scenarios in
+   [`conformance/scenarios.md`](./conformance/scenarios.md) as HTTP
+   requests against `/api/v1/*`.
+3. Normalizes responses (UUIDs, timestamps, request IDs) via
+   [`conformance/normalize.mjs`](./conformance/normalize.mjs).
+4. Diffs against shared fixtures in
+   [`conformance/fixtures/`](./conformance/fixtures/).
+
+The fixtures are the **contract**. If a runtime drifts, its CI fails.
+If the contract itself changes, the fixture update lands alongside
+every runtime's update in one PR.
 
 ## Adding a new language
 
-1. Create `clients/<language>/`.
-2. Implement the operations listed in
-   [`conformance/scenarios.md`](./conformance/scenarios.md).
-3. Write a test that:
-   - Resets the mock: `POST http://localhost:<port>/_reset`.
-   - Runs the scenarios against the mock.
-   - Fetches the captured requests: `GET http://localhost:<port>/_captured`.
-   - Normalizes them (UUIDs, timestamps) using the same rules
-     [`conformance/normalize.mjs`](./conformance/normalize.mjs) applies.
-   - Diffs against `conformance/fixtures/<scenario>.json`.
-4. Wire the test into CI.
+1. Create `clients/<language>-runtime/`.
+2. Scaffold an HTTP server exposing `/api/v1/*` — same routes, same
+   request/response shapes as the TypeScript reference at
+   [`../src/routes/`](../src/routes/).
+3. Use the language-native DataStax Astra SDK (not raw HTTP). The
+   conformance tests are blackbox, so internal implementation choices
+   are the language's own.
+4. Add a test harness that runs
+   [`conformance/scenarios.md`](./conformance/scenarios.md) against
+   your running app and diffs responses against the shared fixtures.
+5. Wire into CI.
+6. Add a row to the [current runtimes](#current-runtimes) table above.
 
 ## Design principles
 
-- **No per-language reinvention of types.** The shape of
-  `WorkspaceRecord`, `CatalogRecord`, etc. comes from
-  [`../src/control-plane/types.ts`](../src/control-plane/types.ts). Ports
-  translate those types idiomatically (snake_case in Python, etc.) but
-  don't invent new fields.
-- **Fixtures are the contract.** A change to what the client sends to
-  Astra is a PR that updates the fixture AND every client in the same
-  commit.
-- **Small, opinionated, no optional knobs.** The point is cross-language
-  uniformity, not maximum flexibility.
+- **Runtime-native, not a shared library.** Each runtime embeds its
+  own workbench-specific logic and uses its language-native Astra SDK
+  directly. No intermediate wrapper library to maintain per language.
+- **HTTP contract is the only cross-runtime contract.** Internal code
+  can diverge freely — idiomatic Python shouldn't look like idiomatic
+  TypeScript.
+- **Fixtures are the source of truth.** A change to the external
+  contract is a fixture update plus an update in every runtime, all
+  in one PR.

@@ -3,25 +3,29 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "workbench-astra-client"
+name = "ai-workbench-runtime"
 version = "0.0.0"
-description = "Python client for the AI Workbench control-plane and data-plane Astra Data API tables."
+description = "AI Workbench — Python (FastAPI) runtime. One of N language 'green boxes' that expose /api/v1/* and talk to Astra via astrapy."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [{ name = "AI Workbench" }]
-keywords = ["astra", "workbench", "rag", "vector", "datastax"]
+keywords = ["astra", "workbench", "rag", "vector", "datastax", "fastapi"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
+    "Framework :: FastAPI",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
 ]
 dependencies = [
+    "fastapi>=0.118",
+    "uvicorn[standard]>=0.34",
+    "pydantic>=2.10",
     "httpx>=0.28",
-    # Uncomment once wrapping astrapy for real Astra traffic:
+    # Pin once the runtime actually calls Astra:
     # "astrapy>=2.0",
 ]
 
@@ -33,12 +37,15 @@ dev = [
     "mypy>=1.13",
 ]
 
+[project.scripts]
+workbench = "workbench.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/datastax/ai-workbench"
 Issues = "https://github.com/datastax/ai-workbench/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/workbench_astra_client"]
+packages = ["src/workbench"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
@@ -57,3 +64,4 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 python_version = "3.11"
 strict = true
 warn_unused_configs = true
+plugins = ["pydantic.mypy"]

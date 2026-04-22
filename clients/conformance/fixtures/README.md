@@ -1,27 +1,51 @@
 # Fixtures
 
-Normalized, expected HTTP request payloads for each scenario in
-[`../scenarios.md`](../scenarios.md).
+Normalized, expected HTTP **response payloads** (status, headers,
+body) for each scenario in [`../scenarios.md`](../scenarios.md).
 
 One file per scenario: `<scenario-slug>.json`.
 
 ## Empty for now
 
-The canonical TypeScript client lands in PR-1a.2 (`src/astra-client/`).
-Fixtures are materialized by running the TS client against
-`../mock-astra` and normalizing the captures — that command is
-`npm run conformance:regenerate` (also added in PR-1a.2).
+Fixtures are materialized from the canonical TypeScript runtime once
+its route implementations land in PR-1a.2. The command will be
+`npm run conformance:regenerate`: run the TS runtime against
+[`../mock-astra/`](../mock-astra/), replay each scenario, normalize
+responses, write the fixture files.
 
-Until then, language ports (including Python) scaffold their client
-shape against [`../scenarios.md`](../scenarios.md) without a byte-diff
-assertion. The CI gate flips on once fixtures exist.
+Until then, language-native runtimes scaffold their routes against
+[`../scenarios.md`](../scenarios.md) without a byte-diff assertion.
+The CI gate flips on once fixtures exist.
+
+## What a fixture captures
+
+Response shape for every step in the scenario:
+
+```json
+[
+  {
+    "step": 1,
+    "request": { "method": "POST", "path": "/api/v1/workspaces" },
+    "response": {
+      "status": 201,
+      "headers": { "content-type": "application/json", ... },
+      "body": { "uid": "{{UUID_1}}", "name": "prod", ... }
+    }
+  },
+  ...
+]
+```
+
+UUIDs, timestamps, and request IDs are replaced with stable
+placeholders (see [`../normalize.mjs`](../normalize.mjs)).
 
 ## Updating fixtures
 
 When an API shape changes intentionally:
 
-1. Update the TS client.
+1. Update the canonical TS runtime.
 2. Run `npm run conformance:regenerate`.
-3. Run each language's tests — they will diff against the new fixtures.
-4. Update each language client until every test passes.
+3. Run every language runtime's tests — they will diff against the
+   new fixtures.
+4. Update each runtime until every test passes.
 5. Land all of it in one PR.
