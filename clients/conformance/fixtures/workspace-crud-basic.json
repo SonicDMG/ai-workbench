@@ -1,0 +1,109 @@
+{
+	"slug": "workspace-crud-basic",
+	"description": "Minimum viable workspace lifecycle.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "astra",
+					"name": "prod"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"keyspace": null,
+					"kind": "astra",
+					"name": "prod",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}",
+					"url": null
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": [
+					{
+						"createdAt": "{{TS}}",
+						"credentialsRef": {},
+						"keyspace": null,
+						"kind": "astra",
+						"name": "prod",
+						"uid": "{{UUID_1}}",
+						"updatedAt": "{{TS}}",
+						"url": null
+					}
+				],
+				"status": 200
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"keyspace": null,
+					"kind": "astra",
+					"name": "prod",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}",
+					"url": null
+				},
+				"status": 200
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"name": "production"
+				},
+				"method": "PUT",
+				"path": "/api/v1/workspaces/{{UUID_1}}"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"keyspace": null,
+					"kind": "astra",
+					"name": "production",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}",
+					"url": null
+				},
+				"status": 200
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}"
+			},
+			"response": {
+				"body": null,
+				"status": 204
+			},
+			"step": 5
+		}
+	]
+}

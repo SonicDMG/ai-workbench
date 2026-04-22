@@ -18,7 +18,8 @@
 		"format": "biome format --write .",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"conformance:mock": "tsx clients/conformance/mock-astra/server.ts"
+		"conformance:mock": "tsx clients/conformance/mock-astra/server.ts",
+		"conformance:regenerate": "tsx scripts/conformance-regenerate.ts"
 	},
 	"dependencies": {
 		"@datastax/astra-db-ts": "^2.2.1",

@@ -1,40 +1,50 @@
+/**
+ * Hono app factory — the default (TypeScript) AI Workbench green box.
+ *
+ * Mounts:
+ *   `/`, `/healthz`, `/readyz`, `/version`       operational
+ *   `/api/v1/workspaces`                          workspaces CRUD
+ *   `/api/v1/workspaces/{w}/catalogs`             catalogs CRUD
+ *   `/api/v1/workspaces/{w}/vector-stores`        vector-store descriptor CRUD
+ *   `/api/v1/openapi.json`                        generated OpenAPI doc
+ *   `/docs`                                       Scalar-rendered docs
+ */
+
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
+import type { ControlPlaneStore } from "./control-plane/store.js";
 import { ApiError, errorEnvelope } from "./lib/errors.js";
 import { requestId } from "./lib/request-id.js";
 import type { AppEnv } from "./lib/types.js";
+import { catalogRoutes } from "./routes/api-v1/catalogs.js";
+import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
+import { vectorStoreRoutes } from "./routes/api-v1/vector-stores.js";
+import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
 import { operationalRoutes } from "./routes/operational.js";
-import { workspaceRoutes } from "./routes/workspaces.js";
 import { VERSION } from "./version.js";
-import type { WorkspaceRegistry } from "./workspaces/registry.js";
 
 export interface AppOptions {
-	registry: WorkspaceRegistry;
-	requestIdHeader?: string;
+	readonly store: ControlPlaneStore;
+	readonly requestIdHeader?: string;
 }
 
-export function createApp(opts: AppOptions) {
+export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const app = new OpenAPIHono<AppEnv>();
 
 	app.use("*", requestId(opts.requestIdHeader));
 
-	app.route("/", operationalRoutes(opts.registry));
-	app.route("/v1/workspaces", workspaceRoutes(opts.registry));
+	app.route("/", operationalRoutes(opts.store));
+	app.route("/api/v1/workspaces", workspaceRoutes(opts.store));
+	app.route("/api/v1/workspaces", catalogRoutes(opts.store));
+	app.route("/api/v1/workspaces", vectorStoreRoutes(opts.store));
 
-	app.openAPIRegistry.registerComponent("securitySchemes", "BearerAuth", {
-		type: "http",
-		scheme: "bearer",
-		description:
-			"Per-workspace bearer token, matching one of the tokens declared under the workspace's auth.tokens in workbench.yaml.",
-	});
-
-	app.doc31("/v1/openapi.json", {
+	app.doc31("/api/v1/openapi.json", {
 		openapi: "3.1.0",
 		info: {
 			title: "AI Workbench",
 			version: VERSION,
 			description:
-				"Single-runtime, multi-workspace workbench for Astra DB and the Data API.",
+				"Single-runtime, multi-workspace workbench for Astra DB and the Data API. This is the TypeScript green box; alternative language runtimes expose the same surface.",
 			license: { name: "TBD" },
 		},
 		servers: [{ url: "/" }],
@@ -43,7 +53,7 @@ export function createApp(opts: AppOptions) {
 	app.get(
 		"/docs",
 		Scalar({
-			url: "/v1/openapi.json",
+			url: "/api/v1/openapi.json",
 			theme: "default",
 			pageTitle: "AI Workbench API",
 		}),
@@ -61,6 +71,13 @@ export function createApp(opts: AppOptions) {
 	);
 
 	app.onError((err, c) => {
+		const mapped = mapControlPlaneError(err);
+		if (mapped) {
+			return c.json(
+				errorEnvelope(c, mapped.code, mapped.message),
+				mapped.status,
+			);
+		}
 		if (err instanceof ApiError) {
 			return c.json(errorEnvelope(c, err.code, err.message), err.status);
 		}

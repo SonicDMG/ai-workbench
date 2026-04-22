@@ -1,0 +1,89 @@
+[
+	{
+		"slug": "workspace-crud-basic",
+		"description": "Minimum viable workspace lifecycle.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "prod", "kind": "astra" }
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid"
+			},
+			{
+				"method": "PUT",
+				"path": "/api/v1/workspaces/$1.uid",
+				"body": { "name": "production" }
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.uid"
+			}
+		]
+	},
+	{
+		"slug": "catalog-under-workspace",
+		"description": "Workspaces with nested catalogs, scoped correctly.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "astra" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs",
+				"body": { "name": "c1" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs",
+				"body": { "name": "c2" }
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid/catalogs"
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid"
+			}
+		]
+	},
+	{
+		"slug": "vector-store-definition",
+		"description": "Descriptor row in wb_vector_store_by_workspace.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "astra" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/vector-stores",
+				"body": {
+					"name": "vs",
+					"vectorDimension": 1536,
+					"embedding": {
+						"provider": "openai",
+						"model": "text-embedding-3-small",
+						"endpoint": null,
+						"dimension": 1536,
+						"secretRef": "env:OPENAI_API_KEY"
+					}
+				}
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid"
+			}
+		]
+	}
+]

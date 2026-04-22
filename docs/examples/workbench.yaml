@@ -1,90 +1,52 @@
-# Annotated sample workbench.yaml for AI Workbench.
+# Annotated sample workbench.yaml for AI Workbench (TypeScript runtime).
 #
-# Full schema reference: docs/configuration.md
+# The runtime is a single "green box" — one HTTP server exposing
+# /api/v1/*. Workspaces, catalogs, and vector stores are runtime data
+# (mutable via the API), not config. The only thing config decides is
+# WHERE that runtime data is persisted: memory / file / astra.
 
 version: 1
 
 runtime:
   port: 8080
   logLevel: info
+  # requestIdHeader: X-Request-Id
 
-# Shared services. Individual workspaces may override these.
-# Not required in Phase 0 / 1.
-services:
-  chunking:
-    url: http://chunking:8080
-  embedding:
-    url: http://embedding:8080
-
-workspaces:
-
-  # Production workspace, backed by Astra.
-  - id: prod
-    description: "Production Astra DB"
-    driver: astra
-    astra:
-      endpoint: ${ASTRA_PROD_ENDPOINT}
-      token: ${ASTRA_PROD_TOKEN}
-      keyspace: default_keyspace
-    auth:
-      kind: bearer
-      tokens:
-        - ${WORKBENCH_PROD_TOKEN}
-    vectorStores:
-      - id: support-vectors
-        collection: support_vectors
-        dimensions: 1536
-        metric: cosine
-    catalogs:
-      - id: support-docs
-        description: "Customer-facing support docs"
-        vectorStore: support-vectors
-        chunker: default        # resolved from top-level `chunkers` (Phase 3+)
-        embedder: openai-small  # resolved from top-level `embedders` (Phase 3+)
-
-  # Development workspace, backed by a separate Astra instance.
-  - id: dev
-    description: "Development Astra DB"
-    driver: astra
-    astra:
-      endpoint: ${ASTRA_DEV_ENDPOINT}
-      token: ${ASTRA_DEV_TOKEN}
-    auth:
-      kind: bearer
-      tokens:
-        - ${WORKBENCH_DEV_TOKEN}
-    vectorStores:
-      - id: support-vectors
-        collection: support_vectors_dev
-        dimensions: 1536
-    catalogs:
-      - id: support-docs
-        vectorStore: support-vectors
-
-  # Mock workspace for local development and tests. No network required.
-  - id: mock
-    description: "In-memory mock"
-    driver: mock
-    auth:
-      kind: none
-    vectorStores:
-      - id: support-vectors
-        collection: support_vectors
-        dimensions: 1536
-    catalogs:
-      - id: support-docs
-        vectorStore: support-vectors
-
-# Embedders and chunkers are Phase 3+. Shown here as forward-looking config:
+# ---------- Control plane ----------
 #
-# embedders:
-#   - id: openai-small
-#     provider: openai
-#     model: text-embedding-3-small
-#     apiKey: ${OPENAI_API_KEY}
+# Pick ONE of the three driver stanzas below.
+
+# 1) `memory` — default; workspaces live in process memory.
+#    Great for CI, tests, and `docker run` demos. Optional seeds below
+#    populate the in-memory store at startup.
+controlPlane:
+  driver: memory
+
+# 2) `file` — JSON on disk. Single-node self-hosted.
+# controlPlane:
+#   driver: file
+#   root: /var/lib/workbench
+
+# 3) `astra` — Astra Data API Tables. Production-grade.
+#    `tokenRef` resolves through the secrets providers below.
+# controlPlane:
+#   driver: astra
+#   endpoint: https://<db-id>-<region>.apps.astra.datastax.com
+#   tokenRef: env:ASTRA_DB_APPLICATION_TOKEN
+#   keyspace: workbench
+
+# ---------- Seed workspaces (memory driver only) ----------
 #
-# chunkers:
-#   - id: default
-#     strategy: recursive
-#     chunkSize: 800
-#     chunkOverlap: 120
+# Optional. Only used when `controlPlane.driver == memory`. Populates
+# the in-memory store at startup so developers can skip POST requests.
+# The runtime validates the schema — `name` + `kind` are required,
+# everything else is optional.
+
+# seedWorkspaces:
+#   - name: demo
+#     kind: mock
+#   - name: prod-astra
+#     kind: astra
+#     credentialsRef:
+#       token: env:ASTRA_DB_APPLICATION_TOKEN
+#     keyspace: workbench

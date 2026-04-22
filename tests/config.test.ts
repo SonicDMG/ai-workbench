@@ -1,120 +1,99 @@
 import { describe, expect, test } from "vitest";
 import { ConfigSchema } from "../src/config/schema.js";
 
-const minimalMock = {
-	version: 1,
-	workspaces: [
-		{
-			id: "mock",
-			driver: "mock",
-			vectorStores: [{ id: "v1", collection: "c", dimensions: 128 }],
-			catalogs: [{ id: "cat1", vectorStore: "v1" }],
-		},
-	],
-};
-
 describe("ConfigSchema", () => {
-	test("accepts a minimal mock config", () => {
-		const cfg = ConfigSchema.parse(minimalMock);
-		expect(cfg.workspaces).toHaveLength(1);
+	test("accepts a minimal config (memory default)", () => {
+		const cfg = ConfigSchema.parse({ version: 1 });
 		expect(cfg.runtime.port).toBe(8080);
 		expect(cfg.runtime.logLevel).toBe("info");
-		expect(cfg.runtime.requestIdHeader).toBe("X-Request-Id");
+		expect(cfg.controlPlane.driver).toBe("memory");
+		expect(cfg.seedWorkspaces).toEqual([]);
 	});
 
-	test("accepts a full astra config", () => {
+	test("accepts explicit memory driver with seeds", () => {
 		const cfg = ConfigSchema.parse({
 			version: 1,
-			runtime: { port: 9000, logLevel: "debug" },
-			workspaces: [
-				{
-					id: "prod",
-					driver: "astra",
-					astra: {
-						endpoint: "https://example.apps.astra.datastax.com",
-						token: "tok",
-						keyspace: "ks",
-					},
-					auth: { kind: "bearer", tokens: ["wb-tok"] },
-					vectorStores: [{ id: "v1", collection: "c", dimensions: 1536 }],
-					catalogs: [{ id: "cat1", vectorStore: "v1" }],
-				},
-			],
+			controlPlane: { driver: "memory" },
+			seedWorkspaces: [{ name: "demo", kind: "mock" }],
 		});
-		expect(cfg.runtime.port).toBe(9000);
+		expect(cfg.seedWorkspaces).toHaveLength(1);
+		expect(cfg.seedWorkspaces[0]?.kind).toBe("mock");
+	});
+
+	test("accepts a file driver with a root", () => {
+		const cfg = ConfigSchema.parse({
+			version: 1,
+			controlPlane: { driver: "file", root: "/var/lib/workbench" },
+		});
+		expect(cfg.controlPlane.driver).toBe("file");
+	});
+
+	test("accepts an astra driver with endpoint + tokenRef", () => {
+		const cfg = ConfigSchema.parse({
+			version: 1,
+			controlPlane: {
+				driver: "astra",
+				endpoint: "https://x.apps.astra.datastax.com",
+				tokenRef: "env:ASTRA_TOKEN",
+			},
+		});
+		expect(cfg.controlPlane.driver).toBe("astra");
+		if (cfg.controlPlane.driver === "astra") {
+			expect(cfg.controlPlane.keyspace).toBe("workbench");
+		}
 	});
 
 	test("rejects unknown schema version", () => {
-		expect(() => ConfigSchema.parse({ ...minimalMock, version: 2 })).toThrow();
+		expect(() => ConfigSchema.parse({ version: 2 })).toThrow();
 	});
 
-	test("rejects invalid workspace id", () => {
+	test("rejects unknown control-plane driver", () => {
 		expect(() =>
-			ConfigSchema.parse({
-				...minimalMock,
-				workspaces: [
-					{
-						...minimalMock.workspaces[0],
-						id: "Invalid_ID",
-					},
-				],
-			}),
+			ConfigSchema.parse({ version: 1, controlPlane: { driver: "oracle" } }),
 		).toThrow();
 	});
 
-	test("rejects duplicate workspace ids", () => {
-		expect(() =>
-			ConfigSchema.parse({
-				...minimalMock,
-				workspaces: [minimalMock.workspaces[0], minimalMock.workspaces[0]],
-			}),
-		).toThrow(/duplicate workspace id/);
-	});
-
-	test("rejects catalog referencing unknown vectorStore", () => {
-		expect(() =>
-			ConfigSchema.parse({
-				...minimalMock,
-				workspaces: [
-					{
-						...minimalMock.workspaces[0],
-						catalogs: [{ id: "cat1", vectorStore: "does-not-exist" }],
-					},
-				],
-			}),
-		).toThrow(/unknown vectorStore/);
-	});
-
-	test("rejects two catalogs binding same vectorStore", () => {
-		expect(() =>
-			ConfigSchema.parse({
-				...minimalMock,
-				workspaces: [
-					{
-						...minimalMock.workspaces[0],
-						catalogs: [
-							{ id: "cat1", vectorStore: "v1" },
-							{ id: "cat2", vectorStore: "v1" },
-						],
-					},
-				],
-			}),
-		).toThrow(/1:1 binding/);
-	});
-
-	test("rejects astra workspace missing astra block", () => {
+	test("rejects file driver without root", () => {
 		expect(() =>
 			ConfigSchema.parse({
 				version: 1,
-				workspaces: [
-					{
-						id: "prod",
-						driver: "astra",
-						vectorStores: [],
-						catalogs: [],
-					},
-				],
+				controlPlane: { driver: "file" },
 			}),
 		).toThrow();
+	});
+
+	test("rejects astra driver with malformed tokenRef", () => {
+		expect(() =>
+			ConfigSchema.parse({
+				version: 1,
+				controlPlane: {
+					driver: "astra",
+					endpoint: "https://x.apps.astra.datastax.com",
+					tokenRef: "plain-string-no-prefix",
+				},
+			}),
+		).toThrow();
+	});
+
+	test("rejects seedWorkspaces when driver is not memory", () => {
+		expect(() =>
+			ConfigSchema.parse({
+				version: 1,
+				controlPlane: { driver: "file", root: "/tmp/x" },
+				seedWorkspaces: [{ name: "demo", kind: "mock" }],
+			}),
+		).toThrow(/only meaningful with controlPlane.driver='memory'/);
+	});
+
+	test("rejects duplicate seed workspace names", () => {
+		expect(() =>
+			ConfigSchema.parse({
+				version: 1,
+				seedWorkspaces: [
+					{ name: "a", kind: "mock" },
+					{ name: "a", kind: "astra" },
+				],
+			}),
+		).toThrow(/duplicate seed workspace name/);
 	});
 });

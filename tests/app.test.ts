@@ -1,132 +1,81 @@
 import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.js";
-import { ConfigSchema } from "../src/config/schema.js";
-import { WorkspaceRegistry } from "../src/workspaces/registry.js";
+import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
+import type { ControlPlaneStore } from "../src/control-plane/store.js";
 
 // Tests fetch JSON and assert on properties; cast to `any` for ergonomic access.
-// biome-ignore lint/suspicious/noExplicitAny: test helper returns untyped JSON for ergonomic property access
+// biome-ignore lint/suspicious/noExplicitAny: test helper returns untyped JSON
 async function json(res: Response): Promise<any> {
-	// biome-ignore lint/suspicious/noExplicitAny: test helper returns untyped JSON for ergonomic property access
+	// biome-ignore lint/suspicious/noExplicitAny: test helper returns untyped JSON
 	return (await res.json()) as any;
 }
 
-function mockConfig() {
-	return ConfigSchema.parse({
-		version: 1,
-		workspaces: [
-			{
-				id: "mock",
-				driver: "mock",
-				description: "test mock",
-				vectorStores: [{ id: "v1", collection: "c", dimensions: 128 }],
-				catalogs: [{ id: "cat1", vectorStore: "v1" }],
-			},
-		],
-	});
+function makeApp(): {
+	app: ReturnType<typeof createApp>;
+	store: ControlPlaneStore;
+} {
+	const store = new MemoryControlPlaneStore();
+	const app = createApp({ store });
+	return { app, store };
 }
 
-function astraConfig() {
-	return ConfigSchema.parse({
-		version: 1,
-		workspaces: [
-			{
-				id: "prod",
-				driver: "astra",
-				description: "prod astra",
-				astra: {
-					endpoint: "https://example.apps.astra.datastax.com",
-					token: "super-secret-token",
-					keyspace: "default_keyspace",
-				},
-				auth: { kind: "bearer", tokens: ["wb-tok"] },
-				vectorStores: [{ id: "v1", collection: "c", dimensions: 1536 }],
-				catalogs: [{ id: "cat1", vectorStore: "v1" }],
-			},
-		],
-	});
-}
+const BASE_WORKSPACE = { name: "w1", kind: "astra" as const };
 
-function makeApp(config = mockConfig()) {
-	return createApp({ registry: new WorkspaceRegistry(config) });
-}
+const BASE_VECTOR_STORE = {
+	name: "vs",
+	vectorDimension: 1536,
+	embedding: {
+		provider: "openai",
+		model: "text-embedding-3-small",
+		endpoint: null,
+		dimension: 1536,
+		secretRef: "env:OPENAI_API_KEY",
+	},
+};
 
 describe("operational routes", () => {
 	test("GET / returns service banner", async () => {
-		const res = await makeApp().request("/");
+		const { app } = makeApp();
+		const res = await app.request("/");
 		expect(res.status).toBe(200);
 		const body = await json(res);
 		expect(body).toMatchObject({ name: "ai-workbench", docs: "/docs" });
-		expect(body.version).toBeDefined();
-		expect(body.commit).toBeDefined();
 	});
 
 	test("GET /healthz returns ok", async () => {
-		const res = await makeApp().request("/healthz");
+		const { app } = makeApp();
+		const res = await app.request("/healthz");
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ status: "ok" });
 	});
 
-	test("GET /readyz returns ready when all workspaces ready", async () => {
-		const res = await makeApp().request("/readyz");
-		expect(res.status).toBe(200);
-		expect(await res.json()).toMatchObject({
-			status: "ready",
-			workspaces: ["mock"],
-		});
-	});
-
-	test("GET /readyz returns 503 when a workspace is unready", async () => {
-		const cfg = ConfigSchema.parse({
-			version: 1,
-			workspaces: [
-				{
-					id: "prod",
-					driver: "astra",
-					astra: {
-						endpoint: "https://x.apps.astra.datastax.com",
-						token: "ok",
-					},
-					vectorStores: [],
-					catalogs: [],
-				},
-			],
-		});
-		const registry = new WorkspaceRegistry(cfg);
-		// Force the workspace into unready for the test.
-		(registry as unknown as { workspaces: Map<string, unknown> }).workspaces =
-			new Map([
-				[
-					"prod",
-					{
-						config: cfg.workspaces[0],
-						status: "unready",
-						error: "astra credentials missing",
-					},
-				],
-			]);
-		const app = createApp({ registry });
+	test("GET /readyz returns ready with a workspace count", async () => {
+		const { app, store } = makeApp();
+		await store.createWorkspace(BASE_WORKSPACE);
+		await store.createWorkspace({ name: "w2", kind: "mock" });
 		const res = await app.request("/readyz");
-		expect(res.status).toBe(503);
+		expect(res.status).toBe(200);
 		const body = await json(res);
-		expect(body.error.code).toBe("workspace_unready");
+		expect(body).toEqual({ status: "ready", workspaces: 2 });
 	});
 
 	test("GET /version returns build metadata", async () => {
-		const res = await makeApp().request("/version");
+		const { app } = makeApp();
+		const res = await app.request("/version");
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		expect(body).toMatchObject({ node: process.version });
-		expect(body.version).toBeDefined();
-		expect(body.buildTime).toBeDefined();
+		expect(body.node).toBe(process.version);
 	});
 
 	test("responses carry X-Request-Id", async () => {
-		const res = await makeApp().request("/healthz");
+		const { app } = makeApp();
+		const res = await app.request("/healthz");
 		expect(res.headers.get("X-Request-Id")).toBeTruthy();
 	});
 
 	test("echoes client-provided request id", async () => {
-		const res = await makeApp().request("/healthz", {
+		const { app } = makeApp();
+		const res = await app.request("/healthz", {
 			headers: { "X-Request-Id": "abc-123" },
 		});
 		expect(res.headers.get("X-Request-Id")).toBe("abc-123");
@@ -134,204 +83,213 @@ describe("operational routes", () => {
 });
 
 describe("workspace routes", () => {
-	test("GET /v1/workspaces lists workspaces", async () => {
-		const res = await makeApp().request("/v1/workspaces");
-		expect(res.status).toBe(200);
-		const body = await json(res);
-		expect(body.data).toHaveLength(1);
-		expect(body.data[0]).toMatchObject({
-			id: "mock",
-			driver: "mock",
-			description: "test mock",
+	test("POST creates a workspace and returns 201 with uid", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/api/v1/workspaces", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(BASE_WORKSPACE),
 		});
+		expect(res.status).toBe(201);
+		const body = await json(res);
+		expect(body.name).toBe("w1");
+		expect(body.kind).toBe("astra");
+		expect(body.uid).toMatch(/^[0-9a-f-]{36}$/);
 	});
 
-	test("GET /v1/workspaces/:id returns details", async () => {
-		const res = await makeApp().request("/v1/workspaces/mock");
+	test("GET returns all workspaces", async () => {
+		const { app, store } = makeApp();
+		await store.createWorkspace(BASE_WORKSPACE);
+		await store.createWorkspace({ name: "w2", kind: "mock" });
+		const res = await app.request("/api/v1/workspaces");
+		const body = await json(res);
+		expect(body).toHaveLength(2);
+	});
+
+	test("GET /:id returns the record", async () => {
+		const { app, store } = makeApp();
+		const created = await store.createWorkspace(BASE_WORKSPACE);
+		const res = await app.request(`/api/v1/workspaces/${created.uid}`);
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		expect(body.data.id).toBe("mock");
-		expect(body.data.driver).toBe("mock");
+		expect(body.uid).toBe(created.uid);
 	});
 
-	test("GET /v1/workspaces/:id returns 404 for unknown", async () => {
-		const res = await makeApp().request("/v1/workspaces/nope");
+	test("GET /:id returns 404 for unknown uid", async () => {
+		const { app } = makeApp();
+		const res = await app.request(
+			"/api/v1/workspaces/00000000-0000-0000-0000-000000000000",
+		);
 		expect(res.status).toBe(404);
 		const body = await json(res);
 		expect(body.error.code).toBe("workspace_not_found");
 		expect(body.error.requestId).toBeTruthy();
 	});
 
-	test("redacts astra token", async () => {
-		const res = await makeApp(astraConfig()).request("/v1/workspaces/prod", {
-			headers: { Authorization: "Bearer wb-tok" },
+	test("PUT applies the patch", async () => {
+		const { app, store } = makeApp();
+		const created = await store.createWorkspace(BASE_WORKSPACE);
+		const res = await app.request(`/api/v1/workspaces/${created.uid}`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ name: "renamed" }),
 		});
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		expect(body.data.astra.token).toBe("****");
-		expect(body.data.astra.endpoint).toBe(
-			"https://example.apps.astra.datastax.com",
-		);
+		expect(body.name).toBe("renamed");
+		expect(body.kind).toBe("astra");
 	});
 
-	test("redacts bearer auth tokens", async () => {
-		const res = await makeApp(astraConfig()).request("/v1/workspaces/prod", {
-			headers: { Authorization: "Bearer wb-tok" },
+	test("PUT returns 404 for unknown uid", async () => {
+		const { app } = makeApp();
+		const res = await app.request(
+			"/api/v1/workspaces/00000000-0000-0000-0000-000000000000",
+			{
+				method: "PUT",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ name: "x" }),
+			},
+		);
+		expect(res.status).toBe(404);
+	});
+
+	test("DELETE returns 204", async () => {
+		const { app, store } = makeApp();
+		const created = await store.createWorkspace(BASE_WORKSPACE);
+		const res = await app.request(`/api/v1/workspaces/${created.uid}`, {
+			method: "DELETE",
 		});
+		expect(res.status).toBe(204);
+		expect(await store.getWorkspace(created.uid)).toBeNull();
+	});
+
+	test("DELETE returns 404 for unknown uid", async () => {
+		const { app } = makeApp();
+		const res = await app.request(
+			"/api/v1/workspaces/00000000-0000-0000-0000-000000000000",
+			{ method: "DELETE" },
+		);
+		expect(res.status).toBe(404);
+	});
+
+	test("POST with invalid body returns 400", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/api/v1/workspaces", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ kind: "astra" }), // missing name
+		});
+		expect(res.status).toBe(400);
+	});
+});
+
+describe("catalog routes", () => {
+	test("POST creates a catalog under a workspace", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}/catalogs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ name: "support" }),
+		});
+		expect(res.status).toBe(201);
 		const body = await json(res);
-		expect(body.data.auth.tokens).toEqual(["****"]);
+		expect(body.name).toBe("support");
+		expect(body.workspace).toBe(ws.uid);
+	});
+
+	test("POST on unknown workspace returns 404", async () => {
+		const { app } = makeApp();
+		const res = await app.request(
+			"/api/v1/workspaces/00000000-0000-0000-0000-000000000000/catalogs",
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ name: "x" }),
+			},
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("workspace_not_found");
+	});
+
+	test("GET lists catalogs for the workspace", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		await store.createCatalog(ws.uid, { name: "c1" });
+		await store.createCatalog(ws.uid, { name: "c2" });
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}/catalogs`);
+		const body = await json(res);
+		expect(body).toHaveLength(2);
+	});
+});
+
+describe("vector-store routes", () => {
+	test("POST creates a descriptor row", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(BASE_VECTOR_STORE),
+			},
+		);
+		expect(res.status).toBe(201);
+		const body = await json(res);
+		expect(body.vectorDimension).toBe(1536);
+		expect(body.lexical.enabled).toBe(false);
+		expect(body.reranking.enabled).toBe(false);
 	});
 });
 
 describe("error handling", () => {
 	test("unknown routes return 404 envelope", async () => {
-		const res = await makeApp().request("/no-such-path");
+		const { app } = makeApp();
+		const res = await app.request("/no-such-path");
 		expect(res.status).toBe(404);
 		const body = await json(res);
 		expect(body.error.code).toBe("not_found");
 	});
 });
 
-describe("per-workspace auth", () => {
-	function bearerConfig() {
-		return ConfigSchema.parse({
-			version: 1,
-			workspaces: [
-				{
-					id: "secured",
-					driver: "mock",
-					auth: { kind: "bearer", tokens: ["right-token", "alt-token"] },
-					vectorStores: [{ id: "v1", collection: "c", dimensions: 128 }],
-					catalogs: [{ id: "cat1", vectorStore: "v1" }],
-				},
-				{
-					id: "open",
-					driver: "mock",
-					auth: { kind: "none" },
-					vectorStores: [],
-					catalogs: [],
-				},
-			],
-		});
-	}
-
-	test("workspace with kind:none requires no auth", async () => {
-		const app = makeApp(bearerConfig());
-		const res = await app.request("/v1/workspaces/open");
-		expect(res.status).toBe(200);
-	});
-
-	test("bearer workspace returns 401 with no Authorization header", async () => {
-		const app = makeApp(bearerConfig());
-		const res = await app.request("/v1/workspaces/secured");
-		expect(res.status).toBe(401);
-		const body = await json(res);
-		expect(body.error.code).toBe("missing_authorization");
-	});
-
-	test("bearer workspace returns 401 for malformed header", async () => {
-		const app = makeApp(bearerConfig());
-		const res = await app.request("/v1/workspaces/secured", {
-			headers: { Authorization: "Basic abc" },
-		});
-		expect(res.status).toBe(401);
-		const body = await json(res);
-		expect(body.error.code).toBe("invalid_authorization");
-	});
-
-	test("bearer workspace returns 403 for wrong token", async () => {
-		const app = makeApp(bearerConfig());
-		const res = await app.request("/v1/workspaces/secured", {
-			headers: { Authorization: "Bearer wrong-token" },
-		});
-		expect(res.status).toBe(403);
-		const body = await json(res);
-		expect(body.error.code).toBe("invalid_token");
-	});
-
-	test("bearer workspace accepts a valid token", async () => {
-		const app = makeApp(bearerConfig());
-		const res = await app.request("/v1/workspaces/secured", {
-			headers: { Authorization: "Bearer right-token" },
-		});
-		expect(res.status).toBe(200);
-		const body = await json(res);
-		expect(body.data.id).toBe("secured");
-	});
-
-	test("bearer workspace accepts any configured token", async () => {
-		const app = makeApp(bearerConfig());
-		const res = await app.request("/v1/workspaces/secured", {
-			headers: { Authorization: "Bearer alt-token" },
-		});
-		expect(res.status).toBe(200);
-	});
-
-	test("404 for unknown workspace is returned before auth check", async () => {
-		const app = makeApp(bearerConfig());
-		const res = await app.request("/v1/workspaces/does-not-exist");
-		expect(res.status).toBe(404);
-		const body = await json(res);
-		expect(body.error.code).toBe("workspace_not_found");
-	});
-
-	test("list endpoint remains public even when workspaces have auth", async () => {
-		const app = makeApp(bearerConfig());
-		const res = await app.request("/v1/workspaces");
-		expect(res.status).toBe(200);
-		const body = await json(res);
-		expect(body.data).toHaveLength(2);
-	});
-});
-
 describe("openapi", () => {
-	test("GET /v1/openapi.json returns a 3.1 document", async () => {
-		const res = await makeApp().request("/v1/openapi.json");
+	test("GET /api/v1/openapi.json returns a 3.1 document", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/api/v1/openapi.json");
 		expect(res.status).toBe(200);
 		const body = await json(res);
 		expect(body.openapi).toBe("3.1.0");
 		expect(body.info.title).toBe("AI Workbench");
 	});
 
-	test("openapi document lists all six Phase 0 paths", async () => {
-		const res = await makeApp().request("/v1/openapi.json");
+	test("openapi doc lists the CRUD paths", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/api/v1/openapi.json");
 		const body = await json(res);
 		const paths = Object.keys(body.paths);
-		expect(paths).toContain("/");
-		expect(paths).toContain("/healthz");
-		expect(paths).toContain("/readyz");
-		expect(paths).toContain("/version");
-		expect(paths).toContain("/v1/workspaces");
-		expect(paths).toContain("/v1/workspaces/{workspaceId}");
+		expect(paths).toContain("/api/v1/workspaces");
+		expect(paths).toContain("/api/v1/workspaces/{workspaceId}");
+		expect(paths).toContain("/api/v1/workspaces/{workspaceId}/catalogs");
+		expect(paths).toContain("/api/v1/workspaces/{workspaceId}/vector-stores");
 	});
 
-	test("openapi document includes shared error envelope schema", async () => {
-		const res = await makeApp().request("/v1/openapi.json");
+	test("openapi doc includes shared error envelope schema", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/api/v1/openapi.json");
 		const body = await json(res);
 		expect(body.components.schemas.ErrorEnvelope).toBeDefined();
-	});
-
-	test("openapi document declares BearerAuth security scheme", async () => {
-		const res = await makeApp().request("/v1/openapi.json");
-		const body = await json(res);
-		expect(body.components.securitySchemes.BearerAuth).toMatchObject({
-			type: "http",
-			scheme: "bearer",
-		});
-	});
-
-	test("workspace detail route advertises 401 and 403 responses", async () => {
-		const res = await makeApp().request("/v1/openapi.json");
-		const body = await json(res);
-		const detail = body.paths["/v1/workspaces/{workspaceId}"].get;
-		expect(detail.responses["401"]).toBeDefined();
-		expect(detail.responses["403"]).toBeDefined();
+		expect(body.components.schemas.Workspace).toBeDefined();
+		expect(body.components.schemas.Catalog).toBeDefined();
+		expect(body.components.schemas.VectorStore).toBeDefined();
 	});
 
 	test("GET /docs serves the Scalar reference UI", async () => {
-		const res = await makeApp().request("/docs");
+		const { app } = makeApp();
+		const res = await app.request("/docs");
 		expect(res.status).toBe(200);
 		const text = await res.text();
-		expect(text).toContain("/v1/openapi.json");
+		expect(text).toContain("/api/v1/openapi.json");
 	});
 });

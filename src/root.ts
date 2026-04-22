@@ -1,39 +1,46 @@
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { loadConfig, resolveConfigPath } from "./config/loader.js";
+import { storeFromConfig } from "./control-plane/factory.js";
 import { logger } from "./lib/logger.js";
-import { WorkspaceRegistry } from "./workspaces/registry.js";
+import { EnvSecretProvider } from "./secrets/env.js";
+import { FileSecretProvider } from "./secrets/file.js";
+import { SecretResolver } from "./secrets/provider.js";
 
 async function main(): Promise<void> {
 	const configPath = resolveConfigPath();
 	logger.info({ configPath }, "loading config");
 
 	const config = await loadConfig(configPath);
-	const registry = new WorkspaceRegistry(config);
 
-	const unready = registry.unready();
-	if (unready.length > 0) {
-		logger.warn(
-			{ unready: unready.map((w) => ({ id: w.config.id, error: w.error })) },
-			"some workspaces failed to resolve",
-		);
-	}
+	const secrets = new SecretResolver({
+		env: new EnvSecretProvider(),
+		file: new FileSecretProvider(),
+	});
+
+	const store = await storeFromConfig(config, secrets);
 
 	const app = createApp({
-		registry,
+		store,
 		requestIdHeader: config.runtime.requestIdHeader,
 	});
 
 	const port = config.runtime.port;
-	serve({ fetch: app.fetch, port }, (info) => {
+	serve({ fetch: app.fetch, port }, async (info) => {
+		const workspaces = await store.listWorkspaces();
 		logger.info(
-			{ port: info.port, workspaces: registry.ids() },
+			{
+				port: info.port,
+				controlPlane: config.controlPlane.driver,
+				workspaces: workspaces.length,
+			},
 			"ai-workbench listening",
 		);
 	});
 
-	const shutdown = (signal: string) => () => {
+	const shutdown = (signal: string) => async () => {
 		logger.info({ signal }, "shutting down");
+		await store.close?.();
 		process.exit(0);
 	};
 	process.on("SIGINT", shutdown("SIGINT"));
