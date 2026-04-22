@@ -17,7 +17,8 @@
 		"lint:fix": "biome check --write .",
 		"format": "biome format --write .",
 		"test": "vitest run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"conformance:mock": "tsx clients/conformance/mock-astra/server.ts"
 	},
 	"dependencies": {
 		"@hono/node-server": "^1.14.0",
