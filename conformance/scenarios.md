@@ -100,9 +100,11 @@ Fixture: `fixtures/vector-store-provision-and-search.json` *(TBD)*.
 ## Adding a scenario
 
 1. Append a new section to this file.
-2. Implement the routes in the canonical TypeScript runtime at
-   [`../../src/routes/`](../../src/routes/).
-3. Run `npm run conformance:regenerate` to materialize the fixture
+2. Add the matching entry to
+   [`scenarios.json`](./scenarios.json).
+3. Implement the routes in the canonical TypeScript runtime at
+   [`../runtimes/typescript/src/routes/`](../runtimes/typescript/src/routes/).
+4. Run `npm run conformance:regenerate` to materialize the fixture
    from the TS runtime's responses.
-4. Run every other runtime's tests. Any that drift surface in CI —
+5. Run every other runtime's tests. Any that drift surface in CI —
    update those runtimes in the same PR.

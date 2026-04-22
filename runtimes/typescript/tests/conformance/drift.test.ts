@@ -1,7 +1,7 @@
 /**
  * Conformance drift guard for the canonical TypeScript runtime.
  *
- * Runs every scenario in `clients/conformance/scenarios.json` against
+ * Runs every scenario in `conformance/scenarios.json` against
  * a fresh memory-backed app and diffs the normalized responses against
  * the committed fixtures. If this test fails, either:
  *
@@ -16,14 +16,15 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 // @ts-expect-error — pure JS module
-import { runScenario } from "../../clients/conformance/runner.mjs";
+import { runScenario } from "../../../../conformance/runner.mjs";
 import { createApp } from "../../src/app.js";
 import { MemoryControlPlaneStore } from "../../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../../src/drivers/registry.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const CONFORMANCE_ROOT = resolve(HERE, "../../clients/conformance");
+// this file is at runtimes/typescript/tests/conformance/ → repo root is 4 levels up
+const CONFORMANCE_ROOT = resolve(HERE, "../../../../conformance");
 
 interface Scenario {
 	readonly slug: string;

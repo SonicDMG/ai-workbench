@@ -1,12 +1,12 @@
 /**
  * Generic scenario runner — driver for conformance tests and fixture
  * generation. Language-agnostic in spirit (every runtime has its own
- * port, see clients/python-runtime/tests/); the JS version here is
- * reused by the TS runtime's tests and by
- * scripts/conformance-regenerate.ts.
+ * port, see runtimes/python/tests/); the JS version here is reused
+ * by the TS runtime's tests and by
+ * runtimes/typescript/scripts/conformance-regenerate.ts.
  *
  * Input:
- *   - A scenario from clients/conformance/scenarios.json.
+ *   - A scenario from conformance/scenarios.json.
  *   - A `fetcher(method, path, body?) → { status, body }` function
  *     that knows how to hit the green box under test. The TS harness
  *     wraps `app.request(...)`; the Python harness wraps an

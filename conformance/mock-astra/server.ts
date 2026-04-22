@@ -26,8 +26,8 @@
  *
  * Run from repo root:
  *   npm run conformance:mock
- * Or directly:
- *   tsx clients/conformance/mock-astra/server.ts
+ * Or directly (from runtimes/typescript):
+ *   tsx ../../conformance/mock-astra/server.ts
  */
 
 import {

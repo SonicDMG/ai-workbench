@@ -21,7 +21,7 @@ error envelope.
 
 ```bash
 # 1. Install the runtime in editable mode with dev deps.
-cd clients/python-runtime
+cd runtimes/python
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
@@ -66,8 +66,8 @@ open http://localhost:8080/docs          # interactive OpenAPI
 Each `NotImplementedApiError` in
 [`src/workbench/routes/`](./src/workbench/routes/) corresponds to one
 step in
-[`../conformance/scenarios.md`](../conformance/scenarios.md). Suggested
-order:
+[`../../conformance/scenarios.md`](../../conformance/scenarios.md).
+Suggested order:
 
 1. `POST /api/v1/workspaces` — scenario 1 step 1. Plumb astrapy into
    [`workbench/astra.py`](./src/workbench/) (new file) and wire the
@@ -125,12 +125,12 @@ whatever address it binds to.
 [`tests/test_conformance.py`](./tests/test_conformance.py) runs every
 scenario as HTTP requests against the FastAPI app (in-process via
 `httpx.ASGITransport`). Responses are compared to shared fixtures in
-[`../conformance/fixtures/`](../conformance/fixtures/).
+[`../../conformance/fixtures/`](../../conformance/fixtures/).
 
-Until fixtures exist (they ship with PR-1a.2 alongside the canonical
-TS runtime's route implementations), the scenarios assert only that
-each HTTP call eventually succeeds. Byte-diff assertions flip on once
-fixtures land.
+Fixtures ship from the canonical TypeScript runtime via
+`npm run conformance:regenerate`. Python's conformance tests remain
+`xfail(strict=True)` until the matching routes are implemented; flip
+them off per scenario as you go.
 
 The mock-astra server is a **standard deterministic backend** for
 every green box — not a conformance assertion target. If you want to
@@ -146,7 +146,7 @@ async def test_debug(client, mock_captured):
 ## Structure
 
 ```
-clients/python-runtime/
+runtimes/python/
 ├── pyproject.toml                  ← hatchling, FastAPI, astrapy (pending)
 ├── README.md                       ← you are here
 ├── src/workbench/
@@ -173,7 +173,7 @@ clients/python-runtime/
 Pydantic models in
 [`src/workbench/models.py`](./src/workbench/models.py) mirror the
 TypeScript types in
-[`../../src/control-plane/types.ts`](../../src/control-plane/types.ts).
+[`../typescript/src/control-plane/types.ts`](../typescript/src/control-plane/types.ts).
 When the TS types change, update here in the same PR.
 
 JSON over the wire uses `camelCase` (matching TS). Python-side

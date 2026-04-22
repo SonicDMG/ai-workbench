@@ -6,7 +6,7 @@ catalogs, vector-store descriptors, and (in later phases) documents,
 ingestion, and search. Each **language-native implementation of the
 runtime** is a "green box"; the default TypeScript green box is
 embedded with the UI, and alternatives live under
-[`clients/`](../clients/README.md).
+[`runtimes/`](../runtimes/README.md).
 
 ## Design principles
 
@@ -57,15 +57,15 @@ same-origin; alternative deployments point it at a Python or Java
 green box.
 
 See [`green-boxes.md`](green-boxes.md) for the full model, and
-[`clients/README.md`](../clients/README.md) for the list of current
+[`runtimes/README.md`](../runtimes/README.md) for the list of current
 runtimes.
 
 ## Components
 
 ### Runtime (default: TypeScript, Docker)
 
-The default process lives at [`src/`](../src/) in the repo root and
-boots from [`src/root.ts`](../src/root.ts). Responsibilities:
+The default process lives at [`runtimes/typescript/`](../runtimes/typescript/) and
+boots from [`runtimes/typescript/src/root.ts`](../runtimes/typescript/src/root.ts). Responsibilities:
 
 - Load and validate `workbench.yaml`.
 - Build a `SecretResolver` from the configured secret providers.
@@ -77,19 +77,19 @@ boots from [`src/root.ts`](../src/root.ts). Responsibilities:
 ### Control-plane store
 
 Backend-agnostic interface in
-[`src/control-plane/store.ts`](../src/control-plane/store.ts). Three
+[`runtimes/typescript/src/control-plane/store.ts`](../runtimes/typescript/src/control-plane/store.ts). Three
 implementations:
 
 | Backend | File | When to use |
 |---|---|---|
-| `memory` | [`memory/store.ts`](../src/control-plane/memory/store.ts) | CI, tests, `docker run` demos. Not durable. |
-| `file` | [`file/store.ts`](../src/control-plane/file/store.ts) | Single-node self-hosted. Per-table mutex + atomic rename. |
-| `astra` | [`astra/store.ts`](../src/control-plane/astra/store.ts) | Production. Data API Tables via `astra-db-ts`. |
+| `memory` | [`memory/store.ts`](../runtimes/typescript/src/control-plane/memory/store.ts) | CI, tests, `docker run` demos. Not durable. |
+| `file` | [`file/store.ts`](../runtimes/typescript/src/control-plane/file/store.ts) | Single-node self-hosted. Per-table mutex + atomic rename. |
+| `astra` | [`astra/store.ts`](../runtimes/typescript/src/control-plane/astra/store.ts) | Production. Data API Tables via `astra-db-ts`. |
 
 All three pass the same 14-assertion shared contract suite in
-[`tests/control-plane/contract.ts`](../tests/control-plane/contract.ts).
+[`runtimes/typescript/tests/control-plane/contract.ts`](../runtimes/typescript/tests/control-plane/contract.ts).
 
-### Vector-store drivers (`src/drivers/`)
+### Vector-store drivers (`runtimes/typescript/src/drivers/`)
 
 Data-plane counterparts to the control-plane store. Where
 `ControlPlaneStore` owns **descriptors**, the `VectorStoreDriver`
@@ -97,11 +97,11 @@ owns **actual vectors** on a per-workspace backend.
 
 | File | Purpose |
 |---|---|
-| [`vector-store.ts`](../src/drivers/vector-store.ts) | Driver interface — `createCollection`, `dropCollection`, `upsert`, `deleteRecord`, `search` |
-| [`mock/store.ts`](../src/drivers/mock/store.ts) | In-memory driver; used by workspaces with `kind: "mock"` and by the conformance suite |
-| [`astra/store.ts`](../src/drivers/astra/store.ts) | Data API Collections via `astra-db-ts`; per-workspace `DataAPIClient` cache, lazy init |
-| [`registry.ts`](../src/drivers/registry.ts) | Dispatches based on `workspace.kind`; unknown kinds surface as `503 driver_unavailable` |
-| [`factory.ts`](../src/drivers/factory.ts) | Wires the registry at startup from the `SecretResolver` |
+| [`vector-store.ts`](../runtimes/typescript/src/drivers/vector-store.ts) | Driver interface — `createCollection`, `dropCollection`, `upsert`, `deleteRecord`, `search` |
+| [`mock/store.ts`](../runtimes/typescript/src/drivers/mock/store.ts) | In-memory driver; used by workspaces with `kind: "mock"` and by the conformance suite |
+| [`astra/store.ts`](../runtimes/typescript/src/drivers/astra/store.ts) | Data API Collections via `astra-db-ts`; per-workspace `DataAPIClient` cache, lazy init |
+| [`registry.ts`](../runtimes/typescript/src/drivers/registry.ts) | Dispatches based on `workspace.kind`; unknown kinds surface as `503 driver_unavailable` |
+| [`factory.ts`](../runtimes/typescript/src/drivers/factory.ts) | Wires the registry at startup from the `SecretResolver` |
 
 `POST /api/v1/workspaces/{w}/vector-stores` is the transactional
 entry point: it writes the descriptor, calls the driver to create
@@ -109,25 +109,25 @@ the collection, and rolls back the descriptor on failure so the
 control plane and data plane never diverge.
 
 Both drivers pass the same 8-assertion
-[driver contract suite](../tests/drivers/contract.ts). The Astra
+[driver contract suite](../runtimes/typescript/tests/drivers/contract.ts). The Astra
 driver runs it against an in-memory fake `Db` that mimics
 `$vector` sort semantics faithfully; real-Astra integration is
 gated on `ASTRA_DB_*` env vars and lives in a follow-up.
 
-### Astra client (`src/astra-client/`)
+### Astra client (`runtimes/typescript/src/astra-client/`)
 
 Thin layer over `astra-db-ts` scoped to the four `wb_*` tables:
 
-- [`table-definitions.ts`](../src/astra-client/table-definitions.ts) —
+- [`table-definitions.ts`](../runtimes/typescript/src/astra-client/table-definitions.ts) —
   Data API Table DDL.
-- [`row-types.ts`](../src/astra-client/row-types.ts) — snake_case JSON
+- [`row-types.ts`](../runtimes/typescript/src/astra-client/row-types.ts) — snake_case JSON
   row shapes.
-- [`converters.ts`](../src/astra-client/converters.ts) — pure
+- [`converters.ts`](../runtimes/typescript/src/astra-client/converters.ts) — pure
   record ↔ row conversion.
-- [`tables.ts`](../src/astra-client/tables.ts) — `TablesBundle` —
+- [`tables.ts`](../runtimes/typescript/src/astra-client/tables.ts) — `TablesBundle` —
   narrow structural interface used by the astra store (lets tests
   inject fakes).
-- [`client.ts`](../src/astra-client/client.ts) — `openAstraClient()`:
+- [`client.ts`](../runtimes/typescript/src/astra-client/client.ts) — `openAstraClient()`:
   creates the four tables idempotently at init and returns a
   `TablesBundle`.
 
@@ -135,7 +135,7 @@ The Python runtime has a symmetric internal layer that wraps
 `astrapy` for the same tables — no shared library, just a shared
 schema.
 
-### Secrets (`src/secrets/`)
+### Secrets (`runtimes/typescript/src/secrets/`)
 
 - `SecretResolver` — dispatches a `SecretRef` to the matching
   provider based on its prefix.
@@ -151,11 +151,11 @@ talking to workspace-scoped backends.
 
 | Module | Prefix | Contents |
 |---|---|---|
-| [`operational.ts`](../src/routes/operational.ts) | (unversioned) | `/`, `/healthz`, `/readyz`, `/version` |
-| [`api-v1/workspaces.ts`](../src/routes/api-v1/workspaces.ts) | `/api/v1/workspaces` | Workspace CRUD |
-| [`api-v1/catalogs.ts`](../src/routes/api-v1/catalogs.ts) | `/api/v1/workspaces/{w}/catalogs` | Catalog CRUD |
-| [`api-v1/vector-stores.ts`](../src/routes/api-v1/vector-stores.ts) | `/api/v1/workspaces/{w}/vector-stores` | Descriptor CRUD |
-| [`api-v1/helpers.ts`](../src/routes/api-v1/helpers.ts) | — | Error mapping (invoked from app-level `onError`) |
+| [`operational.ts`](../runtimes/typescript/src/routes/operational.ts) | (unversioned) | `/`, `/healthz`, `/readyz`, `/version` |
+| [`api-v1/workspaces.ts`](../runtimes/typescript/src/routes/api-v1/workspaces.ts) | `/api/v1/workspaces` | Workspace CRUD |
+| [`api-v1/catalogs.ts`](../runtimes/typescript/src/routes/api-v1/catalogs.ts) | `/api/v1/workspaces/{w}/catalogs` | Catalog CRUD |
+| [`api-v1/vector-stores.ts`](../runtimes/typescript/src/routes/api-v1/vector-stores.ts) | `/api/v1/workspaces/{w}/vector-stores` | Descriptor CRUD |
+| [`api-v1/helpers.ts`](../runtimes/typescript/src/routes/api-v1/helpers.ts) | — | Error mapping (invoked from app-level `onError`) |
 
 Route handlers validate with Zod (via `@hono/zod-openapi`) and
 delegate to the `ControlPlaneStore`. Typed errors (`ControlPlaneNot
@@ -167,7 +167,7 @@ envelope.
 
 Four `wb_*` Data API tables backed by CQL-style schemas. The exact
 DDL lives in
-[`src/astra-client/table-definitions.ts`](../src/astra-client/table-definitions.ts);
+[`runtimes/typescript/src/astra-client/table-definitions.ts`](../runtimes/typescript/src/astra-client/table-definitions.ts);
 here's the logical shape:
 
 ```
@@ -252,9 +252,9 @@ store.
 
 Every language green box must produce byte-identical `/api/v1/*`
 responses for the shared scenarios in
-[`clients/conformance/scenarios.json`](../clients/conformance/scenarios.json).
+[`conformance/scenarios.json`](../conformance/scenarios.json).
 Fixtures in
-[`clients/conformance/fixtures/`](../clients/conformance/fixtures/)
+[`conformance/fixtures/`](../conformance/fixtures/)
 are the source of truth; they're materialized from the canonical
 TypeScript runtime via `npm run conformance:regenerate`.
 

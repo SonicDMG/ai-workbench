@@ -1,11 +1,11 @@
 /**
  * Regenerate conformance fixtures from the canonical TypeScript runtime.
  *
- * For each scenario in `clients/conformance/scenarios.json`:
+ * For each scenario in `conformance/scenarios.json`:
  *   1. Create a fresh memory-backed workbench app.
  *   2. Replay the scenario's HTTP requests against `app.request(...)`.
  *   3. Normalize responses (UUIDs, timestamps, request IDs).
- *   4. Write `clients/conformance/fixtures/<slug>.json`.
+ *   4. Write `conformance/fixtures/<slug>.json`.
  *
  * Run via `npm run conformance:regenerate` whenever an intentional API
  * change lands. Commit the resulting fixture files alongside the change.
@@ -17,16 +17,17 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error — mjs import without types; it's intentional.
-import { runScenario } from "../clients/conformance/runner.mjs";
+import { runScenario } from "../../../conformance/runner.mjs";
 import { createApp } from "../src/app.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(HERE, "..");
-const SCENARIOS_PATH = resolve(REPO_ROOT, "clients/conformance/scenarios.json");
-const FIXTURES_DIR = resolve(REPO_ROOT, "clients/conformance/fixtures");
+// this file is at runtimes/typescript/scripts/... → repo root is 3 levels up
+const REPO_ROOT = resolve(HERE, "../../..");
+const SCENARIOS_PATH = resolve(REPO_ROOT, "conformance/scenarios.json");
+const FIXTURES_DIR = resolve(REPO_ROOT, "conformance/fixtures");
 
 interface Scenario {
 	readonly slug: string;

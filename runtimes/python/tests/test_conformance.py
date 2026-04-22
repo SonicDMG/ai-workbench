@@ -1,6 +1,6 @@
 """Conformance tests — blackbox testing the Python green box.
 
-Each scenario in ``clients/conformance/scenarios.md`` is a sequence of
+Each scenario in ``conformance/scenarios.md`` is a sequence of
 HTTP requests against ``/api/v1/*``. Responses are normalized (UUIDs,
 timestamps, request IDs scrubbed) and diffed against fixtures shared
 across every language's green box.

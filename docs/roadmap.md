@@ -18,7 +18,7 @@ runnable artifact and a stable slice of the HTTP contract.
 
 Shipped with the initial runtime scaffold.
 
-- `src/root.ts` — Hono-based HTTP entry point.
+- `runtimes/typescript/src/root.ts` — Hono-based HTTP entry point.
 - Config loader that reads `workbench.yaml`, interpolates env vars,
   validates the v1 schema.
 - Operational endpoints: `GET /`, `/healthz`, `/readyz`, `/version`,
@@ -39,9 +39,10 @@ Shipped across PRs #4, #5, #6, #7, #8.
   no wrapper libraries in between.
 - `SecretResolver` with `env:` and `file:` providers.
 - The multi-runtime "green box" model: default TypeScript runtime at
-  `src/`, alternative runtimes under `clients/*-runtime/`.
+  `runtimes/typescript/`, alternative runtimes as siblings under
+  `runtimes/`.
 - Python runtime scaffold (FastAPI) under
-  [`clients/python-runtime/`](../clients/python-runtime/).
+  [`runtimes/python/`](../runtimes/python/).
 - Cross-runtime conformance harness with committed fixtures.
 
 ## Phase 1b — Vector-store data plane ✅

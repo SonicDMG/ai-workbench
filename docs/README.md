@@ -36,7 +36,7 @@ runtime does.
 - Land docs changes **in the same PR** as the supporting code.
 - When adding a route: update [`api-spec.md`](api-spec.md) and, if
   there's a scenario worth adding, extend
-  [`clients/conformance/scenarios.json`](../clients/conformance/scenarios.json)
+  [`conformance/scenarios.json`](../conformance/scenarios.json)
   + regenerate fixtures (`npm run conformance:regenerate`).
 - When changing the config schema: bump `version:` only on breaking
   changes and document the migration in

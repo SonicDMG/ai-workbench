@@ -21,8 +21,8 @@ picks which one to target at deploy time via `BACKEND_URL`.
 
 | Runtime | Location | Status | Astra SDK |
 |---|---|---|---|
-| **TypeScript** (default) | [`src/`](../src/) | Operational through Phase 1a (workspace/catalog/vector-store CRUD) | `@datastax/astra-db-ts` |
-| **Python** | [`clients/python-runtime/`](../clients/python-runtime/) | FastAPI scaffold — routes return 501 until implemented | `astrapy` (pending) |
+| **TypeScript** (default) | [`runtimes/typescript/`](../runtimes/typescript/) | Operational through Phase 1b (workspace/catalog/vector-store CRUD + data plane) | `@datastax/astra-db-ts` |
+| **Python** | [`runtimes/python/`](../runtimes/python/) | FastAPI scaffold — routes return 501 until implemented | `astrapy` (pending) |
 | Java | not yet started | — | `astra-db-java` |
 
 The TypeScript runtime is **the default ship path**: it gets bundled
@@ -45,14 +45,15 @@ Every green box serves:
 | `GET /api/v1/openapi.json` | Machine-readable OpenAPI 3.1 doc |
 | `(CRUD)` `/api/v1/workspaces[/{uid}]` | Workspace lifecycle |
 | `(CRUD)` `/api/v1/workspaces/{w}/catalogs[/{uid}]` | Catalog lifecycle |
-| `(CRUD)` `/api/v1/workspaces/{w}/vector-stores[/{uid}]` | Descriptor lifecycle |
+| `(CRUD)` `/api/v1/workspaces/{w}/vector-stores[/{uid}]` | Descriptor lifecycle (POST also provisions the collection) |
+| `POST / DELETE / POST` | `/api/v1/workspaces/{w}/vector-stores/{v}/records`, `.../records/{rid}`, `.../search` | Data plane — upsert, delete, vector search |
 
 Full contract details: [`api-spec.md`](api-spec.md).
 
 Response shapes for every route are captured as fixtures under
-[`clients/conformance/fixtures/`](../clients/conformance/fixtures/).
-Every runtime's test suite diffs against those fixtures — drift
-surfaces as a failing test.
+[`conformance/fixtures/`](../conformance/fixtures/). Every runtime's
+test suite diffs against those fixtures — drift surfaces as a
+failing test.
 
 ## What's *not* part of the contract
 
@@ -100,14 +101,14 @@ runtimes, operators deploy the alternative container and set
 
 ## Adding a new language
 
-See [`clients/README.md`](../clients/README.md) for the step-by-step.
+See [`runtimes/README.md`](../runtimes/README.md) for the step-by-step.
 In short:
 
-1. Create `clients/<lang>-runtime/`.
+1. Create `runtimes/<lang>/`.
 2. Scaffold an HTTP server exposing `/api/v1/*`.
 3. Use the language-native DataStax SDK internally.
 4. Write a test harness that runs every scenario in
-   [`clients/conformance/scenarios.json`](../clients/conformance/scenarios.json)
+   [`conformance/scenarios.json`](../conformance/scenarios.json)
    against your server and diffs responses against the shared
    fixtures.
 5. Add a row to the current-runtimes table above when you open the
@@ -115,8 +116,8 @@ In short:
 
 ## Python runtime specifics
 
-See [`clients/python-runtime/README.md`](../clients/python-runtime/README.md)
-for the quickstart, environment variables, and house rules.
+See [`runtimes/python/README.md`](../runtimes/python/README.md) for
+the quickstart, environment variables, and house rules.
 
 Currently every `/api/v1/*` route scaffolds to `HTTP 501
 not_implemented` with the canonical error envelope. Operational

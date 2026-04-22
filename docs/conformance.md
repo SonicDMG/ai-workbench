@@ -19,7 +19,7 @@ of which runtime introduced it.
 ## What lives where
 
 ```
-clients/conformance/
+conformance/
 ├── scenarios.json              ← machine-readable scenarios
 ├── fixtures/                   ← expected normalized responses
 │   ├── workspace-crud-basic.json
@@ -32,21 +32,21 @@ clients/conformance/
 └── README.md                   ← overview for contributors
 ```
 
-And at the repo root:
+And inside the TypeScript runtime:
 
 ```
-scripts/
-└── conformance-regenerate.ts   ← runs the canonical TS runtime against itself,
-                                  writes fixtures
-
-tests/conformance/
-└── drift.test.ts               ← drift guard — fails if the TS runtime
-                                  changes shape without updating fixtures
+runtimes/typescript/
+├── scripts/
+│   └── conformance-regenerate.ts   ← runs the canonical TS runtime against itself,
+│                                     writes fixtures
+└── tests/conformance/
+    └── drift.test.ts               ← drift guard — fails if the TS runtime
+                                      changes shape without updating fixtures
 ```
 
 ## Scenarios
 
-`clients/conformance/scenarios.json` is a JSON array. Each entry:
+`conformance/scenarios.json` is a JSON array. Each entry:
 
 ```json
 {
@@ -78,7 +78,7 @@ ship.
 ## Fixtures
 
 One JSON file per scenario in
-[`clients/conformance/fixtures/`](../clients/conformance/fixtures/):
+[`conformance/fixtures/`](../conformance/fixtures/):
 
 ```json
 {
@@ -104,7 +104,7 @@ language runtime, all in one PR.
 
 ## Normalization
 
-[`normalize.mjs`](../clients/conformance/normalize.mjs) walks any JSON
+[`normalize.mjs`](../conformance/normalize.mjs) walks any JSON
 tree and substitutes:
 
 | Value shape | Replacement | Strategy |
@@ -129,7 +129,7 @@ The drift test is part of the main Vitest suite:
 npm test
 ```
 
-See `tests/conformance/drift.test.ts` — 4 tests (3 scenarios + one
+See `runtimes/typescript/tests/conformance/drift.test.ts` — 4 tests (3 scenarios + one
 "every scenario has a fixture" sanity check).
 
 ### Regenerating fixtures
@@ -154,7 +154,7 @@ deterministic backend):
 # Repo root, terminal 1:
 npm run conformance:mock          # listens on :4010
 
-# clients/python-runtime, terminal 2:
+# From runtimes/python/, terminal 2:
 python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 pytest
@@ -167,7 +167,7 @@ goes green.
 ## The mock Astra server
 
 Every green box's conformance suite points its Astra config at
-[`clients/conformance/mock-astra/`](../clients/conformance/mock-astra/).
+[`conformance/mock-astra/`](../conformance/mock-astra/).
 It's a tiny Node HTTP server that:
 
 - Accepts any request and returns a stub success envelope.
@@ -201,9 +201,9 @@ upstream.
 
 ## Adding a scenario
 
-1. Append to `clients/conformance/scenarios.json`.
+1. Append to `conformance/scenarios.json`.
 2. Add narrative description to
-   [`clients/conformance/scenarios.md`](../clients/conformance/scenarios.md).
+   [`conformance/scenarios.md`](../conformance/scenarios.md).
 3. Run `npm run conformance:regenerate` to materialize the fixture.
 4. Run every language runtime's tests — any drift surfaces the
    runtimes that need updates. Update them in the same PR.

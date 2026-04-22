@@ -5,12 +5,12 @@ Blackbox contract tests that every **green box** runtime must pass.
 ## Problem
 
 We have one API shape (`/api/v1/*`) and N language implementations of
-it — TypeScript at the repo root, Python under
-[`../python-runtime/`](../python-runtime/), others to follow. If any
-runtime drifts in its HTTP behavior (different status codes, different
-response shapes, different error envelopes), users who point
-`BACKEND_URL` at the "wrong" green box get silently inconsistent
-results.
+it — TypeScript at [`../runtimes/typescript/`](../runtimes/typescript/),
+Python at [`../runtimes/python/`](../runtimes/python/), others to
+follow. If any runtime drifts in its HTTP behavior (different status
+codes, different response shapes, different error envelopes), users
+who point `BACKEND_URL` at the "wrong" green box get silently
+inconsistent results.
 
 ## Solution
 
@@ -60,11 +60,11 @@ Default bind: `http://127.0.0.1:4010`. Override with
 Enforced by [`normalize.mjs`](./normalize.mjs):
 
 - UUIDs in order of first appearance → `{{UUID_1}}`, `{{UUID_2}}`, ...
-- ISO-8601 timestamps in order of first appearance → `{{TS_1}}`, ...
-- Authorization / token / x-api-key header values → `{{TOKEN}}`
-- `User-Agent`, `Host`, `Content-Length` stripped (language-dependent)
-- Request-ID headers scrubbed and re-indexed
-- Header names lowercased, keys sorted alphabetically
+- ISO-8601 timestamps → `{{TS}}` (collapsed — ms-granularity
+  collisions between records make ordered placeholders
+  non-deterministic)
+- 32-char hex request IDs in order of first appearance → `{{REQID_N}}`
+- Object keys sorted alphabetically
 
 Port this file verbatim if you write a test harness in a language that
 can't call the JS module directly.
@@ -95,7 +95,6 @@ When an intentional API change lands, rebuild the fixtures from the
 canonical TypeScript runtime:
 
 ```bash
-# (Ships in PR-1a.2 alongside the real TS route implementations.)
 npm run conformance:regenerate
 ```
 
