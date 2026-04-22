@@ -20,9 +20,15 @@ first match:
 1. `--config <file>` CLI flag.
 2. `WORKBENCH_CONFIG` environment variable.
 3. `./workbench.yaml` in the process working directory.
-4. `/etc/workbench/workbench.yaml` (the Docker image default).
+4. `./examples/workbench.yaml` — the sample config this runtime
+   ships with. Lets `npm run dev` work out-of-the-box when run from
+   the runtime directory.
+5. `/etc/workbench/workbench.yaml` (the Docker image default).
 
 No cross-source merging — config is a single declarative document.
+`--config` and `WORKBENCH_CONFIG` are returned verbatim; they fail
+loudly if the target doesn't exist rather than silently falling
+through to the next step.
 
 ## Environment variable interpolation
 
