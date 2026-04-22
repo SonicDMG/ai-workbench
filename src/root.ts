@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { loadConfig, resolveConfigPath } from "./config/loader.js";
 import { storeFromConfig } from "./control-plane/factory.js";
+import { buildVectorStoreDriverRegistry } from "./drivers/factory.js";
 import { logger } from "./lib/logger.js";
 import { EnvSecretProvider } from "./secrets/env.js";
 import { FileSecretProvider } from "./secrets/file.js";
@@ -19,9 +20,11 @@ async function main(): Promise<void> {
 	});
 
 	const store = await storeFromConfig(config, secrets);
+	const drivers = buildVectorStoreDriverRegistry({ secrets });
 
 	const app = createApp({
 		store,
+		drivers,
 		requestIdHeader: config.runtime.requestIdHeader,
 	});
 

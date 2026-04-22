@@ -89,6 +89,31 @@ implementations:
 All three pass the same 14-assertion shared contract suite in
 [`tests/control-plane/contract.ts`](../tests/control-plane/contract.ts).
 
+### Vector-store drivers (`src/drivers/`)
+
+Data-plane counterparts to the control-plane store. Where
+`ControlPlaneStore` owns **descriptors**, the `VectorStoreDriver`
+owns **actual vectors** on a per-workspace backend.
+
+| File | Purpose |
+|---|---|
+| [`vector-store.ts`](../src/drivers/vector-store.ts) | Driver interface — `createCollection`, `dropCollection`, `upsert`, `deleteRecord`, `search` |
+| [`mock/store.ts`](../src/drivers/mock/store.ts) | In-memory driver; used by workspaces with `kind: "mock"` and by the conformance suite |
+| [`astra/store.ts`](../src/drivers/astra/store.ts) | Data API Collections via `astra-db-ts`; per-workspace `DataAPIClient` cache, lazy init |
+| [`registry.ts`](../src/drivers/registry.ts) | Dispatches based on `workspace.kind`; unknown kinds surface as `503 driver_unavailable` |
+| [`factory.ts`](../src/drivers/factory.ts) | Wires the registry at startup from the `SecretResolver` |
+
+`POST /api/v1/workspaces/{w}/vector-stores` is the transactional
+entry point: it writes the descriptor, calls the driver to create
+the collection, and rolls back the descriptor on failure so the
+control plane and data plane never diverge.
+
+Both drivers pass the same 8-assertion
+[driver contract suite](../tests/drivers/contract.ts). The Astra
+driver runs it against an in-memory fake `Db` that mimics
+`$vector` sort semantics faithfully; real-Astra integration is
+gated on `ASTRA_DB_*` env vars and lives in a follow-up.
+
 ### Astra client (`src/astra-client/`)
 
 Thin layer over `astra-db-ts` scoped to the four `wb_*` tables:

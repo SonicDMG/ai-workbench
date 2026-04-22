@@ -58,31 +58,90 @@
 	},
 	{
 		"slug": "vector-store-definition",
-		"description": "Descriptor row in wb_vector_store_by_workspace.",
+		"description": "Descriptor row in wb_vector_store_by_workspace plus the underlying collection provisioning (mock kind to keep the fixture runtime-agnostic).",
 		"steps": [
 			{
 				"method": "POST",
 				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "astra" }
+				"body": { "name": "w", "kind": "mock" }
 			},
 			{
 				"method": "POST",
 				"path": "/api/v1/workspaces/$1.uid/vector-stores",
 				"body": {
 					"name": "vs",
-					"vectorDimension": 1536,
+					"vectorDimension": 4,
 					"embedding": {
-						"provider": "openai",
-						"model": "text-embedding-3-small",
+						"provider": "mock",
+						"model": "mock-embedder",
 						"endpoint": null,
-						"dimension": 1536,
-						"secretRef": "env:OPENAI_API_KEY"
+						"dimension": 4,
+						"secretRef": null
 					}
 				}
 			},
 			{
 				"method": "GET",
 				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid"
+			}
+		]
+	},
+	{
+		"slug": "vector-store-upsert-and-search",
+		"description": "End-to-end data plane: create a vector store, upsert 3 records, search with topK=2 + a payload filter, delete one record.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/vector-stores",
+				"body": {
+					"name": "vs",
+					"vectorDimension": 4,
+					"vectorSimilarity": "cosine",
+					"embedding": {
+						"provider": "mock",
+						"model": "mock-embedder",
+						"endpoint": null,
+						"dimension": 4,
+						"secretRef": null
+					}
+				}
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/records",
+				"body": {
+					"records": [
+						{ "id": "a", "vector": [1, 0, 0, 0], "payload": { "tag": "keep" } },
+						{ "id": "b", "vector": [0, 1, 0, 0], "payload": { "tag": "drop" } },
+						{
+							"id": "c",
+							"vector": [0.9, 0.1, 0, 0],
+							"payload": { "tag": "keep" }
+						}
+					]
+				}
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/search",
+				"body": {
+					"vector": [1, 0, 0, 0],
+					"topK": 2,
+					"filter": { "tag": "keep" }
+				}
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/records/a"
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/records/a"
 			}
 		]
 	}

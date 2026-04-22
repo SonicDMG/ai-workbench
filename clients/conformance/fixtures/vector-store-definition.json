@@ -1,11 +1,11 @@
 {
 	"slug": "vector-store-definition",
-	"description": "Descriptor row in wb_vector_store_by_workspace.",
+	"description": "Descriptor row in wb_vector_store_by_workspace plus the underlying collection provisioning (mock kind to keep the fixture runtime-agnostic).",
 	"captures": [
 		{
 			"request": {
 				"body": {
-					"kind": "astra",
+					"kind": "mock",
 					"name": "w"
 				},
 				"method": "POST",
@@ -16,7 +16,7 @@
 					"createdAt": "{{TS}}",
 					"credentialsRef": {},
 					"keyspace": null,
-					"kind": "astra",
+					"kind": "mock",
 					"name": "w",
 					"uid": "{{UUID_1}}",
 					"updatedAt": "{{TS}}",
@@ -30,14 +30,14 @@
 			"request": {
 				"body": {
 					"embedding": {
-						"dimension": 1536,
+						"dimension": 4,
 						"endpoint": null,
-						"model": "text-embedding-3-small",
-						"provider": "openai",
-						"secretRef": "env:OPENAI_API_KEY"
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
 					},
 					"name": "vs",
-					"vectorDimension": 1536
+					"vectorDimension": 4
 				},
 				"method": "POST",
 				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores"
@@ -46,11 +46,11 @@
 				"body": {
 					"createdAt": "{{TS}}",
 					"embedding": {
-						"dimension": 1536,
+						"dimension": 4,
 						"endpoint": null,
-						"model": "text-embedding-3-small",
-						"provider": "openai",
-						"secretRef": "env:OPENAI_API_KEY"
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
 					},
 					"lexical": {
 						"analyzer": null,
@@ -67,7 +67,7 @@
 					},
 					"uid": "{{UUID_2}}",
 					"updatedAt": "{{TS}}",
-					"vectorDimension": 1536,
+					"vectorDimension": 4,
 					"vectorSimilarity": "cosine",
 					"workspace": "{{UUID_1}}"
 				},
@@ -85,11 +85,11 @@
 				"body": {
 					"createdAt": "{{TS}}",
 					"embedding": {
-						"dimension": 1536,
+						"dimension": 4,
 						"endpoint": null,
-						"model": "text-embedding-3-small",
-						"provider": "openai",
-						"secretRef": "env:OPENAI_API_KEY"
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
 					},
 					"lexical": {
 						"analyzer": null,
@@ -106,7 +106,7 @@
 					},
 					"uid": "{{UUID_2}}",
 					"updatedAt": "{{TS}}",
-					"vectorDimension": 1536,
+					"vectorDimension": 4,
 					"vectorSimilarity": "cosine",
 					"workspace": "{{UUID_1}}"
 				},

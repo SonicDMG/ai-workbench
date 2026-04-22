@@ -20,6 +20,8 @@ import { fileURLToPath } from "node:url";
 import { runScenario } from "../clients/conformance/runner.mjs";
 import { createApp } from "../src/app.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
+import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
+import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..");
@@ -47,7 +49,10 @@ async function fetcherForFreshApp(): Promise<
 	}>
 > {
 	const store = new MemoryControlPlaneStore();
-	const app = createApp({ store });
+	const drivers = new VectorStoreDriverRegistry(
+		new Map([["mock", new MockVectorStoreDriver()]]),
+	);
+	const app = createApp({ store, drivers });
 	return async (method, path, body) => {
 		const init: RequestInit = { method };
 		if (body !== undefined) {

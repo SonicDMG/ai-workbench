@@ -1,0 +1,179 @@
+{
+	"slug": "vector-store-upsert-and-search",
+	"description": "End-to-end data plane: create a vector store, upsert 3 records, search with topK=2 + a payload filter, delete one record.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}",
+					"url": null
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"name": "vs",
+					"vectorDimension": 4,
+					"vectorSimilarity": "cosine"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"lexical": {
+						"analyzer": null,
+						"enabled": false,
+						"options": {}
+					},
+					"name": "vs",
+					"reranking": {
+						"enabled": false,
+						"endpoint": null,
+						"model": null,
+						"provider": null,
+						"secretRef": null
+					},
+					"uid": "{{UUID_2}}",
+					"updatedAt": "{{TS}}",
+					"vectorDimension": 4,
+					"vectorSimilarity": "cosine",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"records": [
+						{
+							"id": "a",
+							"payload": {
+								"tag": "keep"
+							},
+							"vector": [1, 0, 0, 0]
+						},
+						{
+							"id": "b",
+							"payload": {
+								"tag": "drop"
+							},
+							"vector": [0, 1, 0, 0]
+						},
+						{
+							"id": "c",
+							"payload": {
+								"tag": "keep"
+							},
+							"vector": [0.9, 0.1, 0, 0]
+						}
+					]
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_2}}/records"
+			},
+			"response": {
+				"body": {
+					"upserted": 3
+				},
+				"status": 200
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"filter": {
+						"tag": "keep"
+					},
+					"topK": 2,
+					"vector": [1, 0, 0, 0]
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_2}}/search"
+			},
+			"response": {
+				"body": [
+					{
+						"id": "a",
+						"payload": {
+							"tag": "keep"
+						},
+						"score": 1
+					},
+					{
+						"id": "c",
+						"payload": {
+							"tag": "keep"
+						},
+						"score": 0.9938837346736189
+					}
+				],
+				"status": 200
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_2}}/records/a"
+			},
+			"response": {
+				"body": {
+					"deleted": true
+				},
+				"status": 200
+			},
+			"step": 5
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_2}}/records/a"
+			},
+			"response": {
+				"body": {
+					"deleted": false
+				},
+				"status": 200
+			},
+			"step": 6
+		}
+	]
+}

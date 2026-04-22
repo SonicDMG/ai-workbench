@@ -9,7 +9,7 @@ runnable artifact and a stable slice of the HTTP contract.
 |---|---|---|
 | 0 | Runtime bootstrap + docs | ✅ Shipped |
 | 1a | Control-plane CRUD (`/api/v1/workspaces`, `/catalogs`, `/vector-stores`) | ✅ Shipped |
-| 1b | Vector-store data plane (provisioning, upsert, search) | Planned |
+| 1b | Vector-store data plane (provisioning, upsert, search) | ✅ Shipped |
 | 2 | Documents + ingest + catalog-scoped search + saved queries | Planned |
 | 3 | Playground + UI | Planned |
 | 4+ | Chats, MCP | Reserved |
@@ -44,25 +44,33 @@ Shipped across PRs #4, #5, #6, #7, #8.
   [`clients/python-runtime/`](../clients/python-runtime/).
 - Cross-runtime conformance harness with committed fixtures.
 
-## Phase 1b — Vector-store data plane
+## Phase 1b — Vector-store data plane ✅
 
-**Goal:** make vector stores hold actual vectors, not just descriptors.
+Vectors are now first-class. Descriptors still manage metadata; the
+actual data lives in a per-workspace backend (in-memory for `mock`,
+Data API Collections for `astra`).
 
-Deliverables:
-
-- `VectorStoreDriver` interface: `createCollection`, `upsert`,
-  `delete`, `search`, `getCollectionInfo`, `getCollectionSchema`,
-  `getSearchCapabilities` (capability flags inspired by
-  [VectorDBZ](https://github.com/vectordbz/vectordbz)).
-- `POST /api/v1/workspaces/{w}/vector-stores` becomes transactional:
-  writes the descriptor row AND provisions the underlying Data API
-  Collection.
+- `VectorStoreDriver` interface covering `createCollection`,
+  `dropCollection`, `upsert`, `deleteRecord`, `search`.
+- Two drivers registered today:
+  - `MockVectorStoreDriver` — in-memory, cosine/dot/euclidean math
+    built in, used by CI and workspaces with `kind: "mock"`.
+  - `AstraVectorStoreDriver` — backed by Astra Data API Collections
+    via `@datastax/astra-db-ts`. Per-workspace `DataAPIClient` cache.
+- `POST /api/v1/workspaces/{w}/vector-stores` is transactional —
+  descriptor row + collection, with rollback on provisioning failure.
+- `DELETE` drops the collection then the descriptor.
 - New routes:
-  - `POST .../records` — upsert
-  - `DELETE .../records/{id}` — delete one
-  - `POST .../search` — vector + filter search
-- Contract tests that run against the mock driver in CI.
-- Real-Astra integration test gated on `ASTRA_DB_*` env vars.
+  - `POST .../records` — batch upsert (1..500 per call)
+  - `DELETE .../records/{id}` — single delete
+  - `POST .../search` — vector + shallow-equal payload filter
+- Shared driver contract suite runs against mock and against a fake
+  Astra `Db` (faithful enough for cosine-ordering assertions). Real
+  Astra integration — gated behind `ASTRA_DB_*` env vars — ships
+  with Phase 2 when we have actual ingest flows to exercise it.
+- Capability flags (lexical, rerank, hybrid) and Astra collection
+  creation options (embedding service, source model) remain on the
+  Phase 2+ shortlist.
 
 ## Phase 2 — Documents, ingest, search, queries
 

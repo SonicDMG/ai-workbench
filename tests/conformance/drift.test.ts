@@ -19,6 +19,8 @@ import { describe, expect, test } from "vitest";
 import { runScenario } from "../../clients/conformance/runner.mjs";
 import { createApp } from "../../src/app.js";
 import { MemoryControlPlaneStore } from "../../src/control-plane/memory/store.js";
+import { MockVectorStoreDriver } from "../../src/drivers/mock/store.js";
+import { VectorStoreDriverRegistry } from "../../src/drivers/registry.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CONFORMANCE_ROOT = resolve(HERE, "../../clients/conformance");
@@ -47,7 +49,10 @@ async function loadFixture(slug: string): Promise<unknown> {
 
 function freshFetcher() {
 	const store = new MemoryControlPlaneStore();
-	const app = createApp({ store });
+	const drivers = new VectorStoreDriverRegistry(
+		new Map([["mock", new MockVectorStoreDriver()]]),
+	);
+	const app = createApp({ store, drivers });
 	return async (method: string, path: string, body?: unknown) => {
 		const init: RequestInit = { method };
 		if (body !== undefined) {

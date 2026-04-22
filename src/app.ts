@@ -13,6 +13,7 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import type { ControlPlaneStore } from "./control-plane/store.js";
+import type { VectorStoreDriverRegistry } from "./drivers/registry.js";
 import { ApiError, errorEnvelope } from "./lib/errors.js";
 import { requestId } from "./lib/request-id.js";
 import type { AppEnv } from "./lib/types.js";
@@ -25,6 +26,7 @@ import { VERSION } from "./version.js";
 
 export interface AppOptions {
 	readonly store: ControlPlaneStore;
+	readonly drivers: VectorStoreDriverRegistry;
 	readonly requestIdHeader?: string;
 }
 
@@ -36,7 +38,10 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	app.route("/", operationalRoutes(opts.store));
 	app.route("/api/v1/workspaces", workspaceRoutes(opts.store));
 	app.route("/api/v1/workspaces", catalogRoutes(opts.store));
-	app.route("/api/v1/workspaces", vectorStoreRoutes(opts.store));
+	app.route(
+		"/api/v1/workspaces",
+		vectorStoreRoutes({ store: opts.store, drivers: opts.drivers }),
+	);
 
 	app.doc31("/api/v1/openapi.json", {
 		openapi: "3.1.0",

@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import type { ControlPlaneStore } from "../src/control-plane/store.js";
+import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
+import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
 
 // Tests fetch JSON and assert on properties; cast to `any` for ergonomic access.
 // biome-ignore lint/suspicious/noExplicitAny: test helper returns untyped JSON
@@ -15,11 +17,16 @@ function makeApp(): {
 	store: ControlPlaneStore;
 } {
 	const store = new MemoryControlPlaneStore();
-	const app = createApp({ store });
+	const drivers = new VectorStoreDriverRegistry(
+		new Map([["mock", new MockVectorStoreDriver()]]),
+	);
+	const app = createApp({ store, drivers });
 	return { app, store };
 }
 
 const BASE_WORKSPACE = { name: "w1", kind: "astra" as const };
+/** For tests that exercise the data plane (need a registered driver). */
+const MOCK_WORKSPACE = { name: "w1-mock", kind: "mock" as const };
 
 const BASE_VECTOR_STORE = {
 	name: "vs",
@@ -225,9 +232,9 @@ describe("catalog routes", () => {
 });
 
 describe("vector-store routes", () => {
-	test("POST creates a descriptor row", async () => {
+	test("POST creates a descriptor row and provisions a collection", async () => {
 		const { app, store } = makeApp();
-		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
 		const res = await app.request(
 			`/api/v1/workspaces/${ws.uid}/vector-stores`,
 			{
@@ -241,6 +248,199 @@ describe("vector-store routes", () => {
 		expect(body.vectorDimension).toBe(1536);
 		expect(body.lexical.enabled).toBe(false);
 		expect(body.reranking.enabled).toBe(false);
+	});
+
+	test("POST on a workspace whose kind has no registered driver → 503", async () => {
+		const { app, store } = makeApp();
+		// makeApp() only registers the `mock` driver; a kind-astra
+		// workspace therefore has no driver wired up in this test.
+		const ws = await store.createWorkspace(BASE_WORKSPACE); // kind: astra
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(BASE_VECTOR_STORE),
+			},
+		);
+		expect(res.status).toBe(503);
+		const body = await json(res);
+		expect(body.error.code).toBe("driver_unavailable");
+	});
+});
+
+describe("vector-store data plane", () => {
+	const vector = (seed: number, dim = 1536): number[] =>
+		Array.from({ length: dim }, (_, i) => Math.sin(seed + i));
+
+	async function setupStore() {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const create = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(BASE_VECTOR_STORE),
+			},
+		);
+		const vs = await json(create);
+		return { app, store, ws, vs };
+	}
+
+	test("upsert + search returns nearest first", async () => {
+		const { app, ws, vs } = await setupStore();
+		const upsertRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{ id: "a", vector: vector(0), payload: { tag: "a" } },
+						{ id: "b", vector: vector(5) },
+						{ id: "c", vector: vector(10), payload: { tag: "c" } },
+					],
+				}),
+			},
+		);
+		expect(upsertRes.status).toBe(200);
+		expect((await json(upsertRes)).upserted).toBe(3);
+
+		const searchRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ vector: vector(0), topK: 2 }),
+			},
+		);
+		expect(searchRes.status).toBe(200);
+		const hits = await json(searchRes);
+		expect(hits).toHaveLength(2);
+		expect(hits[0].id).toBe("a"); // exact match
+		expect(hits[0].score).toBeGreaterThan(hits[1].score);
+	});
+
+	test("search with payload filter narrows results", async () => {
+		const { app, ws, vs } = await setupStore();
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{ id: "a", vector: vector(0), payload: { tag: "keep" } },
+						{ id: "b", vector: vector(0), payload: { tag: "drop" } },
+					],
+				}),
+			},
+		);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					vector: vector(0),
+					topK: 10,
+					filter: { tag: "keep" },
+				}),
+			},
+		);
+		const hits = await json(res);
+		expect(hits).toHaveLength(1);
+		expect(hits[0].id).toBe("a");
+	});
+
+	test("delete record returns { deleted: true } then false", async () => {
+		const { app, ws, vs } = await setupStore();
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [{ id: "a", vector: vector(0) }],
+				}),
+			},
+		);
+		const first = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records/a`,
+			{ method: "DELETE" },
+		);
+		expect(first.status).toBe(200);
+		expect((await json(first)).deleted).toBe(true);
+
+		const second = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records/a`,
+			{ method: "DELETE" },
+		);
+		expect((await json(second)).deleted).toBe(false);
+	});
+
+	test("upsert with wrong dimension → 400 dimension_mismatch", async () => {
+		const { app, ws, vs } = await setupStore();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [{ id: "a", vector: [0.1, 0.2, 0.3] }],
+				}),
+			},
+		);
+		expect(res.status).toBe(400);
+		const body = await json(res);
+		expect(body.error.code).toBe("dimension_mismatch");
+	});
+
+	test("search on missing vector store → 404", async () => {
+		const { app, ws } = await setupStore();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/00000000-0000-0000-0000-000000000000/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ vector: vector(0) }),
+			},
+		);
+		expect(res.status).toBe(404);
+		expect((await json(res)).error.code).toBe("vector_store_not_found");
+	});
+
+	test("DELETE vector store drops the collection", async () => {
+		const { app, ws, vs } = await setupStore();
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [{ id: "a", vector: vector(0) }],
+				}),
+			},
+		);
+		const del = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}`,
+			{ method: "DELETE" },
+		);
+		expect(del.status).toBe(204);
+
+		// Subsequent record ops should fail because the descriptor is
+		// gone — surfaces as vector_store_not_found before the driver
+		// is even called.
+		const searchRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ vector: vector(0) }),
+			},
+		);
+		expect(searchRes.status).toBe(404);
 	});
 });
 

@@ -300,38 +300,113 @@ A `VectorStore` descriptor:
 
 ### `POST`
 
-Create a descriptor. `vectorSimilarity` defaults to `cosine`;
-`lexical` and `reranking` default to `{ enabled: false, ... }` if
-omitted.
+Create a descriptor **and** provision the underlying Data API
+Collection via the workspace's driver. Transactional — if collection
+provisioning fails, the descriptor row is rolled back so the control
+plane and data plane never drift.
+
+`vectorSimilarity` defaults to `cosine`; `lexical` and `reranking`
+default to `{ enabled: false, ... }` if omitted.
 
 **Required fields:** `name`, `vectorDimension`, `embedding`.
 
-- **201** — the created `VectorStore`
+- **201** — the created `VectorStore` (collection now exists)
 - **404** `workspace_not_found`
 - **409** `conflict`
+- **422** `workspace_misconfigured` — workspace is missing `url` or `credentialsRef.token` required by its driver
+- **503** `driver_unavailable` — no driver registered for the workspace's `kind`
 
 ### `GET /{vectorStoreId}` / `PUT /{vectorStoreId}` / `DELETE /{vectorStoreId}`
 
-Standard CRUD. These endpoints manage the **descriptor row only**;
-the underlying Data API Collection holding vectors is a separate
-artifact provisioned in Phase 1b.
+`GET` and `PUT` operate on the descriptor only. `DELETE` drops the
+underlying Data API Collection **and** removes the descriptor.
+
+`PUT` does NOT re-provision the collection — changing
+`vectorDimension` on a populated store is a data-migration operation
+not yet supported.
+
+### `POST /{vectorStoreId}/records` — upsert vectors
+
+**Request**
+
+```json
+{
+  "records": [
+    { "id": "doc-1", "vector": [0.01, -0.02, ...], "payload": { "title": "…" } },
+    { "id": "doc-2", "vector": [...] }
+  ]
+}
+```
+
+- `records` — 1..500 items per request.
+- `id` is the application's identifier; re-upsert replaces the prior
+  value.
+- `vector.length` must equal the descriptor's `vectorDimension`.
+
+**Response 200**
+
+```json
+{ "upserted": 2 }
+```
+
+- **400** `dimension_mismatch` — at least one vector has the wrong length
+- **404** `workspace_not_found` / `vector_store_not_found`
+
+### `DELETE /{vectorStoreId}/records/{recordId}`
+
+Delete a single record. `recordId` is the application's `id` (not a
+UUID — any non-empty string).
+
+**Response 200**
+
+```json
+{ "deleted": true }    // or false, if the record wasn't present
+```
+
+### `POST /{vectorStoreId}/search` — vector search
+
+**Request**
+
+```json
+{
+  "vector": [0.01, -0.02, ...],
+  "topK": 10,
+  "filter": { "tag": "keep" },
+  "includeEmbeddings": false
+}
+```
+
+- `topK` defaults to 10, clamped to `[1, 1000]`.
+- `filter` is shallow-equal on payload keys. Backends with richer
+  filter languages may accept more; the portable subset is
+  shallow-equal.
+- `includeEmbeddings: true` returns the stored vector on each hit.
+
+**Response 200** — array of hits, sorted by `score` descending:
+
+```json
+[
+  { "id": "doc-1", "score": 0.94, "payload": { "title": "…" } },
+  { "id": "doc-2", "score": 0.87, "payload": { "title": "…" } }
+]
+```
+
+Score semantics match the descriptor's `vectorSimilarity`:
+
+| Metric | Score |
+|---|---|
+| `cosine` | Cosine similarity in `[-1, 1]`; 1 = exact match |
+| `dot` | Raw dot product; unbounded |
+| `euclidean` | `1 / (1 + distance)` so higher = closer |
+
+- **400** `dimension_mismatch`
+- **404** `workspace_not_found` / `vector_store_not_found`
 
 ---
 
 ## Planned routes
 
 These do not exist yet. Shapes may shift before they land.
-
-### Phase 1b — Vector-store data plane
-
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/api/v1/workspaces/{w}/vector-stores/{v}/records` | Upsert records |
-| `DELETE` | `/api/v1/workspaces/{w}/vector-stores/{v}/records/{id}` | Delete one |
-| `POST` | `/api/v1/workspaces/{w}/vector-stores/{v}/search` | Vector search |
-
-`POST /vector-stores` in this phase also provisions the backing
-Data API Collection (currently descriptor-only).
 
 ### Phase 2 — Documents, ingest, search, queries
 

@@ -14,6 +14,12 @@ import {
 	ControlPlaneNotFoundError,
 	ControlPlaneUnavailableError,
 } from "../../control-plane/errors.js";
+import {
+	CollectionUnavailableError,
+	DimensionMismatchError,
+	DriverUnavailableError,
+	WorkspaceMisconfiguredError,
+} from "../../drivers/vector-store.js";
 
 export interface MappedError {
 	readonly status: ContentfulStatusCode;
@@ -36,6 +42,34 @@ export function mapControlPlaneError(err: unknown): MappedError | null {
 		return {
 			status: 503,
 			code: "control_plane_unavailable",
+			message: err.message,
+		};
+	}
+	if (err instanceof DriverUnavailableError) {
+		return {
+			status: 503,
+			code: "driver_unavailable",
+			message: err.message,
+		};
+	}
+	if (err instanceof WorkspaceMisconfiguredError) {
+		return {
+			status: 422,
+			code: "workspace_misconfigured",
+			message: err.message,
+		};
+	}
+	if (err instanceof DimensionMismatchError) {
+		return {
+			status: 400,
+			code: "dimension_mismatch",
+			message: err.message,
+		};
+	}
+	if (err instanceof CollectionUnavailableError) {
+		return {
+			status: 503,
+			code: "collection_unavailable",
 			message: err.message,
 		};
 	}

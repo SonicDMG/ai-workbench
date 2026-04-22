@@ -200,6 +200,52 @@ export const UpdateVectorStoreInputSchema = z
 	})
 	.openapi("UpdateVectorStoreInput");
 
+/* ---------------- Vector-store data plane ---------------- */
+
+export const VectorRecordSchema = z
+	.object({
+		id: z.string().min(1),
+		vector: z.array(z.number()).min(1),
+		payload: z.record(z.string(), z.unknown()).optional(),
+	})
+	.openapi("VectorRecord");
+
+export const UpsertRequestSchema = z
+	.object({
+		records: z.array(VectorRecordSchema).min(1).max(500),
+	})
+	.openapi("UpsertRequest");
+
+export const UpsertResponseSchema = z
+	.object({
+		upserted: z.number().int().nonnegative(),
+	})
+	.openapi("UpsertResponse");
+
+export const DeleteRecordResponseSchema = z
+	.object({
+		deleted: z.boolean(),
+	})
+	.openapi("DeleteRecordResponse");
+
+export const SearchRequestSchema = z
+	.object({
+		vector: z.array(z.number()).min(1),
+		topK: z.number().int().positive().max(1000).optional(),
+		filter: z.record(z.string(), z.unknown()).optional(),
+		includeEmbeddings: z.boolean().optional(),
+	})
+	.openapi("SearchRequest");
+
+export const SearchHitSchema = z
+	.object({
+		id: z.string(),
+		score: z.number(),
+		payload: z.record(z.string(), z.unknown()).optional(),
+		vector: z.array(z.number()).optional(),
+	})
+	.openapi("SearchHit");
+
 /* ---------------- Params ---------------- */
 
 export const WorkspaceIdParamSchema = z
@@ -224,6 +270,14 @@ export const VectorStoreIdParamSchema = z
 	.openapi({
 		param: { name: "vectorStoreId", in: "path" },
 		example: "00000000-0000-0000-0000-000000000000",
+	});
+
+export const RecordIdParamSchema = z
+	.string()
+	.min(1)
+	.openapi({
+		param: { name: "recordId", in: "path" },
+		example: "doc-1",
 	});
 
 /* ---------------- Compat stubs (unused by new routes; kept until old routes go) ---------------- */
