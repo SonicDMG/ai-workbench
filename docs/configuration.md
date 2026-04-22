@@ -1,235 +1,217 @@
 # Configuration (`workbench.yaml`)
 
-All AI Workbench behavior is driven by a single YAML file, conventionally
-named `workbench.yaml`. The runtime loads it at startup, validates it against
-a strict schema, and exposes the resolved (redacted) view at
-`GET /v1/workspaces/{id}`.
+Runtime behavior is driven by a single YAML file, conventionally named
+`workbench.yaml`. The runtime loads it at startup and validates it
+against a strict schema.
+
+**Workspaces, catalogs, and vector stores are not in config.** They're
+runtime data, mutable via the HTTP API. `workbench.yaml` decides two
+things:
+
+1. Where that data is persisted (the **control-plane backend**).
+2. Optionally, which **seed workspaces** to load into the memory
+   backend at startup.
 
 ## Resolution order
 
-1. Path from `--config <file>` CLI flag, if present.
-2. Path from `WORKBENCH_CONFIG` environment variable.
-3. `./workbench.yaml` in the current working directory.
-4. `/etc/workbench/workbench.yaml` inside the container.
+The runtime looks for the config file in this order and takes the
+first match:
 
-The first file found wins. No merging across sources — the config is a single
-declarative document.
+1. `--config <file>` CLI flag.
+2. `WORKBENCH_CONFIG` environment variable.
+3. `./workbench.yaml` in the process working directory.
+4. `/etc/workbench/workbench.yaml` (the Docker image default).
+
+No cross-source merging — config is a single declarative document.
 
 ## Environment variable interpolation
 
-Any string value may reference an environment variable with `${VAR}` or
-`${VAR:-default}` syntax. Interpolation happens before schema validation, so
-required fields can be sourced from the environment:
+Any string value may reference an environment variable with `${VAR}`
+or `${VAR:-default}` syntax. Interpolation happens before schema
+validation.
 
 ```yaml
-workspaces:
-  - id: prod
-    driver: astra
-    astra:
-      token: ${ASTRA_TOKEN}
+controlPlane:
+  driver: astra
+  endpoint: ${ASTRA_DB_API_ENDPOINT}
+  tokenRef: env:ASTRA_DB_APPLICATION_TOKEN
 ```
 
-References to unset variables without a default fail loudly at startup.
+References to unset variables without a default fail loudly at
+startup.
+
+**Note:** `tokenRef` above is a `SecretRef` string, not an
+interpolation. Secret refs are resolved at use time by the runtime's
+`SecretResolver`, which is separate from YAML interpolation. See
+[§ Secrets](#secrets) below.
 
 ## Top-level schema
 
 ```yaml
-version: 1                    # required. Config schema version.
-runtime:                      # optional. Runtime-level settings.
-  port: 8080
-  logLevel: info              # trace | debug | info | warn | error
-services:                     # optional. Shared services.
-  chunking:
-    url: http://chunking:8080
-  embedding:
-    url: http://embedding:8080
-workspaces:                   # required. 1..N workspaces.
-  - id: prod
-    driver: astra
-    ...
+version: 1                          # required
+runtime: { port, logLevel, ... }    # optional, with defaults
+controlPlane: { driver, ... }       # optional, default: memory
+seedWorkspaces: [ ... ]             # optional, memory-only
 ```
 
 ### `version`
 
-Schema version. Currently `1`. The runtime refuses to start on an unknown
-version.
+Schema version. Currently `1`. The runtime refuses to start on an
+unknown version.
 
 ### `runtime`
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
-| `port` | int | `8080` | HTTP listen port. |
-| `logLevel` | enum | `info` | `trace`, `debug`, `info`, `warn`, `error`. |
-| `requestIdHeader` | string | `X-Request-Id` | Request ID header name. |
+| `port` | int | `8080` | HTTP listen port |
+| `logLevel` | enum | `info` | `trace \| debug \| info \| warn \| error` |
+| `requestIdHeader` | string | `X-Request-Id` | Name of the request-ID header |
 
-### `services`
+### `controlPlane`
 
-Shared service endpoints used by all workspaces unless a workspace overrides
-them.
+Picks where workspaces, catalogs, vector-store descriptors, and
+documents are persisted. Discriminated on `driver`.
+
+#### `memory` (default)
+
+```yaml
+controlPlane:
+  driver: memory
+```
+
+In-process `Map`s. State is lost when the runtime exits. Best for CI,
+tests, ephemeral demos, and `docker run` with no external
+dependencies. If you don't specify a `controlPlane` block at all,
+this is what you get.
+
+#### `file`
+
+```yaml
+controlPlane:
+  driver: file
+  root: /var/lib/workbench
+```
+
+JSON-on-disk. One file per table, per-table mutex, atomic rename on
+writes. Single-node self-hosted. Not safe for multiple writers — if
+you run two containers pointing at the same directory, they'll
+clobber each other.
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `chunking.url` | URL | no (Phase 3+) | Chunking service base URL. |
-| `embedding.url` | URL | no (Phase 3+) | Embedding service base URL. |
+| `root` | string | yes | Directory that will hold `workspaces.json` et al. Created if absent. |
 
-Not required in Phase 0 / 1.
+#### `astra`
 
-### `workspaces`
+```yaml
+controlPlane:
+  driver: astra
+  endpoint: https://<db-id>-<region>.apps.astra.datastax.com
+  tokenRef: env:ASTRA_DB_APPLICATION_TOKEN
+  keyspace: workbench
+```
 
-An array of workspace definitions. Each entry must have a unique `id`.
-
-#### Common workspace fields
+Astra Data API Tables via `@datastax/astra-db-ts`. Production-grade,
+multi-writer-safe.
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `id` | string | yes | `^[a-z][a-z0-9-]{0,63}$`. Used in URLs. |
-| `description` | string | no | Human-readable. |
-| `driver` | enum | yes | `astra` or `mock`. |
-| `auth` | object | no | Workspace-level auth. See below. |
-| `catalogs` | array | no | 0..N catalogs bound to this workspace. |
-| `services` | object | no | Per-workspace service overrides. |
+| `endpoint` | URL | yes | Astra Data API endpoint |
+| `tokenRef` | SecretRef | yes | Pointer to the application token (`env:…` / `file:…`) |
+| `keyspace` | string | no (default `workbench`) | Keyspace hosting the four `wb_*` tables |
 
-#### `driver: astra`
+The runtime creates the `wb_*` tables at startup if they don't exist
+(using `createTable(..., { ifNotExists: true })`). The keyspace
+itself must already exist.
 
-```yaml
-workspaces:
-  - id: prod
-    driver: astra
-    astra:
-      endpoint: https://<db-id>-<region>.apps.astra.datastax.com
-      token: ${ASTRA_TOKEN}
-      keyspace: default_keyspace
-```
+### `seedWorkspaces` *(memory only)*
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `astra.endpoint` | URL | yes | Astra Data API endpoint for this workspace. |
-| `astra.token` | string | yes | Astra application token. Use env interpolation. |
-| `astra.keyspace` | string | no | Default keyspace. |
-
-#### `driver: mock`
+Optional list of workspace records loaded into the memory backend at
+startup. Lets developers skip the `POST /api/v1/workspaces` dance
+when running locally.
 
 ```yaml
-workspaces:
-  - id: mock
-    driver: mock
-    mock:
-      seed: ./examples/mock-data.json   # optional
-```
-
-In-memory store. Resets on process restart. Intended for local dev and tests.
-
-#### `auth`
-
-Per-workspace auth for inbound requests.
-
-```yaml
-auth:
-  kind: bearer          # none | bearer
-  tokens:
-    - ${WORKBENCH_TOKEN}
-```
-
-- `kind: none` — no auth required. Suitable for local/mock only.
-- `kind: bearer` — the request must carry `Authorization: Bearer <token>`
-  and the token must match one of the entries in `tokens`.
-
-Phase 0 ignores `auth` (no auth enforced yet). The field is reserved so
-config files written today won't need to change when auth lands.
-
-#### `catalogs`
-
-Each catalog is a named document collection bound to **exactly one** vector
-store. The binding is strict 1:1 — a vector store may be referenced by at
-most one catalog within a workspace (see [`workspaces.md`](workspaces.md)).
-
-```yaml
-catalogs:
-  - id: support-docs
-    description: "Customer-facing support docs"
-    vectorStore: support-vectors
-    chunker: default
-    embedder: openai-small
+seedWorkspaces:
+  - name: demo
+    kind: mock
+  - name: prod-astra
+    kind: astra
+    credentialsRef:
+      token: env:ASTRA_DB_APPLICATION_TOKEN
+    keyspace: workbench
 ```
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `id` | string | yes | Unique within the workspace. |
-| `description` | string | no | Human-readable. |
-| `vectorStore` | string | yes | Vector store id (see below). |
-| `chunker` | string | no (Phase 3+) | Reference to a chunker definition. |
-| `embedder` | string | no (Phase 3+) | Reference to an embedder definition. |
+| `name` | string | yes | Workspace name |
+| `kind` | enum | yes | `astra \| hcd \| openrag \| mock` |
+| `uid` | UUID | no (auto-generated) | Only useful if other seeds reference it |
+| `url` | URL | no | Workspace-specific URL (optional metadata) |
+| `credentialsRef` | map<string, SecretRef> | no | Per-key secret pointers |
+| `keyspace` | string | no | Workspace-specific keyspace |
 
-The `vectorStore` value references a vector store defined in the same
-workspace:
+Using `seedWorkspaces` with any driver other than `memory` is a
+validation error — workspaces already persist in the backend, so
+there's nothing to seed.
 
-```yaml
-vectorStores:
-  - id: support-vectors
-    collection: support_vectors     # Astra collection name
-    dimensions: 1536
-    metric: cosine
-```
+## Secrets
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `id` | string | yes | Unique within the workspace. |
-| `collection` | string | yes | Underlying Astra collection. |
-| `dimensions` | int | yes | Vector dimensionality. |
-| `metric` | enum | no | `cosine` (default), `dot`, `euclidean`. |
+Secrets reach the runtime through two disjoint paths:
 
-#### `embedders` and `chunkers` (Phase 3+)
+### YAML interpolation (`${VAR}`)
 
-Reserved top-level lists, referenced by name from catalogs:
+Applies before schema validation. Good for non-secret runtime
+settings like endpoints, and for pulling secrets that need to be
+**literal strings** in the config document.
 
-```yaml
-embedders:
-  - id: openai-small
-    provider: openai
-    model: text-embedding-3-small
-    apiKey: ${OPENAI_API_KEY}
+### Secret refs (`env:` / `file:`)
 
-chunkers:
-  - id: default
-    strategy: recursive
-    chunkSize: 800
-    chunkOverlap: 120
-```
+The preferred path for anything credential-shaped. A `SecretRef` is a
+string like `env:ASTRA_DB_APPLICATION_TOKEN` or
+`file:/etc/workbench/secrets/astra-token`. The runtime resolves it
+when it actually needs the secret (at control-plane init, for
+example), so the value never lives in memory longer than necessary
+and never crosses process logs.
 
-Full schemas will be defined when Phase 3 starts.
+Providers available today:
+
+| Provider | Ref shape | Behavior |
+|---|---|---|
+| `env` | `env:VAR_NAME` | Reads `process.env.VAR_NAME`. Errors if unset or empty. |
+| `file` | `file:/abs/path` | Reads the file and trims trailing whitespace. |
+
+Future providers (Vault, AWS SM, etc.) plug into the same
+`SecretProvider` interface. See
+[`src/secrets/provider.ts`](../src/secrets/provider.ts).
 
 ## Validation rules
 
 At startup the runtime enforces:
 
-- All `id` fields unique within their scope.
-- Every `catalog.vectorStore` resolves to a `vectorStores[].id` in the same
-  workspace.
-- Each `vectorStores[].id` is referenced by **at most one** catalog (strict
-  1:1 binding). Two catalogs naming the same vector store is a validation
-  error.
-- Every `catalog.embedder` / `catalog.chunker` resolves (once those sections
-  land).
 - Every `${VAR}` reference resolves or has a default.
-- Driver-specific required fields are present (e.g. `astra.token` when
-  `driver: astra`).
+- `controlPlane.driver` is one of `memory | file | astra`.
+- Driver-specific required fields are present (e.g. `root` for file,
+  `endpoint` + `tokenRef` for astra).
+- Every `tokenRef` / `credentialsRef` value matches the
+  `<prefix>:<path>` shape.
+- `seedWorkspaces` is only non-empty when
+  `controlPlane.driver == memory`.
+- No duplicate names within `seedWorkspaces`.
 
 Validation failures abort startup with a non-zero exit code and a
-human-readable error message naming the offending path.
+human-readable error message.
 
 ## Hot reload
 
-**Not supported in Phase 0.** A SIGHUP-driven reload is a candidate for a
-later phase; the current model is "restart the process to pick up changes."
+Not supported. The current model is "restart the process to pick up
+changes." Since only the control-plane backend is configured here
+(workspaces themselves are runtime data), most day-to-day operations
+don't require a config change anyway.
 
-## Secrets handling
+## Examples
 
-- Secrets must come from environment interpolation, never literal values in
-  YAML checked into source control.
-- The `/v1/workspaces/{id}` endpoint redacts any field whose key matches
-  `token`, `apiKey`, `password`, or `secret` (case-insensitive).
-
-## Example
-
-See [`examples/workbench.yaml`](examples/workbench.yaml) for a fully annotated
-sample config.
+- [`examples/workbench.yaml`](../examples/workbench.yaml) — the
+  minimal default config the Docker image ships with.
+- [`docs/examples/workbench.yaml`](examples/workbench.yaml) — an
+  annotated sample showing all three backend shapes and
+  `seedWorkspaces` usage.

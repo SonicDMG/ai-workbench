@@ -1,78 +1,105 @@
 # API Spec
 
-This document is the contract for the AI Workbench HTTP surface. It covers:
+The AI Workbench HTTP contract. Every green box — the default
+TypeScript runtime and any future language-native runtime — serves this
+surface. Conformance is enforced by
+[cross-runtime fixtures](./conformance.md).
 
-- **Phase 0** — the minimal bootstrap surface that the initial `root.ts` will
-  implement.
-- **Forward-looking (Phase 1+)** — the shape the surface will grow into. These
-  endpoints are **not implemented yet** and are included so the team can align
-  on the contract early.
-
-Forward-looking endpoints are marked `status: planned` with the phase in which
-they are expected to land.
+The machine-readable OpenAPI document is served at
+`/api/v1/openapi.json`, and a Scalar-rendered reference UI is served
+at `/docs`. This document exists to explain the shape narratively and
+to flag what's coming.
 
 ## Conventions
 
 ### Base URL and versioning
 
-- All functional routes live under `/v1/…`.
-- Operational routes (`/`, `/healthz`, `/readyz`, `/version`) are unversioned.
-- Breaking changes bump the prefix to `/v2/…`; `/v1/…` remains until deprecated.
+- Functional routes live under `/api/v1/…`.
+- Operational routes (`/`, `/healthz`, `/readyz`, `/version`, `/docs`)
+  are unversioned.
+- Breaking changes bump the prefix to `/api/v2/…`; `/api/v1/…` stays
+  until deprecated.
 
 ### Content type
 
-- Request and response bodies are JSON unless otherwise stated.
-- Streaming endpoints (future: ingestion progress) use `text/event-stream`.
+- Request and response bodies are JSON (`application/json`).
+- Streaming endpoints (future: ingestion progress) will use
+  `text/event-stream`.
 
-### Workspace addressing
+### Identifiers
 
-Every resource beyond workspace listing is scoped to a workspace. The scope is
-carried in the path:
+- All UIDs are RFC 4122 v4 UUIDs rendered as lowercase hyphenated
+  strings.
+- Timestamps are ISO-8601 in UTC with millisecond precision
+  (`2026-04-22T10:11:12.345Z`).
+- Secrets never appear by value. Fields like `credentialsRef` or
+  `embedding.secretRef` hold pointers of the form `<provider>:<path>`
+  (e.g. `env:ASTRA_DB_APPLICATION_TOKEN`).
+
+### Resource scoping
+
+Every nested resource carries its parent UIDs in the path:
 
 ```
-/v1/workspaces/{workspaceId}/...
+/api/v1/workspaces/{workspaceId}
+/api/v1/workspaces/{workspaceId}/catalogs/{catalogId}
+/api/v1/workspaces/{workspaceId}/vector-stores/{vectorStoreId}
 ```
 
-`workspaceId` matches the `id` field in `workbench.yaml`.
+A request whose path references a non-existent workspace returns
+`404 workspace_not_found` before the nested resource is ever
+consulted.
 
 ### Error envelope
 
-All error responses share a single envelope:
+All error responses share one envelope:
 
 ```json
 {
   "error": {
     "code": "workspace_not_found",
-    "message": "Workspace 'dev' is not defined in workbench.yaml",
-    "requestId": "01HY2Z..."
+    "message": "workspace '<uid>' not found",
+    "requestId": "b48e…"
   }
 }
 ```
 
-Codes are stable, lowercase, `snake_case`. The `message` field is
-human-readable and may change.
+Codes are stable, lowercase, `snake_case`. Messages are
+human-readable and may change. Currently emitted:
+
+| Status | Code | When |
+|---|---|---|
+| 400 | (Zod-generated) | Request body / params fail validation |
+| 404 | `not_found` | Unknown route |
+| 404 | `workspace_not_found` | Workspace UID doesn't exist |
+| 404 | `catalog_not_found` | Catalog UID doesn't exist in workspace |
+| 404 | `vector_store_not_found` | Vector-store UID doesn't exist in workspace |
+| 409 | `conflict` | Create with an already-taken UID |
+| 500 | `internal_error` | Unhandled exception |
+| 503 | `control_plane_unavailable` | Backing store is unreachable |
 
 ### Authentication
 
-- Phase 0: no authentication. The runtime is expected to be behind a trusted
-  boundary for now.
-- Phase 1+: bearer tokens via `Authorization: Bearer <token>`. Token
-  validation is configured per workspace (see `configuration.md`).
+**Not enforced today.** The runtime sits behind whatever auth boundary
+the operator deploys in front of it (a reverse proxy, an API gateway,
+etc.).
+
+Workspace-scoped API keys (`wb_workspace_api_keys`) are planned for
+Phase 2+ — see [`roadmap.md`](roadmap.md).
 
 ### Request ID
 
-Every response includes `X-Request-Id`. If the client sends one, the runtime
-echoes it; otherwise the runtime generates a ULID.
+Every response carries `X-Request-Id`. If the client supplies one,
+the runtime echoes it; otherwise the runtime generates a UUID-hex
+string. Error responses include the same value in `error.requestId`.
 
 ---
 
-## Phase 0 — Bootstrap
-
-Implemented by the initial `root.ts`.
+## Operational routes
 
 ### `GET /`
 
-Service banner. Useful for humans hitting the root URL.
+Service banner.
 
 **Response 200**
 
@@ -87,9 +114,7 @@ Service banner. Useful for humans hitting the root URL.
 
 ### `GET /healthz`
 
-Liveness probe. Returns `200 OK` as long as the process is running.
-
-**Response 200**
+Liveness. Returns `200` as long as the process is running.
 
 ```json
 { "status": "ok" }
@@ -97,222 +122,255 @@ Liveness probe. Returns `200 OK` as long as the process is running.
 
 ### `GET /readyz`
 
-Readiness probe. Returns `200 OK` only if:
-
-- Config has been loaded and validated.
-- Every workspace in the config resolved its driver and services without error.
-
-Otherwise returns `503 Service Unavailable` with an error envelope listing
-which workspaces failed.
-
-**Response 200**
+Readiness. Returns `200` once the control-plane store is reachable
+and workspaces can be listed. The payload carries a workspace count
+rather than a list — avoids O(N) responses when the store grows.
 
 ```json
-{
-  "status": "ready",
-  "workspaces": ["prod", "dev", "mock"]
-}
-```
-
-**Response 503**
-
-```json
-{
-  "error": {
-    "code": "workspace_unready",
-    "message": "Workspace 'prod' failed to initialize: astra credentials missing",
-    "requestId": "01HY2Z..."
-  }
-}
+{ "status": "ready", "workspaces": 3 }
 ```
 
 ### `GET /version`
 
-Returns build metadata for the runtime.
-
-**Response 200**
+Build metadata.
 
 ```json
 {
   "version": "0.0.0",
   "commit": "abc1234",
   "buildTime": "2026-04-21T10:30:00Z",
-  "node": "20.x"
+  "node": "v22.11.0"
 }
 ```
 
-### `GET /v1/workspaces`
+### `GET /docs`
 
-List all workspaces defined in `workbench.yaml`.
+Scalar-rendered OpenAPI reference UI. Human-facing.
 
-**Response 200**
+### `GET /api/v1/openapi.json`
 
-```json
-{
-  "data": [
-    { "id": "prod",  "driver": "astra", "description": "Production Astra DB" },
-    { "id": "dev",   "driver": "astra", "description": "Development Astra DB" },
-    { "id": "mock",  "driver": "mock",  "description": "In-memory mock" }
-  ]
-}
-```
-
-### `GET /v1/workspaces/{workspaceId}`
-
-Inspect a single workspace's resolved configuration. Secrets are redacted.
-
-**Response 200**
-
-```json
-{
-  "data": {
-    "id": "dev",
-    "driver": "astra",
-    "description": "Development Astra DB",
-    "endpoint": "https://...apps.astra.datastax.com",
-    "credentials": "****",
-    "catalogs": [
-      { "id": "support-docs", "vectorStore": "support-vectors" }
-    ],
-    "services": {
-      "chunking":  { "url": "http://chunking:8080" },
-      "embedding": { "url": "http://embedding:8080" }
-    }
-  }
-}
-```
-
-**Response 404**
-
-```json
-{
-  "error": {
-    "code": "workspace_not_found",
-    "message": "Workspace 'foo' is not defined",
-    "requestId": "..."
-  }
-}
-```
+Machine-readable OpenAPI 3.1 document. Generated from the route
+definitions — always in sync with the running runtime.
 
 ---
 
-## Phase 1 — Vector store (planned)
+## `/api/v1/workspaces`
 
-Direct pass-through to Astra's vector_store under the Data API. The runtime
-adds authentication, workspace resolution, and schema validation, then
-delegates.
+### `GET /api/v1/workspaces`
 
-### `GET /v1/workspaces/{workspaceId}/vector-stores`
+List all workspaces.
 
-List vector stores bound to this workspace. Status: **planned (Phase 1).**
+**Response 200** — array of `Workspace`:
 
-### `POST /v1/workspaces/{workspaceId}/vector-stores/{storeId}/search`
+```json
+[
+  {
+    "uid": "…",
+    "name": "prod",
+    "url": null,
+    "kind": "astra",
+    "credentialsRef": { "token": "env:ASTRA_DB_APPLICATION_TOKEN" },
+    "keyspace": "default_keyspace",
+    "createdAt": "2026-04-22T10:11:12.345Z",
+    "updatedAt": "2026-04-22T10:11:12.345Z"
+  }
+]
+```
 
-Vector similarity search. Status: **planned (Phase 1).**
+### `POST /api/v1/workspaces`
+
+Create a workspace. `uid` is optional — the runtime generates one if
+omitted.
 
 **Request**
 
 ```json
 {
-  "vector": [0.01, -0.02, ...],
-  "topK": 10,
-  "filter": { "tenant": "acme" },
-  "includeEmbeddings": false
+  "name": "prod",
+  "kind": "astra",
+  "credentialsRef": { "token": "env:ASTRA_DB_APPLICATION_TOKEN" },
+  "keyspace": "default_keyspace"
 }
 ```
 
-**Response 200**
+`kind` is one of `astra | hcd | openrag | mock`. (`mock` stays a
+first-class option for CI and offline work.)
+
+**Response 201** — the created `Workspace`.
+
+### `GET /api/v1/workspaces/{workspaceId}`
+
+Fetch a single workspace.
+
+- **200** — `Workspace`
+- **404** `workspace_not_found`
+
+### `PUT /api/v1/workspaces/{workspaceId}`
+
+Patch one or more fields. The body is identical to the create body
+with every field optional (except `uid`, which is read-only).
+
+- **200** — updated `Workspace`
+- **404** `workspace_not_found`
+
+### `DELETE /api/v1/workspaces/{workspaceId}`
+
+Cascades to the workspace's catalogs, vector-store descriptors, and
+documents.
+
+- **204** — deleted
+- **404** `workspace_not_found`
+
+---
+
+## `/api/v1/workspaces/{workspaceId}/catalogs`
+
+### `GET`
+
+List catalogs in the workspace.
+
+- **200** — array of `Catalog`
+- **404** `workspace_not_found`
+
+A `Catalog`:
 
 ```json
 {
-  "data": [
-    { "id": "doc-1", "score": 0.94, "payload": { "title": "..." } }
-  ]
+  "workspace": "…",
+  "uid": "…",
+  "name": "support",
+  "description": null,
+  "vectorStore": "…",
+  "createdAt": "…",
+  "updatedAt": "…"
 }
 ```
 
-### `POST /v1/workspaces/{workspaceId}/vector-stores/{storeId}/records`
+### `POST`
 
-Upsert records (vectors + payloads). Status: **planned (Phase 1).**
+Create a catalog. `vectorStore` is optional and refers to a vector
+store in the same workspace (N:1 — multiple catalogs may share a
+single vector store).
 
-### `DELETE /v1/workspaces/{workspaceId}/vector-stores/{storeId}/records/{recordId}`
+**Request**
 
-Delete a record. Status: **planned (Phase 1).**
+```json
+{ "name": "support", "vectorStore": "<vector-store-uid>" }
+```
 
----
+- **201** — the created `Catalog`
+- **404** `workspace_not_found`
+- **409** `conflict` — `uid` collision
 
-## Phase 2 — Document catalog (planned)
+### `GET /{catalogId}` / `PUT /{catalogId}` / `DELETE /{catalogId}`
 
-### `GET /v1/workspaces/{workspaceId}/catalogs`
-
-List catalogs in a workspace. Status: **planned (Phase 2).**
-
-### `POST /v1/workspaces/{workspaceId}/catalogs/{catalogId}/documents`
-
-Register a document in the catalog (metadata only; ingestion is separate).
-Status: **planned (Phase 2).**
-
-### `GET /v1/workspaces/{workspaceId}/catalogs/{catalogId}/documents/{documentId}`
-
-Fetch document metadata. Status: **planned (Phase 2).**
-
-### `DELETE /v1/workspaces/{workspaceId}/catalogs/{catalogId}/documents/{documentId}`
-
-Remove a document from the catalog (and optionally its vectors — controlled by
-query flag). Status: **planned (Phase 2).**
+Fetch / patch / delete. `DELETE` cascades to the catalog's documents
+(Phase 2+).
 
 ---
 
-## Phase 3 — Ingestion (planned)
+## `/api/v1/workspaces/{workspaceId}/vector-stores`
 
-### `POST /v1/workspaces/{workspaceId}/catalogs/{catalogId}/ingest`
+### `GET`
 
-Run the full ingestion pipeline (chunking → embedding → vector store + catalog
-write) for a document. Status: **planned (Phase 3).**
+List vector-store descriptors in the workspace.
 
-**Request (multipart/form-data)**
-
-- `file` — the source document.
-- `meta` — JSON metadata blob.
-
-**Response 202**
+A `VectorStore` descriptor:
 
 ```json
 {
-  "data": {
-    "jobId": "job_01HY2Z...",
-    "status": "accepted"
-  }
+  "workspace": "…",
+  "uid": "…",
+  "name": "support-vectors",
+  "vectorDimension": 1536,
+  "vectorSimilarity": "cosine",
+  "embedding": {
+    "provider": "openai",
+    "model": "text-embedding-3-small",
+    "endpoint": null,
+    "dimension": 1536,
+    "secretRef": "env:OPENAI_API_KEY"
+  },
+  "lexical":   { "enabled": false, "analyzer": null, "options": {} },
+  "reranking": { "enabled": false, "provider": null, "model": null, "endpoint": null, "secretRef": null },
+  "createdAt": "…",
+  "updatedAt": "…"
 }
 ```
 
-### `GET /v1/workspaces/{workspaceId}/jobs/{jobId}`
+### `POST`
 
-Poll an ingestion job. Status: **planned (Phase 3).**
+Create a descriptor. `vectorSimilarity` defaults to `cosine`;
+`lexical` and `reranking` default to `{ enabled: false, ... }` if
+omitted.
+
+**Required fields:** `name`, `vectorDimension`, `embedding`.
+
+- **201** — the created `VectorStore`
+- **404** `workspace_not_found`
+- **409** `conflict`
+
+### `GET /{vectorStoreId}` / `PUT /{vectorStoreId}` / `DELETE /{vectorStoreId}`
+
+Standard CRUD. These endpoints manage the **descriptor row only**;
+the underlying Data API Collection holding vectors is a separate
+artifact provisioned in Phase 1b.
 
 ---
 
-## Phase 4 — Playground (planned)
+## Planned routes
 
-### `POST /v1/workspaces/{workspaceId}/playground/query`
+These do not exist yet. Shapes may shift before they land.
 
-Free-form query harness over a catalog + vector store combo, used by the UI
-playground. Status: **planned (Phase 4).**
+### Phase 1b — Vector-store data plane
 
----
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/workspaces/{w}/vector-stores/{v}/records` | Upsert records |
+| `DELETE` | `/api/v1/workspaces/{w}/vector-stores/{v}/records/{id}` | Delete one |
+| `POST` | `/api/v1/workspaces/{w}/vector-stores/{v}/search` | Vector search |
 
-## Phase 5+ — Chats, MCP (future)
+`POST /vector-stores` in this phase also provisions the backing
+Data API Collection (currently descriptor-only).
 
-Reserved namespaces:
+### Phase 2 — Documents, ingest, search, queries
 
-- `/v1/workspaces/{workspaceId}/chats/…`
-- `/v1/workspaces/{workspaceId}/mcp/…`
+| Method | Path | Purpose |
+|---|---|---|
+| (CRUD) | `/api/v1/workspaces/{w}/catalogs/{c}/documents[/{d}]` | Document metadata CRUD. `PUT` updates metadata only; content changes go through ingest. |
+| `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/ingest` | Chunk + embed + write (async job) |
+| `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}` | Poll an ingest job |
+| `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/documents/search` | Catalog-scoped hybrid search |
+| (CRUD) | `/api/v1/workspaces/{w}/catalogs/{c}/queries[/{q}]` | Saved queries per catalog |
 
-Contracts will be defined as those phases approach.
+### Phase 3 — Playground
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/workspaces/{w}/playground/query` | Free-form harness over catalog + vector store |
+
+Also a static `/playground` UI route served by the runtime.
+
+### Phase 4+ — Chats, MCP
+
+Reserved:
+
+- `/api/v1/workspaces/{w}/chats/…`
+- `/api/v1/workspaces/{w}/mcp/…`
+
+Contracts finalized as those phases approach.
 
 ---
 
 ## OpenAPI
 
-A machine-readable `openapi.yaml` will be generated from the route definitions
-and published at `/v1/openapi.json` once the route layer lands in Phase 0.
+The generated document at `/api/v1/openapi.json` is always in sync
+with the running runtime (routes register their Zod schemas directly).
+Share it with downstream tooling (client generators, API gateway
+configs, etc.).
+
+To consume locally:
+
+```bash
+curl -s http://localhost:8080/api/v1/openapi.json > openapi.json
+```

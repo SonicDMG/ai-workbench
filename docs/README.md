@@ -1,29 +1,46 @@
 # AI Workbench — Documentation
 
-This directory is the source of truth for the AI Workbench contract during
-**Phase 0**. Code will follow; the contract leads.
+Narrative docs for the AI Workbench runtime and its polyglot
+"green box" architecture. The generated OpenAPI at
+`/api/v1/openapi.json` is the canonical API reference — this
+directory explains the shape of everything around it.
 
 ## Start here
 
-1. [`architecture.md`](architecture.md) — what AI Workbench is and how the
-   pieces fit together.
-2. [`workspaces.md`](workspaces.md) — the workspace model (prod / dev / mock).
-3. [`configuration.md`](configuration.md) — the `workbench.yaml` schema.
-4. [`api-spec.md`](api-spec.md) — the HTTP surface (Phase 0 + forward-looking).
-5. [`roadmap.md`](roadmap.md) — phased delivery plan and open questions.
+1. [`architecture.md`](architecture.md) — what AI Workbench is and
+   how the pieces fit together.
+2. [`green-boxes.md`](green-boxes.md) — the multi-runtime model and
+   why we ship language-native implementations.
+3. [`workspaces.md`](workspaces.md) — workspace semantics, scoping,
+   and cascade rules.
+4. [`configuration.md`](configuration.md) — the `workbench.yaml`
+   schema.
+5. [`api-spec.md`](api-spec.md) — HTTP contract narrative (what
+   operational routes exist, what errors are possible, what's
+   planned).
+6. [`conformance.md`](conformance.md) — how we keep language
+   runtimes in lockstep via shared fixtures.
+7. [`roadmap.md`](roadmap.md) — phased delivery plan and open
+   questions.
 
 ## Samples
 
-- [`examples/workbench.yaml`](examples/workbench.yaml) — annotated sample
-  config covering `prod`, `dev`, and `mock` workspaces.
+- [`examples/workbench.yaml`](examples/workbench.yaml) — annotated
+  sample config covering all three control-plane drivers.
 
 ## Contributing to the contract
 
-These documents change more often than code during Phase 0. When you propose
-a change:
+These documents track the runtime; they're expected to change as the
+runtime does.
 
-- Land the docs change **in the same PR** as any supporting code.
-- When introducing a new route, update both `api-spec.md` and the top-level
-  `README.md` if the route is user-facing.
-- When changing the config schema, bump `version:` only on breaking changes
-  and add a migration note to `configuration.md`.
+- Land docs changes **in the same PR** as the supporting code.
+- When adding a route: update [`api-spec.md`](api-spec.md) and, if
+  there's a scenario worth adding, extend
+  [`clients/conformance/scenarios.json`](../clients/conformance/scenarios.json)
+  + regenerate fixtures (`npm run conformance:regenerate`).
+- When changing the config schema: bump `version:` only on breaking
+  changes and document the migration in
+  [`configuration.md`](configuration.md).
+- When a new language green box graduates from scaffold: add a row
+  to the "current runtimes" table in
+  [`green-boxes.md`](green-boxes.md).

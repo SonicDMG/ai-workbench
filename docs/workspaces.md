@@ -1,137 +1,167 @@
 # Workspaces
 
-A **workspace** is the unit of isolation in AI Workbench. Each workspace
-represents a distinct environment — typically `prod`, `dev`, or `mock` — with
-its own credentials, catalogs, and vector stores.
+A **workspace** is the unit of isolation in AI Workbench — a named
+tenant that owns its own catalogs, vector-store descriptors, and
+(when Phase 2 lands) documents.
+
+Workspaces are **runtime records**, not config. They're created via
+`POST /api/v1/workspaces`, fetched via `GET /api/v1/workspaces/{uid}`,
+and deleted via `DELETE`. Earlier drafts of this document described
+a YAML-based workspace model; that's gone — workspaces are now rows in
+the `wb_workspaces` table behind whichever control-plane backend the
+runtime is using.
 
 ## Why workspaces?
 
-A single runtime process needs to serve developer workflows that span
-environments without mixing them. Instead of standing up one container per
-environment, we run **one process with N workspaces**. Each workspace is an
-immutable configuration slice, bound by routing rules.
+A single runtime process needs to serve multiple logical tenants
+without mixing their data. Rather than one container per tenant, we
+run **one process with N workspaces** and scope every operation by
+workspace UID.
 
 ## Properties
 
 ### Identity
 
-- `id` is unique across the runtime (`^[a-z][a-z0-9-]{0,63}$`).
-- The id is a path segment: `/v1/workspaces/{id}/…`.
-- The id is stable — renaming a workspace is a config-breaking change.
+- `uid` is an RFC 4122 v4 UUID (lowercase, hyphenated).
+- The uid is a path segment: `/api/v1/workspaces/{uid}/…`.
+- `name` is a human-readable label; it's not unique and has no
+  semantic weight.
+
+### Lifecycle
+
+```
+POST   /api/v1/workspaces              → create (returns uid)
+GET    /api/v1/workspaces              → list
+GET    /api/v1/workspaces/{uid}        → fetch
+PUT    /api/v1/workspaces/{uid}        → patch
+DELETE /api/v1/workspaces/{uid}        → cascade delete
+```
+
+`DELETE` cascades to:
+
+- Every catalog under the workspace.
+- Every vector-store descriptor under the workspace.
+- Every document under any of those catalogs (Phase 2+).
 
 ### Isolation
 
-- A request carrying workspace id `A` can never read or mutate resources in
-  workspace `B`. The workspace resolver middleware enforces this before any
-  handler runs.
-- Workspaces do not share credentials, drivers, or service configurations
-  unless the top-level `services` block explicitly provides shared defaults.
-- Logs are tagged with `workspaceId`. Metrics are dimensioned by workspace.
+- A request carrying workspace UID `A` can never read or mutate
+  resources in workspace `B`. Nested routes call
+  `ControlPlaneStore.listCatalogs(workspace)` / `…getCatalog(workspace,
+  uid)` etc. and the store asserts the workspace exists before
+  returning anything.
+- Logs carry `requestId`; `workspaceId` will join them in Phase 2
+  alongside structured OTel attributes.
 
-### Driver binding
+### `kind`
 
-Each workspace picks exactly one driver:
+Every workspace declares a `kind` — the backend it targets:
 
-- `astra` — production-path, backed by the Astra Data API.
-- `mock` — in-memory, for local development and tests.
+| Kind | Meaning |
+|---|---|
+| `astra` | DataStax Astra, via the Data API |
+| `hcd` | Hyper-Converged Database (Astra's self-hosted cousin) — routing deferred |
+| `openrag` | The [OpenRAG](https://openr.ag) project — routing deferred |
+| `mock` | In-memory, for CI and offline development |
 
-A workspace cannot switch drivers at runtime. Switching is a redeploy.
+The `kind` describes *this workspace's* backend — distinct from
+whichever backend the runtime's own control plane uses (configured via
+[`workbench.yaml`](configuration.md#controlplane)). `mock` stays a
+first-class option so tests and local dev don't need any external
+service.
 
-### Catalogs and vector stores
+### Credentials
+
+Credentials are never stored by value. A workspace may hold a
+`credentialsRef` map whose values are `SecretRef` pointers:
+
+```json
+{
+  "name": "prod",
+  "kind": "astra",
+  "credentialsRef": {
+    "token": "env:ASTRA_DB_APPLICATION_TOKEN"
+  },
+  "keyspace": "default_keyspace"
+}
+```
+
+The runtime resolves refs through its `SecretResolver` at the moment
+the workspace's backend needs to be contacted. (Phase 1a doesn't yet
+dial into per-workspace backends — we store the refs, but the
+workspace's `kind` is informational until the data plane lands.)
+
+## Catalogs and vector stores
 
 A workspace owns:
 
-- **Vector stores** — 0..N named vector collections.
-- **Catalogs** — 0..N document catalogs, each bound to **exactly one** vector
-  store in the same workspace.
+- **Vector-store descriptors** — the `wb_vector_store_by_workspace`
+  rows. Each declares dimensions, similarity, embedding config,
+  lexical config, reranking config. These are *descriptors*, not the
+  vector data itself — the underlying Data API Collection is
+  provisioned in Phase 1b.
+- **Catalogs** — named document collections, each optionally
+  `vectorStore`-bound to one of the workspace's descriptors.
 
-Binding is **strictly 1:1**: every catalog references exactly one vector
-store, and every vector store is referenced by at most one catalog. The
-runtime enforces this at config validation time and rejects configurations
-in which two catalogs name the same `vectorStore` id.
+### Catalog ↔ vector-store binding (N:1)
 
-The relationship is:
+**Multiple catalogs may share one vector store.** This was a
+deliberate relaxation from an earlier draft's strict 1:1 constraint.
+The store enforces:
+
+- A catalog's `vectorStore` field (if non-null) must reference a
+  vector store in the same workspace.
+- `DELETE` a vector store does **not** cascade through catalogs that
+  reference it. Blocking this at the store level is planned for
+  Phase 2 when documents enter the picture and the dependency graph
+  becomes real.
+
+The relationship:
 
 ```
-workspace ──► catalog ──► vectorStore
-                │              (1:1)
-                └──► documents (metadata)
+workspace ──► catalog  ──► vector-store descriptor  (N:1)
+                │
+                └──► documents (Phase 2+)
 ```
 
-Rationale: tying a catalog to its own vector store keeps ownership, schema
-evolution, retention, and cascade-delete semantics unambiguous. If two
-logical catalogs need to share an embedding space, define two catalogs over
-two vector stores and replicate ingestion — don't alias.
+## Seeding workspaces for local dev
 
-## The `mock` workspace
+When running with the default `memory` control plane, you can
+pre-populate workspaces via `seedWorkspaces` in
+[`workbench.yaml`](configuration.md#seedworkspaces-memory-only). Seeds
+are only loaded into the memory backend; file and astra backends
+already persist data and ignore the block.
 
-Every example ships with a `mock` workspace. The mock driver:
+## Lifecycle today
 
-- Keeps all state in memory.
-- Accepts the same HTTP surface as the Astra driver.
-- Is the default target for tests and the recommended starting point for
-  local development.
+1. The runtime starts.
+2. It builds a `ControlPlaneStore` per the configured backend.
+3. If memory + seeds are configured, seeds are loaded into the store.
+4. The HTTP server accepts `/api/v1/*` requests; all workspace state
+   comes from / lives in the store.
 
-A CI run should be able to boot the runtime against `driver: mock` with no
-network access and execute the full API surface.
+`/readyz` returns `{ status: "ready", workspaces: <N> }` — `N` is the
+current count of workspaces, not a list. Listing is at `GET
+/api/v1/workspaces`.
 
-## Lifecycle
+## Example session
 
-Workspaces are resolved once at process start:
+Create a mock workspace, add a catalog, list:
 
-1. Runtime loads `workbench.yaml`.
-2. For each workspace entry, the runtime instantiates the declared driver,
-   validates credentials (for `astra`) or seeds initial state (for `mock`),
-   and wires up service clients.
-3. `/readyz` flips to `ready` only once every workspace has resolved.
+```bash
+WS_BODY='{"name":"demo","kind":"mock"}'
+WS_UID=$(curl -s -X POST http://localhost:8080/api/v1/workspaces \
+  -H "content-type: application/json" -d "$WS_BODY" | jq -r .uid)
 
-A workspace that fails to resolve blocks readiness but does not crash the
-process. Other workspaces continue to serve. The failing workspace's id is
-reported via `/readyz` and `/v1/workspaces`.
+CAT_BODY='{"name":"support"}'
+curl -s -X POST http://localhost:8080/api/v1/workspaces/$WS_UID/catalogs \
+  -H "content-type: application/json" -d "$CAT_BODY"
 
-## Example
-
-```yaml
-version: 1
-
-workspaces:
-  - id: prod
-    driver: astra
-    astra:
-      endpoint: ${ASTRA_PROD_ENDPOINT}
-      token: ${ASTRA_PROD_TOKEN}
-    vectorStores:
-      - id: support-vectors
-        collection: support_vectors
-        dimensions: 1536
-    catalogs:
-      - id: support-docs
-        vectorStore: support-vectors
-
-  - id: dev
-    driver: astra
-    astra:
-      endpoint: ${ASTRA_DEV_ENDPOINT}
-      token: ${ASTRA_DEV_TOKEN}
-    vectorStores:
-      - id: support-vectors
-        collection: support_vectors_dev
-        dimensions: 1536
-    catalogs:
-      - id: support-docs
-        vectorStore: support-vectors
-
-  - id: mock
-    driver: mock
-    vectorStores:
-      - id: support-vectors
-        collection: support_vectors
-        dimensions: 1536
-    catalogs:
-      - id: support-docs
-        vectorStore: support-vectors
+curl -s http://localhost:8080/api/v1/workspaces/$WS_UID/catalogs
 ```
 
-In this setup, the same logical schema (`support-docs` catalog, 1536-dim
-vectors) is available in all three environments. Clients only change the
-workspace id in the URL.
+Delete the workspace — the catalog goes with it:
+
+```bash
+curl -X DELETE http://localhost:8080/api/v1/workspaces/$WS_UID
+```
