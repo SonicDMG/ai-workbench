@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# Default to the least-privileged scope. Individual jobs widen as needed.
+# https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/controlling-permissions-for-github_token
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -43,6 +48,11 @@ jobs:
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
+    # `docker/build-push-action` writes to the GitHub Actions cache
+    # (cache-to: type=gha), which requires `actions: write`.
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v4
 
