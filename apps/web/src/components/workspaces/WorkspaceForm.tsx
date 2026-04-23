@@ -1,0 +1,189 @@
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Controller, useForm } from "react-hook-form";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+	type CreateWorkspaceInput,
+	CreateWorkspaceSchema,
+	KIND_DESCRIPTIONS,
+	type UpdateWorkspaceInput,
+	UpdateWorkspaceSchema,
+	type Workspace,
+	type WorkspaceKind,
+} from "@/lib/schemas";
+import { CredentialsEditor } from "./CredentialsEditor";
+
+/**
+ * Reusable form for create + edit. In create mode, `kind` is baked in
+ * by the parent (the onboarding flow picks it first). In edit mode,
+ * `kind` is shown read-only — it's immutable after creation.
+ */
+export type WorkspaceFormMode =
+	| {
+			mode: "create";
+			kind: WorkspaceKind;
+			onSubmit: (v: CreateWorkspaceInput) => void;
+	  }
+	| {
+			mode: "edit";
+			workspace: Workspace;
+			onSubmit: (v: UpdateWorkspaceInput) => void;
+	  };
+
+export function WorkspaceForm(
+	props: WorkspaceFormMode & {
+		submitting?: boolean;
+		submitLabel?: string;
+		onCancel?: () => void;
+	},
+) {
+	const kind = props.mode === "create" ? props.kind : props.workspace.kind;
+
+	const defaultValues =
+		props.mode === "create"
+			? { name: "", kind, url: "", keyspace: "", credentialsRef: {} }
+			: {
+					name: props.workspace.name,
+					url: props.workspace.url ?? "",
+					keyspace: props.workspace.keyspace ?? "",
+					credentialsRef: { ...props.workspace.credentialsRef },
+				};
+
+	const schema =
+		props.mode === "create" ? CreateWorkspaceSchema : UpdateWorkspaceSchema;
+
+	const {
+		register,
+		handleSubmit,
+		control,
+		formState: { errors },
+	} = useForm({
+		// biome-ignore lint/suspicious/noExplicitAny: Zod discriminates by mode; resolver generics can't see through
+		resolver: zodResolver(schema as any),
+		defaultValues,
+		mode: "onBlur",
+	});
+
+	function onValid(data: typeof defaultValues) {
+		if (props.mode === "create") {
+			props.onSubmit({ ...data, kind });
+		} else {
+			props.onSubmit(data);
+		}
+	}
+
+	const astraLike = kind === "astra" || kind === "hcd";
+
+	return (
+		<form
+			// biome-ignore lint/suspicious/noExplicitAny: same reason as above
+			onSubmit={handleSubmit(onValid as any)}
+			className="flex flex-col gap-5"
+		>
+			<div className="flex flex-col gap-1.5">
+				<Label htmlFor="name">Name</Label>
+				<Input
+					id="name"
+					placeholder="e.g. production, staging, demo"
+					aria-invalid={Boolean(errors.name)}
+					{...register("name")}
+				/>
+				{errors.name ? (
+					<p className="text-xs text-red-600">
+						{errors.name.message as string}
+					</p>
+				) : (
+					<p className="text-xs text-zinc-500">
+						A human-readable label. Not unique — the uid is the identity.
+					</p>
+				)}
+			</div>
+
+			<div className="flex flex-col gap-1.5">
+				<div className="flex items-baseline justify-between">
+					<Label>Kind</Label>
+					{props.mode === "edit" ? (
+						<span className="text-xs text-zinc-500">
+							Read-only — immutable after creation
+						</span>
+					) : null}
+				</div>
+				<div className="flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+					<span className="font-medium">{kind}</span>
+					<span className="text-zinc-400">—</span>
+					<span className="text-zinc-500 text-xs truncate">
+						{KIND_DESCRIPTIONS[kind]}
+					</span>
+				</div>
+			</div>
+
+			{astraLike ? (
+				<div className="flex flex-col gap-1.5">
+					<Label htmlFor="keyspace">Keyspace</Label>
+					<Input
+						id="keyspace"
+						placeholder="default_keyspace"
+						{...register("keyspace")}
+					/>
+					<p className="text-xs text-zinc-500">
+						The Astra keyspace this workspace targets. Leave empty to use the
+						default.
+					</p>
+				</div>
+			) : null}
+
+			<div className="flex flex-col gap-1.5">
+				<Label htmlFor="url">Console URL</Label>
+				<Input
+					id="url"
+					type="url"
+					placeholder="https://astra.datastax.com/org/…"
+					aria-invalid={Boolean(errors.url)}
+					{...register("url")}
+				/>
+				{errors.url ? (
+					<p className="text-xs text-red-600">{errors.url.message as string}</p>
+				) : (
+					<p className="text-xs text-zinc-500">
+						Optional link to this backend's native console. Metadata only — the
+						runtime never dials it.
+					</p>
+				)}
+			</div>
+
+			{astraLike ? (
+				<Controller
+					control={control}
+					name="credentialsRef"
+					render={({ field }) => (
+						<CredentialsEditor
+							value={(field.value as Record<string, string>) ?? {}}
+							onChange={field.onChange}
+							disabled={props.submitting}
+						/>
+					)}
+				/>
+			) : null}
+
+			<div className="flex items-center justify-end gap-2 pt-2">
+				{props.onCancel ? (
+					<Button
+						type="button"
+						variant="ghost"
+						onClick={props.onCancel}
+						disabled={props.submitting}
+					>
+						Cancel
+					</Button>
+				) : null}
+				<Button type="submit" variant="brand" disabled={props.submitting}>
+					{props.submitting
+						? "Saving…"
+						: (props.submitLabel ??
+							(props.mode === "create" ? "Create workspace" : "Save changes"))}
+				</Button>
+			</div>
+		</form>
+	);
+}

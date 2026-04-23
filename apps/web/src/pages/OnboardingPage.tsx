@@ -1,0 +1,187 @@
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
+import { KindPicker } from "@/components/workspaces/KindPicker";
+import { WorkspaceForm } from "@/components/workspaces/WorkspaceForm";
+import { useCreateWorkspace, useWorkspaces } from "@/hooks/useWorkspaces";
+import { ApiError } from "@/lib/api";
+import type { WorkspaceKind } from "@/lib/schemas";
+import { cn } from "@/lib/utils";
+
+type Step = "kind" | "details";
+
+export function OnboardingPage() {
+	const navigate = useNavigate();
+	const { data: workspaces } = useWorkspaces();
+	const create = useCreateWorkspace();
+	const [step, setStep] = useState<Step>("kind");
+	const [kind, setKind] = useState<WorkspaceKind | null>(null);
+
+	const isFirstRun = !workspaces || workspaces.length === 0;
+
+	return (
+		<div className="mx-auto max-w-2xl">
+			<div className="mb-6">
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={() => (step === "details" ? setStep("kind") : navigate("/"))}
+					className="-ml-3"
+				>
+					<ArrowLeft className="h-4 w-4" />
+					{step === "details" ? "Change backend" : "Back"}
+				</Button>
+			</div>
+
+			{isFirstRun ? (
+				<div className="mb-8">
+					<p className="text-sm font-medium text-[var(--color-brand-700)]">
+						Welcome
+					</p>
+					<h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-900">
+						Let's create your first workspace
+					</h1>
+					<p className="mt-2 text-sm text-zinc-500 leading-relaxed">
+						A <strong>workspace</strong> is the top-level tenant in AI Workbench
+						— it owns its own catalogs, vector stores, and documents. You can
+						create as many as you need (one per environment, customer, or team).
+					</p>
+				</div>
+			) : (
+				<div className="mb-8">
+					<h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+						New workspace
+					</h1>
+					<p className="mt-1 text-sm text-zinc-500">
+						Pick a backend, then fill in the details.
+					</p>
+				</div>
+			)}
+
+			<div className="mb-8 flex items-center gap-3">
+				<StepDot
+					index={1}
+					label="Backend"
+					active={step === "kind"}
+					done={step !== "kind"}
+				/>
+				<div className="h-px flex-1 bg-zinc-200" />
+				<StepDot
+					index={2}
+					label="Details"
+					active={step === "details"}
+					done={false}
+				/>
+			</div>
+
+			{step === "kind" ? (
+				<Card>
+					<CardHeader>
+						<CardTitle>Choose a backend</CardTitle>
+						<CardDescription>
+							The backend drives this workspace's data plane. It's immutable
+							after creation — if you need to switch later, delete and recreate.
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<KindPicker value={kind} onChange={setKind} />
+					</CardContent>
+					<div className="flex items-center justify-end gap-2 p-5 pt-0">
+						<Button
+							variant="brand"
+							disabled={!kind}
+							onClick={() => setStep("details")}
+						>
+							Continue
+						</Button>
+					</div>
+				</Card>
+			) : null}
+
+			{step === "details" && kind ? (
+				<Card>
+					<CardHeader>
+						<CardTitle>Workspace details</CardTitle>
+						<CardDescription>
+							{kind === "mock"
+								? "Mock workspaces run entirely in memory — no credentials needed."
+								: "Credentials are stored as references (env:VAR / file:/path), never raw values."}
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<WorkspaceForm
+							mode="create"
+							kind={kind}
+							submitting={create.isPending}
+							submitLabel="Create workspace"
+							onCancel={() => setStep("kind")}
+							onSubmit={async (input) => {
+								try {
+									const ws = await create.mutateAsync(input);
+									toast.success(`Workspace '${ws.name}' created`);
+									navigate(`/workspaces/${ws.uid}`);
+								} catch (err) {
+									const msg =
+										err instanceof ApiError
+											? `${err.code}: ${err.message}`
+											: err instanceof Error
+												? err.message
+												: "Unknown error";
+									toast.error("Couldn't create workspace", {
+										description: msg,
+									});
+								}
+							}}
+						/>
+					</CardContent>
+				</Card>
+			) : null}
+		</div>
+	);
+}
+
+function StepDot({
+	index,
+	label,
+	active,
+	done,
+}: {
+	index: number;
+	label: string;
+	active: boolean;
+	done: boolean;
+}) {
+	return (
+		<div className="flex items-center gap-2">
+			<span
+				className={cn(
+					"flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold",
+					done
+						? "bg-[var(--color-brand-600)] text-white"
+						: active
+							? "bg-[var(--color-brand-600)] text-white ring-4 ring-[var(--color-brand-50)]"
+							: "bg-zinc-100 text-zinc-500",
+				)}
+			>
+				{done ? <CheckCircle2 className="h-4 w-4" /> : index}
+			</span>
+			<span
+				className={cn(
+					"text-sm",
+					active ? "font-medium text-zinc-900" : "text-zinc-500",
+				)}
+			>
+				{label}
+			</span>
+		</div>
+	);
+}
