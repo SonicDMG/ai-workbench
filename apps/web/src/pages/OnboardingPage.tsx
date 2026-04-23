@@ -2,6 +2,7 @@ import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { BrandMark } from "@/components/brand/BrandMark";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -43,25 +44,31 @@ export function OnboardingPage() {
 			</div>
 
 			{isFirstRun ? (
-				<div className="mb-8">
-					<p className="text-sm font-medium text-[var(--color-brand-700)]">
-						Welcome
-					</p>
-					<h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-900">
-						Let's create your first workspace
-					</h1>
-					<p className="mt-2 text-sm text-zinc-500 leading-relaxed">
-						A <strong>workspace</strong> is the top-level tenant in AI Workbench
-						— it owns its own catalogs, vector stores, and documents. You can
-						create as many as you need (one per environment, customer, or team).
-					</p>
+				<div className="brand-surface mb-8 rounded-2xl px-8 py-10 text-white shadow-lg shadow-[var(--color-brand-900)]/20">
+					<div className="relative flex items-start gap-5">
+						<BrandMark size={56} />
+						<div>
+							<p className="text-xs font-medium uppercase tracking-[0.14em] text-white/70">
+								Welcome to AI Workbench
+							</p>
+							<h1 className="mt-2 text-3xl font-semibold tracking-tight">
+								Let's create your first workspace
+							</h1>
+							<p className="mt-3 text-sm leading-relaxed text-white/85 max-w-lg">
+								A <strong className="font-semibold">workspace</strong> is the
+								top-level tenant in AI Workbench — it owns its own catalogs,
+								vector stores, and documents. You can create as many as you need
+								(one per environment, customer, or team).
+							</p>
+						</div>
+					</div>
 				</div>
 			) : (
 				<div className="mb-8">
-					<h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+					<h1 className="text-2xl font-semibold tracking-tight text-slate-900">
 						New workspace
 					</h1>
-					<p className="mt-1 text-sm text-zinc-500">
+					<p className="mt-1 text-sm text-slate-500">
 						Pick a backend, then fill in the details.
 					</p>
 				</div>
@@ -74,7 +81,7 @@ export function OnboardingPage() {
 					active={step === "kind"}
 					done={step !== "kind"}
 				/>
-				<div className="h-px flex-1 bg-zinc-200" />
+				<div className="h-px flex-1 bg-slate-200" />
 				<StepDot
 					index={2}
 					label="Details"
@@ -169,7 +176,7 @@ function StepDot({
 						? "bg-[var(--color-brand-600)] text-white"
 						: active
 							? "bg-[var(--color-brand-600)] text-white ring-4 ring-[var(--color-brand-50)]"
-							: "bg-zinc-100 text-zinc-500",
+							: "bg-slate-100 text-slate-500",
 				)}
 			>
 				{done ? <CheckCircle2 className="h-4 w-4" /> : index}
@@ -177,7 +184,7 @@ function StepDot({
 			<span
 				className={cn(
 					"text-sm",
-					active ? "font-medium text-zinc-900" : "text-zinc-500",
+					active ? "font-medium text-slate-900" : "text-slate-500",
 				)}
 			>
 				{label}

@@ -2,10 +2,11 @@ import type { WorkspaceKind } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 
 const styles: Record<WorkspaceKind, string> = {
-	astra: "bg-indigo-50 text-indigo-700 ring-indigo-200",
+	astra:
+		"bg-[var(--color-brand-50)] text-[var(--color-brand-700)] ring-[var(--color-brand-200)]",
 	hcd: "bg-amber-50 text-amber-700 ring-amber-200",
-	openrag: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-	mock: "bg-zinc-100 text-zinc-700 ring-zinc-200",
+	openrag: "bg-teal-50 text-teal-700 ring-teal-200",
+	mock: "bg-slate-100 text-slate-700 ring-slate-200",
 };
 
 const labels: Record<WorkspaceKind, string> = {

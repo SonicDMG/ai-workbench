@@ -94,7 +94,7 @@ export function WorkspaceForm(
 						{errors.name.message as string}
 					</p>
 				) : (
-					<p className="text-xs text-zinc-500">
+					<p className="text-xs text-slate-500">
 						A human-readable label. Not unique — the uid is the identity.
 					</p>
 				)}
@@ -104,15 +104,15 @@ export function WorkspaceForm(
 				<div className="flex items-baseline justify-between">
 					<Label>Kind</Label>
 					{props.mode === "edit" ? (
-						<span className="text-xs text-zinc-500">
+						<span className="text-xs text-slate-500">
 							Read-only — immutable after creation
 						</span>
 					) : null}
 				</div>
-				<div className="flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+				<div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
 					<span className="font-medium">{kind}</span>
-					<span className="text-zinc-400">—</span>
-					<span className="text-zinc-500 text-xs truncate">
+					<span className="text-slate-400">—</span>
+					<span className="text-slate-500 text-xs truncate">
 						{KIND_DESCRIPTIONS[kind]}
 					</span>
 				</div>
@@ -126,7 +126,7 @@ export function WorkspaceForm(
 						placeholder="default_keyspace"
 						{...register("keyspace")}
 					/>
-					<p className="text-xs text-zinc-500">
+					<p className="text-xs text-slate-500">
 						The Astra keyspace this workspace targets. Leave empty to use the
 						default.
 					</p>
@@ -145,7 +145,7 @@ export function WorkspaceForm(
 				{errors.url ? (
 					<p className="text-xs text-red-600">{errors.url.message as string}</p>
 				) : (
-					<p className="text-xs text-zinc-500">
+					<p className="text-xs text-slate-500">
 						Optional link to this backend's native console. Metadata only — the
 						runtime never dials it.
 					</p>

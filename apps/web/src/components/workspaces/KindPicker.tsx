@@ -61,7 +61,7 @@ export function KindPicker({
 							"focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",
 							selected
 								? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] ring-1 ring-[var(--color-brand-500)]"
-								: "border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm",
+								: "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm",
 						)}
 					>
 						<div className="flex items-center justify-between">
@@ -70,7 +70,7 @@ export function KindPicker({
 									"flex h-10 w-10 items-center justify-center rounded-lg",
 									selected
 										? "bg-[var(--color-brand-600)] text-white"
-										: "bg-zinc-100 text-zinc-600 group-hover:bg-zinc-200",
+										: "bg-slate-100 text-slate-600 group-hover:bg-slate-200",
 								)}
 							>
 								{m.icon}
@@ -82,8 +82,8 @@ export function KindPicker({
 							) : null}
 						</div>
 						<div>
-							<p className="font-semibold text-zinc-900">{m.label}</p>
-							<p className="mt-1 text-sm text-zinc-500 leading-relaxed">
+							<p className="font-semibold text-slate-900">{m.label}</p>
+							<p className="mt-1 text-sm text-slate-500 leading-relaxed">
 								{m.description}
 							</p>
 						</div>

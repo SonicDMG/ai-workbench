@@ -59,12 +59,12 @@ export function WorkspaceDetailPage() {
 			<div className="flex items-start justify-between gap-4">
 				<div className="min-w-0">
 					<div className="flex items-center gap-3 flex-wrap">
-						<h1 className="text-2xl font-semibold tracking-tight text-zinc-900 truncate">
+						<h1 className="text-2xl font-semibold tracking-tight text-slate-900 truncate">
 							{data.name}
 						</h1>
 						<KindBadge kind={data.kind} />
 					</div>
-					<p className="mt-1 text-xs text-zinc-500 font-mono">{data.uid}</p>
+					<p className="mt-1 text-xs text-slate-500 font-mono">{data.uid}</p>
 				</div>
 				<div className="flex items-center gap-2 shrink-0">
 					{editing ? (
@@ -121,19 +121,19 @@ export function WorkspaceDetailPage() {
 					</CardHeader>
 					<CardContent>
 						<dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-6 gap-y-3 text-sm">
-							<dt className="text-zinc-500">Name</dt>
-							<dd className="text-zinc-900">{data.name}</dd>
+							<dt className="text-slate-500">Name</dt>
+							<dd className="text-slate-900">{data.name}</dd>
 
-							<dt className="text-zinc-500">Kind</dt>
-							<dd className="text-zinc-900 font-mono text-xs">{data.kind}</dd>
+							<dt className="text-slate-500">Kind</dt>
+							<dd className="text-slate-900 font-mono text-xs">{data.kind}</dd>
 
-							<dt className="text-zinc-500">Keyspace</dt>
-							<dd className="text-zinc-900 font-mono">
-								{data.keyspace ?? <span className="text-zinc-400">—</span>}
+							<dt className="text-slate-500">Keyspace</dt>
+							<dd className="text-slate-900 font-mono">
+								{data.keyspace ?? <span className="text-slate-400">—</span>}
 							</dd>
 
-							<dt className="text-zinc-500">Console URL</dt>
-							<dd className="text-zinc-900 truncate">
+							<dt className="text-slate-500">Console URL</dt>
+							<dd className="text-slate-900 truncate">
 								{data.url ? (
 									<a
 										href={data.url}
@@ -145,24 +145,24 @@ export function WorkspaceDetailPage() {
 										<ExternalLink className="h-3 w-3" />
 									</a>
 								) : (
-									<span className="text-zinc-400">—</span>
+									<span className="text-slate-400">—</span>
 								)}
 							</dd>
 
-							<dt className="text-zinc-500">Credentials</dt>
+							<dt className="text-slate-500">Credentials</dt>
 							<dd>
 								{Object.keys(data.credentialsRef).length === 0 ? (
-									<span className="text-zinc-400">—</span>
+									<span className="text-slate-400">—</span>
 								) : (
 									<ul className="flex flex-col gap-1">
 										{Object.entries(data.credentialsRef).map(([key, ref]) => (
 											<li
 												key={key}
-												className="flex items-baseline gap-2 text-zinc-900"
+												className="flex items-baseline gap-2 text-slate-900"
 											>
 												<span className="font-medium">{key}</span>
-												<span className="text-zinc-400">→</span>
-												<code className="font-mono text-xs text-zinc-600">
+												<span className="text-slate-400">→</span>
+												<code className="font-mono text-xs text-slate-600">
 													{ref}
 												</code>
 											</li>
@@ -171,11 +171,11 @@ export function WorkspaceDetailPage() {
 								)}
 							</dd>
 
-							<dt className="text-zinc-500">Created</dt>
-							<dd className="text-zinc-900">{formatDate(data.createdAt)}</dd>
+							<dt className="text-slate-500">Created</dt>
+							<dd className="text-slate-900">{formatDate(data.createdAt)}</dd>
 
-							<dt className="text-zinc-500">Updated</dt>
-							<dd className="text-zinc-900">{formatDate(data.updatedAt)}</dd>
+							<dt className="text-slate-500">Updated</dt>
+							<dd className="text-slate-900">{formatDate(data.updatedAt)}</dd>
 						</dl>
 					</CardContent>
 				</Card>

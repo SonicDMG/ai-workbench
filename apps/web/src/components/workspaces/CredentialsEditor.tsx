@@ -53,7 +53,7 @@ export function CredentialsEditor({
 		<div className="flex flex-col gap-2">
 			<div className="flex items-baseline justify-between">
 				<Label>Credentials</Label>
-				<p className="text-xs text-zinc-500">
+				<p className="text-xs text-slate-500">
 					Values must be <code className="font-mono">provider:path</code> — e.g.{" "}
 					<code className="font-mono">env:ASTRA_TOKEN</code>
 				</p>

@@ -16,27 +16,27 @@ export function WorkspaceCard({ workspace }: { workspace: Workspace }) {
 			<CardHeader className="flex-row items-start justify-between gap-3">
 				<div className="min-w-0">
 					<CardTitle className="truncate">{workspace.name}</CardTitle>
-					<p className="text-xs text-zinc-500 mt-1 font-mono truncate">
+					<p className="text-xs text-slate-500 mt-1 font-mono truncate">
 						{workspace.uid}
 					</p>
 				</div>
 				<div className="flex items-center gap-2 shrink-0">
 					<KindBadge kind={workspace.kind} />
-					<ArrowUpRight className="h-4 w-4 text-zinc-400 group-hover:text-zinc-900 transition-colors" />
+					<ArrowUpRight className="h-4 w-4 text-slate-400 group-hover:text-slate-900 transition-colors" />
 				</div>
 			</CardHeader>
 			<CardContent>
 				<dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-					<dt className="text-zinc-500">Keyspace</dt>
-					<dd className="text-zinc-800 font-mono truncate">
+					<dt className="text-slate-500">Keyspace</dt>
+					<dd className="text-slate-800 font-mono truncate">
 						{workspace.keyspace ?? "—"}
 					</dd>
-					<dt className="text-zinc-500">Created</dt>
-					<dd className="text-zinc-800">{formatDate(workspace.createdAt)}</dd>
+					<dt className="text-slate-500">Created</dt>
+					<dd className="text-slate-800">{formatDate(workspace.createdAt)}</dd>
 					{workspace.url ? (
 						<>
-							<dt className="text-zinc-500">Console</dt>
-							<dd className="text-zinc-800 truncate">
+							<dt className="text-slate-500">Console</dt>
+							<dd className="text-slate-800 truncate">
 								<a
 									href={workspace.url}
 									target="_blank"

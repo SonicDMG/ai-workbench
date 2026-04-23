@@ -8,13 +8,15 @@ const buttonVariants = cva(
 	{
 		variants: {
 			variant: {
-				primary: "bg-zinc-900 text-white hover:bg-zinc-800 active:bg-zinc-950",
+				primary:
+					"bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-950 shadow-sm",
 				secondary:
-					"bg-white text-zinc-900 ring-1 ring-inset ring-zinc-300 hover:bg-zinc-50",
-				ghost: "text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900",
-				destructive: "bg-red-600 text-white hover:bg-red-700 active:bg-red-800",
+					"bg-white text-slate-900 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 shadow-sm",
+				ghost: "text-slate-700 hover:bg-slate-100 hover:text-slate-900",
+				destructive:
+					"bg-red-600 text-white hover:bg-red-700 active:bg-red-800 shadow-sm",
 				brand:
-					"bg-[var(--color-brand-600)] text-white hover:bg-[var(--color-brand-700)] active:bg-[var(--color-brand-700)]",
+					"bg-[var(--color-brand-600)] text-white hover:bg-[var(--color-brand-700)] active:bg-[var(--color-brand-900)] shadow-sm",
 			},
 			size: {
 				sm: "h-8 px-3",
