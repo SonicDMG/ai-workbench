@@ -235,6 +235,36 @@ documents.
 - **204** — deleted
 - **404** `workspace_not_found`
 
+### `POST /api/v1/workspaces/{workspaceId}/test-connection`
+
+Probe the workspace's credentials. Resolves every value in
+`credentialsRef` via the runtime's `SecretResolver` and reports the
+first failure. For `mock` workspaces, always returns `ok: true`
+without touching any secrets. Verifies refs only — does NOT dial the
+backend or validate a resolved token against the remote service.
+
+**Response 200** — always 200 regardless of probe outcome; the
+`ok` field distinguishes success from failure:
+
+```json
+{
+  "ok": true,
+  "kind": "astra",
+  "details": "1 credential resolved. Note: this verifies refs only, not the backend token against the remote service."
+}
+```
+
+```json
+{
+  "ok": false,
+  "kind": "astra",
+  "details": "credential 'token' could not be resolved: env var 'ASTRA_DB_APPLICATION_TOKEN' is not set"
+}
+```
+
+- **200** — probe executed; inspect `ok` for pass/fail
+- **404** `workspace_not_found`
+
 ---
 
 ## `/api/v1/workspaces/{workspaceId}/catalogs`

@@ -1,0 +1,46 @@
+{
+	"slug": "workspace-test-connection-mock",
+	"description": "`POST /workspaces/{uid}/test-connection` on a mock workspace always reports ok: true. Pins the response shape (ok, kind, details) so every runtime implements the probe identically. Kinds that resolve credentials via SecretResolver are environment-dependent and aren't in the conformance corpus.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}",
+					"url": null
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/test-connection"
+			},
+			"response": {
+				"body": {
+					"details": "Mock backend is always reachable. No credentials required.",
+					"kind": "mock",
+					"ok": true
+				},
+				"status": 200
+			},
+			"step": 2
+		}
+	]
+}

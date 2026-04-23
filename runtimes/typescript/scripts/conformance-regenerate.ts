@@ -22,6 +22,8 @@ import { createApp } from "../src/app.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
+import { EnvSecretProvider } from "../src/secrets/env.js";
+import { SecretResolver } from "../src/secrets/provider.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // this file is at runtimes/typescript/scripts/... → repo root is 3 levels up
@@ -53,7 +55,8 @@ async function fetcherForFreshApp(): Promise<
 	const drivers = new VectorStoreDriverRegistry(
 		new Map([["mock", new MockVectorStoreDriver()]]),
 	);
-	const app = createApp({ store, drivers });
+	const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+	const app = createApp({ store, drivers, secrets });
 	return async (method, path, body) => {
 		const init: RequestInit = { method };
 		if (body !== undefined) {

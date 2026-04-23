@@ -2,11 +2,13 @@ import { ArrowLeft, ExternalLink, Pencil, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { CopyButton } from "@/components/common/CopyButton";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeleteDialog } from "@/components/workspaces/DeleteDialog";
 import { KindBadge } from "@/components/workspaces/KindBadge";
+import { TestConnectionPanel } from "@/components/workspaces/TestConnectionPanel";
 import { WorkspaceForm } from "@/components/workspaces/WorkspaceForm";
 import {
 	useDeleteWorkspace,
@@ -64,7 +66,10 @@ export function WorkspaceDetailPage() {
 						</h1>
 						<KindBadge kind={data.kind} />
 					</div>
-					<p className="mt-1 text-xs text-slate-500 font-mono">{data.uid}</p>
+					<div className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+						<span className="font-mono truncate">{data.uid}</span>
+						<CopyButton value={data.uid} label="Copy workspace uid" />
+					</div>
 				</div>
 				<div className="flex items-center gap-2 shrink-0">
 					{editing ? (
@@ -165,6 +170,10 @@ export function WorkspaceDetailPage() {
 												<code className="font-mono text-xs text-slate-600">
 													{ref}
 												</code>
+												<CopyButton
+													value={ref}
+													label={`Copy ${key} secret ref`}
+												/>
 											</li>
 										))}
 									</ul>
@@ -180,6 +189,14 @@ export function WorkspaceDetailPage() {
 					</CardContent>
 				</Card>
 			)}
+
+			{!editing ? (
+				<Card>
+					<CardContent className="pt-5">
+						<TestConnectionPanel uid={data.uid} />
+					</CardContent>
+				</Card>
+			) : null}
 
 			<DeleteDialog
 				open={deleteOpen}

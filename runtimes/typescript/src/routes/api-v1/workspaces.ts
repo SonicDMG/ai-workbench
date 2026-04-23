@@ -15,12 +15,20 @@ import type { AppEnv } from "../../lib/types.js";
 import {
 	CreateWorkspaceInputSchema,
 	ErrorEnvelopeSchema,
+	TestConnectionResponseSchema,
 	UpdateWorkspaceInputSchema,
 	WorkspaceIdParamSchema,
 	WorkspaceRecordSchema,
 } from "../../openapi/schemas.js";
+import type { SecretResolver } from "../../secrets/provider.js";
 
-export function workspaceRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
+export interface WorkspaceRouteDeps {
+	readonly store: ControlPlaneStore;
+	readonly secrets: SecretResolver;
+}
+
+export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
+	const { store, secrets } = deps;
 	const app = makeOpenApi();
 
 	app.openapi(
@@ -157,6 +165,71 @@ export function workspaceRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 			if (!deleted)
 				throw new ControlPlaneNotFoundError("workspace", workspaceId);
 			return c.body(null, 204);
+		},
+	);
+
+	app.openapi(
+		createRoute({
+			method: "post",
+			path: "/{workspaceId}/test-connection",
+			tags: ["workspaces"],
+			summary: "Verify the workspace's credential refs can be resolved",
+			description:
+				"For `mock` workspaces, always returns `{ok: true}` (no credentials). For other kinds, resolves every value in `credentialsRef` via the runtime's SecretResolver and reports the first failure. This verifies refs only — it does NOT dial the backend or validate the resolved token against the remote service.",
+			request: { params: z.object({ workspaceId: WorkspaceIdParamSchema }) },
+			responses: {
+				200: {
+					content: {
+						"application/json": { schema: TestConnectionResponseSchema },
+					},
+					description:
+						"Connection probe result. `ok: true` means every credential ref resolved cleanly (or the workspace has no credentials). `ok: false` means at least one ref failed; `details` names which one and why.",
+				},
+				404: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description: "Workspace not found",
+				},
+			},
+		}),
+		async (c) => {
+			const { workspaceId } = c.req.valid("param");
+			const ws = await store.getWorkspace(workspaceId);
+			if (!ws) throw new ControlPlaneNotFoundError("workspace", workspaceId);
+
+			if (ws.kind === "mock") {
+				return c.json(
+					{
+						ok: true,
+						kind: ws.kind,
+						details:
+							"Mock backend is always reachable. No credentials required.",
+					},
+					200,
+				);
+			}
+
+			const entries = Object.entries(ws.credentialsRef);
+			for (const [name, ref] of entries) {
+				try {
+					await secrets.resolve(ref);
+				} catch (err) {
+					const reason = err instanceof Error ? err.message : String(err);
+					return c.json(
+						{
+							ok: false,
+							kind: ws.kind,
+							details: `credential '${name}' could not be resolved: ${reason}`,
+						},
+						200,
+					);
+				}
+			}
+
+			const summary =
+				entries.length === 0
+					? "No credentials configured. Nothing to verify yet — add a credentialsRef entry to enable probing."
+					: `${entries.length} ${entries.length === 1 ? "credential" : "credentials"} resolved. Note: this verifies refs only, not the backend token against the remote service.`;
+			return c.json({ ok: true, kind: ws.kind, details: summary }, 200);
 		},
 	);
 

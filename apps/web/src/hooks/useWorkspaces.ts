@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { keys } from "@/lib/query";
 import type {
 	CreateWorkspaceInput,
+	TestConnectionResult,
 	UpdateWorkspaceInput,
 	Workspace,
 } from "@/lib/schemas";
@@ -67,5 +68,13 @@ export function useDeleteWorkspace(): UseMutationResult<void, Error, string> {
 			qc.removeQueries({ queryKey: keys.workspaces.detail(uid) });
 			qc.invalidateQueries({ queryKey: keys.workspaces.all });
 		},
+	});
+}
+
+export function useTestConnection(
+	uid: string,
+): UseMutationResult<TestConnectionResult, Error, void> {
+	return useMutation({
+		mutationFn: () => api.testConnection(uid),
 	});
 }

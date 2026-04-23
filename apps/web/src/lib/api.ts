@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
 	type CreateWorkspaceInput,
 	ErrorEnvelopeSchema,
+	type TestConnectionResult,
+	TestConnectionResultSchema,
 	type UpdateWorkspaceInput,
 	type Workspace,
 	WorkspaceRecordSchema,
@@ -96,6 +98,13 @@ export const api = {
 
 	deleteWorkspace: (uid: string): Promise<void> =>
 		request(`/workspaces/${uid}`, { method: "DELETE" }, null),
+
+	testConnection: (uid: string): Promise<TestConnectionResult> =>
+		request(
+			`/workspaces/${uid}/test-connection`,
+			{ method: "POST" },
+			TestConnectionResultSchema,
+		),
 };
 
 // Normalize form empties to match the backend's nullable contract: empty

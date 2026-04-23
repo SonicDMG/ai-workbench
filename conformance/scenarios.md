@@ -158,6 +158,27 @@ Fixture: `fixtures/workspace-credentials-must-be-secret-ref.json`.
 
 ---
 
+## Scenario 8 — `workspace-test-connection-mock`
+
+Pins the response shape of the `POST
+/workspaces/{uid}/test-connection` probe. The mock kind is always
+reachable and requires no credentials, so it's the one case that's
+deterministic regardless of how the runtime resolves secrets — every
+runtime MUST emit `{ok: true, kind: "mock", details: "..."}`.
+
+1. `POST /api/v1/workspaces` — body `{"name": "w", "kind": "mock"}`
+2. `POST /api/v1/workspaces/$1.uid/test-connection`
+   *(expect `200`, `body.ok === true`, `body.kind === "mock"`)*
+
+Fixture: `fixtures/workspace-test-connection-mock.json`.
+
+*(Astra / HCD / OpenRAG probes hit the SecretResolver; their
+pass/fail result depends on the process's env vars. Scenarios that
+pin those paths would be non-portable, so they live only as
+runtime-level unit tests, not as conformance fixtures.)*
+
+---
+
 ## Adding a scenario
 
 1. Append a new section to this file.

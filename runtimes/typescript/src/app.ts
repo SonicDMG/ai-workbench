@@ -25,11 +25,13 @@ import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
 import { vectorStoreRoutes } from "./routes/api-v1/vector-stores.js";
 import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
 import { operationalRoutes } from "./routes/operational.js";
+import type { SecretResolver } from "./secrets/provider.js";
 import { VERSION } from "./version.js";
 
 export interface AppOptions {
 	readonly store: ControlPlaneStore;
 	readonly drivers: VectorStoreDriverRegistry;
+	readonly secrets: SecretResolver;
 	readonly requestIdHeader?: string;
 }
 
@@ -39,7 +41,10 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	app.use("*", requestId(opts.requestIdHeader));
 
 	app.route("/", operationalRoutes(opts.store));
-	app.route("/api/v1/workspaces", workspaceRoutes(opts.store));
+	app.route(
+		"/api/v1/workspaces",
+		workspaceRoutes({ store: opts.store, secrets: opts.secrets }),
+	);
 	app.route("/api/v1/workspaces", catalogRoutes(opts.store));
 	app.route("/api/v1/workspaces", documentRoutes(opts.store));
 	app.route(

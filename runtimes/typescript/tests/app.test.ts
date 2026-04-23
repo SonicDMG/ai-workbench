@@ -4,6 +4,8 @@ import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import type { ControlPlaneStore } from "../src/control-plane/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
+import { EnvSecretProvider } from "../src/secrets/env.js";
+import { SecretResolver } from "../src/secrets/provider.js";
 
 // Tests fetch JSON and assert on properties; cast to `any` for ergonomic access.
 // biome-ignore lint/suspicious/noExplicitAny: test helper returns untyped JSON
@@ -20,7 +22,8 @@ function makeApp(): {
 	const drivers = new VectorStoreDriverRegistry(
 		new Map([["mock", new MockVectorStoreDriver()]]),
 	);
-	const app = createApp({ store, drivers });
+	const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+	const app = createApp({ store, drivers, secrets });
 	return { app, store };
 }
 
@@ -256,6 +259,87 @@ describe("workspace routes", () => {
 			b.uid,
 			c.uid,
 		]);
+	});
+});
+
+describe("workspace test-connection", () => {
+	test("mock workspace reports ok unconditionally", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace({ name: "m", kind: "mock" });
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/test-connection`,
+			{ method: "POST" },
+		);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body).toMatchObject({ ok: true, kind: "mock" });
+		expect(body.details).toMatch(/mock backend/i);
+	});
+
+	test("astra workspace with no credentials returns ok with a hint", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace({ name: "a", kind: "astra" });
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/test-connection`,
+			{ method: "POST" },
+		);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.ok).toBe(true);
+		expect(body.details).toMatch(/no credentials/i);
+	});
+
+	test("astra workspace reports ok when every credential ref resolves", async () => {
+		const prev = process.env.__TEST_ASTRA_TOKEN;
+		process.env.__TEST_ASTRA_TOKEN = "present";
+		try {
+			const { app, store } = makeApp();
+			const ws = await store.createWorkspace({
+				name: "a",
+				kind: "astra",
+				credentialsRef: { token: "env:__TEST_ASTRA_TOKEN" },
+			});
+			const res = await app.request(
+				`/api/v1/workspaces/${ws.uid}/test-connection`,
+				{ method: "POST" },
+			);
+			expect(res.status).toBe(200);
+			const body = await json(res);
+			expect(body.ok).toBe(true);
+			expect(body.details).toMatch(/resolved/i);
+		} finally {
+			if (prev === undefined) delete process.env.__TEST_ASTRA_TOKEN;
+			else process.env.__TEST_ASTRA_TOKEN = prev;
+		}
+	});
+
+	test("reports ok: false when a credential ref can't be resolved", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace({
+			name: "a",
+			kind: "astra",
+			credentialsRef: { token: "env:__NEVER_SET_ENV_VAR_XYZZY" },
+		});
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/test-connection`,
+			{ method: "POST" },
+		);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body).toMatchObject({ ok: false, kind: "astra" });
+		expect(body.details).toMatch(/token/);
+		expect(body.details).toMatch(/__NEVER_SET_ENV_VAR_XYZZY/);
+	});
+
+	test("404 for unknown workspace", async () => {
+		const { app } = makeApp();
+		const res = await app.request(
+			"/api/v1/workspaces/00000000-0000-0000-0000-000000000000/test-connection",
+			{ method: "POST" },
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("workspace_not_found");
 	});
 });
 

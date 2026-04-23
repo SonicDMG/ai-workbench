@@ -25,6 +25,7 @@ async function main(): Promise<void> {
 	const app = createApp({
 		store,
 		drivers,
+		secrets,
 		requestIdHeader: config.runtime.requestIdHeader,
 	});
 

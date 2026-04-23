@@ -137,6 +137,19 @@ export const UpdateCatalogInputSchema = z
 	})
 	.openapi("UpdateCatalogInput");
 
+/* ---------------- Workspace actions ---------------- */
+
+export const TestConnectionResponseSchema = z
+	.object({
+		ok: z.boolean(),
+		kind: WorkspaceKind,
+		details: z.string().openapi({
+			example:
+				"2 credentials resolved; this verifies refs only, not the backend token.",
+		}),
+	})
+	.openapi("TestConnectionResponse");
+
 /* ---------------- Document ---------------- */
 
 export const DocumentRecordSchema = z

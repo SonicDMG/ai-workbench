@@ -50,6 +50,13 @@ export const ErrorEnvelopeSchema = z.object({
 });
 export type ErrorEnvelope = z.infer<typeof ErrorEnvelopeSchema>;
 
+export const TestConnectionResultSchema = z.object({
+	ok: z.boolean(),
+	kind: WorkspaceKindSchema,
+	details: z.string(),
+});
+export type TestConnectionResult = z.infer<typeof TestConnectionResultSchema>;
+
 export const KIND_LABELS: Record<WorkspaceKind, string> = {
 	astra: "Astra DB",
 	hcd: "Hyper-Converged Database",
