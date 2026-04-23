@@ -188,7 +188,7 @@ Providers available today:
 
 Future providers (Vault, AWS SM, etc.) plug into the same
 `SecretProvider` interface. See
-[`src/secrets/provider.ts`](../src/secrets/provider.ts).
+[`runtimes/typescript/src/secrets/provider.ts`](../runtimes/typescript/src/secrets/provider.ts).
 
 ## Validation rules
 
@@ -216,8 +216,8 @@ don't require a config change anyway.
 
 ## Examples
 
-- [`examples/workbench.yaml`](../examples/workbench.yaml) — the
-  minimal default config the Docker image ships with.
+- [`runtimes/typescript/examples/workbench.yaml`](../runtimes/typescript/examples/workbench.yaml) —
+  the minimal default config the Docker image ships with.
 - [`docs/examples/workbench.yaml`](examples/workbench.yaml) — an
   annotated sample showing all three backend shapes and
   `seedWorkspaces` usage.

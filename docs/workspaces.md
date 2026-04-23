@@ -99,7 +99,8 @@ A workspace owns:
   rows. Each declares dimensions, similarity, embedding config,
   lexical config, reranking config. These are *descriptors*, not the
   vector data itself — the underlying Data API Collection is
-  provisioned in Phase 1b.
+  provisioned transactionally by the workspace's vector-store driver
+  when the descriptor is created.
 - **Catalogs** — named document collections, each optionally
   `vectorStore`-bound to one of the workspace's descriptors.
 

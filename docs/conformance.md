@@ -21,10 +21,12 @@ of which runtime introduced it.
 ```
 conformance/
 ├── scenarios.json              ← machine-readable scenarios
+├── scenarios.md                ← narrative counterpart
 ├── fixtures/                   ← expected normalized responses
 │   ├── workspace-crud-basic.json
 │   ├── catalog-under-workspace.json
-│   └── vector-store-definition.json
+│   ├── vector-store-definition.json
+│   └── vector-store-upsert-and-search.json
 ├── mock-astra/
 │   └── server.ts               ← stand-in Astra endpoint (Node)
 ├── normalize.mjs               ← shape-agnostic placeholder scrubber
@@ -71,6 +73,7 @@ Current scenarios:
 | `workspace-crud-basic` | Workspace POST / GET / PUT / DELETE lifecycle |
 | `catalog-under-workspace` | Catalogs scoped per workspace |
 | `vector-store-definition` | Vector-store descriptor create + read |
+| `vector-store-upsert-and-search` | Phase 1b data plane — upsert, search with payload filter, single-record delete (and re-delete noop) |
 
 More land as Phase 2 routes (documents, ingest, search, queries)
 ship.
@@ -129,8 +132,9 @@ The drift test is part of the main Vitest suite:
 npm test
 ```
 
-See `runtimes/typescript/tests/conformance/drift.test.ts` — 4 tests (3 scenarios + one
-"every scenario has a fixture" sanity check).
+See `runtimes/typescript/tests/conformance/drift.test.ts` — one
+test per scenario plus one "every scenario has a fixture" sanity
+check.
 
 ### Regenerating fixtures
 
@@ -160,9 +164,9 @@ pip install -e '.[dev]'
 pytest
 ```
 
-Until Stefano implements the FastAPI routes, `xfail(strict=True)`
-markers guard the scenarios. Each marker comes off as its scenario
-goes green.
+Until the Python runtime's FastAPI routes are implemented,
+`xfail(strict=True)` markers guard the scenarios. Each marker comes
+off as its scenario goes green.
 
 ## The mock Astra server
 

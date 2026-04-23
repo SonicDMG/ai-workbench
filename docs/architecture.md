@@ -43,8 +43,8 @@ embedded with the UI, and alternatives live under
 
 ## The "green box" model
 
-Cédrick's architecture diagram has one green box per language-native
-runtime. Every green box:
+The architecture is one green box per language-native runtime.
+Every green box:
 
 - Serves the same `/api/v1/*` surface.
 - Speaks Astra via its own language-native SDK internally.
@@ -197,7 +197,9 @@ is separate — chosen via `workbench.yaml`.
 
 **`wb_vector_store_by_workspace` is a DESCRIPTOR row**, not the
 vector data. The actual Data API Collection holding vectors is a
-separate object provisioned when Phase 1b lands.
+separate object, provisioned transactionally by the workspace's
+vector-store driver (see the *Vector-store drivers* section above)
+when the descriptor is created.
 
 ## Isolation and scoping
 

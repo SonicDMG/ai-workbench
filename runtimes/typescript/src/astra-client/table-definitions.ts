@@ -1,10 +1,10 @@
 /**
  * Data API Table DDL for the AI Workbench control-plane tables.
  *
- * Shapes match the CQL schema Cédrick published — snake_case column
- * names, composite primary keys where appropriate. The runtime calls
- * these at startup with `ifNotExists: true` so restarting against an
- * already-populated keyspace is safe.
+ * Shapes match the canonical workbench CQL schema — snake_case
+ * column names, composite primary keys where appropriate. The runtime
+ * calls these at startup with `ifNotExists: true` so restarting
+ * against an already-populated keyspace is safe.
  *
  * The record shape returned to the application (camelCase) is produced
  * by {@link ../astra-client/converters} — the Python runtime does the
