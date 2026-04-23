@@ -23,5 +23,29 @@ export default defineConfig({
 	build: {
 		outDir: "dist",
 		sourcemap: true,
+		rollupOptions: {
+			output: {
+				// Deliberate manual chunking:
+				//  - `react` gets its own chunk so router + query both pin to
+				//    the same copy (Vite hoists duplicates otherwise).
+				//  - `query` is heavy (~40kB gz) but used on every page.
+				//  - `forms` is only pulled in on detail / onboarding routes.
+				//    With lazy routes it still splits automatically, but
+				//    naming it stabilizes the URL across builds.
+				//  - `radix` is a cluster of primitives; grouping them avoids
+				//    dozens of tiny async chunks.
+				manualChunks: {
+					react: ["react", "react-dom", "react-router-dom"],
+					query: ["@tanstack/react-query"],
+					forms: ["react-hook-form", "@hookform/resolvers", "zod"],
+					radix: [
+						"@radix-ui/react-dialog",
+						"@radix-ui/react-label",
+						"@radix-ui/react-select",
+						"@radix-ui/react-slot",
+					],
+				},
+			},
+		},
 	},
 });

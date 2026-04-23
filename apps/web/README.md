@@ -52,6 +52,26 @@ container, UI + backend.
 For a local smoke test without Docker, `npm run preview` serves
 `dist/` against the dev-mode runtime via the Vite proxy.
 
+### Bundle layout
+
+The production build splits into named vendor chunks +
+route-level lazy chunks rather than one monolithic bundle. The
+split is declared in [`vite.config.ts`](vite.config.ts):
+
+| Chunk | Contents | When it loads |
+|---|---|---|
+| `index` | App shell, workspace-list page, auth UI | Initial page load |
+| `react` | `react`, `react-dom`, `react-router-dom` | Initial page load |
+| `query` | `@tanstack/react-query` | Initial page load |
+| `radix` | All `@radix-ui/*` primitives | Initial page load |
+| `forms` | `react-hook-form`, `@hookform/resolvers`, `zod` | Only when a form renders (lazy via the detail / onboarding routes) |
+| `OnboardingPage` | The two-step onboarding wizard | `/onboarding` visit |
+| `WorkspaceDetailPage` | Detail + edit + API-key + test-connection panels | `/workspaces/:uid` visit |
+
+Route components are lazy via `React.lazy(...)` and wrapped in a
+`<Suspense fallback={<LoadingState />}>` at the shell level, so
+navigation shows the shared loader while the chunk streams.
+
 ## What's here
 
 | Route | Purpose |
