@@ -9,6 +9,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
+	assertPlatformAccess,
 	assertWorkspaceAccess,
 	filterToAccessibleWorkspaces,
 } from "../../auth/authz.js";
@@ -76,6 +77,11 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: WorkspaceRecordSchema } },
 					description: "Workspace created",
 				},
+				403: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description:
+						"Authenticated subject is scoped to specific workspaces and cannot create new ones",
+				},
 				409: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
 					description: "Duplicate uid",
@@ -83,6 +89,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
+			assertPlatformAccess(c);
 			const body = c.req.valid("json");
 			const record = await store.createWorkspace(body);
 			return c.json(record, 201);

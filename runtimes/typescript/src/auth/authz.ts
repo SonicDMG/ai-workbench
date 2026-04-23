@@ -55,3 +55,29 @@ export function filterToAccessibleWorkspaces<
 	const allowed = new Set(scopes);
 	return rows.filter((w) => allowed.has(w.uid));
 }
+
+/**
+ * Guard for operations that aren't tied to any specific workspace —
+ * right now only `POST /api/v1/workspaces` (create). These are
+ * "platform-level" actions: acceptable for anonymous (already vetted
+ * by `anonymousPolicy`) and for unscoped subjects (operator tokens
+ * with `workspaceScopes: null`), but NOT for a scoped subject, whose
+ * scope list is by definition an exhaustive enumeration of what they
+ * may reach. Letting a scoped key create a brand-new workspace would
+ * be a silent privilege escalation.
+ *
+ * Split from `assertWorkspaceAccess` because the failure message
+ * ("cannot create a workspace") is more useful to the caller than
+ * the per-workspace variant, and because the two helpers should
+ * read differently at the call site so a reviewer can tell which
+ * invariant a route is enforcing.
+ */
+export function assertPlatformAccess(c: Context<AppEnv>): void {
+	const auth = c.get("auth");
+	if (!auth || auth.anonymous) return;
+	const scopes = auth.subject?.workspaceScopes;
+	if (scopes === null || scopes === undefined) return;
+	throw new ForbiddenError(
+		"scoped subjects cannot perform platform-level operations (create workspace)",
+	);
+}

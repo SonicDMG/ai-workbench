@@ -91,12 +91,21 @@ Per-route role checks (RBAC) land in a later phase.
 | Subject | Can reach |
 |---|---|
 | anonymous (`anonymousPolicy: allow`) | all workspaces, unchanged |
-| authenticated, `workspaceScopes: null` | all workspaces (unscoped — operator/admin tokens will land here in Phase 4) |
-| authenticated, `workspaceScopes: [...]` | only workspaces whose uid appears in the list |
+| authenticated, `workspaceScopes: null` | all workspaces + platform-level operations (unscoped — operator/admin tokens will land here in Phase 4) |
+| authenticated, `workspaceScopes: [...]` | only workspaces whose uid appears in the list; **cannot** create new workspaces |
 
 A workspace-scoped API key (the only kind the Phase 2 UI issues)
 carries exactly the workspace that produced it, so a key minted
 in workspace A is a 403 on every route under workspace B.
+
+**Platform-level operations.** Creating a new workspace (`POST
+/api/v1/workspaces`) isn't tied to any existing workspace, so
+`assertWorkspaceAccess` can't gate it. A second helper,
+`assertPlatformAccess`, refuses the request when the subject has a
+non-null scope list — otherwise a workspace-scoped key could
+silently escalate by minting a fresh tenant outside its scope and
+operating against it. Anonymous callers and unscoped subjects
+(operator tokens) pass through.
 
 ### Header format
 

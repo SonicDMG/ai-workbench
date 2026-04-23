@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+	assertPlatformAccess,
 	assertWorkspaceAccess,
 	filterToAccessibleWorkspaces,
 } from "../../src/auth/authz.js";
@@ -98,5 +99,29 @@ describe("filterToAccessibleWorkspaces", () => {
 
 	test("scoped subject with empty scopes gets no rows", () => {
 		expect(filterToAccessibleWorkspaces(ctx(authed([])), rows)).toEqual([]);
+	});
+});
+
+describe("assertPlatformAccess", () => {
+	test("missing auth context passes through (middleware didn't run)", () => {
+		expect(() => assertPlatformAccess(ctx(undefined))).not.toThrow();
+	});
+
+	test("anonymous passes through — anonymousPolicy has already vetted", () => {
+		expect(() => assertPlatformAccess(ctx(anonymous()))).not.toThrow();
+	});
+
+	test("unscoped subject (null) passes through — platform admin", () => {
+		expect(() => assertPlatformAccess(ctx(authed(null)))).not.toThrow();
+	});
+
+	test("scoped subject with a populated scope list is forbidden", () => {
+		expect(() => assertPlatformAccess(ctx(authed([WID_A])))).toThrow(
+			ForbiddenError,
+		);
+	});
+
+	test("scoped subject with an empty scope list is still forbidden", () => {
+		expect(() => assertPlatformAccess(ctx(authed([])))).toThrow(ForbiddenError);
 	});
 });
