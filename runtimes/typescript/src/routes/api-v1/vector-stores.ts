@@ -20,6 +20,7 @@
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type {
@@ -99,6 +100,7 @@ export function vectorStoreRoutes(
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const rows = await store.listVectorStores(workspaceId);
 			return c.json([...rows], 200);
 		},
@@ -143,6 +145,7 @@ export function vectorStoreRoutes(
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const workspace = await requireWorkspace(store, workspaceId);
 
@@ -189,6 +192,7 @@ export function vectorStoreRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, vectorStoreId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const descriptor = await requireDescriptor(
 				store,
 				workspaceId,
@@ -232,6 +236,7 @@ export function vectorStoreRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, vectorStoreId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateVectorStore(
 				workspaceId,
@@ -264,6 +269,7 @@ export function vectorStoreRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, vectorStoreId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const workspace = await requireWorkspace(store, workspaceId);
 			const descriptor = await store.getVectorStore(workspaceId, vectorStoreId);
 			if (!descriptor) {
@@ -313,6 +319,7 @@ export function vectorStoreRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, vectorStoreId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const workspace = await requireWorkspace(store, workspaceId);
 			const descriptor = await requireDescriptor(
@@ -355,6 +362,7 @@ export function vectorStoreRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, vectorStoreId, recordId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const workspace = await requireWorkspace(store, workspaceId);
 			const descriptor = await requireDescriptor(
 				store,
@@ -404,6 +412,7 @@ export function vectorStoreRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, vectorStoreId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const workspace = await requireWorkspace(store, workspaceId);
 			const descriptor = await requireDescriptor(

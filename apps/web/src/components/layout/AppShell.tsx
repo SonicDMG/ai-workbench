@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { TokenMenu } from "@/components/auth/TokenMenu";
 import { BrandMark } from "@/components/brand/BrandMark";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -22,6 +23,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 						</div>
 					</Link>
 					<nav className="flex items-center gap-1 text-sm">
+						<TokenMenu />
 						<a
 							href="/docs"
 							target="_blank"

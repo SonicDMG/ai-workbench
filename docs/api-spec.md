@@ -71,7 +71,7 @@ human-readable and may change. Currently emitted:
 |---|---|---|
 | 400 | `validation_error` | Request body / params / query failed Zod validation. `message` carries the first failing field path and its reason (`name: Name is required`, `credentialsRef.token: expected '<provider>:<path>', e.g. 'env:FOO'`). |
 | 401 | `unauthorized` | Missing / malformed / invalid bearer token. `WWW-Authenticate: Bearer` set. See [`auth.md`](auth.md). |
-| 403 | `forbidden` | Token is valid but the subject lacks permission for the requested resource (reserved for the RBAC phase). |
+| 403 | `forbidden` | Token is valid but the subject's `workspaceScopes` doesn't include the target workspace. Also reserved for role-based checks in the upcoming RBAC phase. |
 | 404 | `not_found` | Unknown route |
 | 404 | `workspace_not_found` | Workspace UID doesn't exist |
 | 404 | `catalog_not_found` | Catalog UID doesn't exist in workspace |

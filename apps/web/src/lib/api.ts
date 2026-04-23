@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getAuthToken } from "./authToken";
 import {
 	type ApiKeyRecord,
 	ApiKeyRecordSchema,
@@ -39,11 +40,17 @@ async function request<T>(
 	init: RequestInit,
 	responseSchema: z.ZodType<T> | null,
 ): Promise<T> {
+	const token = getAuthToken();
+	const authHeader: Record<string, string> = token
+		? { authorization: `Bearer ${token}` }
+		: {};
+
 	const res = await fetch(`${BASE}${path}`, {
 		...init,
 		headers: {
 			"content-type": "application/json",
 			accept: "application/json",
+			...authHeader,
 			...(init.headers ?? {}),
 		},
 	});

@@ -60,9 +60,27 @@ interface AuthContext {
 }
 ```
 
-Route handlers read it via `c.get("auth")`. Authorization
-enforcement (per-route role checks) is not in this phase — that
-lands with RBAC. Today the context is informational.
+Route handlers read it via `c.get("auth")`. Workspace-scoped
+authorization is enforced inside each `/api/v1/workspaces/*`
+handler via `assertWorkspaceAccess(c, workspaceId)` — an
+authenticated subject whose `workspaceScopes` does not include
+the target workspace gets `403 forbidden`. Anonymous and
+unscoped subjects pass through (unchanged behavior); `GET
+/workspaces` additionally filters its response to the subject's
+scopes so scoped callers see only workspaces they can reach.
+Per-route role checks (RBAC) land in a later phase.
+
+### Authorization model
+
+| Subject | Can reach |
+|---|---|
+| anonymous (`anonymousPolicy: allow`) | all workspaces, unchanged |
+| authenticated, `workspaceScopes: null` | all workspaces (unscoped — operator/admin tokens will land here in Phase 4) |
+| authenticated, `workspaceScopes: [...]` | only workspaces whose uid appears in the list |
+
+A workspace-scoped API key (the only kind the Phase 2 UI issues)
+carries exactly the workspace that produced it, so a key minted
+in workspace A is a 403 on every route under workspace B.
 
 ### Header format
 
@@ -87,13 +105,39 @@ error:
 | Status | Code | When |
 |---|---|---|
 | 401 | `unauthorized` | Missing / malformed / invalid / expired token. `WWW-Authenticate: Bearer` set. |
-| 403 | `forbidden` | Token was valid but the subject lacks permission for the requested resource. Used by RBAC in a later phase. |
+| 403 | `forbidden` | Token was valid but the subject's `workspaceScopes` does not include the target workspace. Also reserved for role-based checks in a later RBAC phase. |
 
 ### Operational routes stay open
 
 `/`, `/healthz`, `/readyz`, `/version`, `/docs`, and
 `/api/v1/openapi.json` bypass the middleware. Load balancers and
-ops tooling always need to reach these.
+ops tooling always need to reach these, and the Scalar-rendered
+reference UI at `/docs` hardcodes the OpenAPI URL — both must
+load even when `anonymousPolicy: reject` is set. The middleware
+is mounted at `/api/v1/workspaces/*`, not `/api/v1/*`, to make
+this behavior explicit.
+
+## UI token flow
+
+The bundled web UI (at `/`) surfaces a **key** menu in the
+header. Clicking it opens a dialog where an operator pastes a
+`wb_live_*` token; the token is stored in `localStorage` under
+`wb_auth_token` and attached as `Authorization: Bearer <token>`
+on every `/api/v1/*` fetch.
+
+A `ShieldCheck` icon + the prefix preview (e.g. `wb_live_abc123…`)
+shows at a glance which token is active. "Clear" removes it,
+after which calls go out unauthenticated — fine when `mode:
+disabled` or `anonymousPolicy: allow`, but the UI will start
+receiving `401 unauthorized` under strict modes.
+
+**XSS caveat.** `localStorage` is readable by any JS on the
+origin. That's acceptable for the self-hosted workbench UI
+(whose trust boundary is the runtime's own deployment) but not
+for embeds of third-party scripts. Phase 3's OIDC flow will
+migrate off paste-a-token onto a proper login with
+short-lived, in-memory (or httpOnly-cookie-backed) access
+tokens.
 
 ## Threat model
 

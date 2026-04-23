@@ -6,6 +6,7 @@
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import { makeOpenApi } from "../../lib/openapi.js";
@@ -44,6 +45,7 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const rows = await store.listCatalogs(workspaceId);
 			return c.json([...rows], 200);
 		},
@@ -80,6 +82,7 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.createCatalog(workspaceId, body);
 			return c.json(record, 201);
@@ -111,6 +114,7 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, catalogId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getCatalog(workspaceId, catalogId);
 			if (!record) throw new ControlPlaneNotFoundError("catalog", catalogId);
 			return c.json(record, 200);
@@ -147,6 +151,7 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, catalogId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateCatalog(workspaceId, catalogId, body);
 			return c.json(record, 200);
@@ -175,6 +180,7 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, catalogId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const { deleted } = await store.deleteCatalog(workspaceId, catalogId);
 			if (!deleted) throw new ControlPlaneNotFoundError("catalog", catalogId);
 			return c.body(null, 204);

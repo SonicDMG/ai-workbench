@@ -83,12 +83,16 @@ apps/web/
 │   │   ├── api.ts                   ← typed fetch client, ApiError
 │   │   ├── schemas.ts               ← Zod mirrors of runtime types
 │   │   ├── query.ts                 ← QueryClient + key factory
+│   │   ├── authToken.ts             ← localStorage bearer-token helpers
 │   │   └── utils.ts                 ← cn() + formatDate()
 │   ├── hooks/
-│   │   └── useWorkspaces.ts         ← list/get/create/update/delete hooks
+│   │   ├── useWorkspaces.ts         ← list/get/create/update/delete hooks
+│   │   ├── useApiKeys.ts            ← workspace API-key mutations
+│   │   └── useAuthToken.ts          ← reactive bearer-token hook
 │   ├── components/
 │   │   ├── ui/                      ← Button, Input, Card, Dialog, Select, Label
 │   │   ├── layout/AppShell.tsx
+│   │   ├── auth/TokenMenu.tsx       ← header bearer-token menu
 │   │   ├── common/states.tsx        ← Loading / Error / Empty
 │   │   └── workspaces/
 │   │       ├── KindBadge.tsx
@@ -117,6 +121,15 @@ apps/web/
   bare "no workspaces" screen; they land directly in the wizard.
 - **List order is deterministic.** The runtime sorts by `createdAt`
   (with `uid` as tie-breaker), so the grid is stable across reloads.
+- **Bearer-token menu.** The header carries a key icon that opens a
+  dialog for pasting a workspace-scoped `wb_live_*` token. The value
+  lives in `localStorage` under `wb_auth_token` and rides every
+  `/api/v1/*` fetch as `Authorization: Bearer …`. Clearing it reverts
+  to unauthenticated calls — fine in `auth.mode: disabled`, but the
+  runtime will start returning `401 unauthorized` under strict modes.
+  The menu's icon and prefix preview reflect whether a token is
+  attached. See [`docs/auth.md`](../../docs/auth.md) for the caveats
+  and Phase 3 OIDC migration plan.
 
 ## House rules
 

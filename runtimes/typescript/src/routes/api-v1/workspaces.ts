@@ -8,6 +8,10 @@
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import {
+	assertWorkspaceAccess,
+	filterToAccessibleWorkspaces,
+} from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import { makeOpenApi } from "../../lib/openapi.js";
@@ -48,7 +52,9 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const rows = await store.listWorkspaces();
-			return c.json([...rows], 200);
+			// Scoped callers only see workspaces their subject can touch;
+			// anonymous / unscoped callers see everything.
+			return c.json([...filterToAccessibleWorkspaces(c, rows)], 200);
 		},
 	);
 
@@ -103,6 +109,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getWorkspace(workspaceId);
 			if (!record)
 				throw new ControlPlaneNotFoundError("workspace", workspaceId);
@@ -137,6 +144,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateWorkspace(workspaceId, body);
 			return c.json(record, 200);
@@ -161,6 +169,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const { deleted } = await store.deleteWorkspace(workspaceId);
 			if (!deleted)
 				throw new ControlPlaneNotFoundError("workspace", workspaceId);
@@ -193,6 +202,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const ws = await store.getWorkspace(workspaceId);
 			if (!ws) throw new ControlPlaneNotFoundError("workspace", workspaceId);
 

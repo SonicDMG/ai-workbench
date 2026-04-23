@@ -1015,3 +1015,135 @@ describe("api-key routes + apiKey mode end-to-end", () => {
 		expect(body.error.message).toMatch(/revoked/i);
 	});
 });
+
+describe("workspace-scoped authorization (cross-workspace)", () => {
+	async function seedTwoWithKey() {
+		const { app, store } = makeApp({ mode: "apiKey" });
+		const a = await store.createWorkspace({ name: "a", kind: "astra" });
+		const b = await store.createWorkspace({ name: "b", kind: "astra" });
+		const created = await json(
+			await app.request(`/api/v1/workspaces/${a.uid}/api-keys`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ label: "a-key" }),
+			}),
+		);
+		return { app, store, a, b, token: created.plaintext as string };
+	}
+
+	test("a key scoped to A can GET its own workspace", async () => {
+		const { app, a, token } = await seedTwoWithKey();
+		const res = await app.request(`/api/v1/workspaces/${a.uid}`, {
+			headers: { authorization: `Bearer ${token}` },
+		});
+		expect(res.status).toBe(200);
+	});
+
+	test("a key scoped to A gets 403 on GET /workspaces/B", async () => {
+		const { app, b, token } = await seedTwoWithKey();
+		const res = await app.request(`/api/v1/workspaces/${b.uid}`, {
+			headers: { authorization: `Bearer ${token}` },
+		});
+		expect(res.status).toBe(403);
+		const body = await json(res);
+		expect(body.error.code).toBe("forbidden");
+	});
+
+	test("a key scoped to A cannot list B's api-keys", async () => {
+		const { app, b, token } = await seedTwoWithKey();
+		const res = await app.request(`/api/v1/workspaces/${b.uid}/api-keys`, {
+			headers: { authorization: `Bearer ${token}` },
+		});
+		expect(res.status).toBe(403);
+	});
+
+	test("a key scoped to A cannot issue a new key in B", async () => {
+		const { app, b, token } = await seedTwoWithKey();
+		const res = await app.request(`/api/v1/workspaces/${b.uid}/api-keys`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				authorization: `Bearer ${token}`,
+			},
+			body: JSON.stringify({ label: "sneaky" }),
+		});
+		expect(res.status).toBe(403);
+	});
+
+	test("a key scoped to A cannot revoke B's key", async () => {
+		const { app, b, token } = await seedTwoWithKey();
+		// Seed a key in B anonymously (the UI's happy-path before auth is locked).
+		const bKey = await json(
+			await app.request(`/api/v1/workspaces/${b.uid}/api-keys`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ label: "b-key" }),
+			}),
+		);
+		const res = await app.request(
+			`/api/v1/workspaces/${b.uid}/api-keys/${bKey.key.keyId}`,
+			{
+				method: "DELETE",
+				headers: { authorization: `Bearer ${token}` },
+			},
+		);
+		expect(res.status).toBe(403);
+	});
+
+	test("a key scoped to A cannot touch B's catalogs / vector-stores / documents", async () => {
+		const { app, b, token } = await seedTwoWithKey();
+		const bearer = { authorization: `Bearer ${token}` };
+		expect(
+			(
+				await app.request(`/api/v1/workspaces/${b.uid}/catalogs`, {
+					headers: bearer,
+				})
+			).status,
+		).toBe(403);
+		expect(
+			(
+				await app.request(`/api/v1/workspaces/${b.uid}/vector-stores`, {
+					headers: bearer,
+				})
+			).status,
+		).toBe(403);
+	});
+
+	test("GET /workspaces returns only the workspaces in the caller's scope", async () => {
+		const { app, a, b, token } = await seedTwoWithKey();
+		const res = await app.request("/api/v1/workspaces", {
+			headers: { authorization: `Bearer ${token}` },
+		});
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		const uids = body.map((w: { uid: string }) => w.uid);
+		expect(uids).toContain(a.uid);
+		expect(uids).not.toContain(b.uid);
+	});
+
+	test("anonymous callers still see everything (anonymousPolicy: allow preserves status quo)", async () => {
+		const { app, a, b } = await seedTwoWithKey();
+		const res = await app.request("/api/v1/workspaces");
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		const uids = body.map((w: { uid: string }) => w.uid);
+		expect(uids).toContain(a.uid);
+		expect(uids).toContain(b.uid);
+	});
+});
+
+describe("auth bypasses OpenAPI and docs", () => {
+	test("GET /api/v1/openapi.json works even when anonymousPolicy rejects", async () => {
+		const { app } = makeApp({ anonymousPolicy: "reject" });
+		const res = await app.request("/api/v1/openapi.json");
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.openapi).toBe("3.1.0");
+	});
+
+	test("GET /docs works even when anonymousPolicy rejects", async () => {
+		const { app } = makeApp({ anonymousPolicy: "reject" });
+		const res = await app.request("/docs");
+		expect(res.status).toBe(200);
+	});
+});

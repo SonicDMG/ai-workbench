@@ -12,6 +12,7 @@
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import { makeOpenApi } from "../../lib/openapi.js";
@@ -56,6 +57,7 @@ export function documentRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, catalogId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const rows = await store.listDocuments(workspaceId, catalogId);
 			return c.json([...rows], 200);
 		},
@@ -95,6 +97,7 @@ export function documentRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, catalogId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.createDocument(workspaceId, catalogId, body);
 			return c.json(record, 201);
@@ -127,6 +130,7 @@ export function documentRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, catalogId, documentId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getDocument(
 				workspaceId,
 				catalogId,
@@ -168,6 +172,7 @@ export function documentRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, catalogId, documentId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateDocument(
 				workspaceId,
@@ -202,6 +207,7 @@ export function documentRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, catalogId, documentId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const { deleted } = await store.deleteDocument(
 				workspaceId,
 				catalogId,

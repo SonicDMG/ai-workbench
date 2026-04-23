@@ -45,9 +45,12 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 
 	app.use("*", requestId(opts.requestIdHeader));
 
-	// Auth scoped to /api/v1. Operational routes stay open so
-	// load balancers / ops tooling can always hit /healthz etc.
-	app.use("/api/v1/*", authMiddleware(opts.auth));
+	// Auth scoped to the actual resource tree at /api/v1/workspaces/*.
+	// Operational routes stay open (load balancers / ops), and so do
+	// /api/v1/openapi.json + /docs — the machine-readable contract
+	// and the human-facing reference UI must work even when strict
+	// auth is on (docs says they bypass; the UI hardcodes the URL).
+	app.use("/api/v1/workspaces/*", authMiddleware(opts.auth));
 
 	app.route("/", operationalRoutes(opts.store));
 	app.route(
