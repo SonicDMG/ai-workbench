@@ -22,9 +22,9 @@ Astra Data API (via language-native SDK: astrapy, astra-db-ts, …)
 
 | Runtime | Path | Status | Astra SDK |
 |---|---|---|---|
-| TypeScript | [`typescript/`](./typescript/) | Operational through Phase 1b (workspaces + catalogs + vector-store CRUD + data plane) | `@datastax/astra-db-ts` |
+| TypeScript | [`typescript/`](./typescript/) | Operational through Phase 2a (workspaces + catalogs + vector-store CRUD + data plane + document metadata CRUD) | `@datastax/astra-db-ts` |
 | Python | [`python/`](./python/) | Scaffold — routes return 501 until implemented | `astrapy` (pending) |
-| Java | not yet started | — | `astra-db-java` |
+| Java | [`java/`](./java/) | Scaffold (Spring Boot) — routes return 501 until implemented | `astra-db-java` (pending) |
 
 The TypeScript runtime is the **default ship path** — it gets bundled
 with the UI into one Docker image. Alternative-language runtimes

@@ -165,10 +165,15 @@ ai-workbench/
 │   │   ├── package.json
 │   │   ├── tsconfig.json
 │   │   └── Dockerfile
-│   └── python/                       # Python runtime (FastAPI, scaffold)
-│       ├── src/workbench/
-│       ├── tests/
-│       ├── pyproject.toml
+│   ├── python/                       # Python runtime (FastAPI, scaffold)
+│   │   ├── src/workbench/
+│   │   ├── tests/
+│   │   ├── pyproject.toml
+│   │   └── README.md
+│   └── java/                         # Java runtime (Spring Boot, scaffold)
+│       ├── src/main/java/com/datastax/aiworkbench/
+│       ├── src/test/java/com/datastax/aiworkbench/
+│       ├── build.gradle.kts
 │       └── README.md
 ├── conformance/                      # Cross-runtime contract harness
 │   ├── scenarios.json

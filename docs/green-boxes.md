@@ -21,9 +21,9 @@ picks which one to target at deploy time via `BACKEND_URL`.
 
 | Runtime | Location | Status | Astra SDK |
 |---|---|---|---|
-| **TypeScript** (default) | [`runtimes/typescript/`](../runtimes/typescript/) | Operational through Phase 1b (workspace/catalog/vector-store CRUD + data plane) | `@datastax/astra-db-ts` |
+| **TypeScript** (default) | [`runtimes/typescript/`](../runtimes/typescript/) | Operational through Phase 2a (workspace/catalog/vector-store CRUD + data plane + document metadata CRUD) | `@datastax/astra-db-ts` |
 | **Python** | [`runtimes/python/`](../runtimes/python/) | FastAPI scaffold — routes return 501 until implemented | `astrapy` (pending) |
-| Java | not yet started | — | `astra-db-java` |
+| **Java** | [`runtimes/java/`](../runtimes/java/) | Spring Boot scaffold — routes return 501 until implemented | `astra-db-java` (pending) |
 
 The TypeScript runtime is **the default ship path**: it gets bundled
 with the UI into one Docker image, so operators deploying the UI get
@@ -122,3 +122,15 @@ the quickstart, environment variables, and house rules.
 Currently every `/api/v1/*` route scaffolds to `HTTP 501
 not_implemented` with the canonical error envelope. Operational
 routes (`/healthz`, `/version`, `/`, `/docs`) work today.
+
+## Java runtime specifics
+
+See [`runtimes/java/README.md`](../runtimes/java/README.md) for the
+quickstart, environment variables, and house rules.
+
+Spring Boot 3 + Java 21 + Gradle. Same scaffold posture as the Python
+runtime — operational routes (`/healthz`, `/version`, `/`, `/docs`)
+work today; every `/api/v1/*` route throws `NotImplementedApiError` →
+501 with the canonical envelope. Java records under
+`com.datastax.aiworkbench.model` mirror the TS `*Record` types one-to-
+one so JSON maps cleanly.

@@ -1,0 +1,27 @@
+server:
+  address: ${WORKBENCH_HOST:0.0.0.0}
+  port: ${WORKBENCH_PORT:8080}
+
+spring:
+  application:
+    name: ai-workbench-runtime-java
+  jackson:
+    default-property-inclusion: NON_NULL
+
+logging:
+  level:
+    root: ${WORKBENCH_LOG_LEVEL:INFO}
+
+# /docs → Swagger UI; /api/v1/openapi.json → machine-readable doc.
+springdoc:
+  api-docs:
+    path: /api/v1/openapi.json
+  swagger-ui:
+    path: /docs
+
+# Astra is optional in the scaffold — fill these in (or set the matching
+# env vars) once the Astra-backed layer is wired up.
+astra:
+  endpoint: ${ASTRA_DB_API_ENDPOINT:}
+  token: ${ASTRA_DB_APPLICATION_TOKEN:}
+  keyspace: ${ASTRA_DB_KEYSPACE:workbench}
