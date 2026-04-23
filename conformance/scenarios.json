@@ -254,5 +254,33 @@
 				"path": "/api/v1/workspaces/$1.uid/test-connection"
 			}
 		]
+	},
+	{
+		"slug": "workspace-api-key-lifecycle",
+		"description": "Full API-key CRUD: issue (plaintext shown once, hash never exposed) → list → revoke (soft-revoke, row stays) → list (revokedAt populated). Pins the `plaintext + key` envelope on POST and the stripped-hash shape on GET.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/api-keys",
+				"body": { "label": "ci" }
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid/api-keys"
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.uid/api-keys/$2.key.keyId"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid/api-keys"
+			}
+		]
 	}
 ]

@@ -6,6 +6,7 @@ import { CopyButton } from "@/components/common/CopyButton";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ApiKeysPanel } from "@/components/workspaces/ApiKeysPanel";
 import { DeleteDialog } from "@/components/workspaces/DeleteDialog";
 import { KindBadge } from "@/components/workspaces/KindBadge";
 import { TestConnectionPanel } from "@/components/workspaces/TestConnectionPanel";
@@ -201,11 +202,18 @@ export function WorkspaceDetailPage() {
 			)}
 
 			{!editing ? (
-				<Card>
-					<CardContent className="pt-5">
-						<TestConnectionPanel uid={data.uid} />
-					</CardContent>
-				</Card>
+				<>
+					<Card>
+						<CardContent className="pt-5">
+							<TestConnectionPanel uid={data.uid} />
+						</CardContent>
+					</Card>
+					<Card>
+						<CardContent className="pt-5">
+							<ApiKeysPanel workspace={data.uid} />
+						</CardContent>
+					</Card>
+				</>
 			) : null}
 
 			<DeleteDialog

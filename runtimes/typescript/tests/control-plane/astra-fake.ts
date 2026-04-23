@@ -23,6 +23,8 @@ import type {
 	TableUpdateFilter,
 } from "@datastax/astra-db-ts";
 import type {
+	ApiKeyLookupRow,
+	ApiKeyRow,
 	CatalogRow,
 	DocumentRow,
 	VectorStoreRow,
@@ -97,5 +99,7 @@ export function createFakeTablesBundle(): TablesBundle {
 		catalogs: new FakeTable<CatalogRow>(),
 		vectorStores: new FakeTable<VectorStoreRow>(),
 		documents: new FakeTable<DocumentRow>(),
+		apiKeys: new FakeTable<ApiKeyRow>(),
+		apiKeyLookup: new FakeTable<ApiKeyLookupRow>(),
 	};
 }

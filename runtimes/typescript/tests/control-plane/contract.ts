@@ -321,5 +321,116 @@ export function runContract(name: string, factory: ContractFactory): void {
 				await cleanup?.();
 			}
 		});
+
+		test("persistApiKey writes a row and findApiKeyByPrefix finds it", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const rec = await store.persistApiKey(ws.uid, {
+					keyId: "00000000-0000-0000-0000-0000000000aa",
+					prefix: "abcdef123456",
+					hash: "scrypt$deadbeef$cafef00d",
+					label: "ci",
+				});
+				expect(rec.revokedAt).toBeNull();
+				expect(rec.lastUsedAt).toBeNull();
+
+				const byPrefix = await store.findApiKeyByPrefix("abcdef123456");
+				expect(byPrefix?.keyId).toBe(rec.keyId);
+				expect(byPrefix?.workspace).toBe(ws.uid);
+
+				const list = await store.listApiKeys(ws.uid);
+				expect(list.map((k) => k.keyId)).toEqual([rec.keyId]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("persistApiKey rejects duplicate prefix across workspaces", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const a = await store.createWorkspace({ name: "a", kind: "mock" });
+				const b = await store.createWorkspace({ name: "b", kind: "mock" });
+				await store.persistApiKey(a.uid, {
+					keyId: "00000000-0000-0000-0000-0000000000aa",
+					prefix: "samesameaaaa",
+					hash: "scrypt$a$a",
+					label: "one",
+				});
+				await expect(
+					store.persistApiKey(b.uid, {
+						keyId: "00000000-0000-0000-0000-0000000000bb",
+						prefix: "samesameaaaa",
+						hash: "scrypt$b$b",
+						label: "two",
+					}),
+				).rejects.toBeInstanceOf(ControlPlaneConflictError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("revokeApiKey stamps revokedAt and the row stays listed", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const rec = await store.persistApiKey(ws.uid, {
+					keyId: "00000000-0000-0000-0000-0000000000aa",
+					prefix: "xxxyyyzzzaaa",
+					hash: "scrypt$s$h",
+					label: "ci",
+				});
+				const result = await store.revokeApiKey(ws.uid, rec.keyId);
+				expect(result.revoked).toBe(true);
+				const again = await store.getApiKey(ws.uid, rec.keyId);
+				expect(again?.revokedAt).not.toBeNull();
+
+				// Re-revoke is a no-op.
+				const noop = await store.revokeApiKey(ws.uid, rec.keyId);
+				expect(noop.revoked).toBe(false);
+
+				// Still visible in list.
+				const list = await store.listApiKeys(ws.uid);
+				expect(list).toHaveLength(1);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteWorkspace cascades to api keys and their prefix index", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await store.persistApiKey(ws.uid, {
+					keyId: "00000000-0000-0000-0000-0000000000aa",
+					prefix: "cascadecascad",
+					hash: "scrypt$s$h",
+					label: "ci",
+				});
+				await store.deleteWorkspace(ws.uid);
+				expect(await store.findApiKeyByPrefix("cascadecascad")).toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("touchApiKey bumps lastUsedAt", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const rec = await store.persistApiKey(ws.uid, {
+					keyId: "00000000-0000-0000-0000-0000000000aa",
+					prefix: "touchabcdefaa",
+					hash: "scrypt$s$h",
+					label: "ci",
+				});
+				await new Promise((r) => setTimeout(r, 5));
+				await store.touchApiKey(ws.uid, rec.keyId);
+				const fresh = await store.getApiKey(ws.uid, rec.keyId);
+				expect(fresh?.lastUsedAt).not.toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
 	});
 }

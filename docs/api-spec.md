@@ -291,6 +291,70 @@ backend or validate a resolved token against the remote service.
 
 ---
 
+## `/api/v1/workspaces/{workspaceId}/api-keys`
+
+Workspace-scoped bearer tokens. Documented in [`auth.md`](auth.md);
+re-capped here for the route contract.
+
+### `GET`
+
+List every key ever issued for the workspace, including revoked
+ones. Never exposes the `hash` column.
+
+An `ApiKey`:
+
+```json
+{
+  "workspace": "…",
+  "keyId": "…",
+  "prefix": "abc123xyz789",
+  "label": "ci",
+  "createdAt": "…",
+  "lastUsedAt": null,
+  "revokedAt": null,
+  "expiresAt": null
+}
+```
+
+- **200** — array of `ApiKey`
+- **404** `workspace_not_found`
+
+### `POST`
+
+Issue a new key. The plaintext is returned **exactly once** — the
+runtime stores only a scrypt digest.
+
+**Request**
+
+```json
+{ "label": "ci", "expiresAt": null }
+```
+
+**Response 201**
+
+```json
+{
+  "plaintext": "wb_live_abc123xyz789_…",
+  "key": { "...ApiKey..." }
+}
+```
+
+- **201** — created; `plaintext` is the only time you'll see the token
+- **400** — missing / empty label
+- **404** `workspace_not_found`
+
+### `DELETE /{keyId}`
+
+Soft-revoke: stamps `revokedAt`, leaves the row visible so audit
+tools still see the history. The next request bearing this token
+gets `401 unauthorized`. Re-revoking an already-revoked key is a
+no-op that still returns `204`.
+
+- **204** — revoked (or was already revoked)
+- **404** `workspace_not_found` / `api_key_not_found`
+
+---
+
 ## `/api/v1/workspaces/{workspaceId}/catalogs`
 
 ### `GET`

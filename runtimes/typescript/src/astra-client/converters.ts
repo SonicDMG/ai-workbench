@@ -7,12 +7,14 @@
  */
 
 import type {
+	ApiKeyRecord,
 	CatalogRecord,
 	DocumentRecord,
 	VectorStoreRecord,
 	WorkspaceRecord,
 } from "../control-plane/types.js";
 import type {
+	ApiKeyRow,
 	CatalogRow,
 	DocumentRow,
 	VectorStoreRow,
@@ -176,5 +178,37 @@ export function documentFromRow(row: DocumentRow): DocumentRecord {
 		status: row.status,
 		errorMessage: row.error_message,
 		metadata: { ...(row.metadata ?? {}) },
+	};
+}
+
+/* ------------------------------------------------------------------ */
+/* API key                                                            */
+/* ------------------------------------------------------------------ */
+
+export function apiKeyToRow(r: ApiKeyRecord): ApiKeyRow {
+	return {
+		workspace: r.workspace,
+		key_id: r.keyId,
+		prefix: r.prefix,
+		hash: r.hash,
+		label: r.label,
+		created_at: r.createdAt,
+		last_used_at: r.lastUsedAt,
+		revoked_at: r.revokedAt,
+		expires_at: r.expiresAt,
+	};
+}
+
+export function apiKeyFromRow(row: ApiKeyRow): ApiKeyRecord {
+	return {
+		workspace: row.workspace,
+		keyId: row.key_id,
+		prefix: row.prefix,
+		hash: row.hash,
+		label: row.label,
+		createdAt: row.created_at,
+		lastUsedAt: row.last_used_at,
+		revokedAt: row.revoked_at,
+		expiresAt: row.expires_at,
 	};
 }

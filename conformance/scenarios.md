@@ -179,6 +179,30 @@ runtime-level unit tests, not as conformance fixtures.)*
 
 ---
 
+## Scenario 9 — `workspace-api-key-lifecycle`
+
+Full CRUD for workspace-scoped API keys:
+
+1. `POST /api/v1/workspaces` — body `{"name": "w", "kind": "mock"}`
+2. `POST /api/v1/workspaces/$1.uid/api-keys` — body `{"label": "ci"}`
+   *(expect `201`, body `{plaintext: "wb_live_…", key: {...}}`)*
+3. `GET  /api/v1/workspaces/$1.uid/api-keys`
+   *(expect one row; no `hash` field visible)*
+4. `DELETE /api/v1/workspaces/$1.uid/api-keys/$2.key.keyId`
+   *(expect `204`)*
+5. `GET  /api/v1/workspaces/$1.uid/api-keys`
+   *(expect same row, now with `revokedAt` populated)*
+
+Pins the envelope invariants: plaintext returned exactly once;
+`hash` never crosses the boundary; revoke is soft (row survives,
+`revokedAt` set). Tokens + prefixes are normalized to
+`{{WB_TOKEN_N}}` / `{{WB_PREFIX_N}}` placeholders so the fixture
+stays deterministic across runs.
+
+Fixture: `fixtures/workspace-api-key-lifecycle.json`.
+
+---
+
 ## Adding a scenario
 
 1. Append a new section to this file.

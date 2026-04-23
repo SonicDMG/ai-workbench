@@ -76,6 +76,37 @@ export interface CatalogRecord {
 	readonly updatedAt: string;
 }
 
+/**
+ * Workspace-scoped API key. Persisted on create, looked up by
+ * `prefix` on every authenticated request, compared by
+ * constant-time digest against `hash`.
+ *
+ * Token wire format (spoken by clients):
+ *   `wb_live_<prefix>_<secret>`
+ * where `prefix` is a 12-char base36 lookup token (non-secret,
+ * logged, used as the bulk index) and `secret` is a 32-char
+ * random (secret, never stored in plaintext).
+ *
+ * The `keyId` is a stable UUID used in the URL path
+ * (`/api-keys/{keyId}`). Separate from the wire prefix because
+ * UUIDs aren't URL-friendly-enough for a prefix while also being
+ * fast to look up.
+ */
+export interface ApiKeyRecord {
+	readonly workspace: string;
+	readonly keyId: string;
+	/** 12-char base36 lookup token. Unique across all workspaces. */
+	readonly prefix: string;
+	/** scrypt digest of the full token. Never leaves the runtime. */
+	readonly hash: string;
+	/** Human-readable name shown in the workspace's key list. */
+	readonly label: string;
+	readonly createdAt: string;
+	readonly lastUsedAt: string | null;
+	readonly revokedAt: string | null;
+	readonly expiresAt: string | null;
+}
+
 /** Metadata about an ingested document. */
 export interface DocumentRecord {
 	readonly workspace: string;

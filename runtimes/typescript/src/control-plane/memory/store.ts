@@ -16,6 +16,7 @@
 
 import { randomUUID } from "node:crypto";
 import {
+	byCreatedAtThenKeyId,
 	byCreatedAtThenUid,
 	DEFAULT_LEXICAL,
 	DEFAULT_RERANKING,
@@ -32,12 +33,14 @@ import type {
 	CreateDocumentInput,
 	CreateVectorStoreInput,
 	CreateWorkspaceInput,
+	PersistApiKeyInput,
 	UpdateCatalogInput,
 	UpdateDocumentInput,
 	UpdateVectorStoreInput,
 	UpdateWorkspaceInput,
 } from "../store.js";
 import type {
+	ApiKeyRecord,
 	CatalogRecord,
 	DocumentRecord,
 	VectorStoreRecord,
@@ -68,6 +71,8 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		Map<string, VectorStoreRecord>
 	>();
 	private readonly documents = new Map<string, Map<string, DocumentRecord>>();
+	private readonly apiKeys = new Map<string, Map<string, ApiKeyRecord>>();
+	private readonly apiKeyPrefixIndex = new Map<string, ApiKeyRecord>();
 
 	/* ---------------- Workspaces ---------------- */
 
@@ -130,6 +135,12 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		this.vectorStores.delete(uid);
 		for (const key of Array.from(this.documents.keys())) {
 			if (key.startsWith(`${uid}:`)) this.documents.delete(key);
+		}
+		const keys = this.apiKeys.get(uid);
+		if (keys) {
+			for (const rec of keys.values())
+				this.apiKeyPrefixIndex.delete(rec.prefix);
+			this.apiKeys.delete(uid);
 		}
 		return { deleted };
 	}
@@ -402,6 +413,83 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 			deleted:
 				this.documents.get(docKey(workspace, catalog))?.delete(uid) ?? false,
 		};
+	}
+
+	/* ---------------- API keys ---------------- */
+
+	async listApiKeys(workspace: string): Promise<readonly ApiKeyRecord[]> {
+		await this.assertWorkspace(workspace);
+		return Array.from(this.apiKeys.get(workspace)?.values() ?? []).sort(
+			byCreatedAtThenKeyId,
+		);
+	}
+
+	async getApiKey(
+		workspace: string,
+		keyId: string,
+	): Promise<ApiKeyRecord | null> {
+		await this.assertWorkspace(workspace);
+		return this.apiKeys.get(workspace)?.get(keyId) ?? null;
+	}
+
+	async persistApiKey(
+		workspace: string,
+		input: PersistApiKeyInput,
+	): Promise<ApiKeyRecord> {
+		await this.assertWorkspace(workspace);
+		if (this.apiKeyPrefixIndex.has(input.prefix)) {
+			throw new ControlPlaneConflictError(
+				`api key with prefix '${input.prefix}' already exists`,
+			);
+		}
+		const bucket = this.apiKeys.get(workspace) ?? new Map();
+		if (bucket.has(input.keyId)) {
+			throw new ControlPlaneConflictError(
+				`api key with id '${input.keyId}' already exists in workspace '${workspace}'`,
+			);
+		}
+		const now = nowIso();
+		const record: ApiKeyRecord = {
+			workspace,
+			keyId: input.keyId,
+			prefix: input.prefix,
+			hash: input.hash,
+			label: input.label,
+			createdAt: now,
+			lastUsedAt: null,
+			revokedAt: null,
+			expiresAt: input.expiresAt ?? null,
+		};
+		bucket.set(input.keyId, record);
+		this.apiKeys.set(workspace, bucket);
+		this.apiKeyPrefixIndex.set(input.prefix, record);
+		return record;
+	}
+
+	async revokeApiKey(
+		workspace: string,
+		keyId: string,
+	): Promise<{ revoked: boolean }> {
+		await this.assertWorkspace(workspace);
+		const existing = this.apiKeys.get(workspace)?.get(keyId);
+		if (!existing) return { revoked: false };
+		if (existing.revokedAt !== null) return { revoked: false };
+		const revoked: ApiKeyRecord = { ...existing, revokedAt: nowIso() };
+		this.apiKeys.get(workspace)?.set(keyId, revoked);
+		this.apiKeyPrefixIndex.set(existing.prefix, revoked);
+		return { revoked: true };
+	}
+
+	async findApiKeyByPrefix(prefix: string): Promise<ApiKeyRecord | null> {
+		return this.apiKeyPrefixIndex.get(prefix) ?? null;
+	}
+
+	async touchApiKey(workspace: string, keyId: string): Promise<void> {
+		const existing = this.apiKeys.get(workspace)?.get(keyId);
+		if (!existing) return;
+		const touched: ApiKeyRecord = { ...existing, lastUsedAt: nowIso() };
+		this.apiKeys.get(workspace)?.set(keyId, touched);
+		this.apiKeyPrefixIndex.set(existing.prefix, touched);
 	}
 
 	/* ---------------- Helpers ---------------- */

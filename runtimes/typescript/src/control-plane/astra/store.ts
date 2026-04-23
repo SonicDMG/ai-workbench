@@ -25,6 +25,8 @@
 
 import { randomUUID } from "node:crypto";
 import {
+	apiKeyFromRow,
+	apiKeyToRow,
 	catalogFromRow,
 	catalogToRow,
 	documentFromRow,
@@ -36,6 +38,7 @@ import {
 } from "../../astra-client/converters.js";
 import type { TablesBundle } from "../../astra-client/tables.js";
 import {
+	byCreatedAtThenKeyId,
 	byCreatedAtThenUid,
 	DEFAULT_LEXICAL,
 	DEFAULT_RERANKING,
@@ -52,12 +55,14 @@ import type {
 	CreateDocumentInput,
 	CreateVectorStoreInput,
 	CreateWorkspaceInput,
+	PersistApiKeyInput,
 	UpdateCatalogInput,
 	UpdateDocumentInput,
 	UpdateVectorStoreInput,
 	UpdateWorkspaceInput,
 } from "../store.js";
 import type {
+	ApiKeyRecord,
 	CatalogRecord,
 	DocumentRecord,
 	VectorStoreRecord,
@@ -127,11 +132,21 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 	async deleteWorkspace(uid: string): Promise<{ deleted: boolean }> {
 		const existing = await this.tables.workspaces.findOne({ uid });
 		if (!existing) return { deleted: false };
+		// Tear down the prefix-lookup entries before the owning table so a
+		// concurrent verify can't hit a lookup pointing at a just-deleted
+		// key row.
+		const keyRows = await this.tables.apiKeys
+			.find({ workspace: uid })
+			.toArray();
+		for (const row of keyRows) {
+			await this.tables.apiKeyLookup.deleteOne({ prefix: row.prefix });
+		}
 		await this.tables.workspaces.deleteOne({ uid });
 		await Promise.all([
 			this.tables.catalogs.deleteMany({ workspace: uid }),
 			this.tables.vectorStores.deleteMany({ workspace: uid }),
 			this.tables.documents.deleteMany({ workspace: uid }),
+			this.tables.apiKeys.deleteMany({ workspace: uid }),
 		]);
 		return { deleted: true };
 	}
@@ -447,6 +462,101 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			document_uid: uid,
 		});
 		return { deleted: true };
+	}
+
+	/* ---------------- API keys ---------------- */
+
+	async listApiKeys(workspace: string): Promise<readonly ApiKeyRecord[]> {
+		await this.assertWorkspace(workspace);
+		const rows = await this.tables.apiKeys.find({ workspace }).toArray();
+		return rows.map(apiKeyFromRow).sort(byCreatedAtThenKeyId);
+	}
+
+	async getApiKey(
+		workspace: string,
+		keyId: string,
+	): Promise<ApiKeyRecord | null> {
+		await this.assertWorkspace(workspace);
+		const row = await this.tables.apiKeys.findOne({
+			workspace,
+			key_id: keyId,
+		});
+		return row ? apiKeyFromRow(row) : null;
+	}
+
+	async persistApiKey(
+		workspace: string,
+		input: PersistApiKeyInput,
+	): Promise<ApiKeyRecord> {
+		await this.assertWorkspace(workspace);
+		if (await this.tables.apiKeyLookup.findOne({ prefix: input.prefix })) {
+			throw new ControlPlaneConflictError(
+				`api key with prefix '${input.prefix}' already exists`,
+			);
+		}
+		if (await this.tables.apiKeys.findOne({ workspace, key_id: input.keyId })) {
+			throw new ControlPlaneConflictError(
+				`api key with id '${input.keyId}' already exists in workspace '${workspace}'`,
+			);
+		}
+		const now = nowIso();
+		const record: ApiKeyRecord = {
+			workspace,
+			keyId: input.keyId,
+			prefix: input.prefix,
+			hash: input.hash,
+			label: input.label,
+			createdAt: now,
+			lastUsedAt: null,
+			revokedAt: null,
+			expiresAt: input.expiresAt ?? null,
+		};
+		// Insert the row first, then the lookup entry. A crash after the
+		// primary insert and before the lookup leaves an unreachable key
+		// — inconvenient but not unsafe (the bad record can't be used to
+		// auth since the verifier goes through the lookup).
+		await this.tables.apiKeys.insertOne(apiKeyToRow(record));
+		await this.tables.apiKeyLookup.insertOne({
+			prefix: input.prefix,
+			workspace,
+			key_id: input.keyId,
+		});
+		return record;
+	}
+
+	async revokeApiKey(
+		workspace: string,
+		keyId: string,
+	): Promise<{ revoked: boolean }> {
+		await this.assertWorkspace(workspace);
+		const row = await this.tables.apiKeys.findOne({
+			workspace,
+			key_id: keyId,
+		});
+		if (!row) return { revoked: false };
+		if (row.revoked_at !== null) return { revoked: false };
+		await this.tables.apiKeys.updateOne(
+			{ workspace, key_id: keyId },
+			{ $set: { revoked_at: nowIso() } },
+		);
+		return { revoked: true };
+	}
+
+	async findApiKeyByPrefix(prefix: string): Promise<ApiKeyRecord | null> {
+		const lookup = await this.tables.apiKeyLookup.findOne({ prefix });
+		if (!lookup) return null;
+		const row = await this.tables.apiKeys.findOne({
+			workspace: lookup.workspace,
+			key_id: lookup.key_id,
+		});
+		return row ? apiKeyFromRow(row) : null;
+	}
+
+	async touchApiKey(workspace: string, keyId: string): Promise<void> {
+		await this.tables.apiKeys.updateOne(
+			{ workspace, key_id: keyId },
+			{ $set: { last_used_at: nowIso() } },
+		);
 	}
 
 	/* ---------------- Helpers ---------------- */

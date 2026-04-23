@@ -9,12 +9,18 @@
 
 import { DataAPIClient, type Db } from "@datastax/astra-db-ts";
 import type {
+	ApiKeyLookupRow,
+	ApiKeyRow,
 	CatalogRow,
 	DocumentRow,
 	VectorStoreRow,
 	WorkspaceRow,
 } from "./row-types.js";
 import {
+	API_KEY_LOOKUP_DEFINITION,
+	API_KEY_LOOKUP_TABLE,
+	API_KEYS_DEFINITION,
+	API_KEYS_TABLE,
 	CATALOGS_DEFINITION,
 	CATALOGS_TABLE,
 	DOCUMENTS_DEFINITION,
@@ -52,6 +58,8 @@ export async function openAstraClient(
 		catalogs: db.table<CatalogRow>(CATALOGS_TABLE),
 		vectorStores: db.table<VectorStoreRow>(VECTOR_STORES_TABLE),
 		documents: db.table<DocumentRow>(DOCUMENTS_TABLE),
+		apiKeys: db.table<ApiKeyRow>(API_KEYS_TABLE),
+		apiKeyLookup: db.table<ApiKeyLookupRow>(API_KEY_LOOKUP_TABLE),
 	};
 }
 
@@ -71,6 +79,14 @@ async function ensureTables(db: Db): Promise<void> {
 		}),
 		db.createTable(DOCUMENTS_TABLE, {
 			definition: DOCUMENTS_DEFINITION,
+			ifNotExists: true,
+		}),
+		db.createTable(API_KEYS_TABLE, {
+			definition: API_KEYS_DEFINITION,
+			ifNotExists: true,
+		}),
+		db.createTable(API_KEY_LOOKUP_TABLE, {
+			definition: API_KEY_LOOKUP_DEFINITION,
 			ifNotExists: true,
 		}),
 	]);

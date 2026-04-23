@@ -22,6 +22,7 @@ import { ApiError, errorEnvelope } from "./lib/errors.js";
 import { makeOpenApi } from "./lib/openapi.js";
 import { requestId } from "./lib/request-id.js";
 import type { AppEnv } from "./lib/types.js";
+import { apiKeyRoutes } from "./routes/api-v1/api-keys.js";
 import { catalogRoutes } from "./routes/api-v1/catalogs.js";
 import { documentRoutes } from "./routes/api-v1/documents.js";
 import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
@@ -55,6 +56,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	);
 	app.route("/api/v1/workspaces", catalogRoutes(opts.store));
 	app.route("/api/v1/workspaces", documentRoutes(opts.store));
+	app.route("/api/v1/workspaces", apiKeyRoutes(opts.store));
 	app.route(
 		"/api/v1/workspaces",
 		vectorStoreRoutes({ store: opts.store, drivers: opts.drivers }),

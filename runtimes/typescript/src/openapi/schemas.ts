@@ -370,4 +370,47 @@ export const RecordIdParamSchema = z
 		example: "doc-1",
 	});
 
+export const ApiKeyIdParamSchema = z
+	.string()
+	.uuid()
+	.openapi({
+		param: { name: "keyId", in: "path" },
+		example: "00000000-0000-0000-0000-000000000000",
+	});
+
+/* ---------------- API key ---------------- */
+
+export const ApiKeyRecordSchema = z
+	.object({
+		workspace: z.string().uuid(),
+		keyId: z.string().uuid(),
+		prefix: z
+			.string()
+			.openapi({ description: "Non-secret lookup prefix of the wire token" }),
+		label: z.string(),
+		createdAt: z.string(),
+		lastUsedAt: z.string().nullable(),
+		revokedAt: z.string().nullable(),
+		expiresAt: z.string().nullable(),
+	})
+	.openapi("ApiKey");
+
+export const CreateApiKeyInputSchema = z
+	.object({
+		label: z
+			.string()
+			.min(1, "label is required")
+			.max(120, "label must be at most 120 characters"),
+		expiresAt: z.string().datetime().nullable().optional(),
+	})
+	.openapi("CreateApiKeyInput");
+
+export const CreatedApiKeyResponseSchema = z
+	.object({
+		/** Returned ONCE on create; never retrievable again. */
+		plaintext: z.string().openapi({ example: "wb_live_abc123xyz789_…" }),
+		key: ApiKeyRecordSchema,
+	})
+	.openapi("CreatedApiKeyResponse");
+
 export { DocumentStatusSchema };

@@ -64,6 +64,33 @@ export const TestConnectionResultSchema = z.object({
 });
 export type TestConnectionResult = z.infer<typeof TestConnectionResultSchema>;
 
+export const ApiKeyRecordSchema = z.object({
+	workspace: z.string().uuid(),
+	keyId: z.string().uuid(),
+	prefix: z.string(),
+	label: z.string(),
+	createdAt: z.string(),
+	lastUsedAt: z.string().nullable(),
+	revokedAt: z.string().nullable(),
+	expiresAt: z.string().nullable(),
+});
+export type ApiKeyRecord = z.infer<typeof ApiKeyRecordSchema>;
+
+export const CreateApiKeyInputSchema = z.object({
+	label: z
+		.string()
+		.min(1, "Label is required")
+		.max(120, "Label must be at most 120 characters"),
+	expiresAt: z.string().datetime().nullable().optional(),
+});
+export type CreateApiKeyInput = z.infer<typeof CreateApiKeyInputSchema>;
+
+export const CreatedApiKeyResponseSchema = z.object({
+	plaintext: z.string(),
+	key: ApiKeyRecordSchema,
+});
+export type CreatedApiKeyResponse = z.infer<typeof CreatedApiKeyResponseSchema>;
+
 export const KIND_LABELS: Record<WorkspaceKind, string> = {
 	astra: "Astra DB",
 	hcd: "Hyper-Converged Database",

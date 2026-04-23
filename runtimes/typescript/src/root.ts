@@ -32,7 +32,7 @@ async function main(): Promise<void> {
 
 	const store = await storeFromConfig(config, secrets);
 	const drivers = buildVectorStoreDriverRegistry({ secrets });
-	const auth = buildAuthResolver(config.auth);
+	const auth = buildAuthResolver(config.auth, { store });
 
 	const app = createApp({
 		store,

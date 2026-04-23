@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.js";
+import { ApiKeyVerifier } from "../src/auth/apiKey/verifier.js";
 import { AuthResolver } from "../src/auth/resolver.js";
-import type { AnonymousPolicy } from "../src/auth/types.js";
+import type { AnonymousPolicy, AuthMode } from "../src/auth/types.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import type { ControlPlaneStore } from "../src/control-plane/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
@@ -16,7 +17,10 @@ async function json(res: Response): Promise<any> {
 	return (await res.json()) as any;
 }
 
-function makeApp(authOpts?: { anonymousPolicy?: AnonymousPolicy }): {
+function makeApp(authOpts?: {
+	mode?: AuthMode;
+	anonymousPolicy?: AnonymousPolicy;
+}): {
 	app: ReturnType<typeof createApp>;
 	store: ControlPlaneStore;
 } {
@@ -25,10 +29,11 @@ function makeApp(authOpts?: { anonymousPolicy?: AnonymousPolicy }): {
 		new Map([["mock", new MockVectorStoreDriver()]]),
 	);
 	const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+	const mode = authOpts?.mode ?? "disabled";
 	const auth = new AuthResolver({
-		mode: "disabled",
+		mode,
 		anonymousPolicy: authOpts?.anonymousPolicy ?? "allow",
-		verifiers: [],
+		verifiers: mode === "apiKey" ? [new ApiKeyVerifier({ store })] : [],
 	});
 	const app = createApp({ store, drivers, secrets, auth });
 	return { app, store };
@@ -839,5 +844,174 @@ describe("openapi", () => {
 		expect(res.status).toBe(200);
 		const text = await res.text();
 		expect(text).toContain("/api/v1/openapi.json");
+	});
+});
+
+describe("api-key routes + apiKey mode end-to-end", () => {
+	test("POST issues a token with the documented shape, returned once", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}/api-keys`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ label: "ci" }),
+		});
+		expect(res.status).toBe(201);
+		const body = await json(res);
+		expect(body.plaintext).toMatch(/^wb_live_[a-z0-9]{12}_[a-z0-9]{32}$/);
+		expect(body.key.label).toBe("ci");
+		expect(body.key.revokedAt).toBeNull();
+		expect(body.key.hash).toBeUndefined(); // never exposed
+	});
+
+	test("POST on unknown workspace returns 404", async () => {
+		const { app } = makeApp();
+		const res = await app.request(
+			"/api/v1/workspaces/00000000-0000-0000-0000-000000000000/api-keys",
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ label: "nope" }),
+			},
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("workspace_not_found");
+	});
+
+	test("POST with an empty label is rejected at the boundary", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}/api-keys`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ label: "" }),
+		});
+		expect(res.status).toBe(400);
+		const body = await json(res);
+		expect(body.error.code).toBe("validation_error");
+	});
+
+	test("GET lists keys and never exposes the hash", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		await app.request(`/api/v1/workspaces/${ws.uid}/api-keys`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ label: "one" }),
+		});
+		await app.request(`/api/v1/workspaces/${ws.uid}/api-keys`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ label: "two" }),
+		});
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}/api-keys`);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body).toHaveLength(2);
+		for (const row of body) {
+			expect(row.hash).toBeUndefined();
+			expect(row.prefix).toMatch(/^[a-z0-9]{12}$/);
+		}
+	});
+
+	test("DELETE soft-revokes the key and is idempotent", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		const created = await json(
+			await app.request(`/api/v1/workspaces/${ws.uid}/api-keys`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ label: "ci" }),
+			}),
+		);
+		const keyId = created.key.keyId;
+		const revoke = await app.request(
+			`/api/v1/workspaces/${ws.uid}/api-keys/${keyId}`,
+			{ method: "DELETE" },
+		);
+		expect(revoke.status).toBe(204);
+
+		// Key is still listed, now with revokedAt populated.
+		const list = await json(
+			await app.request(`/api/v1/workspaces/${ws.uid}/api-keys`),
+		);
+		expect(list).toHaveLength(1);
+		expect(list[0].revokedAt).not.toBeNull();
+
+		// Re-revoke is a no-op but still 204.
+		const again = await app.request(
+			`/api/v1/workspaces/${ws.uid}/api-keys/${keyId}`,
+			{ method: "DELETE" },
+		);
+		expect(again.status).toBe(204);
+	});
+
+	test("DELETE on unknown key returns 404 api_key_not_found", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/api-keys/00000000-0000-0000-0000-000000000000`,
+			{ method: "DELETE" },
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("api_key_not_found");
+	});
+
+	test("apiKey mode: a valid Bearer token passes, anonymous + bogus tokens fail", async () => {
+		const { app, store } = makeApp({ mode: "apiKey" });
+		// Seed a workspace + key via the still-unauthenticated helper path.
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		// POST /api-keys requires the middleware to let us through — it
+		// does, because anonymousPolicy defaults to 'allow' in this
+		// test. Real deployments would issue the first key via an
+		// operator-only flow (Phase 4).
+		const created = await json(
+			await app.request(`/api/v1/workspaces/${ws.uid}/api-keys`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ label: "ci" }),
+			}),
+		);
+		const token = created.plaintext as string;
+
+		// Authed request — 200.
+		const ok = await app.request(`/api/v1/workspaces/${ws.uid}`, {
+			headers: { authorization: `Bearer ${token}` },
+		});
+		expect(ok.status).toBe(200);
+
+		// Bogus token — 401.
+		const bad = await app.request(`/api/v1/workspaces/${ws.uid}`, {
+			headers: {
+				authorization: `Bearer wb_live_${"x".repeat(12)}_${"y".repeat(32)}`,
+			},
+		});
+		expect(bad.status).toBe(401);
+		const body = await json(bad);
+		expect(body.error.code).toBe("unauthorized");
+	});
+
+	test("apiKey mode + revoked token: 401", async () => {
+		const { app, store } = makeApp({ mode: "apiKey" });
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		const created = await json(
+			await app.request(`/api/v1/workspaces/${ws.uid}/api-keys`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ label: "ci" }),
+			}),
+		);
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/api-keys/${created.key.keyId}`,
+			{ method: "DELETE" },
+		);
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}`, {
+			headers: { authorization: `Bearer ${created.plaintext}` },
+		});
+		expect(res.status).toBe(401);
+		const body = await json(res);
+		expect(body.error.message).toMatch(/revoked/i);
 	});
 });

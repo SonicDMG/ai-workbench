@@ -1,0 +1,114 @@
+{
+	"slug": "workspace-api-key-lifecycle",
+	"description": "Full API-key CRUD: issue (plaintext shown once, hash never exposed) → list → revoke (soft-revoke, row stays) → list (revokedAt populated). Pins the `plaintext + key` envelope on POST and the stripped-hash shape on GET.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"endpoint": null,
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"label": "ci"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/api-keys"
+			},
+			"response": {
+				"body": {
+					"key": {
+						"createdAt": "{{TS}}",
+						"expiresAt": null,
+						"keyId": "{{UUID_2}}",
+						"label": "ci",
+						"lastUsedAt": null,
+						"prefix": "{{WB_PREFIX_1}}",
+						"revokedAt": null,
+						"workspace": "{{UUID_1}}"
+					},
+					"plaintext": "{{WB_TOKEN_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/api-keys"
+			},
+			"response": {
+				"body": [
+					{
+						"createdAt": "{{TS}}",
+						"expiresAt": null,
+						"keyId": "{{UUID_2}}",
+						"label": "ci",
+						"lastUsedAt": null,
+						"prefix": "{{WB_PREFIX_1}}",
+						"revokedAt": null,
+						"workspace": "{{UUID_1}}"
+					}
+				],
+				"status": 200
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}/api-keys/{{UUID_2}}"
+			},
+			"response": {
+				"body": null,
+				"status": 204
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/api-keys"
+			},
+			"response": {
+				"body": [
+					{
+						"createdAt": "{{TS}}",
+						"expiresAt": null,
+						"keyId": "{{UUID_2}}",
+						"label": "ci",
+						"lastUsedAt": null,
+						"prefix": "{{WB_PREFIX_1}}",
+						"revokedAt": "{{TS}}",
+						"workspace": "{{UUID_1}}"
+					}
+				],
+				"status": 200
+			},
+			"step": 5
+		}
+	]
+}

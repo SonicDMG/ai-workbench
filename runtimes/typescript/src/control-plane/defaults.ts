@@ -45,3 +45,17 @@ export function byCreatedAtThenUid<
 	if (a.uid > b.uid) return 1;
 	return 0;
 }
+
+/**
+ * Comparator for records that use `keyId` instead of `uid` for their
+ * identity. Same semantics as {@link byCreatedAtThenUid}.
+ */
+export function byCreatedAtThenKeyId<
+	T extends { readonly createdAt: string; readonly keyId: string },
+>(a: T, b: T): number {
+	if (a.createdAt < b.createdAt) return -1;
+	if (a.createdAt > b.createdAt) return 1;
+	if (a.keyId < b.keyId) return -1;
+	if (a.keyId > b.keyId) return 1;
+	return 0;
+}

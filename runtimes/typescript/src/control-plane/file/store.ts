@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+	byCreatedAtThenKeyId,
 	byCreatedAtThenUid,
 	DEFAULT_LEXICAL,
 	DEFAULT_RERANKING,
@@ -38,12 +39,14 @@ import type {
 	CreateDocumentInput,
 	CreateVectorStoreInput,
 	CreateWorkspaceInput,
+	PersistApiKeyInput,
 	UpdateCatalogInput,
 	UpdateDocumentInput,
 	UpdateVectorStoreInput,
 	UpdateWorkspaceInput,
 } from "../store.js";
 import type {
+	ApiKeyRecord,
 	CatalogRecord,
 	DocumentRecord,
 	VectorStoreRecord,
@@ -51,13 +54,19 @@ import type {
 } from "../types.js";
 import { Mutex } from "./mutex.js";
 
-type Table = "workspaces" | "catalogs" | "vector-stores" | "documents";
+type Table =
+	| "workspaces"
+	| "catalogs"
+	| "vector-stores"
+	| "documents"
+	| "api-keys";
 
 const TABLE_FILES: Record<Table, string> = {
 	workspaces: "workspaces.json",
 	catalogs: "catalogs.json",
 	"vector-stores": "vector-stores.json",
 	documents: "documents.json",
+	"api-keys": "api-keys.json",
 };
 
 export interface FileControlPlaneOptions {
@@ -71,6 +80,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		catalogs: new Mutex(),
 		"vector-stores": new Mutex(),
 		documents: new Mutex(),
+		"api-keys": new Mutex(),
 	};
 
 	constructor(opts: FileControlPlaneOptions) {
@@ -168,6 +178,10 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		}));
 		await this.mutate<"documents", null>("documents", (rows) => ({
 			rows: rows.filter((d) => d.workspace !== uid),
+			result: null,
+		}));
+		await this.mutate<"api-keys", null>("api-keys", (rows) => ({
+			rows: rows.filter((k) => k.workspace !== uid),
 			result: null,
 		}));
 
@@ -532,6 +546,97 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		);
 	}
 
+	/* ---------------- API keys ---------------- */
+
+	async listApiKeys(workspace: string): Promise<readonly ApiKeyRecord[]> {
+		await this.assertWorkspace(workspace);
+		const all = await this.readAll<ApiKeyRecord>("api-keys");
+		return all
+			.filter((k) => k.workspace === workspace)
+			.sort(byCreatedAtThenKeyId);
+	}
+
+	async getApiKey(
+		workspace: string,
+		keyId: string,
+	): Promise<ApiKeyRecord | null> {
+		await this.assertWorkspace(workspace);
+		const all = await this.readAll<ApiKeyRecord>("api-keys");
+		return (
+			all.find((k) => k.workspace === workspace && k.keyId === keyId) ?? null
+		);
+	}
+
+	async persistApiKey(
+		workspace: string,
+		input: PersistApiKeyInput,
+	): Promise<ApiKeyRecord> {
+		await this.assertWorkspace(workspace);
+		return this.mutate<"api-keys", ApiKeyRecord>("api-keys", (rows) => {
+			if (rows.some((k) => k.prefix === input.prefix)) {
+				throw new ControlPlaneConflictError(
+					`api key with prefix '${input.prefix}' already exists`,
+				);
+			}
+			if (
+				rows.some((k) => k.workspace === workspace && k.keyId === input.keyId)
+			) {
+				throw new ControlPlaneConflictError(
+					`api key with id '${input.keyId}' already exists in workspace '${workspace}'`,
+				);
+			}
+			const record: ApiKeyRecord = {
+				workspace,
+				keyId: input.keyId,
+				prefix: input.prefix,
+				hash: input.hash,
+				label: input.label,
+				createdAt: nowIso(),
+				lastUsedAt: null,
+				revokedAt: null,
+				expiresAt: input.expiresAt ?? null,
+			};
+			return { rows: [...rows, record], result: record };
+		});
+	}
+
+	async revokeApiKey(
+		workspace: string,
+		keyId: string,
+	): Promise<{ revoked: boolean }> {
+		await this.assertWorkspace(workspace);
+		return this.mutate<"api-keys", { revoked: boolean }>("api-keys", (rows) => {
+			const idx = rows.findIndex(
+				(k) => k.workspace === workspace && k.keyId === keyId,
+			);
+			if (idx < 0) return { rows, result: { revoked: false } };
+			const existing = rows[idx] as ApiKeyRecord;
+			if (existing.revokedAt !== null) {
+				return { rows, result: { revoked: false } };
+			}
+			const next = [...rows];
+			next[idx] = { ...existing, revokedAt: nowIso() };
+			return { rows: next, result: { revoked: true } };
+		});
+	}
+
+	async findApiKeyByPrefix(prefix: string): Promise<ApiKeyRecord | null> {
+		const all = await this.readAll<ApiKeyRecord>("api-keys");
+		return all.find((k) => k.prefix === prefix) ?? null;
+	}
+
+	async touchApiKey(workspace: string, keyId: string): Promise<void> {
+		await this.mutate<"api-keys", null>("api-keys", (rows) => {
+			const idx = rows.findIndex(
+				(k) => k.workspace === workspace && k.keyId === keyId,
+			);
+			if (idx < 0) return { rows, result: null };
+			const next = [...rows];
+			next[idx] = { ...(rows[idx] as ApiKeyRecord), lastUsedAt: nowIso() };
+			return { rows: next, result: null };
+		});
+	}
+
 	/* ---------------- Plumbing ---------------- */
 
 	private async readAll<T>(table: Table): Promise<T[]> {
@@ -599,4 +704,6 @@ type TableRow<K extends Table> = K extends "workspaces"
 			? VectorStoreRecord
 			: K extends "documents"
 				? DocumentRecord
-				: never;
+				: K extends "api-keys"
+					? ApiKeyRecord
+					: never;

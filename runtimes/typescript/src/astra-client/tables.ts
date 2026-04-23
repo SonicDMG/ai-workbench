@@ -19,6 +19,8 @@ import type {
 	TableUpdateFilter,
 } from "@datastax/astra-db-ts";
 import type {
+	ApiKeyLookupRow,
+	ApiKeyRow,
 	CatalogRow,
 	DocumentRow,
 	VectorStoreRow,
@@ -50,4 +52,6 @@ export interface TablesBundle {
 	readonly catalogs: TableLike<CatalogRow>;
 	readonly vectorStores: TableLike<VectorStoreRow>;
 	readonly documents: TableLike<DocumentRow>;
+	readonly apiKeys: TableLike<ApiKeyRow>;
+	readonly apiKeyLookup: TableLike<ApiKeyLookupRow>;
 }

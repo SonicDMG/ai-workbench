@@ -80,6 +80,46 @@ export const VECTOR_STORES_DEFINITION = {
 	},
 } as const satisfies CreateTableDefinition;
 
+/**
+ * `wb_api_key_by_workspace` — per-workspace list of API keys. The
+ * stored `hash` is a scrypt digest; plaintext is never written. Walked
+ * by the workspace's UI; also the source of truth for revocations.
+ */
+export const API_KEYS_TABLE = "wb_api_key_by_workspace";
+export const API_KEYS_DEFINITION = {
+	columns: {
+		workspace: "uuid",
+		key_id: "uuid",
+		prefix: "text",
+		hash: "text",
+		label: "text",
+		created_at: "timestamp",
+		last_used_at: "timestamp",
+		revoked_at: "timestamp",
+		expires_at: "timestamp",
+	},
+	primaryKey: {
+		partitionBy: ["workspace"],
+		partitionSort: { key_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/**
+ * `wb_api_key_lookup` — secondary index keyed by wire prefix, pointing
+ * at the owning `(workspace, key_id)`. Exists so the auth-middleware
+ * can resolve a prefix in O(1) without scanning every workspace's
+ * key list on every request. Kept in lockstep with `wb_api_key_by_workspace`.
+ */
+export const API_KEY_LOOKUP_TABLE = "wb_api_key_lookup";
+export const API_KEY_LOOKUP_DEFINITION = {
+	columns: {
+		prefix: "text",
+		workspace: "uuid",
+		key_id: "uuid",
+	},
+	primaryKey: "prefix",
+} as const satisfies CreateTableDefinition;
+
 /** `wb_documents_by_catalog` — documents, partitioned by (workspace, catalog). */
 export const DOCUMENTS_TABLE = "wb_documents_by_catalog";
 export const DOCUMENTS_DEFINITION = {

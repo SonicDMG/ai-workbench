@@ -6,9 +6,10 @@ middleware. Operators configure it via the `auth:` block in
 context.
 
 This doc covers the contract, the threat model, the config, and the
-rollout plan. Current status: **Phase 1 — scaffold only**. The
-middleware exists, the config is honored, and the default is
-still "no auth enforced" so existing workflows keep working.
+rollout plan. Current status: **Phase 2 — API keys live**.
+Workspace-scoped `wb_live_*` tokens are now accepted when
+`auth.mode: apiKey` is set. The default is still `disabled` so
+existing workflows keep working.
 
 ## Default posture
 
@@ -119,18 +120,49 @@ Out of scope for now:
 
 | Phase | Ships | Status |
 |---|---|---|
-| 1 | Middleware, config, `disabled` mode | this PR |
-| 2 | `mode: apiKey` — workspace-scoped `wb_live_*` keys, issue/revoke routes, UI | next |
+| 1 | Middleware, config, `disabled` mode | ✅ shipped |
+| 2 | `mode: apiKey` — workspace-scoped `wb_live_*` keys, issue/revoke routes, UI | ✅ shipped |
 | 3 | `mode: oidc` — JWT verification via JWKS; `any` mode enables both | later |
 | 4 | Roles + per-route enforcement; audit logging | later |
 
 Each phase is independently shippable. `disabled` stays the
 default until the operator explicitly opts in.
 
-## Key-prefix convention
+## API keys (Phase 2)
 
-When PR #2 ships API keys, the tokens will use the
-`wb_live_<prefix>_<secret>` shape (similar to Stripe's
-`sk_live_*` or GitHub's `ghp_*`). That makes leaked keys
-immediately greppable in source control and unlocks public secret-
-scanning.
+**Wire format**: `wb_live_<12-char-prefix>_<32-char-secret>`,
+mirroring Stripe (`sk_live_*`) and GitHub (`ghp_*`). The prefix
+half is public (logged, indexed), the secret half is never
+persisted — only a scrypt-salted digest of the full token is
+stored. That makes leaked keys immediately greppable in source
+control and unlocks public secret-scanning.
+
+**Routes**:
+
+- `POST /api/v1/workspaces/{w}/api-keys` — body `{label, expiresAt?}`;
+  response `{plaintext, key}`. The `plaintext` field is returned
+  exactly once and is never retrievable again.
+- `GET /api/v1/workspaces/{w}/api-keys` — lists all keys for the
+  workspace, including revoked ones (with `revokedAt` populated).
+  The `hash` column is never exposed.
+- `DELETE /api/v1/workspaces/{w}/api-keys/{keyId}` — soft-revoke.
+  Leaves the row visible with `revokedAt` set; next request
+  bearing the token gets `401 unauthorized`.
+
+**Storage**: two CQL tables under the Astra control plane —
+`wb_api_key_by_workspace` (primary, partitioned by workspace) and
+`wb_api_key_lookup` (secondary, partitioned by prefix) so the
+verifier resolves a prefix in O(1) without scanning every
+workspace's key list on every request. Memory and file backends
+keep in-process equivalents.
+
+**Verifier behavior**: the `ApiKeyVerifier` parses the wire shape,
+looks up the record by prefix, rejects revoked / expired keys,
+and constant-time-compares the stored digest. On success it bumps
+`lastUsedAt` as a fire-and-forget so operators can see which keys
+are actually in use.
+
+The runtime never auto-creates an initial bootstrap key — that's a
+Phase 4 concern. For now, issue the first key while `mode:
+disabled` (or `apiKey + anonymousPolicy: allow`), then flip to
+strict enforcement.

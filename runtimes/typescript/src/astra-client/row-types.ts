@@ -63,6 +63,24 @@ export interface VectorStoreRow {
 	updated_at: Iso;
 }
 
+export interface ApiKeyRow {
+	workspace: Uuid;
+	key_id: Uuid;
+	prefix: string;
+	hash: string;
+	label: string;
+	created_at: Iso;
+	last_used_at: Iso | null;
+	revoked_at: Iso | null;
+	expires_at: Iso | null;
+}
+
+export interface ApiKeyLookupRow {
+	prefix: string;
+	workspace: Uuid;
+	key_id: Uuid;
+}
+
 export interface DocumentRow {
 	workspace: Uuid;
 	catalog_uid: Uuid;

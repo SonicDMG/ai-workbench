@@ -1,5 +1,10 @@
 import { z } from "zod";
 import {
+	type ApiKeyRecord,
+	ApiKeyRecordSchema,
+	type CreateApiKeyInput,
+	type CreatedApiKeyResponse,
+	CreatedApiKeyResponseSchema,
 	type CreateWorkspaceInput,
 	ErrorEnvelopeSchema,
 	type TestConnectionResult,
@@ -104,6 +109,36 @@ export const api = {
 			`/workspaces/${uid}/test-connection`,
 			{ method: "POST" },
 			TestConnectionResultSchema,
+		),
+
+	listApiKeys: (workspace: string): Promise<ApiKeyRecord[]> =>
+		request(
+			`/workspaces/${workspace}/api-keys`,
+			{ method: "GET" },
+			z.array(ApiKeyRecordSchema),
+		),
+
+	createApiKey: (
+		workspace: string,
+		input: CreateApiKeyInput,
+	): Promise<CreatedApiKeyResponse> =>
+		request(
+			`/workspaces/${workspace}/api-keys`,
+			{
+				method: "POST",
+				body: JSON.stringify({
+					label: input.label.trim(),
+					expiresAt: input.expiresAt ?? null,
+				}),
+			},
+			CreatedApiKeyResponseSchema,
+		),
+
+	revokeApiKey: (workspace: string, keyId: string): Promise<void> =>
+		request(
+			`/workspaces/${workspace}/api-keys/${keyId}`,
+			{ method: "DELETE" },
+			null,
 		),
 };
 
