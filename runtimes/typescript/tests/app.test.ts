@@ -179,7 +179,7 @@ describe("workspace routes", () => {
 		expect(res.status).toBe(404);
 	});
 
-	test("POST with invalid body returns 400", async () => {
+	test("POST with invalid body returns 400 in the canonical envelope", async () => {
 		const { app } = makeApp();
 		const res = await app.request("/api/v1/workspaces", {
 			method: "POST",
@@ -187,6 +187,10 @@ describe("workspace routes", () => {
 			body: JSON.stringify({ kind: "astra" }), // missing name
 		});
 		expect(res.status).toBe(400);
+		const body = await json(res);
+		expect(body.error.code).toBe("validation_error");
+		expect(body.error.message).toContain("name");
+		expect(body.error.requestId).toBeTruthy();
 	});
 
 	test("POST rejects credentialsRef values that aren't SecretRefs", async () => {
@@ -201,6 +205,9 @@ describe("workspace routes", () => {
 			}),
 		});
 		expect(res.status).toBe(400);
+		const body = await json(res);
+		expect(body.error.code).toBe("validation_error");
+		expect(body.error.message).toMatch(/credentialsRef\.token/);
 	});
 
 	test("PUT accepts SecretRef-shaped credentialsRef values", async () => {
@@ -218,7 +225,7 @@ describe("workspace routes", () => {
 		expect(body.credentialsRef).toEqual({ token: "env:NEW_TOKEN" });
 	});
 
-	test("PUT rejects `kind` in the body", async () => {
+	test("PUT rejects `kind` in the body with validation_error envelope", async () => {
 		const { app, store } = makeApp();
 		const ws = await store.createWorkspace(BASE_WORKSPACE);
 		const res = await app.request(`/api/v1/workspaces/${ws.uid}`, {
@@ -227,6 +234,9 @@ describe("workspace routes", () => {
 			body: JSON.stringify({ kind: "mock" }),
 		});
 		expect(res.status).toBe(400);
+		const body = await json(res);
+		expect(body.error.code).toBe("validation_error");
+		expect(body.error.requestId).toBeTruthy();
 		// Workspace unchanged.
 		const after = await store.getWorkspace(ws.uid);
 		expect(after?.kind).toBe("astra");

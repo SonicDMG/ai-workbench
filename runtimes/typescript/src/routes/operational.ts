@@ -1,5 +1,6 @@
-import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { ControlPlaneStore } from "../control-plane/store.js";
+import { makeOpenApi } from "../lib/openapi.js";
 import type { AppEnv } from "../lib/types.js";
 import {
 	BannerSchema,
@@ -12,7 +13,7 @@ import { BUILD_TIME, COMMIT, VERSION } from "../version.js";
 export function operationalRoutes(
 	store: ControlPlaneStore,
 ): OpenAPIHono<AppEnv> {
-	const app = new OpenAPIHono<AppEnv>();
+	const app = makeOpenApi();
 
 	app.openapi(
 		createRoute({

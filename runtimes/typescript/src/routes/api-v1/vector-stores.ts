@@ -19,7 +19,7 @@
  * two stores never drift.
  */
 
-import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type {
@@ -27,6 +27,7 @@ import type {
 	WorkspaceRecord,
 } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
+import { makeOpenApi } from "../../lib/openapi.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	CreateVectorStoreInputSchema,
@@ -72,7 +73,7 @@ export function vectorStoreRoutes(
 	deps: VectorStoreRouteDeps,
 ): OpenAPIHono<AppEnv> {
 	const { store, drivers } = deps;
-	const app = new OpenAPIHono<AppEnv>();
+	const app = makeOpenApi();
 
 	/* ---------------- Descriptor CRUD ---------------- */
 

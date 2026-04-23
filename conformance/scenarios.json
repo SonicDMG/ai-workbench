@@ -200,5 +200,44 @@
 				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid"
 			}
 		]
+	},
+	{
+		"slug": "workspace-kind-is-immutable",
+		"description": "`PUT /workspaces/{uid}` rejects a `kind` field with 400 validation_error. A workspace's backend is immutable after creation; the canonical error envelope must say so.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "astra" }
+			},
+			{
+				"method": "PUT",
+				"path": "/api/v1/workspaces/$1.uid",
+				"body": { "kind": "mock" }
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid"
+			}
+		]
+	},
+	{
+		"slug": "workspace-credentials-must-be-secret-ref",
+		"description": "`credentialsRef` values must match `<provider>:<path>` (e.g. `env:ASTRA_TOKEN`). A raw token value is rejected with 400 validation_error — it never reaches the SecretResolver.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": {
+					"name": "w",
+					"kind": "astra",
+					"credentialsRef": { "token": "raw-token-here" }
+				}
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces"
+			}
+		]
 	}
 ]

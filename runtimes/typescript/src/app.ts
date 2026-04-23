@@ -11,11 +11,12 @@
  *   `/docs`                                       Scalar-rendered docs
  */
 
-import { OpenAPIHono } from "@hono/zod-openapi";
+import type { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import type { ControlPlaneStore } from "./control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "./drivers/registry.js";
 import { ApiError, errorEnvelope } from "./lib/errors.js";
+import { makeOpenApi } from "./lib/openapi.js";
 import { requestId } from "./lib/request-id.js";
 import type { AppEnv } from "./lib/types.js";
 import { catalogRoutes } from "./routes/api-v1/catalogs.js";
@@ -33,7 +34,7 @@ export interface AppOptions {
 }
 
 export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
-	const app = new OpenAPIHono<AppEnv>();
+	const app = makeOpenApi();
 
 	app.use("*", requestId(opts.requestIdHeader));
 

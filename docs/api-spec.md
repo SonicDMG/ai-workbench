@@ -69,7 +69,7 @@ human-readable and may change. Currently emitted:
 
 | Status | Code | When |
 |---|---|---|
-| 400 | (Zod-generated) | Request body / params fail validation |
+| 400 | `validation_error` | Request body / params / query failed Zod validation. `message` carries the first failing field path and its reason (`name: Name is required`, `credentialsRef.token: expected '<provider>:<path>', e.g. 'env:FOO'`). |
 | 404 | `not_found` | Unknown route |
 | 404 | `workspace_not_found` | Workspace UID doesn't exist |
 | 404 | `catalog_not_found` | Catalog UID doesn't exist in workspace |

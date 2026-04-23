@@ -124,6 +124,40 @@ Fixture: `fixtures/document-crud-basic.json`.
 
 ---
 
+## Scenario 6 — `workspace-kind-is-immutable`
+
+Nails down the PR-15 invariant: a workspace's `kind` cannot change
+after creation. Every runtime MUST reject the PUT body with
+`400 validation_error` in the canonical envelope, and the stored
+record MUST still show the original kind.
+
+1. `POST /api/v1/workspaces` — body `{"name": "w", "kind": "astra"}`
+2. `PUT  /api/v1/workspaces/$1.uid` — body `{"kind": "mock"}`
+   *(expect `400 validation_error`)*
+3. `GET  /api/v1/workspaces/$1.uid`
+   *(expect the record still reports `"kind": "astra"`)*
+
+Fixture: `fixtures/workspace-kind-is-immutable.json`.
+
+---
+
+## Scenario 7 — `workspace-credentials-must-be-secret-ref`
+
+Nails down the PR-15 invariant: every value in `credentialsRef` must
+be a SecretRef (`<provider>:<path>` like `env:ASTRA_TOKEN`). Raw
+tokens are rejected at the request boundary — they never reach the
+SecretResolver.
+
+1. `POST /api/v1/workspaces` — body
+   `{"name": "w", "kind": "astra", "credentialsRef": {"token": "raw-token-here"}}`
+   *(expect `400 validation_error`; the workspace is NOT created)*
+2. `GET  /api/v1/workspaces`
+   *(expect an empty list)*
+
+Fixture: `fixtures/workspace-credentials-must-be-secret-ref.json`.
+
+---
+
 ## Adding a scenario
 
 1. Append a new section to this file.

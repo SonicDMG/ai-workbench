@@ -5,9 +5,10 @@
  * workspace exists and raises `workspace_not_found` (404) if not.
  */
 
-import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
+import { makeOpenApi } from "../../lib/openapi.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	CatalogIdParamSchema,
@@ -19,7 +20,7 @@ import {
 } from "../../openapi/schemas.js";
 
 export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
-	const app = new OpenAPIHono<AppEnv>();
+	const app = makeOpenApi();
 
 	app.openapi(
 		createRoute({
