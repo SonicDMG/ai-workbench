@@ -1,4 +1,4 @@
-import { ArrowUpRight, ExternalLink } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Workspace } from "@/lib/schemas";
@@ -33,20 +33,11 @@ export function WorkspaceCard({ workspace }: { workspace: Workspace }) {
 					</dd>
 					<dt className="text-slate-500">Created</dt>
 					<dd className="text-slate-800">{formatDate(workspace.createdAt)}</dd>
-					{workspace.url ? (
+					{workspace.endpoint ? (
 						<>
-							<dt className="text-slate-500">Console</dt>
-							<dd className="text-slate-800 truncate">
-								<a
-									href={workspace.url}
-									target="_blank"
-									rel="noreferrer"
-									onClick={(e) => e.stopPropagation()}
-									className="relative z-10 inline-flex items-center gap-1 text-[var(--color-brand-600)] hover:underline"
-								>
-									Open
-									<ExternalLink className="h-3 w-3" />
-								</a>
+							<dt className="text-slate-500">Endpoint</dt>
+							<dd className="text-slate-800 font-mono truncate">
+								{workspace.endpoint}
 							</dd>
 						</>
 					) : null}

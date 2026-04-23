@@ -20,19 +20,26 @@ import { CredentialsEditor } from "./CredentialsEditor";
  * the upstream SDK documentation uses, so the happy path is "paste
  * your token into your .env and click Create." Everything here is
  * editable — users can remove, rename, or add rows before submit.
+ *
+ * `endpoint` lives on the workspace record directly (not here); the
+ * form pre-fills it separately with `env:ASTRA_DB_API_ENDPOINT`.
  */
 const DEFAULT_CREDENTIALS: Record<WorkspaceKind, Record<string, string>> = {
-	astra: {
-		token: "env:ASTRA_DB_APPLICATION_TOKEN",
-		endpoint: "env:ASTRA_DB_API_ENDPOINT",
-	},
-	// HCD uses the same Astra Data API shape — same env-var convention.
-	hcd: {
-		token: "env:ASTRA_DB_APPLICATION_TOKEN",
-		endpoint: "env:ASTRA_DB_API_ENDPOINT",
-	},
+	astra: { token: "env:ASTRA_DB_APPLICATION_TOKEN" },
+	hcd: { token: "env:ASTRA_DB_APPLICATION_TOKEN" },
 	openrag: {},
 	mock: {},
+};
+
+/**
+ * Starter `endpoint` per kind. Astra / HCD get the canonical env-var
+ * ref; others get an empty default.
+ */
+const DEFAULT_ENDPOINT: Record<WorkspaceKind, string> = {
+	astra: "env:ASTRA_DB_API_ENDPOINT",
+	hcd: "env:ASTRA_DB_API_ENDPOINT",
+	openrag: "",
+	mock: "",
 };
 
 /**
@@ -66,13 +73,13 @@ export function WorkspaceForm(
 			? {
 					name: "",
 					kind,
-					url: "",
+					endpoint: DEFAULT_ENDPOINT[kind],
 					keyspace: "",
 					credentialsRef: { ...DEFAULT_CREDENTIALS[kind] },
 				}
 			: {
 					name: props.workspace.name,
-					url: props.workspace.url ?? "",
+					endpoint: props.workspace.endpoint ?? "",
 					keyspace: props.workspace.keyspace ?? "",
 					credentialsRef: { ...props.workspace.credentialsRef },
 				};
@@ -161,20 +168,33 @@ export function WorkspaceForm(
 			) : null}
 
 			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="url">Console URL</Label>
+				<Label htmlFor="endpoint">
+					{astraLike ? "Data API endpoint" : "Endpoint"}
+				</Label>
 				<Input
-					id="url"
-					type="url"
-					placeholder="https://astra.datastax.com/org/…"
-					aria-invalid={Boolean(errors.url)}
-					{...register("url")}
+					id="endpoint"
+					placeholder={
+						astraLike
+							? "env:ASTRA_DB_API_ENDPOINT or https://<db-id>-<region>.apps.astra.datastax.com"
+							: "endpoint URL or env:VAR ref"
+					}
+					aria-invalid={Boolean(errors.endpoint)}
+					{...register("endpoint")}
 				/>
-				{errors.url ? (
-					<p className="text-xs text-red-600">{errors.url.message as string}</p>
+				{errors.endpoint ? (
+					<p className="text-xs text-red-600">
+						{errors.endpoint.message as string}
+					</p>
+				) : astraLike ? (
+					<p className="text-xs text-slate-500">
+						The per-workspace Data API URL. Paste it in directly, or use a
+						SecretRef like <code className="font-mono">env:VAR</code> /{" "}
+						<code className="font-mono">file:/path</code>. Each Astra DB has its
+						own endpoint — one workspace per DB.
+					</p>
 				) : (
 					<p className="text-xs text-slate-500">
-						Optional link to this backend's native console. Metadata only — the
-						runtime never dials it.
+						Data-plane endpoint for this workspace. URL or SecretRef.
 					</p>
 				)}
 			</div>

@@ -77,15 +77,25 @@ original backend — there's no safe way to transparently migrate them,
 so the runtime doesn't try. Delete and recreate the workspace if the
 backend needs to change.
 
-### `name` and `url`
+### `name` and `endpoint`
 
 - `name` is a **human-readable label**. It is not unique — two
   workspaces can share a name (the UID is the identity). UIs should
   display the name but disambiguate by uid when needed.
-- `url` is **informational metadata** — typically a link to the
-  workspace's console in the backend's native UI (e.g. the Astra DB
-  console). It is not dialed or validated by the runtime; nothing in
-  the data plane reads it. Use it as a bookmark, not a routing hint.
+- `endpoint` is the **data-plane URL** for this workspace's backend.
+  For `astra` / `hcd` workspaces it's the Astra Data API endpoint
+  the vector-store driver dials (`https://<db>-<region>.apps.astra.datastax.com`).
+  Each Astra DB has its own endpoint — put one workspace per DB to
+  route correctly.
+- `endpoint` accepts either a **literal URL** or a **SecretRef**
+  (`env:ASTRA_DB_API_ENDPOINT`, `file:/path`). The driver detects
+  refs by prefix-matching a registered
+  [`SecretProvider`](configuration.md#secrets); literal URLs are
+  used as-is. That lets the same workspace record work in dev
+  (value baked into `.env`) and prod (value injected via a K8s
+  Secret mounted as an env var) without code changes.
+- `mock` / `openrag` workspaces don't dial anything and may leave
+  `endpoint: null`.
 
 ### Credentials
 

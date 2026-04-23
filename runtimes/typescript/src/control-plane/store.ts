@@ -36,7 +36,7 @@ export interface CreateWorkspaceInput {
 	/** Optional — generated if omitted. */
 	readonly uid?: string;
 	readonly name: string;
-	readonly url?: string | null;
+	readonly endpoint?: string | null;
 	readonly kind: WorkspaceKind;
 	readonly credentialsRef?: Readonly<Record<string, SecretRef>>;
 	readonly keyspace?: string | null;
@@ -50,7 +50,7 @@ export interface CreateWorkspaceInput {
  */
 export interface UpdateWorkspaceInput {
 	readonly name?: string;
-	readonly url?: string | null;
+	readonly endpoint?: string | null;
 	readonly credentialsRef?: Readonly<Record<string, SecretRef>>;
 	readonly keyspace?: string | null;
 }

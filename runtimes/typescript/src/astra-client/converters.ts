@@ -27,7 +27,7 @@ export function workspaceToRow(r: WorkspaceRecord): WorkspaceRow {
 	return {
 		uid: r.uid,
 		name: r.name,
-		url: r.url,
+		endpoint: r.endpoint,
 		kind: r.kind,
 		credentials_ref: { ...r.credentialsRef },
 		keyspace: r.keyspace,
@@ -40,7 +40,7 @@ export function workspaceFromRow(row: WorkspaceRow): WorkspaceRecord {
 	return {
 		uid: row.uid,
 		name: row.name,
-		url: row.url,
+		endpoint: row.endpoint,
 		kind: row.kind,
 		credentialsRef: { ...(row.credentials_ref ?? {}) },
 		keyspace: row.keyspace,

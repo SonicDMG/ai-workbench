@@ -19,7 +19,7 @@ import type {
 const WS: WorkspaceRecord = {
 	uid: "11111111-2222-3333-4444-555555555555",
 	name: "prod",
-	url: "https://prod.example",
+	endpoint: "https://prod.example",
 	kind: "astra",
 	credentialsRef: { token: "env:ASTRA_TOKEN", scb: "file:/etc/scb.zip" },
 	keyspace: "workbench",

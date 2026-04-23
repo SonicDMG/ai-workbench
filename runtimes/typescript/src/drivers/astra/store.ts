@@ -91,8 +91,14 @@ export interface AstraCollectionLike {
 	): { toArray(): Promise<Array<Record<string, unknown>>> };
 }
 
+/**
+ * Called with already-resolved connection params. `endpoint` and
+ * `token` are the post-{@link SecretResolver} values; the factory
+ * just builds a `Db` handle. Tests override to inject a fake `Db`.
+ */
 export type DbFactory = (
 	workspace: WorkspaceRecord,
+	endpoint: string,
 	token: string,
 ) => AstraDbLike;
 
@@ -103,14 +109,11 @@ export interface AstraVectorStoreDriverOptions {
 	readonly dbFactory?: DbFactory;
 }
 
-const defaultDbFactory: DbFactory = (workspace, token) => {
-	if (!workspace.url) {
-		throw new WorkspaceMisconfiguredError(workspace.uid, "url");
-	}
+const defaultDbFactory: DbFactory = (workspace, endpoint, token) => {
 	const client = new DataAPIClient(token);
 	const keyspace = workspace.keyspace ?? undefined;
 	return client.db(
-		workspace.url,
+		endpoint,
 		keyspace ? { keyspace } : {},
 	) as unknown as AstraDbLike;
 };
@@ -213,8 +216,8 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 		const cached = this.dbs.get(workspace.uid);
 		if (cached) return cached;
 
-		if (!workspace.url) {
-			throw new WorkspaceMisconfiguredError(workspace.uid, "url");
+		if (!workspace.endpoint) {
+			throw new WorkspaceMisconfiguredError(workspace.uid, "endpoint");
 		}
 		const tokenRef = workspace.credentialsRef.token;
 		if (!tokenRef) {
@@ -223,6 +226,18 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 				"credentialsRef.token",
 			);
 		}
+
+		let endpoint: string;
+		try {
+			endpoint = await this.resolveMaybeRef(workspace.endpoint);
+		} catch (err) {
+			throw new CollectionUnavailableError(
+				`failed to resolve Astra endpoint for workspace '${workspace.uid}': ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			);
+		}
+
 		let token: string;
 		try {
 			token = await this.secrets.resolve(tokenRef);
@@ -233,9 +248,24 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 				}`,
 			);
 		}
-		const db = this.dbFactory(workspace, token);
+
+		const db = this.dbFactory(workspace, endpoint, token);
 		this.dbs.set(workspace.uid, db);
 		return db;
+	}
+
+	/**
+	 * Treat a value as a {@link SecretRef} if its `<prefix>` portion
+	 * matches a registered provider (`env`, `file`, …); otherwise
+	 * return it as-is (literal URL).
+	 */
+	private async resolveMaybeRef(value: string): Promise<string> {
+		const colon = value.indexOf(":");
+		if (colon > 0) {
+			const prefix = value.slice(0, colon).toLowerCase();
+			if (this.secrets.has(prefix)) return this.secrets.resolve(value);
+		}
+		return value;
 	}
 }
 

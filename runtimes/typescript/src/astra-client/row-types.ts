@@ -22,7 +22,7 @@ export type Uuid = string;
 export interface WorkspaceRow {
 	uid: Uuid;
 	name: string;
-	url: string | null;
+	endpoint: string | null;
 	kind: WorkspaceKind;
 	credentials_ref: Record<string, string>;
 	keyspace: string | null;

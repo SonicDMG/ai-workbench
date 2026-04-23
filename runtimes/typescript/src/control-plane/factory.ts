@@ -64,7 +64,7 @@ async function seedMemoryStore(
 		await store.createWorkspace({
 			uid: seed.uid,
 			name: seed.name,
-			url: seed.url ?? null,
+			endpoint: seed.endpoint ?? null,
 			kind: seed.kind,
 			credentialsRef: seed.credentialsRef ?? {},
 			keyspace: seed.keyspace ?? null,

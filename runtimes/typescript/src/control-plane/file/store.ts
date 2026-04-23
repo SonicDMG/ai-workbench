@@ -105,7 +105,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			const record: WorkspaceRecord = {
 				uid,
 				name: input.name,
-				url: input.url ?? null,
+				endpoint: input.endpoint ?? null,
 				kind: input.kind,
 				credentialsRef: { ...(input.credentialsRef ?? {}) },
 				keyspace: input.keyspace ?? null,
@@ -129,7 +129,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			const next: WorkspaceRecord = {
 				...existing,
 				...(patch.name !== undefined && { name: patch.name }),
-				...(patch.url !== undefined && { url: patch.url }),
+				...(patch.endpoint !== undefined && { endpoint: patch.endpoint }),
 				...(patch.credentialsRef !== undefined && {
 					credentialsRef: { ...patch.credentialsRef },
 				}),

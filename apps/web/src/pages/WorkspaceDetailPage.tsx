@@ -18,6 +18,10 @@ import {
 import { ApiError } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 
+function isLiteralUrl(value: string): boolean {
+	return value.startsWith("http://") || value.startsWith("https://");
+}
+
 export function WorkspaceDetailPage() {
 	const { uid } = useParams<{ uid: string }>();
 	const navigate = useNavigate();
@@ -137,18 +141,24 @@ export function WorkspaceDetailPage() {
 								{data.keyspace ?? <span className="text-slate-400">—</span>}
 							</dd>
 
-							<dt className="text-slate-500">Console URL</dt>
+							<dt className="text-slate-500">Endpoint</dt>
 							<dd className="text-slate-900 truncate">
-								{data.url ? (
-									<a
-										href={data.url}
-										target="_blank"
-										rel="noreferrer"
-										className="inline-flex items-center gap-1 text-[var(--color-brand-600)] hover:underline"
-									>
-										{data.url}
-										<ExternalLink className="h-3 w-3" />
-									</a>
+								{data.endpoint ? (
+									isLiteralUrl(data.endpoint) ? (
+										<a
+											href={data.endpoint}
+											target="_blank"
+											rel="noreferrer"
+											className="inline-flex items-center gap-1 font-mono text-xs text-[var(--color-brand-600)] hover:underline"
+										>
+											{data.endpoint}
+											<ExternalLink className="h-3 w-3" />
+										</a>
+									) : (
+										<code className="font-mono text-xs text-slate-700">
+											{data.endpoint}
+										</code>
+									)
 								) : (
 									<span className="text-slate-400">—</span>
 								)}

@@ -170,7 +170,7 @@ ordering so UI renders are deterministic.
   {
     "uid": "…",
     "name": "prod",
-    "url": null,
+    "endpoint": "env:ASTRA_DB_API_ENDPOINT",
     "kind": "astra",
     "credentialsRef": { "token": "env:ASTRA_DB_APPLICATION_TOKEN" },
     "keyspace": "default_keyspace",
@@ -191,6 +191,7 @@ omitted.
 {
   "name": "prod",
   "kind": "astra",
+  "endpoint": "env:ASTRA_DB_API_ENDPOINT",
   "credentialsRef": { "token": "env:ASTRA_DB_APPLICATION_TOKEN" },
   "keyspace": "default_keyspace"
 }
@@ -200,6 +201,11 @@ omitted.
 first-class option for CI and offline work.) Once set, `kind` is
 immutable — changing it would orphan any already-provisioned
 vector-store collections.
+
+`endpoint` is the workspace's data-plane URL (for `astra` / `hcd`,
+the Astra Data API endpoint). Accepts either a literal URL or a
+`SecretRef` — the driver resolves refs at dial time so the same
+record works across dev and prod without code changes.
 
 Each value in `credentialsRef` must be a `SecretRef`
 (`<provider>:<path>`, e.g. `env:ASTRA_DB_APPLICATION_TOKEN` or
@@ -217,8 +223,8 @@ Fetch a single workspace.
 
 ### `PUT /api/v1/workspaces/{workspaceId}`
 
-Patch one or more of `name`, `url`, `credentialsRef`, `keyspace`.
-Every field is optional; omitted fields are preserved.
+Patch one or more of `name`, `endpoint`, `credentialsRef`,
+`keyspace`. Every field is optional; omitted fields are preserved.
 
 `kind` and `uid` are immutable after creation and are rejected with
 `400`. Unknown fields are likewise rejected (strict body).
@@ -356,7 +362,7 @@ default to `{ enabled: false, ... }` if omitted.
 - **201** — the created `VectorStore` (collection now exists)
 - **404** `workspace_not_found`
 - **409** `conflict`
-- **422** `workspace_misconfigured` — workspace is missing `url` or `credentialsRef.token` required by its driver
+- **422** `workspace_misconfigured` — workspace is missing `endpoint` or `credentialsRef.token` required by its driver
 - **503** `driver_unavailable` — no driver registered for the workspace's `kind`
 
 ### `GET /{vectorStoreId}` / `PUT /{vectorStoreId}` / `DELETE /{vectorStoreId}`

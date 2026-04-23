@@ -19,7 +19,7 @@ export const WORKSPACES_DEFINITION = {
 	columns: {
 		uid: "uuid",
 		name: "text",
-		url: "text",
+		endpoint: "text",
 		kind: "text",
 		credentials_ref: { type: "map", keyType: "text", valueType: "text" },
 		keyspace: "text",

@@ -15,12 +15,12 @@
 				"body": {
 					"createdAt": "{{TS}}",
 					"credentialsRef": {},
+					"endpoint": null,
 					"keyspace": null,
 					"kind": "astra",
 					"name": "w",
 					"uid": "{{UUID_1}}",
-					"updatedAt": "{{TS}}",
-					"url": null
+					"updatedAt": "{{TS}}"
 				},
 				"status": 201
 			},
@@ -56,12 +56,12 @@
 				"body": {
 					"createdAt": "{{TS}}",
 					"credentialsRef": {},
+					"endpoint": null,
 					"keyspace": null,
 					"kind": "astra",
 					"name": "w",
 					"uid": "{{UUID_1}}",
-					"updatedAt": "{{TS}}",
-					"url": null
+					"updatedAt": "{{TS}}"
 				},
 				"status": 200
 			},

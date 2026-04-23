@@ -39,7 +39,23 @@ export type DocumentStatus =
 export interface WorkspaceRecord {
 	readonly uid: string;
 	readonly name: string;
-	readonly url: string | null;
+	/**
+	 * Data-plane endpoint for this workspace's backend. For `astra` /
+	 * `hcd` workspaces this is the Astra Data API URL the driver dials.
+	 * Accepts two shapes:
+	 *   - A literal URL: `https://<db>-<region>.apps.astra.datastax.com`
+	 *   - A {@link SecretRef}: `env:ASTRA_DB_API_ENDPOINT`,
+	 *     `file:/path`
+	 * Literal URLs are used as-is; refs are resolved through the
+	 * {@link ../secrets/provider.SecretResolver} at dial time. Detection
+	 * is prefix-based: a string whose `<prefix>` segment matches a
+	 * registered secret provider is treated as a ref, otherwise as a
+	 * literal URL.
+	 *
+	 * `mock` / `openrag` workspaces don't dial anything and leave this
+	 * `null`.
+	 */
+	readonly endpoint: string | null;
 	readonly kind: WorkspaceKind;
 	/** Map of credential name → secret ref. Never holds raw secrets. */
 	readonly credentialsRef: Readonly<Record<string, SecretRef>>;

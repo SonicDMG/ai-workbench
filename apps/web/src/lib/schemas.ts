@@ -12,10 +12,17 @@ export const SecretRefSchema = z
 	.string()
 	.regex(/^[a-z][a-z0-9]*:.+/i, "Expected '<provider>:<path>', e.g. 'env:FOO'");
 
+// `endpoint` accepts either a URL or a SecretRef; the runtime
+// detects the form by prefix-matching the SecretResolver.
+const EndpointInputSchema = z
+	.union([z.string().url(), SecretRefSchema, z.literal("")])
+	.nullable()
+	.optional();
+
 export const WorkspaceRecordSchema = z.object({
 	uid: z.string().uuid(),
 	name: z.string(),
-	url: z.string().nullable(),
+	endpoint: z.string().nullable(),
 	kind: WorkspaceKindSchema,
 	credentialsRef: z.record(z.string(), z.string()),
 	keyspace: z.string().nullable(),
@@ -27,7 +34,7 @@ export type Workspace = z.infer<typeof WorkspaceRecordSchema>;
 export const CreateWorkspaceSchema = z.object({
 	name: z.string().min(1, "Name is required"),
 	kind: WorkspaceKindSchema,
-	url: z.string().url().or(z.literal("")).nullable().optional(),
+	endpoint: EndpointInputSchema,
 	keyspace: z.string().or(z.literal("")).nullable().optional(),
 	credentialsRef: z.record(z.string(), SecretRefSchema).optional(),
 });
@@ -35,7 +42,7 @@ export type CreateWorkspaceInput = z.infer<typeof CreateWorkspaceSchema>;
 
 export const UpdateWorkspaceSchema = z.object({
 	name: z.string().min(1, "Name is required").optional(),
-	url: z.string().url().or(z.literal("")).nullable().optional(),
+	endpoint: EndpointInputSchema,
 	keyspace: z.string().or(z.literal("")).nullable().optional(),
 	credentialsRef: z.record(z.string(), SecretRefSchema).optional(),
 });

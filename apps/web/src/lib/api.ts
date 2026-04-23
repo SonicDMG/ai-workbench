@@ -114,7 +114,7 @@ function normalizeCreate(input: CreateWorkspaceInput) {
 	return {
 		name: input.name,
 		kind: input.kind,
-		url: input.url ? input.url : null,
+		endpoint: input.endpoint ? input.endpoint : null,
 		keyspace: input.keyspace ? input.keyspace : null,
 		credentialsRef: pruneCredentials(input.credentialsRef),
 	};
@@ -123,7 +123,8 @@ function normalizeCreate(input: CreateWorkspaceInput) {
 function normalizeUpdate(patch: UpdateWorkspaceInput) {
 	const out: Record<string, unknown> = {};
 	if (patch.name !== undefined) out.name = patch.name;
-	if (patch.url !== undefined) out.url = patch.url ? patch.url : null;
+	if (patch.endpoint !== undefined)
+		out.endpoint = patch.endpoint ? patch.endpoint : null;
 	if (patch.keyspace !== undefined)
 		out.keyspace = patch.keyspace ? patch.keyspace : null;
 	if (patch.credentialsRef !== undefined)

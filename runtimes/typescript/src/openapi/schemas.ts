@@ -68,11 +68,23 @@ const DocumentStatusSchema = z
 
 /* ---------------- Workspace ---------------- */
 
+/**
+ * Data-plane endpoint for a workspace. Accepts either:
+ *   - a literal URL (`https://<db>-<region>.apps.astra.datastax.com`), or
+ *   - a {@link SecretRef} (`env:ASTRA_DB_API_ENDPOINT`, `file:/path`).
+ *
+ * The astra driver detects refs by prefix-matching a registered
+ * {@link SecretProvider} and resolves them at dial time.
+ */
+const EndpointSchema = z
+	.union([z.string().url(), SecretRefSchema])
+	.openapi("Endpoint", { example: "env:ASTRA_DB_API_ENDPOINT" });
+
 export const WorkspaceRecordSchema = z
 	.object({
 		uid: z.string().uuid(),
 		name: z.string(),
-		url: z.string().nullable(),
+		endpoint: z.string().nullable(),
 		kind: WorkspaceKind,
 		credentialsRef: z.record(z.string(), SecretRefSchema),
 		keyspace: z.string().nullable(),
@@ -85,7 +97,7 @@ export const CreateWorkspaceInputSchema = z
 	.object({
 		uid: z.string().uuid().optional(),
 		name: z.string().min(1),
-		url: z.string().url().nullable().optional(),
+		endpoint: EndpointSchema.nullable().optional(),
 		kind: WorkspaceKind,
 		credentialsRef: z.record(z.string(), SecretRefSchema).optional(),
 		keyspace: z.string().nullable().optional(),
@@ -99,7 +111,7 @@ export const CreateWorkspaceInputSchema = z
 export const UpdateWorkspaceInputSchema = z
 	.object({
 		name: z.string().min(1).optional(),
-		url: z.string().url().nullable().optional(),
+		endpoint: EndpointSchema.nullable().optional(),
 		credentialsRef: z.record(z.string(), SecretRefSchema).optional(),
 		keyspace: z.string().nullable().optional(),
 	})
