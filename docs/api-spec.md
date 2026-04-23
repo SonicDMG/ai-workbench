@@ -159,7 +159,9 @@ definitions — always in sync with the running runtime.
 
 ### `GET /api/v1/workspaces`
 
-List all workspaces.
+List all workspaces, sorted by `createdAt` ascending with `uid` as
+tie-breaker. Every backend (memory / file / astra) produces the same
+ordering so UI renders are deterministic.
 
 **Response 200** — array of `Workspace`:
 
@@ -195,7 +197,14 @@ omitted.
 ```
 
 `kind` is one of `astra | hcd | openrag | mock`. (`mock` stays a
-first-class option for CI and offline work.)
+first-class option for CI and offline work.) Once set, `kind` is
+immutable — changing it would orphan any already-provisioned
+vector-store collections.
+
+Each value in `credentialsRef` must be a `SecretRef`
+(`<provider>:<path>`, e.g. `env:ASTRA_DB_APPLICATION_TOKEN` or
+`file:/etc/workbench/secrets/astra-token`). Raw secret values are
+rejected with `400`.
 
 **Response 201** — the created `Workspace`.
 
@@ -208,10 +217,14 @@ Fetch a single workspace.
 
 ### `PUT /api/v1/workspaces/{workspaceId}`
 
-Patch one or more fields. The body is identical to the create body
-with every field optional (except `uid`, which is read-only).
+Patch one or more of `name`, `url`, `credentialsRef`, `keyspace`.
+Every field is optional; omitted fields are preserved.
+
+`kind` and `uid` are immutable after creation and are rejected with
+`400`. Unknown fields are likewise rejected (strict body).
 
 - **200** — updated `Workspace`
+- **400** — body contains `kind` or an unknown field
 - **404** `workspace_not_found`
 
 ### `DELETE /api/v1/workspaces/{workspaceId}`

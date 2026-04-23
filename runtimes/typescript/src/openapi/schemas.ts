@@ -55,6 +55,12 @@ export const ErrorEnvelopeSchema = z
 /* ---------------- Enums ---------------- */
 
 const WorkspaceKind = z.enum(["astra", "hcd", "openrag", "mock"]);
+
+/** `<provider>:<path>` — e.g. `env:OPENAI_API_KEY`, `file:/etc/secret`. */
+const SecretRefSchema = z
+	.string()
+	.regex(/^[a-z][a-z0-9]*:.+/i, "expected '<provider>:<path>', e.g. 'env:FOO'")
+	.openapi("SecretRef", { example: "env:ASTRA_DB_APPLICATION_TOKEN" });
 const VectorSimilarity = z.enum(["cosine", "dot", "euclidean"]);
 const DocumentStatusSchema = z
 	.enum(["pending", "chunking", "embedding", "writing", "ready", "failed"])
@@ -68,7 +74,7 @@ export const WorkspaceRecordSchema = z
 		name: z.string(),
 		url: z.string().nullable(),
 		kind: WorkspaceKind,
-		credentialsRef: z.record(z.string(), z.string()),
+		credentialsRef: z.record(z.string(), SecretRefSchema),
 		keyspace: z.string().nullable(),
 		createdAt: z.string(),
 		updatedAt: z.string(),
@@ -81,19 +87,23 @@ export const CreateWorkspaceInputSchema = z
 		name: z.string().min(1),
 		url: z.string().url().nullable().optional(),
 		kind: WorkspaceKind,
-		credentialsRef: z.record(z.string(), z.string()).optional(),
+		credentialsRef: z.record(z.string(), SecretRefSchema).optional(),
 		keyspace: z.string().nullable().optional(),
 	})
 	.openapi("CreateWorkspaceInput");
 
+// `kind` is intentionally excluded — a workspace's backend cannot
+// change after creation. Any vector-store descriptors would point at
+// the old backend's collections; switching kinds would silently orphan
+// them. Delete-and-recreate if the workspace needs a different kind.
 export const UpdateWorkspaceInputSchema = z
 	.object({
 		name: z.string().min(1).optional(),
 		url: z.string().url().nullable().optional(),
-		kind: WorkspaceKind.optional(),
-		credentialsRef: z.record(z.string(), z.string()).optional(),
+		credentialsRef: z.record(z.string(), SecretRefSchema).optional(),
 		keyspace: z.string().nullable().optional(),
 	})
+	.strict()
 	.openapi("UpdateWorkspaceInput");
 
 /* ---------------- Catalog ---------------- */

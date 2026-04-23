@@ -42,10 +42,15 @@ export interface CreateWorkspaceInput {
 	readonly keyspace?: string | null;
 }
 
+/**
+ * Patch a workspace. `kind` is intentionally absent — a workspace's
+ * backend is immutable after creation (changing it would orphan any
+ * vector-store collections that already exist on the old backend).
+ * Delete and recreate if the kind needs to change.
+ */
 export interface UpdateWorkspaceInput {
 	readonly name?: string;
 	readonly url?: string | null;
-	readonly kind?: WorkspaceKind;
 	readonly credentialsRef?: Readonly<Record<string, SecretRef>>;
 	readonly keyspace?: string | null;
 }

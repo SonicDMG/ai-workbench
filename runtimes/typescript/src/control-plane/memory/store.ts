@@ -16,6 +16,7 @@
 
 import { randomUUID } from "node:crypto";
 import {
+	byCreatedAtThenUid,
 	DEFAULT_LEXICAL,
 	DEFAULT_RERANKING,
 	DEFAULT_SIMILARITY,
@@ -71,7 +72,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 	/* ---------------- Workspaces ---------------- */
 
 	async listWorkspaces(): Promise<readonly WorkspaceRecord[]> {
-		return Array.from(this.workspaces.values());
+		return Array.from(this.workspaces.values()).sort(byCreatedAtThenUid);
 	}
 
 	async getWorkspace(uid: string): Promise<WorkspaceRecord | null> {
@@ -112,7 +113,6 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 			...existing,
 			...(patch.name !== undefined && { name: patch.name }),
 			...(patch.url !== undefined && { url: patch.url }),
-			...(patch.kind !== undefined && { kind: patch.kind }),
 			...(patch.credentialsRef !== undefined && {
 				credentialsRef: freezeCredentials(patch.credentialsRef),
 			}),

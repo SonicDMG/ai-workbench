@@ -36,6 +36,7 @@ import {
 } from "../../astra-client/converters.js";
 import type { TablesBundle } from "../../astra-client/tables.js";
 import {
+	byCreatedAtThenUid,
 	DEFAULT_LEXICAL,
 	DEFAULT_RERANKING,
 	DEFAULT_SIMILARITY,
@@ -70,7 +71,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 
 	async listWorkspaces(): Promise<readonly WorkspaceRecord[]> {
 		const rows = await this.tables.workspaces.find({}).toArray();
-		return rows.map(workspaceFromRow);
+		return rows.map(workspaceFromRow).sort(byCreatedAtThenUid);
 	}
 
 	async getWorkspace(uid: string): Promise<WorkspaceRecord | null> {
@@ -111,7 +112,6 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			...base,
 			...(patch.name !== undefined && { name: patch.name }),
 			...(patch.url !== undefined && { url: patch.url }),
-			...(patch.kind !== undefined && { kind: patch.kind }),
 			...(patch.credentialsRef !== undefined && {
 				credentialsRef: { ...patch.credentialsRef },
 			}),

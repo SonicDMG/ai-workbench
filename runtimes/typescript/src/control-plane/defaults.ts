@@ -29,3 +29,19 @@ export const DEFAULT_RERANKING: RerankingConfig = Object.freeze({
 export function nowIso(): string {
 	return new Date().toISOString();
 }
+
+/**
+ * Comparator that sorts records by `createdAt` ascending, then by `uid`
+ * ascending as a tie-breaker (ISO timestamps collide at millisecond
+ * resolution when rows are created in the same tick). Produces a
+ * total order, which is what callers and fixtures rely on.
+ */
+export function byCreatedAtThenUid<
+	T extends { readonly createdAt: string; readonly uid: string },
+>(a: T, b: T): number {
+	if (a.createdAt < b.createdAt) return -1;
+	if (a.createdAt > b.createdAt) return 1;
+	if (a.uid < b.uid) return -1;
+	if (a.uid > b.uid) return 1;
+	return 0;
+}

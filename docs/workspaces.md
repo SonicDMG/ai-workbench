@@ -70,6 +70,23 @@ whichever backend the runtime's own control plane uses (configured via
 first-class option so tests and local dev don't need any external
 service.
 
+**`kind` is immutable after creation.** `PUT /api/v1/workspaces/{uid}`
+rejects a `kind` field with `400`. Changing a workspace's kind would
+orphan any vector-store collections already provisioned on the
+original backend — there's no safe way to transparently migrate them,
+so the runtime doesn't try. Delete and recreate the workspace if the
+backend needs to change.
+
+### `name` and `url`
+
+- `name` is a **human-readable label**. It is not unique — two
+  workspaces can share a name (the UID is the identity). UIs should
+  display the name but disambiguate by uid when needed.
+- `url` is **informational metadata** — typically a link to the
+  workspace's console in the backend's native UI (e.g. the Astra DB
+  console). It is not dialed or validated by the runtime; nothing in
+  the data plane reads it. Use it as a bookmark, not a routing hint.
+
 ### Credentials
 
 Credentials are never stored by value. A workspace may hold a
@@ -86,10 +103,10 @@ Credentials are never stored by value. A workspace may hold a
 }
 ```
 
-The runtime resolves refs through its `SecretResolver` at the moment
-the workspace's backend needs to be contacted. (Phase 1a doesn't yet
-dial into per-workspace backends — we store the refs, but the
-workspace's `kind` is informational until the data plane lands.)
+Every value in the map must match the `<provider>:<path>` shape —
+`env:VAR_NAME` or `file:/abs/path`. Posting a raw token returns
+`400`. The runtime resolves refs through its `SecretResolver` at the
+moment the workspace's backend needs to be contacted.
 
 ## Catalogs and vector stores
 

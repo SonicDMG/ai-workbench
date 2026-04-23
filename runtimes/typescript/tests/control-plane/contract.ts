@@ -67,6 +67,22 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
+		test("listWorkspaces returns rows in createdAt order", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const a = await store.createWorkspace({ name: "a", kind: "mock" });
+				// Ensure clock advance — ISO strings have ms resolution.
+				await new Promise((r) => setTimeout(r, 5));
+				const b = await store.createWorkspace({ name: "b", kind: "mock" });
+				await new Promise((r) => setTimeout(r, 5));
+				const c = await store.createWorkspace({ name: "c", kind: "mock" });
+				const all = await store.listWorkspaces();
+				expect(all.map((w) => w.uid)).toEqual([a.uid, b.uid, c.uid]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("getWorkspace returns null for unknown uid", async () => {
 			const { store, cleanup } = await factory();
 			try {

@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+	byCreatedAtThenUid,
 	DEFAULT_LEXICAL,
 	DEFAULT_RERANKING,
 	DEFAULT_SIMILARITY,
@@ -83,7 +84,8 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 	/* ---------------- Workspaces ---------------- */
 
 	async listWorkspaces(): Promise<readonly WorkspaceRecord[]> {
-		return this.readAll<WorkspaceRecord>("workspaces");
+		const all = await this.readAll<WorkspaceRecord>("workspaces");
+		return [...all].sort(byCreatedAtThenUid);
 	}
 
 	async getWorkspace(uid: string): Promise<WorkspaceRecord | null> {
@@ -128,7 +130,6 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				...existing,
 				...(patch.name !== undefined && { name: patch.name }),
 				...(patch.url !== undefined && { url: patch.url }),
-				...(patch.kind !== undefined && { kind: patch.kind }),
 				...(patch.credentialsRef !== undefined && {
 					credentialsRef: { ...patch.credentialsRef },
 				}),

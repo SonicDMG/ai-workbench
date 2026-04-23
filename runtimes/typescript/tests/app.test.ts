@@ -188,6 +188,65 @@ describe("workspace routes", () => {
 		});
 		expect(res.status).toBe(400);
 	});
+
+	test("POST rejects credentialsRef values that aren't SecretRefs", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/api/v1/workspaces", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "prod",
+				kind: "astra",
+				credentialsRef: { token: "raw-token-here" }, // no `<provider>:<path>`
+			}),
+		});
+		expect(res.status).toBe(400);
+	});
+
+	test("PUT accepts SecretRef-shaped credentialsRef values", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				credentialsRef: { token: "env:NEW_TOKEN" },
+			}),
+		});
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.credentialsRef).toEqual({ token: "env:NEW_TOKEN" });
+	});
+
+	test("PUT rejects `kind` in the body", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ kind: "mock" }),
+		});
+		expect(res.status).toBe(400);
+		// Workspace unchanged.
+		const after = await store.getWorkspace(ws.uid);
+		expect(after?.kind).toBe("astra");
+	});
+
+	test("list returns workspaces in createdAt order", async () => {
+		const { app, store } = makeApp();
+		const a = await store.createWorkspace({ name: "a", kind: "astra" });
+		await new Promise((r) => setTimeout(r, 5));
+		const b = await store.createWorkspace({ name: "b", kind: "astra" });
+		await new Promise((r) => setTimeout(r, 5));
+		const c = await store.createWorkspace({ name: "c", kind: "astra" });
+		const res = await app.request("/api/v1/workspaces");
+		const body = await json(res);
+		expect(body.map((w: { uid: string }) => w.uid)).toEqual([
+			a.uid,
+			b.uid,
+			c.uid,
+		]);
+	});
 });
 
 describe("catalog routes", () => {
