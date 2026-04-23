@@ -86,3 +86,14 @@ controlPlane:
 #     #   subject: sub
 #     #   label: email
 #     #   workspaceScopes: wb_workspace_scopes
+#     # Optional — enables the browser login flow so the web UI
+#     # stops requiring paste-a-token. When `client` is present the
+#     # runtime mounts /auth/{login,callback,me,logout}.
+#     # client:
+#     #   clientId: ai-workbench-ui
+#     #   # clientSecretRef: env:OIDC_CLIENT_SECRET  # public clients omit
+#     #   # redirectPath: /auth/callback
+#     #   # postLogoutPath: /
+#     #   # scopes: [openid, profile, email]
+#     #   # sessionCookieName: wb_session
+#     #   sessionSecretRef: env:WB_SESSION_SECRET    # 32+ bytes

@@ -1,8 +1,15 @@
 import { serve } from "@hono/node-server";
-import { createApp } from "./app.js";
+import { type AppLoginOptions, createApp } from "./app.js";
 import { buildAuthResolver } from "./auth/factory.js";
+import {
+	generateSessionKey,
+	makeCookieSigner,
+} from "./auth/oidc/login/cookie.js";
+import { fetchOidcEndpoints } from "./auth/oidc/login/discovery.js";
+import { MemoryPendingLoginStore } from "./auth/oidc/login/pending.js";
 import { loadDotEnv } from "./config/env-file.js";
 import { loadConfig, resolveConfigPath } from "./config/loader.js";
+import type { AuthConfig } from "./config/schema.js";
 import { storeFromConfig } from "./control-plane/factory.js";
 import { buildVectorStoreDriverRegistry } from "./drivers/factory.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
@@ -41,6 +48,8 @@ async function main(): Promise<void> {
 	const drivers = buildVectorStoreDriverRegistry({ secrets });
 	const auth = await buildAuthResolver(config.auth, { store });
 
+	const login = await buildLoginOptions(config.auth, secrets);
+
 	const uiDir = resolveUiDir(config.runtime.uiDir);
 	const ui = uiDir ? buildUiAssets(uiDir) : null;
 	if (uiDir) {
@@ -57,6 +66,7 @@ async function main(): Promise<void> {
 		secrets,
 		auth,
 		ui,
+		login,
 		requestIdHeader: config.runtime.requestIdHeader,
 	});
 
@@ -83,6 +93,68 @@ async function main(): Promise<void> {
 	};
 	process.on("SIGINT", shutdown("SIGINT"));
 	process.on("SIGTERM", shutdown("SIGTERM"));
+}
+
+async function buildLoginOptions(
+	authCfg: AuthConfig,
+	secrets: SecretResolver,
+): Promise<AppLoginOptions | null> {
+	const clientCfg = authCfg.oidc?.client;
+	if (!authCfg.oidc || !clientCfg) {
+		return {
+			authConfig: authCfg,
+			endpoints: null,
+			clientSecret: null,
+			cookie: null,
+			pending: null,
+		};
+	}
+
+	// One-time network fetch at boot. Login + verifier share the
+	// same discovery doc — this currently does it twice (once here,
+	// once inside the verifier factory) to keep the modules
+	// decoupled; if it becomes a cold-start issue we'll cache.
+	const endpoints = await fetchOidcEndpoints({ issuer: authCfg.oidc.issuer });
+
+	const clientSecret = clientCfg.clientSecretRef
+		? await secrets.resolve(clientCfg.clientSecretRef)
+		: null;
+
+	let sessionKey: Buffer;
+	if (clientCfg.sessionSecretRef) {
+		const raw = await secrets.resolve(clientCfg.sessionSecretRef);
+		sessionKey = Buffer.from(raw, "utf8");
+		if (sessionKey.length < 32) {
+			throw new Error(
+				"auth.oidc.client.sessionSecretRef must resolve to >=32 bytes of entropy",
+			);
+		}
+	} else {
+		sessionKey = generateSessionKey();
+		logger.warn(
+			"auth.oidc.client.sessionSecretRef is not set — generated an ephemeral session key. All browser sessions invalidate on restart; set a persistent secret for production.",
+		);
+	}
+	const cookie = makeCookieSigner(sessionKey);
+	const pending = new MemoryPendingLoginStore();
+
+	logger.info(
+		{
+			clientId: clientCfg.clientId,
+			redirectPath: clientCfg.redirectPath,
+			hasSecret: clientSecret !== null,
+			hasPersistentKey: clientCfg.sessionSecretRef !== null,
+		},
+		"oidc browser-login enabled",
+	);
+
+	return {
+		authConfig: authCfg,
+		endpoints,
+		clientSecret,
+		cookie,
+		pending,
+	};
 }
 
 main().catch((err: unknown) => {

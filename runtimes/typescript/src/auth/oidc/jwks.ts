@@ -34,8 +34,7 @@ export async function resolveJwksUri(
 	opts: ResolveJwksUriOptions,
 ): Promise<string> {
 	if (opts.configuredUri) return opts.configuredUri;
-	const discoveryUrl =
-		opts.issuer.replace(/\/+$/, "") + "/.well-known/openid-configuration";
+	const discoveryUrl = `${opts.issuer.replace(/\/+$/, "")}/.well-known/openid-configuration`;
 	const fetchFn = opts.fetchImpl ?? fetch;
 	const res = await fetchFn(discoveryUrl);
 	if (!res.ok) {

@@ -195,6 +195,19 @@ middleware is mounted.
 | `claims.subject` | string | `sub` | JWT claim → `AuthSubject.id`. |
 | `claims.label` | string | `email` | JWT claim → `AuthSubject.label` (nullable). |
 | `claims.workspaceScopes` | string | `wb_workspace_scopes` | Array-valued claim → `AuthSubject.workspaceScopes`. A JSON `null` marks the subject unscoped (admin). |
+| `client` | object | — | Optional. When present, the runtime hosts `/auth/{login,callback,me,logout}` so the bundled web UI can drive a browser PKCE login. See table below. |
+
+#### `auth.oidc.client`
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `clientId` | string | required | OAuth client identifier registered at the IdP. |
+| `clientSecretRef` | SecretRef \| null | `null` | Client secret. Omit for public (SPA-style) clients. |
+| `redirectPath` | string | `/auth/callback` | Path the IdP redirects to after authorization. Must be in the IdP's allow-list. |
+| `postLogoutPath` | string | `/` | Where `/auth/logout` sends the user. |
+| `scopes` | string[] | `[openid, profile, email]` | OAuth scopes requested at login. |
+| `sessionCookieName` | string | `wb_session` | Cookie that carries the signed session. |
+| `sessionSecretRef` | SecretRef \| null | `null` | HMAC key for signing session cookies. Must resolve to ≥32 bytes. When null, runtime auto-generates an ephemeral key at boot (dev only). |
 
 ## Secrets
 

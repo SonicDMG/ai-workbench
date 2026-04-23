@@ -14,6 +14,7 @@ import {
 	type Workspace,
 	WorkspaceRecordSchema,
 } from "./schemas";
+import { fetchAuthConfig, loginHref } from "./session";
 
 const BASE = "/api/v1";
 
@@ -47,6 +48,7 @@ async function request<T>(
 
 	const res = await fetch(`${BASE}${path}`, {
 		...init,
+		credentials: "include",
 		headers: {
 			"content-type": "application/json",
 			accept: "application/json",
@@ -59,6 +61,13 @@ async function request<T>(
 
 	const text = await res.text();
 	const body: unknown = text.length > 0 ? JSON.parse(text) : null;
+
+	if (res.status === 401 && !token) {
+		// Session expired (or never existed) and no paste-token is
+		// active. If OIDC login is available the user should go there
+		// instead of seeing a cryptic "unauthorized" in a toast.
+		await maybeRedirectToLogin();
+	}
 
 	if (!res.ok) {
 		const parsed = ErrorEnvelopeSchema.safeParse(body);
@@ -83,6 +92,27 @@ async function request<T>(
 }
 
 const WorkspaceListSchema = z.array(WorkspaceRecordSchema);
+
+// Cache the auth config look-up so a wall of 401s doesn't fire off
+// a /auth/config request for every one. Only the first 401 in a
+// page lifetime triggers a redirect; subsequent ones just throw
+// normally and surface in whatever UI is calling.
+let redirecting = false;
+async function maybeRedirectToLogin(): Promise<void> {
+	if (redirecting) return;
+	redirecting = true;
+	try {
+		const cfg = await fetchAuthConfig();
+		if (cfg?.modes.login && cfg.loginPath) {
+			const here = window.location.pathname + window.location.search;
+			window.location.assign(loginHref(cfg.loginPath, here));
+		}
+	} catch {
+		// leave the caller's ApiError(401) to surface normally
+	} finally {
+		redirecting = false;
+	}
+}
 
 export const api = {
 	listWorkspaces: (): Promise<Workspace[]> =>

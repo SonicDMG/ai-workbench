@@ -15,7 +15,11 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import { ForbiddenError, UnauthorizedError } from "./auth/errors.js";
 import { authMiddleware } from "./auth/middleware.js";
+import type { CookieSigner } from "./auth/oidc/login/cookie.js";
+import type { OidcEndpoints } from "./auth/oidc/login/discovery.js";
+import type { PendingLoginStore } from "./auth/oidc/login/pending.js";
 import type { AuthResolver } from "./auth/resolver.js";
+import type { AuthConfig } from "./config/schema.js";
 import type { ControlPlaneStore } from "./control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "./drivers/registry.js";
 import { ApiError, errorEnvelope } from "./lib/errors.js";
@@ -28,10 +32,19 @@ import { documentRoutes } from "./routes/api-v1/documents.js";
 import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
 import { vectorStoreRoutes } from "./routes/api-v1/vector-stores.js";
 import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
+import { authLoginRoutes } from "./routes/auth.js";
 import { operationalRoutes } from "./routes/operational.js";
 import type { SecretResolver } from "./secrets/provider.js";
 import { isSpaPath, type UiAssets } from "./ui/assets.js";
 import { VERSION } from "./version.js";
+
+export interface AppLoginOptions {
+	readonly authConfig: AuthConfig;
+	readonly endpoints: OidcEndpoints | null;
+	readonly clientSecret: string | null;
+	readonly cookie: CookieSigner | null;
+	readonly pending: PendingLoginStore | null;
+}
 
 export interface AppOptions {
 	readonly store: ControlPlaneStore;
@@ -39,6 +52,7 @@ export interface AppOptions {
 	readonly secrets: SecretResolver;
 	readonly auth: AuthResolver;
 	readonly ui?: UiAssets | null;
+	readonly login?: AppLoginOptions | null;
 	readonly requestIdHeader?: string;
 }
 
@@ -61,9 +75,41 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	// /api/v1/openapi.json + /docs — the machine-readable contract
 	// and the human-facing reference UI must work even when strict
 	// auth is on (docs says they bypass; the UI hardcodes the URL).
-	app.use("/api/v1/workspaces/*", authMiddleware(opts.auth));
+	const cookieMiddlewareCfg =
+		opts.login?.cookie && opts.login?.authConfig.oidc?.client
+			? {
+					name: opts.login.authConfig.oidc.client.sessionCookieName,
+					signer: opts.login.cookie,
+				}
+			: null;
+	app.use(
+		"/api/v1/workspaces/*",
+		authMiddleware({ resolver: opts.auth, cookie: cookieMiddlewareCfg }),
+	);
+
+	// The `/auth/me` endpoint also needs the auth context — run the
+	// same middleware over it. Everything else under `/auth/*` is
+	// unauthenticated (that's the whole point — they bootstrap auth).
+	app.use(
+		"/auth/me",
+		authMiddleware({ resolver: opts.auth, cookie: cookieMiddlewareCfg }),
+	);
 
 	app.route("/", operationalRoutes(opts.store));
+
+	if (opts.login) {
+		app.route(
+			"/auth",
+			authLoginRoutes({
+				auth: opts.auth,
+				config: opts.login.authConfig,
+				endpoints: opts.login.endpoints,
+				clientSecret: opts.login.clientSecret,
+				cookie: opts.login.cookie,
+				pending: opts.login.pending,
+			}),
+		);
+	}
 	app.route(
 		"/api/v1/workspaces",
 		workspaceRoutes({ store: opts.store, secrets: opts.secrets }),

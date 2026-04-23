@@ -90,15 +90,18 @@ apps/web/
 │   │   ├── schemas.ts               ← Zod mirrors of runtime types
 │   │   ├── query.ts                 ← QueryClient + key factory
 │   │   ├── authToken.ts             ← localStorage bearer-token helpers
+│   │   ├── session.ts               ← /auth/* fetch helpers (cookie-aware)
 │   │   └── utils.ts                 ← cn() + formatDate()
 │   ├── hooks/
 │   │   ├── useWorkspaces.ts         ← list/get/create/update/delete hooks
 │   │   ├── useApiKeys.ts            ← workspace API-key mutations
-│   │   └── useAuthToken.ts          ← reactive bearer-token hook
+│   │   ├── useAuthToken.ts          ← reactive bearer-token hook
+│   │   └── useSession.ts            ← /auth/config + /auth/me queries
 │   ├── components/
 │   │   ├── ui/                      ← Button, Input, Card, Dialog, Select, Label
 │   │   ├── layout/AppShell.tsx
-│   │   ├── auth/TokenMenu.tsx       ← header bearer-token menu
+│   │   ├── auth/TokenMenu.tsx       ← paste-a-token fallback
+│   │   ├── auth/UserMenu.tsx        ← header: signed-in / "Log in" / TokenMenu
 │   │   ├── common/states.tsx        ← Loading / Error / Empty
 │   │   └── workspaces/
 │   │       ├── KindBadge.tsx
@@ -127,15 +130,21 @@ apps/web/
   bare "no workspaces" screen; they land directly in the wizard.
 - **List order is deterministic.** The runtime sorts by `createdAt`
   (with `uid` as tie-breaker), so the grid is stable across reloads.
-- **Bearer-token menu.** The header carries a key icon that opens a
-  dialog for pasting a workspace-scoped `wb_live_*` token. The value
-  lives in `localStorage` under `wb_auth_token` and rides every
-  `/api/v1/*` fetch as `Authorization: Bearer …`. Clearing it reverts
-  to unauthenticated calls — fine in `auth.mode: disabled`, but the
-  runtime will start returning `401 unauthorized` under strict modes.
-  The menu's icon and prefix preview reflect whether a token is
-  attached. See [`docs/auth.md`](../../docs/auth.md) for the caveats
-  and Phase 3 OIDC migration plan.
+- **Credential menu.** The header renders one of three things based
+  on `GET /auth/config`:
+  1. **Signed in (OIDC session)** — user's label + logout.
+  2. **"Log in" button** — redirects to `/auth/login?redirect_after=…`,
+     the IdP handles the rest, the runtime sets an `HttpOnly`
+     session cookie at `/auth/callback`.
+  3. **Paste-a-token** — legacy fallback used when only
+     `auth.mode: apiKey` is configured. Stores a `wb_live_*` token
+     in `localStorage` and attaches `Authorization: Bearer …` to
+     every `/api/v1/*` fetch. See the XSS caveat in
+     [`docs/auth.md`](../../docs/auth.md).
+- **Auto-redirect on 401.** `lib/api.ts` checks `/auth/config` once
+  on the first 401; if OIDC login is available it navigates the
+  browser to `/auth/login` carrying the current path so the user
+  lands back where they started after authenticating.
 
 ## House rules
 

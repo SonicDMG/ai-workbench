@@ -35,7 +35,7 @@ export interface UiAssets {
 // SPA catch-all. Everything else matching a non-file-extension GET
 // falls back to the SPA shell so React Router can handle it.
 const NON_SPA_PATH_RE =
-	/^\/(api(?:\/|$)|docs(?:\/|$)|healthz$|readyz$|version$)/;
+	/^\/(api(?:\/|$)|docs(?:\/|$)|auth(?:\/|$)|healthz$|readyz$|version$)/;
 
 export function isSpaPath(path: string): boolean {
 	if (NON_SPA_PATH_RE.test(path)) return false;

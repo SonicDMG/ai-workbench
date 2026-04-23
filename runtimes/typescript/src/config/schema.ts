@@ -88,6 +88,52 @@ const OidcClaimsSchema = z
 		workspaceScopes: "wb_workspace_scopes",
 	});
 
+/**
+ * Browser-login (Phase 3b) section. Optional. When set, the runtime
+ * hosts `/auth/login`, `/auth/callback`, `/auth/me`, `/auth/logout`
+ * so the web UI can do an OIDC authorization-code-with-PKCE flow
+ * and park the resulting access token in a session cookie — no
+ * paste-a-token required.
+ *
+ * `clientSecretRef` is optional: SPAs configured as public clients
+ * omit the secret. Confidential-client IdPs (most of them, in
+ * practice) require it.
+ *
+ * `sessionSecretRef` signs the session cookie. When null, the
+ * runtime generates an ephemeral key at boot and logs a warning —
+ * fine for dev / single-replica, wrong for anything clustered.
+ */
+const OidcClientSchema = z.object({
+	clientId: z.string().min(1),
+	clientSecretRef: z
+		.string()
+		.regex(/^[a-z]+:[^\s]+$/i, "expected '<provider>:<path>'")
+		.nullable()
+		.default(null),
+	// URL the IdP redirects back to after login. Must be registered
+	// in the IdP's allowed redirect URIs. Absolute URL or a path that
+	// resolves against the request origin.
+	redirectPath: z.string().default("/auth/callback"),
+	// Where to send the user after logout. Same rules as redirectPath.
+	postLogoutPath: z.string().default("/"),
+	// OAuth scopes to request. `openid` is mandatory; `profile email`
+	// populate the label claim on most IdPs.
+	scopes: z
+		.array(z.string().min(1))
+		.min(1)
+		.default(["openid", "profile", "email"]),
+	// Cookie name for the session. Change if something else on the
+	// same origin already owns `wb_session`.
+	sessionCookieName: z.string().min(1).default("wb_session"),
+	// SecretRef for the HMAC key that signs session cookies. When
+	// null, an ephemeral 32-byte key is generated at boot.
+	sessionSecretRef: z
+		.string()
+		.regex(/^[a-z]+:[^\s]+$/i, "expected '<provider>:<path>'")
+		.nullable()
+		.default(null),
+});
+
 const OidcSchema = z.object({
 	// Token `iss` claim; MUST match exactly. Discovery URL is derived
 	// from this when `jwksUri` isn't set.
@@ -103,6 +149,9 @@ const OidcSchema = z.object({
 	clockToleranceSeconds: z.number().int().min(0).max(300).default(30),
 	// Claim-to-field mapping.
 	claims: OidcClaimsSchema,
+	// Optional browser-login block. When present the runtime hosts
+	// the `/auth/*` endpoints.
+	client: OidcClientSchema.optional(),
 });
 
 const AuthSchema = z
@@ -180,6 +229,7 @@ export type Config = z.infer<typeof ConfigSchema>;
 export type ControlPlaneConfig = Config["controlPlane"];
 export type AuthConfig = Config["auth"];
 export type OidcConfig = z.infer<typeof OidcSchema>;
+export type OidcClientConfig = z.infer<typeof OidcClientSchema>;
 export type SeedWorkspace = z.infer<typeof SeedWorkspaceSchema>;
 
 // Lightweight alias to keep `Id` reachable for callers that want the

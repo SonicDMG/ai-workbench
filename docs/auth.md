@@ -6,11 +6,14 @@ middleware. Operators configure it via the `auth:` block in
 context.
 
 This doc covers the contract, the threat model, the config, and the
-rollout plan. Current status: **Phase 3a — OIDC verifier live**.
+rollout plan. Current status: **Phase 3b — OIDC browser login live**.
 Workspace-scoped `wb_live_*` tokens (`mode: apiKey`) and JWT
 bearer tokens from an OIDC issuer (`mode: oidc`) are both accepted;
-`mode: any` registers both so either shape authenticates. The
-default is still `disabled` so existing workflows keep working.
+`mode: any` registers both so either shape authenticates. When
+`auth.oidc.client` is configured the runtime also hosts an OIDC
+authorization-code-with-PKCE login flow for the web UI — no
+paste-a-token required. The default is still `disabled` so
+existing workflows keep working.
 
 ## Default posture
 
@@ -130,27 +133,78 @@ load even when `anonymousPolicy: reject` is set. The middleware
 is mounted at `/api/v1/workspaces/*`, not `/api/v1/*`, to make
 this behavior explicit.
 
-## UI token flow
+## UI credential flow
 
-The bundled web UI (at `/`) surfaces a **key** menu in the
-header. Clicking it opens a dialog where an operator pastes a
-`wb_live_*` token; the token is stored in `localStorage` under
-`wb_auth_token` and attached as `Authorization: Bearer <token>`
-on every `/api/v1/*` fetch.
+The UI's header `UserMenu` renders one of three things, driven by
+`GET /auth/config`:
 
-A `ShieldCheck` icon + the prefix preview (e.g. `wb_live_abc123…`)
-shows at a glance which token is active. "Clear" removes it,
-after which calls go out unauthenticated — fine when `mode:
-disabled` or `anonymousPolicy: allow`, but the UI will start
-receiving `401 unauthorized` under strict modes.
+1. **Signed in (OIDC session)** — the cookie survived a roundtrip
+   through `/auth/me`. Shows the user's label + a logout button.
+2. **"Log in" button** — `auth.oidc.client` is configured but the
+   browser has no (or an expired) session. Clicking redirects to
+   `/auth/login?redirect_after=<current>`.
+3. **Paste-a-token fallback** — only `mode: apiKey` is configured
+   (no OIDC login). Same `TokenMenu` that shipped in Phase 2,
+   stores a `wb_live_*` token in `localStorage`, attaches
+   `Authorization: Bearer` on every request.
 
-**XSS caveat.** `localStorage` is readable by any JS on the
-origin. That's acceptable for the self-hosted workbench UI
-(whose trust boundary is the runtime's own deployment) but not
-for embeds of third-party scripts. Phase 3's OIDC flow will
-migrate off paste-a-token onto a proper login with
-short-lived, in-memory (or httpOnly-cookie-backed) access
-tokens.
+When the UI gets a `401` on an API call and no paste-token is
+set, `lib/api.ts` quietly fetches `/auth/config` once — if OIDC
+login is on, it redirects to `/auth/login` so the user lands back
+where they started after re-authenticating.
+
+### Session cookie mechanics
+
+After a successful `/auth/callback` the runtime sets a cookie
+(`wb_session` by default):
+
+- `HttpOnly` so JS can't read it (XSS becomes harder)
+- `SameSite=Lax` so top-level navigations through the IdP redirect
+  still carry it back, but third-party contexts don't
+- `Secure` when the request arrived over HTTPS (honored via
+  `X-Forwarded-Proto` when the runtime is behind a TLS proxy)
+- `Max-Age` matches the upstream `expires_in` (typically 1 hour)
+
+The cookie value is `<base64url json>.<base64url hmac>`; HMAC uses
+a 32-byte key from `auth.oidc.client.sessionSecretRef` (a
+`SecretRef`). When unset the runtime generates an ephemeral key at
+boot and logs a warning — fine for dev + single-replica, wrong for
+anything clustered.
+
+The payload carries the upstream access token verbatim. Auth
+middleware promotes a valid cookie into a synthetic
+`Authorization: Bearer` header before the resolver runs, so the
+same `OidcVerifier` (iss/aud/exp/nbf/signature) validates both
+cookie sessions and API-client bearer calls. No second trust
+boundary.
+
+### PKCE flow
+
+`/auth/login` picks a fresh 32-byte verifier, derives the
+`code_challenge` (SHA-256 + base64url), stashes the verifier +
+nonce + sanitized `redirect_after` in a short-TTL in-memory store
+keyed by the generated `state`, then 302s to the IdP's
+authorization endpoint with PKCE parameters.
+
+`/auth/callback` re-reads the `state`, takes the entry (it's gone
+after one use, preventing replay), swaps `code` + `code_verifier`
+for tokens at the IdP, self-verifies the resulting access token
+through the same `OidcVerifier` the API uses (if it doesn't pass,
+the session is rejected — no trusting tokens that couldn't
+actually authenticate), signs the cookie, and redirects to
+`redirect_after`. `redirect_after` is validated against
+`^/[A-Za-z0-9\-._~!$&'()*+,;=:@%/?#]*$` and forced to `/` if it's
+absolute or protocol-relative — no open-redirect surface.
+
+### XSS caveat (API-key fallback only)
+
+When the UI is running in `mode: apiKey` (no OIDC login), the
+paste-a-token path stores the token in `localStorage`, which is
+readable by any JS on the origin. That's acceptable for the
+self-hosted workbench UI (whose trust boundary is the runtime's
+own deployment) but not for pages embedding third-party scripts.
+OIDC login (Phase 3b) avoids this because the session cookie is
+`HttpOnly`.
 
 ## Threat model
 
@@ -181,7 +235,8 @@ Out of scope for now:
 | 1 | Middleware, config, `disabled` mode | ✅ shipped |
 | 2 | `mode: apiKey` — workspace-scoped `wb_live_*` keys, issue/revoke routes, UI | ✅ shipped |
 | 3a | `mode: oidc` — JWT verification via JWKS; `any` mode enables both | ✅ shipped |
-| 3b | Browser OIDC login flow (PKCE) — replaces paste-a-token with a proper /auth/login redirect + short-lived session | later |
+| 3b | Browser OIDC login flow (PKCE) — replaces paste-a-token with `/auth/{login,callback,me,logout}` + signed session cookie | ✅ shipped |
+| 3c | Silent refresh via `refresh_token` grant, so users don't see mid-session re-logins | later |
 | 4 | Roles + per-route enforcement; audit logging | later |
 
 Each phase is independently shippable. `disabled` stays the
@@ -281,3 +336,66 @@ apiKey → oidc. Each verifier examines the token shape:
 
 A token that matches neither shape gets a generic 401 `token did
 not match any configured auth scheme`.
+
+## Browser login (Phase 3b)
+
+When `auth.oidc.client` is present the runtime mounts five
+endpoints that let the bundled web UI drive the standard
+[Authorization Code + PKCE](https://datatracker.ietf.org/doc/html/rfc7636)
+flow without the operator ever pasting a token:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /auth/config` | Tells the UI which credential surfaces are wired up |
+| `GET /auth/login` | 302 to the IdP's authorization endpoint; stashes the PKCE verifier + state |
+| `GET /auth/callback` | Swaps `code` for tokens, self-verifies, sets the session cookie, redirects |
+| `GET /auth/me` | Current authenticated subject, or 401 |
+| `POST /auth/logout` | Clears the cookie |
+
+### Configuration
+
+```yaml
+auth:
+  mode: oidc                  # or `any`
+  anonymousPolicy: reject
+  oidc:
+    issuer: https://login.example.com/realms/workbench
+    audience: ai-workbench
+    client:
+      clientId: ai-workbench-ui
+      # clientSecretRef: env:OIDC_CLIENT_SECRET  # omit for public clients
+      # redirectPath: /auth/callback
+      # postLogoutPath: /
+      # scopes: [openid, profile, email]
+      # sessionCookieName: wb_session
+      sessionSecretRef: env:WB_SESSION_SECRET    # 32+ bytes; HMAC key
+```
+
+`redirectPath` must be registered in the IdP's allowed redirect
+URIs. Most IdPs take the absolute URL — the runtime derives that
+by combining the request host + `X-Forwarded-Proto` with the
+configured path.
+
+### Operational notes
+
+- **Single replica for the state store.** The PKCE verifier + state
+  live in an in-process map with a 10-minute TTL. If you run N
+  replicas behind a load balancer, either pin OAuth state to one
+  replica (sticky sessions for `/auth/*`) or replace
+  `MemoryPendingLoginStore` with something shared — the seam is
+  the `PendingLoginStore` interface.
+- **Session key rotation.** Rotate by updating
+  `sessionSecretRef` and restarting. Sessions signed with the old
+  key stop validating and users re-login. There's no dual-key
+  validation period yet.
+- **Access-token lifetime = session lifetime.** When the upstream
+  token expires, the cookie's `Max-Age` also elapses; the UI
+  gets a 401 on its next API call and `lib/api.ts` auto-redirects
+  to `/auth/login`. Silent refresh via the `refresh_token` grant
+  is Phase 3c.
+- **Logout does not RP-initiate.** `POST /auth/logout` clears the
+  local session cookie but does not redirect through the IdP's
+  `end_session_endpoint`. Browsers remain logged in at the IdP
+  (intentional for shared-device scenarios — users stay signed
+  into Okta even after clicking "Log out" here). RP-initiated
+  logout can come in a follow-up.
