@@ -30,6 +30,7 @@ import { vectorStoreRoutes } from "./routes/api-v1/vector-stores.js";
 import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
 import { operationalRoutes } from "./routes/operational.js";
 import type { SecretResolver } from "./secrets/provider.js";
+import { isSpaPath, type UiAssets } from "./ui/assets.js";
 import { VERSION } from "./version.js";
 
 export interface AppOptions {
@@ -37,6 +38,7 @@ export interface AppOptions {
 	readonly drivers: VectorStoreDriverRegistry;
 	readonly secrets: SecretResolver;
 	readonly auth: AuthResolver;
+	readonly ui?: UiAssets | null;
 	readonly requestIdHeader?: string;
 }
 
@@ -44,6 +46,15 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
 
 	app.use("*", requestId(opts.requestIdHeader));
+
+	// Static UI assets, when a dist/ is present. Runs before API
+	// routes so favicons/CSS/JS resolve to disk; anything not found
+	// calls next() and continues to the API/operational routes.
+	// The SPA fallback is handled in `notFound` below so React
+	// Router can take over for unknown non-API paths.
+	if (opts.ui) {
+		app.use("*", opts.ui.staticMiddleware);
+	}
 
 	// Auth scoped to the actual resource tree at /api/v1/workspaces/*.
 	// Operational routes stay open (load balancers / ops), and so do
@@ -86,16 +97,28 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		}),
 	);
 
-	app.notFound((c) =>
-		c.json(
+	app.notFound((c) => {
+		// SPA fallback: if the UI is mounted and this looks like a
+		// client-side route (GET, HTML-accepting, not /api or /docs,
+		// no file extension), serve index.html so the router can take
+		// over. Everything else still gets the canonical JSON 404.
+		if (
+			opts.ui &&
+			c.req.method === "GET" &&
+			isSpaPath(c.req.path) &&
+			(c.req.header("accept") ?? "").includes("text/html")
+		) {
+			return opts.ui.spaFallback(c);
+		}
+		return c.json(
 			errorEnvelope(
 				c,
 				"not_found",
 				`Route ${c.req.method} ${c.req.path} not found`,
 			),
 			404,
-		),
-	);
+		);
+	});
 
 	app.onError((err, c) => {
 		if (err instanceof UnauthorizedError) {

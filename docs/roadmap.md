@@ -124,7 +124,10 @@ Deliverables:
 - Static `/playground` and `/ingest` assets served by the runtime.
 - Playground API: `POST /api/v1/workspaces/{w}/playground/query`.
 - UI consumes the existing `/api/v1/*` surface — no special admin API.
-- UI + default TS runtime ship as one Docker image.
+- UI + default TS runtime ship as one Docker image. ✅ shipped —
+  the image builds `apps/web` in a first stage and serves it out of
+  `/app/public`. See [`runtimes/typescript/Dockerfile`](../runtimes/typescript/Dockerfile)
+  and [`docs/configuration.md`](configuration.md) `runtime.uiDir`.
 
 ## Phase 4+ — Chats, MCP
 

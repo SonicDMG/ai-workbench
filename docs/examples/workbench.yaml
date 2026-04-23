@@ -11,6 +11,10 @@ runtime:
   port: 8080
   logLevel: info
   # requestIdHeader: X-Request-Id
+  # uiDir: null            # absolute path to the UI dist/. null
+  #                        # auto-detects /app/public (Docker image),
+  #                        # ${cwd}/public, or ${cwd}/apps/web/dist.
+  #                        # UI_DIR env also overrides.
 
 # ---------- Control plane ----------
 #

@@ -40,7 +40,7 @@ Every green box serves:
 | `GET /healthz` | Liveness |
 | `GET /readyz` | Readiness (must confirm its control plane is reachable) |
 | `GET /version` | Build metadata; `runtime` field carries the language tag |
-| `GET /` | Service banner |
+| `GET /` | Service banner (JSON) when no UI is embedded; the UI shell (HTML) in the bundled TypeScript + UI image |
 | `GET /docs` | OpenAPI reference UI |
 | `GET /api/v1/openapi.json` | Machine-readable OpenAPI 3.1 doc |
 | `(CRUD)` `/api/v1/workspaces[/{uid}]` | Workspace lifecycle |

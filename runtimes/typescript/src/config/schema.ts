@@ -4,7 +4,7 @@
  * Shape (high level):
  *
  *   version: 1
- *   runtime:       { port, logLevel, requestIdHeader }
+ *   runtime:       { port, logLevel, requestIdHeader, uiDir }
  *   controlPlane:  discriminated on `driver`:
  *     memory:   { driver: "memory" }
  *     file:     { driver: "file", root: string }
@@ -34,11 +34,16 @@ const RuntimeSchema = z
 			.enum(["trace", "debug", "info", "warn", "error"])
 			.default("info"),
 		requestIdHeader: z.string().min(1).default("X-Request-Id"),
+		// Static-asset directory for the embedded UI. `null` (default)
+		// auto-detects common locations (see src/ui/assets.ts). The
+		// `UI_DIR` env var also works as an override when set.
+		uiDir: z.string().nullable().default(null),
 	})
 	.default({
 		port: 8080,
 		logLevel: "info",
 		requestIdHeader: "X-Request-Id",
+		uiDir: null,
 	});
 
 /**

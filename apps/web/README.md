@@ -41,10 +41,16 @@ npm run build:web
 # → apps/web/dist/ (static assets ready to serve)
 ```
 
-Phase 3 will embed this `dist/` output inside the TypeScript runtime's
-Docker image, so operators deploying the UI get a working backend in
-one container. Until that lands, point a static file server at
-`dist/` or run `npm run preview` for a local smoke test.
+The official `ai-workbench` Docker image (from
+[`runtimes/typescript/Dockerfile`](../../runtimes/typescript/Dockerfile))
+builds this UI in a first stage and copies `dist/` into `/app/public`
+of the final image. At runtime the TypeScript server serves those
+files at `/`, falls back to `index.html` for SPA routes, and keeps
+the JSON API at `/api/v1/*` and the reference UI at `/docs`. One
+container, UI + backend.
+
+For a local smoke test without Docker, `npm run preview` serves
+`dist/` against the dev-mode runtime via the Vite proxy.
 
 ## What's here
 

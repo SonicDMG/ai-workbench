@@ -6,6 +6,7 @@ describe("ConfigSchema", () => {
 		const cfg = ConfigSchema.parse({ version: 1 });
 		expect(cfg.runtime.port).toBe(8080);
 		expect(cfg.runtime.logLevel).toBe("info");
+		expect(cfg.runtime.uiDir).toBe(null);
 		expect(cfg.controlPlane.driver).toBe("memory");
 		expect(cfg.seedWorkspaces).toEqual([]);
 	});

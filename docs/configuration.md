@@ -72,6 +72,7 @@ unknown version.
 | `port` | int | `8080` | HTTP listen port |
 | `logLevel` | enum | `info` | `trace \| debug \| info \| warn \| error`. The `LOG_LEVEL` env var overrides this when set. |
 | `requestIdHeader` | string | `X-Request-Id` | Name of the request-ID header |
+| `uiDir` | string \| null | `null` | Directory of pre-built UI assets to serve from `/` (with SPA fallback). `null` auto-detects `/app/public` → `${cwd}/public` → `${cwd}/apps/web/dist`. The `UI_DIR` env var also works as an override. The official Docker image sets this up automatically. |
 
 ### `controlPlane`
 

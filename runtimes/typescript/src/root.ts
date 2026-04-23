@@ -9,6 +9,7 @@ import { applyLogLevel, logger } from "./lib/logger.js";
 import { EnvSecretProvider } from "./secrets/env.js";
 import { FileSecretProvider } from "./secrets/file.js";
 import { SecretResolver } from "./secrets/provider.js";
+import { buildUiAssets, resolveUiDir } from "./ui/assets.js";
 
 async function main(): Promise<void> {
 	// Load .env (repo-root by default) before anything reads `process.env`.
@@ -40,11 +41,22 @@ async function main(): Promise<void> {
 	const drivers = buildVectorStoreDriverRegistry({ secrets });
 	const auth = buildAuthResolver(config.auth, { store });
 
+	const uiDir = resolveUiDir(config.runtime.uiDir);
+	const ui = uiDir ? buildUiAssets(uiDir) : null;
+	if (uiDir) {
+		logger.info({ uiDir }, "ui enabled");
+	} else {
+		logger.info(
+			"ui disabled — no dist found and runtime.uiDir not set; set runtime.uiDir or UI_DIR to serve the web UI from the runtime",
+		);
+	}
+
 	const app = createApp({
 		store,
 		drivers,
 		secrets,
 		auth,
+		ui,
 		requestIdHeader: config.runtime.requestIdHeader,
 	});
 
@@ -57,6 +69,7 @@ async function main(): Promise<void> {
 				controlPlane: config.controlPlane.driver,
 				authMode: config.auth.mode,
 				anonymousPolicy: config.auth.anonymousPolicy,
+				ui: ui !== null,
 				workspaces: workspaces.length,
 			},
 			"ai-workbench listening",
