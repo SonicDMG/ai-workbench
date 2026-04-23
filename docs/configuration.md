@@ -70,7 +70,7 @@ unknown version.
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
 | `port` | int | `8080` | HTTP listen port |
-| `logLevel` | enum | `info` | `trace \| debug \| info \| warn \| error` |
+| `logLevel` | enum | `info` | `trace \| debug \| info \| warn \| error`. The `LOG_LEVEL` env var overrides this when set. |
 | `requestIdHeader` | string | `X-Request-Id` | Name of the request-ID header |
 
 ### `controlPlane`

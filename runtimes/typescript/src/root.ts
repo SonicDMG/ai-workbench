@@ -5,7 +5,7 @@ import { loadDotEnv } from "./config/env-file.js";
 import { loadConfig, resolveConfigPath } from "./config/loader.js";
 import { storeFromConfig } from "./control-plane/factory.js";
 import { buildVectorStoreDriverRegistry } from "./drivers/factory.js";
-import { logger } from "./lib/logger.js";
+import { applyLogLevel, logger } from "./lib/logger.js";
 import { EnvSecretProvider } from "./secrets/env.js";
 import { FileSecretProvider } from "./secrets/file.js";
 import { SecretResolver } from "./secrets/provider.js";
@@ -24,6 +24,12 @@ async function main(): Promise<void> {
 	logger.info({ configPath }, "loading config");
 
 	const config = await loadConfig(configPath);
+
+	const logLevel = applyLogLevel(config.runtime.logLevel);
+	logger.info(
+		{ level: logLevel.level, source: logLevel.source },
+		"log level set",
+	);
 
 	const secrets = new SecretResolver({
 		env: new EnvSecretProvider(),
