@@ -56,22 +56,71 @@ const RuntimeSchema = z
  *   - `disabled`: middleware tags every request anonymous; no
  *     verification happens.
  *   - `apiKey`: workbench-issued `wb_live_*` keys are accepted.
- *     Ships in a later PR; rejected at startup today.
- *   - `oidc`: JWT bearer tokens from a configured OIDC issuer.
- *     Ships in a later PR.
- *   - `any`: both verifiers active; first match wins.
+ *   - `oidc`: JWT bearer tokens from a configured OIDC issuer are
+ *     verified via JWKS. Requires `auth.oidc` block.
+ *   - `any`: both verifiers active; API-key shape matches first
+ *     (O(1) DB lookup), JWTs fall through to OIDC.
  *
  * `anonymousPolicy: reject` rejects any request without an
  * `Authorization` header with 401. In `disabled` mode this is the
  * only way to force authentication (there's nothing to verify
  * against) — useful for CI smoke tests.
  */
+const OidcClaimsSchema = z
+	.object({
+		// JWT claim that identifies the subject. `sub` is the OIDC
+		// default. Custom IdPs sometimes put a stable user UUID in a
+		// different claim.
+		subject: z.string().min(1).default("sub"),
+		// Claim used as the human-readable label on `AuthSubject`.
+		// `email` is the typical choice; `preferred_username` works too.
+		label: z.string().min(1).default("email"),
+		// Claim containing the list of workspace UIDs the subject may
+		// touch. The value must be a JSON array of strings. Missing or
+		// empty means "no workspace access" (subject still authenticates
+		// but hits 403 on every workspace route). Set to `null` on the
+		// `workspaceScopes` field to mark the subject unscoped (admin).
+		workspaceScopes: z.string().min(1).default("wb_workspace_scopes"),
+	})
+	.default({
+		subject: "sub",
+		label: "email",
+		workspaceScopes: "wb_workspace_scopes",
+	});
+
+const OidcSchema = z.object({
+	// Token `iss` claim; MUST match exactly. Discovery URL is derived
+	// from this when `jwksUri` isn't set.
+	issuer: z.string().url(),
+	// Token `aud` claim(s); at least one must match. Single string
+	// is treated as a one-element list.
+	audience: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]),
+	// JWKS URL. When null, the runtime fetches
+	// `${issuer}/.well-known/openid-configuration` at startup and uses
+	// `jwks_uri` from the response.
+	jwksUri: z.string().url().nullable().default(null),
+	// Clock skew allowance for `exp` / `nbf` validation, in seconds.
+	clockToleranceSeconds: z.number().int().min(0).max(300).default(30),
+	// Claim-to-field mapping.
+	claims: OidcClaimsSchema,
+});
+
 const AuthSchema = z
 	.object({
 		mode: z.enum(["disabled", "apiKey", "oidc", "any"]).default("disabled"),
 		anonymousPolicy: z.enum(["allow", "reject"]).default("allow"),
+		oidc: OidcSchema.optional(),
 	})
-	.default({ mode: "disabled", anonymousPolicy: "allow" });
+	.default({ mode: "disabled", anonymousPolicy: "allow" })
+	.superRefine((cfg, ctx) => {
+		if ((cfg.mode === "oidc" || cfg.mode === "any") && !cfg.oidc) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["oidc"],
+				message: `auth.oidc is required when auth.mode='${cfg.mode}'`,
+			});
+		}
+	});
 
 const ControlPlaneSchema = z.discriminatedUnion("driver", [
 	z.object({ driver: z.literal("memory") }),
@@ -130,6 +179,7 @@ export const ConfigSchema = z
 export type Config = z.infer<typeof ConfigSchema>;
 export type ControlPlaneConfig = Config["controlPlane"];
 export type AuthConfig = Config["auth"];
+export type OidcConfig = z.infer<typeof OidcSchema>;
 export type SeedWorkspace = z.infer<typeof SeedWorkspaceSchema>;
 
 // Lightweight alias to keep `Id` reachable for callers that want the

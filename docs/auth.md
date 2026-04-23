@@ -6,10 +6,11 @@ middleware. Operators configure it via the `auth:` block in
 context.
 
 This doc covers the contract, the threat model, the config, and the
-rollout plan. Current status: **Phase 2 — API keys live**.
-Workspace-scoped `wb_live_*` tokens are now accepted when
-`auth.mode: apiKey` is set. The default is still `disabled` so
-existing workflows keep working.
+rollout plan. Current status: **Phase 3a — OIDC verifier live**.
+Workspace-scoped `wb_live_*` tokens (`mode: apiKey`) and JWT
+bearer tokens from an OIDC issuer (`mode: oidc`) are both accepted;
+`mode: any` registers both so either shape authenticates. The
+default is still `disabled` so existing workflows keep working.
 
 ## Default posture
 
@@ -30,9 +31,7 @@ gateway) in this mode.
 
 ```yaml
 auth:
-  # disabled | apiKey | oidc | any. Only `disabled` is implemented
-  # today; other modes fail loudly at startup with a pointer at the
-  # PR that will ship them.
+  # disabled | apiKey | oidc | any
   mode: disabled
 
   # How to handle requests that arrive without an `Authorization`
@@ -44,6 +43,20 @@ auth:
   # `reject` is the only way to force authentication at this phase
   # (useful for CI smoke tests to confirm the middleware is wired).
   anonymousPolicy: allow
+
+  # Required when mode is `oidc` or `any`. The runtime fetches the
+  # issuer's JWKS at startup (via OIDC discovery if jwksUri is null)
+  # and verifies every JWT's signature, issuer, audience, exp, and
+  # nbf before trusting it.
+  oidc:
+    issuer: https://idp.example.com
+    audience: ai-workbench          # or [a, b, c]
+    # jwksUri: null                  # auto-discover from issuer
+    # clockToleranceSeconds: 30
+    # claims:
+    #   subject: sub                 # → AuthSubject.id
+    #   label: email                 # → AuthSubject.label
+    #   workspaceScopes: wb_workspace_scopes  # array claim → scopes
 ```
 
 ## Contract
@@ -167,7 +180,8 @@ Out of scope for now:
 |---|---|---|
 | 1 | Middleware, config, `disabled` mode | ✅ shipped |
 | 2 | `mode: apiKey` — workspace-scoped `wb_live_*` keys, issue/revoke routes, UI | ✅ shipped |
-| 3 | `mode: oidc` — JWT verification via JWKS; `any` mode enables both | later |
+| 3a | `mode: oidc` — JWT verification via JWKS; `any` mode enables both | ✅ shipped |
+| 3b | Browser OIDC login flow (PKCE) — replaces paste-a-token with a proper /auth/login redirect + short-lived session | later |
 | 4 | Roles + per-route enforcement; audit logging | later |
 
 Each phase is independently shippable. `disabled` stays the
@@ -211,3 +225,59 @@ The runtime never auto-creates an initial bootstrap key — that's a
 Phase 4 concern. For now, issue the first key while `mode:
 disabled` (or `apiKey + anonymousPolicy: allow`), then flip to
 strict enforcement.
+
+## OIDC (Phase 3a)
+
+Any OIDC-compliant issuer that publishes a JWKS works. Typical
+setups: Auth0, Okta, Keycloak, Azure AD, Google — or a self-hosted
+IdP like Dex / Ory Hydra.
+
+**Startup.** When `mode` is `oidc` or `any`, the runtime resolves
+the JWKS URL. If `auth.oidc.jwksUri` is set in config it's used
+verbatim; otherwise the runtime issues a GET to
+`${issuer}/.well-known/openid-configuration` and reads `jwks_uri`
+from the response. This happens once at boot; startup fails if
+discovery fails. The key set itself is lazy-loaded on the first
+verification and rotates automatically when a token's `kid`
+doesn't match any cached key.
+
+**Per-request verification.** On every authenticated call the
+verifier:
+
+1. Rejects obviously non-JWT tokens (returns `null` so the apiKey
+   verifier can try them in `mode: any`).
+2. Validates the JWS signature against the JWKS.
+3. Validates `iss` exactly matches `auth.oidc.issuer`.
+4. Validates `aud` contains one of the configured audiences.
+5. Validates `exp` and `nbf` with `clockToleranceSeconds` of skew.
+6. Maps the claims onto `AuthSubject` using `auth.oidc.claims`.
+
+Any failure throws `UnauthorizedError` with a short, safe message
+(`oidc token has expired`, `signature did not verify`, etc.) — the
+raw jose error is never forwarded to clients.
+
+**Workspace authorization.** The `workspaceScopes` claim — an array
+of workspace UIDs, or a space-separated string — drives the same
+`assertWorkspaceAccess` path that API-key subjects use. Tokens
+with the claim set to JSON `null` are treated as unscoped / admin
+and may reach any workspace (matches the "operator tokens" escape
+hatch described above).
+
+**Example provisioning (Keycloak).** Add a user attribute
+`wb_workspace_scopes = ["ws-alice-staging", "ws-alice-prod"]`, add
+a "Script" or "Hardcoded attribute" mapper that copies it into the
+access-token claim of the same name, and point `auth.oidc.claims.workspaceScopes`
+at it. Same pattern applies to any other IdP with attribute-to-claim
+mapping.
+
+**`any` mode.** Both verifiers run in one resolver; order is
+apiKey → oidc. Each verifier examines the token shape:
+
+- `parseToken()` in the apiKey verifier returns `null` on anything
+  that isn't `wb_live_<12>_<32>`, so JWTs skip it.
+- `OidcVerifier` tests the token against a `<b64url>.<b64url>.<b64url>`
+  regex and returns `null` for anything that doesn't match, so
+  `wb_live_*` tokens skip it.
+
+A token that matches neither shape gets a generic 401 `token did
+not match any configured auth scheme`.

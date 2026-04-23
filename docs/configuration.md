@@ -170,17 +170,31 @@ Configures the `/api/v1/*` auth middleware. See
 auth:
   mode: disabled          # disabled | apiKey | oidc | any
   anonymousPolicy: allow  # allow | reject
+  # oidc: …               # required when mode is `oidc` or `any`
 ```
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
-| `mode` | enum | `disabled` | Which verifiers are active. Only `disabled` is implemented today; other modes fail loudly at startup. |
+| `mode` | enum | `disabled` | Which verifiers are active. |
 | `anonymousPolicy` | enum | `allow` | `allow` lets tokenless requests through as anonymous; `reject` returns `401 unauthorized`. |
+| `oidc` | object | — | Required when `mode` is `oidc` or `any`. See table below. |
 
 The default (`disabled` + `allow`) matches pre-auth behavior: the
 middleware runs, tags every request anonymous, and lets it
 through. Set `anonymousPolicy: reject` in CI to assert the
 middleware is mounted.
+
+### `auth.oidc`
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `issuer` | url | required | Must equal the JWT `iss` claim exactly. Discovery URL is derived from this. |
+| `audience` | string \| string[] | required | At least one value must match the JWT `aud` claim. |
+| `jwksUri` | url \| null | `null` | When null, the runtime fetches `${issuer}/.well-known/openid-configuration` at startup and uses `jwks_uri` from the response. |
+| `clockToleranceSeconds` | int | `30` | Skew allowance for `exp` / `nbf`. |
+| `claims.subject` | string | `sub` | JWT claim → `AuthSubject.id`. |
+| `claims.label` | string | `email` | JWT claim → `AuthSubject.label` (nullable). |
+| `claims.workspaceScopes` | string | `wb_workspace_scopes` | Array-valued claim → `AuthSubject.workspaceScopes`. A JSON `null` marks the subject unscoped (admin). |
 
 ## Secrets
 

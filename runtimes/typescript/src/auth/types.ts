@@ -5,11 +5,9 @@
  * context (`c.get("auth")`). Route handlers inspect it to decide
  * whether a caller can act — see docs/auth.md for the threat model.
  *
- * Phase 1 (this PR) only supports `mode: "disabled"`. In that mode
- * every request resolves to an anonymous context and nothing is
- * enforced. API keys land in PR #2 and OIDC in PR #3; the types
- * below are already shaped to accommodate them so the downstream
- * middleware / resolver contract doesn't churn.
+ * All three production modes (`apiKey`, `oidc`, `any`) are live.
+ * `disabled` remains the default, in which case every request
+ * resolves to an anonymous context and nothing is enforced.
  */
 
 /** Backends the auth middleware accepts. */

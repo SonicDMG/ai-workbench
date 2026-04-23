@@ -54,3 +54,35 @@ controlPlane:
 #     credentialsRef:
 #       token: env:ASTRA_DB_APPLICATION_TOKEN
 #     keyspace: workbench
+
+# ---------- Auth ----------
+#
+# Default is mode: disabled + anonymousPolicy: allow, which matches
+# pre-auth behavior (everything is anonymous, routes don't enforce).
+# Uncomment ONE of the stanzas below to turn enforcement on.
+
+# auth:
+#   mode: disabled            # disabled | apiKey | oidc | any
+#   anonymousPolicy: allow    # allow | reject
+
+# Workspace-scoped API keys (Phase 2). Issue + revoke via the
+# /api/v1/workspaces/{w}/api-keys endpoints or the web UI.
+# auth:
+#   mode: apiKey
+#   anonymousPolicy: reject
+
+# OIDC bearer tokens (Phase 3). The runtime verifies JWT signatures
+# against the issuer's JWKS at request time. Set mode: any if you
+# want apiKey AND oidc accepted at the same time.
+# auth:
+#   mode: oidc
+#   anonymousPolicy: reject
+#   oidc:
+#     issuer: https://login.example.com/realms/workbench
+#     audience: ai-workbench
+#     # jwksUri: https://login.example.com/realms/workbench/protocol/openid-connect/certs
+#     # clockToleranceSeconds: 30
+#     # claims:
+#     #   subject: sub
+#     #   label: email
+#     #   workspaceScopes: wb_workspace_scopes

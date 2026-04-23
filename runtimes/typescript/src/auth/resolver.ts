@@ -7,11 +7,10 @@
  *   - and applies the configured {@link AnonymousPolicy} when no
  *     token is presented.
  *
- * Phase 1 (this PR) ships with an empty verifier list, so every
- * token is rejected and every tokenless request falls through to
- * the anonymous path. The resolver is mode-agnostic on purpose —
- * adding API-key or OIDC auth in later PRs just means registering
- * another verifier.
+ * The resolver is mode-agnostic on purpose — adding a new auth
+ * scheme just means implementing `TokenVerifier` and registering
+ * it in the factory. The built-in verifiers for API keys and OIDC
+ * JWTs live under `./apiKey/` and `./oidc/`.
  */
 
 import { UnauthorizedError } from "./errors.js";

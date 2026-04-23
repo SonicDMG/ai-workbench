@@ -39,7 +39,7 @@ async function main(): Promise<void> {
 
 	const store = await storeFromConfig(config, secrets);
 	const drivers = buildVectorStoreDriverRegistry({ secrets });
-	const auth = buildAuthResolver(config.auth, { store });
+	const auth = await buildAuthResolver(config.auth, { store });
 
 	const uiDir = resolveUiDir(config.runtime.uiDir);
 	const ui = uiDir ? buildUiAssets(uiDir) : null;
