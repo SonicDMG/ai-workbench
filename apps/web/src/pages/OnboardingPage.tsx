@@ -119,9 +119,22 @@ export function OnboardingPage() {
 					<CardHeader>
 						<CardTitle>Workspace details</CardTitle>
 						<CardDescription>
-							{kind === "mock"
-								? "Mock workspaces run entirely in memory — no credentials needed."
-								: "Credentials are stored as references (env:VAR / file:/path), never raw values."}
+							{kind === "mock" ? (
+								"Mock workspaces run entirely in memory — no credentials needed."
+							) : kind === "astra" || kind === "hcd" ? (
+								<>
+									Credentials are stored as{" "}
+									<code className="font-mono">provider:path</code> references,
+									never raw values. We've pre-filled the two env-var refs
+									Astra's SDK docs use by convention (
+									<code className="font-mono">ASTRA_DB_APPLICATION_TOKEN</code>{" "}
+									and <code className="font-mono">ASTRA_DB_API_ENDPOINT</code>)
+									— set them in your <code className="font-mono">.env</code> or
+									shell and the Test-connection probe will pick them up.
+								</>
+							) : (
+								"Credentials are stored as references (env:VAR / file:/path), never raw values."
+							)}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>

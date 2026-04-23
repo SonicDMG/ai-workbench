@@ -15,6 +15,27 @@ import {
 import { CredentialsEditor } from "./CredentialsEditor";
 
 /**
+ * Starter credentials per kind. When a user picks a backend in the
+ * onboarding wizard we pre-populate the editor with the env-var refs
+ * the upstream SDK documentation uses, so the happy path is "paste
+ * your token into your .env and click Create." Everything here is
+ * editable — users can remove, rename, or add rows before submit.
+ */
+const DEFAULT_CREDENTIALS: Record<WorkspaceKind, Record<string, string>> = {
+	astra: {
+		token: "env:ASTRA_DB_APPLICATION_TOKEN",
+		endpoint: "env:ASTRA_DB_API_ENDPOINT",
+	},
+	// HCD uses the same Astra Data API shape — same env-var convention.
+	hcd: {
+		token: "env:ASTRA_DB_APPLICATION_TOKEN",
+		endpoint: "env:ASTRA_DB_API_ENDPOINT",
+	},
+	openrag: {},
+	mock: {},
+};
+
+/**
  * Reusable form for create + edit. In create mode, `kind` is baked in
  * by the parent (the onboarding flow picks it first). In edit mode,
  * `kind` is shown read-only — it's immutable after creation.
@@ -42,7 +63,13 @@ export function WorkspaceForm(
 
 	const defaultValues =
 		props.mode === "create"
-			? { name: "", kind, url: "", keyspace: "", credentialsRef: {} }
+			? {
+					name: "",
+					kind,
+					url: "",
+					keyspace: "",
+					credentialsRef: { ...DEFAULT_CREDENTIALS[kind] },
+				}
 			: {
 					name: props.workspace.name,
 					url: props.workspace.url ?? "",
