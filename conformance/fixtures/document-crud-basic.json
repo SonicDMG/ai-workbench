@@ -1,0 +1,250 @@
+{
+	"slug": "document-crud-basic",
+	"description": "Document metadata CRUD under a catalog: create → list → get → update → delete, including a cross-catalog scoping 404.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "astra",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"keyspace": null,
+					"kind": "astra",
+					"name": "w",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}",
+					"url": null
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"name": "support"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"description": null,
+					"name": "support",
+					"uid": "{{UUID_2}}",
+					"updatedAt": "{{TS}}",
+					"vectorStore": null,
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"name": "other"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"description": null,
+					"name": "other",
+					"uid": "{{UUID_3}}",
+					"updatedAt": "{{TS}}",
+					"vectorStore": null,
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"fileSize": 1024,
+					"fileType": "text/markdown",
+					"metadata": {
+						"source": "upload"
+					},
+					"sourceFilename": "readme.md"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_2}}/documents"
+			},
+			"response": {
+				"body": {
+					"catalogUid": "{{UUID_2}}",
+					"chunkTotal": null,
+					"documentUid": "{{UUID_4}}",
+					"errorMessage": null,
+					"fileSize": 1024,
+					"fileType": "text/markdown",
+					"ingestedAt": null,
+					"md5Hash": null,
+					"metadata": {
+						"source": "upload"
+					},
+					"sourceDocId": null,
+					"sourceFilename": "readme.md",
+					"status": "pending",
+					"updatedAt": "{{TS}}",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_2}}/documents"
+			},
+			"response": {
+				"body": [
+					{
+						"catalogUid": "{{UUID_2}}",
+						"chunkTotal": null,
+						"documentUid": "{{UUID_4}}",
+						"errorMessage": null,
+						"fileSize": 1024,
+						"fileType": "text/markdown",
+						"ingestedAt": null,
+						"md5Hash": null,
+						"metadata": {
+							"source": "upload"
+						},
+						"sourceDocId": null,
+						"sourceFilename": "readme.md",
+						"status": "pending",
+						"updatedAt": "{{TS}}",
+						"workspace": "{{UUID_1}}"
+					}
+				],
+				"status": 200
+			},
+			"step": 5
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_2}}/documents/{{UUID_4}}"
+			},
+			"response": {
+				"body": {
+					"catalogUid": "{{UUID_2}}",
+					"chunkTotal": null,
+					"documentUid": "{{UUID_4}}",
+					"errorMessage": null,
+					"fileSize": 1024,
+					"fileType": "text/markdown",
+					"ingestedAt": null,
+					"md5Hash": null,
+					"metadata": {
+						"source": "upload"
+					},
+					"sourceDocId": null,
+					"sourceFilename": "readme.md",
+					"status": "pending",
+					"updatedAt": "{{TS}}",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 6
+		},
+		{
+			"request": {
+				"body": {
+					"chunkTotal": 7,
+					"status": "ready"
+				},
+				"method": "PUT",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_2}}/documents/{{UUID_4}}"
+			},
+			"response": {
+				"body": {
+					"catalogUid": "{{UUID_2}}",
+					"chunkTotal": 7,
+					"documentUid": "{{UUID_4}}",
+					"errorMessage": null,
+					"fileSize": 1024,
+					"fileType": "text/markdown",
+					"ingestedAt": null,
+					"md5Hash": null,
+					"metadata": {
+						"source": "upload"
+					},
+					"sourceDocId": null,
+					"sourceFilename": "readme.md",
+					"status": "ready",
+					"updatedAt": "{{TS}}",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 7
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_3}}/documents/{{UUID_4}}"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "document_not_found",
+						"message": "document '{{UUID_4}}' not found",
+						"requestId": "{{REQID_1}}"
+					}
+				},
+				"status": 404
+			},
+			"step": 8
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_2}}/documents/{{UUID_4}}"
+			},
+			"response": {
+				"body": null,
+				"status": 204
+			},
+			"step": 9
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_2}}/documents/{{UUID_4}}"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "document_not_found",
+						"message": "document '{{UUID_4}}' not found",
+						"requestId": "{{REQID_2}}"
+					}
+				},
+				"status": 404
+			},
+			"step": 10
+		}
+	]
+}

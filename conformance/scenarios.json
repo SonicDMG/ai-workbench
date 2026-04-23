@@ -144,5 +144,61 @@
 				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/records/a"
 			}
 		]
+	},
+	{
+		"slug": "document-crud-basic",
+		"description": "Document metadata CRUD under a catalog: create → list → get → update → delete, including a cross-catalog scoping 404.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "astra" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs",
+				"body": { "name": "support" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs",
+				"body": { "name": "other" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid/documents",
+				"body": {
+					"sourceFilename": "readme.md",
+					"fileType": "text/markdown",
+					"fileSize": 1024,
+					"metadata": { "source": "upload" }
+				}
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid/documents"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid"
+			},
+			{
+				"method": "PUT",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid",
+				"body": { "status": "ready", "chunkTotal": 7 }
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/documents/$4.documentUid"
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid"
+			}
+		]
 	}
 ]

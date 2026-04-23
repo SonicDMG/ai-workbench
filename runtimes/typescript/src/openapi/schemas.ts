@@ -56,14 +56,9 @@ export const ErrorEnvelopeSchema = z
 
 const WorkspaceKind = z.enum(["astra", "hcd", "openrag", "mock"]);
 const VectorSimilarity = z.enum(["cosine", "dot", "euclidean"]);
-const DocumentStatus = z.enum([
-	"pending",
-	"chunking",
-	"embedding",
-	"writing",
-	"ready",
-	"failed",
-]);
+const DocumentStatusSchema = z
+	.enum(["pending", "chunking", "embedding", "writing", "ready", "failed"])
+	.openapi("DocumentStatus");
 
 /* ---------------- Workspace ---------------- */
 
@@ -131,6 +126,58 @@ export const UpdateCatalogInputSchema = z
 		vectorStore: z.string().uuid().nullable().optional(),
 	})
 	.openapi("UpdateCatalogInput");
+
+/* ---------------- Document ---------------- */
+
+export const DocumentRecordSchema = z
+	.object({
+		workspace: z.string().uuid(),
+		catalogUid: z.string().uuid(),
+		documentUid: z.string().uuid(),
+		sourceDocId: z.string().nullable(),
+		sourceFilename: z.string().nullable(),
+		fileType: z.string().nullable(),
+		fileSize: z.number().int().nonnegative().nullable(),
+		md5Hash: z.string().nullable(),
+		chunkTotal: z.number().int().nonnegative().nullable(),
+		ingestedAt: z.string().nullable(),
+		updatedAt: z.string(),
+		status: DocumentStatusSchema,
+		errorMessage: z.string().nullable(),
+		metadata: z.record(z.string(), z.string()),
+	})
+	.openapi("Document");
+
+export const CreateDocumentInputSchema = z
+	.object({
+		uid: z.string().uuid().optional(),
+		sourceDocId: z.string().nullable().optional(),
+		sourceFilename: z.string().nullable().optional(),
+		fileType: z.string().nullable().optional(),
+		fileSize: z.number().int().nonnegative().nullable().optional(),
+		md5Hash: z.string().nullable().optional(),
+		chunkTotal: z.number().int().nonnegative().nullable().optional(),
+		ingestedAt: z.string().nullable().optional(),
+		status: DocumentStatusSchema.optional(),
+		errorMessage: z.string().nullable().optional(),
+		metadata: z.record(z.string(), z.string()).optional(),
+	})
+	.openapi("CreateDocumentInput");
+
+export const UpdateDocumentInputSchema = z
+	.object({
+		sourceDocId: z.string().nullable().optional(),
+		sourceFilename: z.string().nullable().optional(),
+		fileType: z.string().nullable().optional(),
+		fileSize: z.number().int().nonnegative().nullable().optional(),
+		md5Hash: z.string().nullable().optional(),
+		chunkTotal: z.number().int().nonnegative().nullable().optional(),
+		ingestedAt: z.string().nullable().optional(),
+		status: DocumentStatusSchema.optional(),
+		errorMessage: z.string().nullable().optional(),
+		metadata: z.record(z.string(), z.string()).optional(),
+	})
+	.openapi("UpdateDocumentInput");
 
 /* ---------------- Vector store ---------------- */
 
@@ -264,6 +311,14 @@ export const CatalogIdParamSchema = z
 		example: "00000000-0000-0000-0000-000000000000",
 	});
 
+export const DocumentIdParamSchema = z
+	.string()
+	.uuid()
+	.openapi({
+		param: { name: "documentId", in: "path" },
+		example: "00000000-0000-0000-0000-000000000000",
+	});
+
 export const VectorStoreIdParamSchema = z
 	.string()
 	.uuid()
@@ -280,12 +335,4 @@ export const RecordIdParamSchema = z
 		example: "doc-1",
 	});
 
-/* ---------------- Compat stubs (unused by new routes; kept until old routes go) ---------------- */
-
-// Left behind for no-one — the former /v1/workspaces surface is dropped
-// in this PR. If a consumer still imports these, TypeScript will surface
-// it at build time.
-
-// Document status re-exported in case downstream routes want to validate
-// the enum before it ships in Phase 2.
-export { DocumentStatus };
+export { DocumentStatusSchema };

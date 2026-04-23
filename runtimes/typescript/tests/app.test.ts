@@ -231,6 +231,154 @@ describe("catalog routes", () => {
 	});
 });
 
+describe("document routes", () => {
+	async function seed() {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		const cat = await store.createCatalog(ws.uid, { name: "c1" });
+		return { app, store, ws, cat };
+	}
+
+	test("POST creates a document with defaults", async () => {
+		const { app, ws, cat } = await seed();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${cat.uid}/documents`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ sourceFilename: "readme.md" }),
+			},
+		);
+		expect(res.status).toBe(201);
+		const body = await json(res);
+		expect(body.workspace).toBe(ws.uid);
+		expect(body.catalogUid).toBe(cat.uid);
+		expect(body.sourceFilename).toBe("readme.md");
+		expect(body.status).toBe("pending");
+		expect(body.metadata).toEqual({});
+	});
+
+	test("POST on unknown workspace returns 404 workspace_not_found", async () => {
+		const { app } = makeApp();
+		const res = await app.request(
+			"/api/v1/workspaces/00000000-0000-0000-0000-000000000000/catalogs/00000000-0000-0000-0000-000000000000/documents",
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({}),
+			},
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("workspace_not_found");
+	});
+
+	test("POST on unknown catalog returns 404 catalog_not_found", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/00000000-0000-0000-0000-000000000000/documents`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({}),
+			},
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("catalog_not_found");
+	});
+
+	test("GET lists documents for the catalog", async () => {
+		const { app, store, ws, cat } = await seed();
+		await store.createDocument(ws.uid, cat.uid, { sourceFilename: "a" });
+		await store.createDocument(ws.uid, cat.uid, { sourceFilename: "b" });
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${cat.uid}/documents`,
+		);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body).toHaveLength(2);
+	});
+
+	test("GET on missing document returns 404 document_not_found", async () => {
+		const { app, ws, cat } = await seed();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${cat.uid}/documents/00000000-0000-0000-0000-000000000000`,
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("document_not_found");
+	});
+
+	test("PUT updates metadata fields", async () => {
+		const { app, store, ws, cat } = await seed();
+		const doc = await store.createDocument(ws.uid, cat.uid, {
+			sourceFilename: "old",
+		});
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${cat.uid}/documents/${doc.documentUid}`,
+			{
+				method: "PUT",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					status: "ready",
+					chunkTotal: 7,
+					metadata: { source: "upload" },
+				}),
+			},
+		);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.status).toBe("ready");
+		expect(body.chunkTotal).toBe(7);
+		expect(body.metadata).toEqual({ source: "upload" });
+		expect(body.sourceFilename).toBe("old"); // untouched
+	});
+
+	test("DELETE removes the document", async () => {
+		const { app, store, ws, cat } = await seed();
+		const doc = await store.createDocument(ws.uid, cat.uid, {});
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${cat.uid}/documents/${doc.documentUid}`,
+			{ method: "DELETE" },
+		);
+		expect(res.status).toBe(204);
+		expect(
+			await store.getDocument(ws.uid, cat.uid, doc.documentUid),
+		).toBeNull();
+	});
+
+	test("POST with duplicate uid returns 409 conflict", async () => {
+		const { app, store, ws, cat } = await seed();
+		const existing = await store.createDocument(ws.uid, cat.uid, {});
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${cat.uid}/documents`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ uid: existing.documentUid }),
+			},
+		);
+		expect(res.status).toBe(409);
+		const body = await json(res);
+		expect(body.error.code).toBe("conflict");
+	});
+
+	test("documents are scoped to their catalog", async () => {
+		const { app, store, ws } = await seed();
+		const catA = await store.createCatalog(ws.uid, { name: "a" });
+		const catB = await store.createCatalog(ws.uid, { name: "b" });
+		const doc = await store.createDocument(ws.uid, catA.uid, {});
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catB.uid}/documents/${doc.documentUid}`,
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("document_not_found");
+	});
+});
+
 describe("vector-store routes", () => {
 	test("POST creates a descriptor row and provisions a collection", async () => {
 		const { app, store } = makeApp();
@@ -473,6 +621,12 @@ describe("openapi", () => {
 		expect(paths).toContain("/api/v1/workspaces/{workspaceId}");
 		expect(paths).toContain("/api/v1/workspaces/{workspaceId}/catalogs");
 		expect(paths).toContain("/api/v1/workspaces/{workspaceId}/vector-stores");
+		expect(paths).toContain(
+			"/api/v1/workspaces/{workspaceId}/catalogs/{catalogId}/documents",
+		);
+		expect(paths).toContain(
+			"/api/v1/workspaces/{workspaceId}/catalogs/{catalogId}/documents/{documentId}",
+		);
 	});
 
 	test("openapi doc includes shared error envelope schema", async () => {
@@ -483,6 +637,8 @@ describe("openapi", () => {
 		expect(body.components.schemas.Workspace).toBeDefined();
 		expect(body.components.schemas.Catalog).toBeDefined();
 		expect(body.components.schemas.VectorStore).toBeDefined();
+		expect(body.components.schemas.Document).toBeDefined();
+		expect(body.components.schemas.DocumentStatus).toBeDefined();
 	});
 
 	test("GET /docs serves the Scalar reference UI", async () => {

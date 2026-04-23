@@ -10,7 +10,8 @@ runnable artifact and a stable slice of the HTTP contract.
 | 0 | Runtime bootstrap + docs | ✅ Shipped |
 | 1a | Control-plane CRUD (`/api/v1/workspaces`, `/catalogs`, `/vector-stores`) | ✅ Shipped |
 | 1b | Vector-store data plane (provisioning, upsert, search) | ✅ Shipped |
-| 2 | Documents + ingest + catalog-scoped search + saved queries | Planned |
+| 2a | Document metadata CRUD (`/catalogs/{c}/documents`) | ✅ Shipped |
+| 2b | Ingest + catalog-scoped search + saved queries | Planned |
 | 3 | Playground + UI | Planned |
 | 4+ | Chats, MCP | Reserved |
 
@@ -73,16 +74,32 @@ Data API Collections for `astra`).
   creation options (embedding service, source model) remain on the
   Phase 2+ shortlist.
 
-## Phase 2 — Documents, ingest, search, queries
+## Phase 2a — Document metadata CRUD ✅
+
+Shipped with the documents HTTP surface.
+
+- `GET|POST /api/v1/workspaces/{w}/catalogs/{c}/documents` and
+  `GET|PUT|DELETE .../documents/{d}` on the canonical TypeScript
+  runtime.
+- Backed by the already-existing `ControlPlaneStore.*Document` methods
+  across all three backends (memory, file, astra).
+- Cross-catalog isolation enforced: a document registered under
+  catalog A is invisible under catalog B in the same workspace
+  (`404 document_not_found`).
+- `DELETE /catalogs/{c}` cascade — already implemented in every
+  backend — is now documented in
+  [`api-spec.md`](api-spec.md).
+- New conformance scenario `document-crud-basic`; fixture committed.
+- The Python runtime still returns `501 NotImplemented` for documents
+  and will close that gap separately (different owner).
+
+## Phase 2b — Ingest, search, queries
 
 **Goal:** end-to-end knowledge-base flow from raw file to searchable
 result.
 
 Deliverables:
 
-- Document metadata CRUD
-  (`/api/v1/workspaces/{w}/catalogs/{c}/documents[/{d}]`). `PUT`
-  updates metadata only; content changes go through `/ingest`.
 - Chunking service contract and reference implementation (in-process).
 - Embedding service contract and reference implementation.
 - `POST .../catalogs/{c}/ingest` with async job semantics.

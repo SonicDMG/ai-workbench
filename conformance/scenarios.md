@@ -97,6 +97,33 @@ Fixture: `fixtures/vector-store-provision-and-search.json` *(TBD)*.
 
 ---
 
+## Scenario 5 — `document-crud-basic` *(Phase 2)*
+
+Document metadata CRUD under a catalog, plus a cross-catalog scoping
+check. Two catalogs are created so step 8 can confirm that a document
+registered under catalog A is not visible under catalog B in the same
+workspace.
+
+1. `POST /api/v1/workspaces` — body `{"name": "w", "kind": "astra"}`
+2. `POST /api/v1/workspaces/$1.uid/catalogs` — body `{"name": "support"}`
+3. `POST /api/v1/workspaces/$1.uid/catalogs` — body `{"name": "other"}`
+4. `POST /api/v1/workspaces/$1.uid/catalogs/$2.uid/documents` — body
+   `{"sourceFilename": "readme.md", "fileType": "text/markdown",
+     "fileSize": 1024, "metadata": {"source": "upload"}}`
+5. `GET  /api/v1/workspaces/$1.uid/catalogs/$2.uid/documents`
+6. `GET  /api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid`
+7. `PUT  /api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid`
+   — body `{"status": "ready", "chunkTotal": 7}`
+8. `GET  /api/v1/workspaces/$1.uid/catalogs/$3.uid/documents/$4.documentUid`
+   *(cross-catalog — expect `404 document_not_found`)*
+9. `DELETE /api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid`
+10. `GET  /api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid`
+    *(post-delete — expect `404 document_not_found`)*
+
+Fixture: `fixtures/document-crud-basic.json`.
+
+---
+
 ## Adding a scenario
 
 1. Append a new section to this file.

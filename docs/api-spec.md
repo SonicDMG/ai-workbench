@@ -74,6 +74,7 @@ human-readable and may change. Currently emitted:
 | 404 | `workspace_not_found` | Workspace UID doesn't exist |
 | 404 | `catalog_not_found` | Catalog UID doesn't exist in workspace |
 | 404 | `vector_store_not_found` | Vector-store UID doesn't exist in workspace |
+| 404 | `document_not_found` | Document UID doesn't exist in the catalog |
 | 409 | `conflict` | Create with an already-taken UID |
 | 500 | `internal_error` | Unhandled exception |
 | 503 | `control_plane_unavailable` | Backing store is unreachable |
@@ -264,8 +265,7 @@ single vector store).
 
 ### `GET /{catalogId}` / `PUT /{catalogId}` / `DELETE /{catalogId}`
 
-Fetch / patch / delete. `DELETE` cascades to the catalog's documents
-(Phase 2+).
+Fetch / patch / delete. `DELETE` cascades to the catalog's documents.
 
 ---
 
@@ -404,15 +404,85 @@ Score semantics match the descriptor's `vectorSimilarity`:
 
 ---
 
+## `/api/v1/workspaces/{workspaceId}/catalogs/{catalogId}/documents`
+
+Document **metadata** CRUD. A `Document` is a named entry in a catalog
+— the metadata row that the future ingest pipeline (chunk + embed)
+attaches vectors to. `PUT` updates metadata only; content changes go
+through `/ingest` once that lands in a later Phase 2 slice.
+
+A `Document`:
+
+```json
+{
+  "workspace": "…",
+  "catalogUid": "…",
+  "documentUid": "…",
+  "sourceDocId": null,
+  "sourceFilename": "readme.md",
+  "fileType": "text/markdown",
+  "fileSize": 1024,
+  "md5Hash": null,
+  "chunkTotal": null,
+  "ingestedAt": null,
+  "updatedAt": "…",
+  "status": "pending",
+  "errorMessage": null,
+  "metadata": { "source": "upload" }
+}
+```
+
+`status` is one of `pending | chunking | embedding | writing | ready |
+failed`. Clients setting `status` / `errorMessage` / `chunkTotal` /
+`ingestedAt` directly via `PUT` is supported today so an external
+ingest driver can own the lifecycle; the in-process ingest pipeline
+(later Phase 2 slice) will own these fields once it lands.
+
+### `GET`
+
+List documents in the catalog.
+
+- **200** — array of `Document`
+- **404** `workspace_not_found` / `catalog_not_found`
+
+### `POST`
+
+Register a document in the catalog.
+
+**Request** — all fields optional except uniqueness of `uid` within
+the catalog:
+
+```json
+{
+  "sourceFilename": "readme.md",
+  "fileType": "text/markdown",
+  "fileSize": 1024,
+  "metadata": { "source": "upload" }
+}
+```
+
+- **201** — the created `Document` (`status` defaults to `pending`,
+  `metadata` defaults to `{}`)
+- **404** `workspace_not_found` / `catalog_not_found`
+- **409** `conflict` — `uid` collision within the same catalog
+
+### `GET /{documentId}` / `PUT /{documentId}` / `DELETE /{documentId}`
+
+Fetch / patch / delete. `PUT` accepts every field from the create body
+(all optional) and updates only the fields present. Cross-catalog
+access — requesting a document from a catalog it does not belong to —
+returns `404 document_not_found`.
+
+---
+
 ## Planned routes
 
 These do not exist yet. Shapes may shift before they land.
 
-### Phase 2 — Documents, ingest, search, queries
+### Phase 2 — Ingest, search, queries
 
 | Method | Path | Purpose |
 |---|---|---|
-| (CRUD) | `/api/v1/workspaces/{w}/catalogs/{c}/documents[/{d}]` | Document metadata CRUD. `PUT` updates metadata only; content changes go through ingest. |
 | `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/ingest` | Chunk + embed + write (async job) |
 | `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}` | Poll an ingest job |
 | `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/documents/search` | Catalog-scoped hybrid search |

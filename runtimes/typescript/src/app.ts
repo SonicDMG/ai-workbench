@@ -2,9 +2,10 @@
  * Hono app factory — the default (TypeScript) AI Workbench green box.
  *
  * Mounts:
- *   `/`, `/healthz`, `/readyz`, `/version`       operational
+ *   `/`, `/healthz`, `/readyz`, `/version`        operational
  *   `/api/v1/workspaces`                          workspaces CRUD
  *   `/api/v1/workspaces/{w}/catalogs`             catalogs CRUD
+ *   `/api/v1/workspaces/{w}/catalogs/{c}/documents`  document metadata CRUD
  *   `/api/v1/workspaces/{w}/vector-stores`        vector-store descriptor CRUD
  *   `/api/v1/openapi.json`                        generated OpenAPI doc
  *   `/docs`                                       Scalar-rendered docs
@@ -18,6 +19,7 @@ import { ApiError, errorEnvelope } from "./lib/errors.js";
 import { requestId } from "./lib/request-id.js";
 import type { AppEnv } from "./lib/types.js";
 import { catalogRoutes } from "./routes/api-v1/catalogs.js";
+import { documentRoutes } from "./routes/api-v1/documents.js";
 import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
 import { vectorStoreRoutes } from "./routes/api-v1/vector-stores.js";
 import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
@@ -38,6 +40,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	app.route("/", operationalRoutes(opts.store));
 	app.route("/api/v1/workspaces", workspaceRoutes(opts.store));
 	app.route("/api/v1/workspaces", catalogRoutes(opts.store));
+	app.route("/api/v1/workspaces", documentRoutes(opts.store));
 	app.route(
 		"/api/v1/workspaces",
 		vectorStoreRoutes({ store: opts.store, drivers: opts.drivers }),
