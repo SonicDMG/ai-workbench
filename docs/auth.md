@@ -149,8 +149,9 @@ tokens.
   in log output, error messages, or response bodies. `requestId`
   is the only ID that traces a request end-to-end.
 - **Timing attacks on token lookup.** Tokens are compared in
-  constant time (PR #2's API-key implementation uses bcrypt; OIDC
-  uses signature verification).
+  constant time — the API-key path stores a salted scrypt digest
+  (`scrypt$<salt>$<digest>`) and uses `timingSafeEqual`; OIDC
+  uses signature verification.
 
 Out of scope for now:
 
