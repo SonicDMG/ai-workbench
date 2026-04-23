@@ -13,6 +13,9 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
+import { ForbiddenError, UnauthorizedError } from "./auth/errors.js";
+import { authMiddleware } from "./auth/middleware.js";
+import type { AuthResolver } from "./auth/resolver.js";
 import type { ControlPlaneStore } from "./control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "./drivers/registry.js";
 import { ApiError, errorEnvelope } from "./lib/errors.js";
@@ -32,6 +35,7 @@ export interface AppOptions {
 	readonly store: ControlPlaneStore;
 	readonly drivers: VectorStoreDriverRegistry;
 	readonly secrets: SecretResolver;
+	readonly auth: AuthResolver;
 	readonly requestIdHeader?: string;
 }
 
@@ -39,6 +43,10 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
 
 	app.use("*", requestId(opts.requestIdHeader));
+
+	// Auth scoped to /api/v1. Operational routes stay open so
+	// load balancers / ops tooling can always hit /healthz etc.
+	app.use("/api/v1/*", authMiddleware(opts.auth));
 
 	app.route("/", operationalRoutes(opts.store));
 	app.route(
@@ -85,6 +93,13 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	);
 
 	app.onError((err, c) => {
+		if (err instanceof UnauthorizedError) {
+			c.header("WWW-Authenticate", err.scheme);
+			return c.json(errorEnvelope(c, err.code, err.message), err.status);
+		}
+		if (err instanceof ForbiddenError) {
+			return c.json(errorEnvelope(c, err.code, err.message), err.status);
+		}
 		const mapped = mapControlPlaneError(err);
 		if (mapped) {
 			return c.json(

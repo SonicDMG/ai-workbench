@@ -130,6 +130,7 @@ Documents, ingestion, and catalog-scoped search land in Phase 2 —
 |----------|---------|
 | [`docs/architecture.md`](docs/architecture.md) | System model, components, data flow |
 | [`docs/api-spec.md`](docs/api-spec.md) | HTTP API contract (implemented + planned) |
+| [`docs/auth.md`](docs/auth.md) | `/api/v1/*` auth middleware, config, and rollout phases |
 | [`docs/configuration.md`](docs/configuration.md) | `workbench.yaml` schema reference |
 | [`docs/workspaces.md`](docs/workspaces.md) | Workspace model, scoping, cascade semantics |
 | [`docs/green-boxes.md`](docs/green-boxes.md) | Multi-runtime "green box" architecture |

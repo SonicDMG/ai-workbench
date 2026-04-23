@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.js";
+import { AuthResolver } from "../src/auth/resolver.js";
+import type { AnonymousPolicy } from "../src/auth/types.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import type { ControlPlaneStore } from "../src/control-plane/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
@@ -14,7 +16,7 @@ async function json(res: Response): Promise<any> {
 	return (await res.json()) as any;
 }
 
-function makeApp(): {
+function makeApp(authOpts?: { anonymousPolicy?: AnonymousPolicy }): {
 	app: ReturnType<typeof createApp>;
 	store: ControlPlaneStore;
 } {
@@ -23,7 +25,12 @@ function makeApp(): {
 		new Map([["mock", new MockVectorStoreDriver()]]),
 	);
 	const secrets = new SecretResolver({ env: new EnvSecretProvider() });
-	const app = createApp({ store, drivers, secrets });
+	const auth = new AuthResolver({
+		mode: "disabled",
+		anonymousPolicy: authOpts?.anonymousPolicy ?? "allow",
+		verifiers: [],
+	});
+	const app = createApp({ store, drivers, secrets, auth });
 	return { app, store };
 }
 
@@ -259,6 +266,38 @@ describe("workspace routes", () => {
 			b.uid,
 			c.uid,
 		]);
+	});
+});
+
+describe("auth middleware (disabled mode)", () => {
+	test("anonymous requests pass through /api/v1 when policy allows", async () => {
+		const { app } = makeApp({ anonymousPolicy: "allow" });
+		const res = await app.request("/api/v1/workspaces");
+		expect(res.status).toBe(200);
+	});
+
+	test("anonymous requests to /api/v1 are rejected when policy rejects", async () => {
+		const { app } = makeApp({ anonymousPolicy: "reject" });
+		const res = await app.request("/api/v1/workspaces");
+		expect(res.status).toBe(401);
+		const body = await json(res);
+		expect(body.error.code).toBe("unauthorized");
+		expect(res.headers.get("WWW-Authenticate")).toBe("Bearer");
+	});
+
+	test("operational routes stay open regardless of anonymousPolicy", async () => {
+		const { app } = makeApp({ anonymousPolicy: "reject" });
+		expect((await app.request("/healthz")).status).toBe(200);
+		expect((await app.request("/readyz")).status).toBe(200);
+		expect((await app.request("/version")).status).toBe(200);
+	});
+
+	test("malformed Authorization header returns 401", async () => {
+		const { app } = makeApp({ anonymousPolicy: "reject" });
+		const res = await app.request("/api/v1/workspaces", {
+			headers: { authorization: "Basic hmm" },
+		});
+		expect(res.status).toBe(401);
 	});
 });
 

@@ -18,9 +18,11 @@ directory explains the shape of everything around it.
 5. [`api-spec.md`](api-spec.md) — HTTP contract narrative (what
    operational routes exist, what errors are possible, what's
    planned).
-6. [`conformance.md`](conformance.md) — how we keep language
+6. [`auth.md`](auth.md) — the `/api/v1/*` auth middleware: config,
+   contract, threat model, rollout phases.
+7. [`conformance.md`](conformance.md) — how we keep language
    runtimes in lockstep via shared fixtures.
-7. [`roadmap.md`](roadmap.md) — phased delivery plan and open
+8. [`roadmap.md`](roadmap.md) — phased delivery plan and open
    questions.
 
 ## Samples

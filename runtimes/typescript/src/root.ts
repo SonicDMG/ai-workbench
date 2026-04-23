@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
+import { buildAuthResolver } from "./auth/factory.js";
 import { loadDotEnv } from "./config/env-file.js";
 import { loadConfig, resolveConfigPath } from "./config/loader.js";
 import { storeFromConfig } from "./control-plane/factory.js";
@@ -31,11 +32,13 @@ async function main(): Promise<void> {
 
 	const store = await storeFromConfig(config, secrets);
 	const drivers = buildVectorStoreDriverRegistry({ secrets });
+	const auth = buildAuthResolver(config.auth);
 
 	const app = createApp({
 		store,
 		drivers,
 		secrets,
+		auth,
 		requestIdHeader: config.runtime.requestIdHeader,
 	});
 
@@ -46,6 +49,8 @@ async function main(): Promise<void> {
 			{
 				port: info.port,
 				controlPlane: config.controlPlane.driver,
+				authMode: config.auth.mode,
+				anonymousPolicy: config.auth.anonymousPolicy,
 				workspaces: workspaces.length,
 			},
 			"ai-workbench listening",

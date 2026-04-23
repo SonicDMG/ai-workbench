@@ -41,6 +41,33 @@ const RuntimeSchema = z
 		requestIdHeader: "X-Request-Id",
 	});
 
+/**
+ * Auth-middleware configuration.
+ *
+ * Default is `disabled` + `anonymousPolicy: allow` — matches the
+ * runtime's pre-auth behavior so existing configs keep working.
+ *
+ * `mode` options:
+ *   - `disabled`: middleware tags every request anonymous; no
+ *     verification happens.
+ *   - `apiKey`: workbench-issued `wb_live_*` keys are accepted.
+ *     Ships in a later PR; rejected at startup today.
+ *   - `oidc`: JWT bearer tokens from a configured OIDC issuer.
+ *     Ships in a later PR.
+ *   - `any`: both verifiers active; first match wins.
+ *
+ * `anonymousPolicy: reject` rejects any request without an
+ * `Authorization` header with 401. In `disabled` mode this is the
+ * only way to force authentication (there's nothing to verify
+ * against) — useful for CI smoke tests.
+ */
+const AuthSchema = z
+	.object({
+		mode: z.enum(["disabled", "apiKey", "oidc", "any"]).default("disabled"),
+		anonymousPolicy: z.enum(["allow", "reject"]).default("allow"),
+	})
+	.default({ mode: "disabled", anonymousPolicy: "allow" });
+
 const ControlPlaneSchema = z.discriminatedUnion("driver", [
 	z.object({ driver: z.literal("memory") }),
 	z.object({
@@ -70,6 +97,7 @@ export const ConfigSchema = z
 		version: z.literal(1),
 		runtime: RuntimeSchema,
 		controlPlane: ControlPlaneSchema.default({ driver: "memory" }),
+		auth: AuthSchema,
 		seedWorkspaces: z.array(SeedWorkspaceSchema).default([]),
 	})
 	.superRefine((cfg, ctx) => {
@@ -96,6 +124,7 @@ export const ConfigSchema = z
 
 export type Config = z.infer<typeof ConfigSchema>;
 export type ControlPlaneConfig = Config["controlPlane"];
+export type AuthConfig = Config["auth"];
 export type SeedWorkspace = z.infer<typeof SeedWorkspaceSchema>;
 
 // Lightweight alias to keep `Id` reachable for callers that want the

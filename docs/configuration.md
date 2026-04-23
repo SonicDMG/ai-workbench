@@ -160,6 +160,27 @@ Using `seedWorkspaces` with any driver other than `memory` is a
 validation error — workspaces already persist in the backend, so
 there's nothing to seed.
 
+## `auth`
+
+Configures the `/api/v1/*` auth middleware. See
+[`auth.md`](auth.md) for the full contract and rollout plan.
+
+```yaml
+auth:
+  mode: disabled          # disabled | apiKey | oidc | any
+  anonymousPolicy: allow  # allow | reject
+```
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `mode` | enum | `disabled` | Which verifiers are active. Only `disabled` is implemented today; other modes fail loudly at startup. |
+| `anonymousPolicy` | enum | `allow` | `allow` lets tokenless requests through as anonymous; `reject` returns `401 unauthorized`. |
+
+The default (`disabled` + `allow`) matches pre-auth behavior: the
+middleware runs, tags every request anonymous, and lets it
+through. Set `anonymousPolicy: reject` in CI to assert the
+middleware is mounted.
+
 ## Secrets
 
 Secrets reach the runtime through two disjoint paths:

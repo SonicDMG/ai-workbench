@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 // @ts-expect-error — mjs import without types; it's intentional.
 import { runScenario } from "../../../conformance/runner.mjs";
 import { createApp } from "../src/app.js";
+import { AuthResolver } from "../src/auth/resolver.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
@@ -56,7 +57,12 @@ async function fetcherForFreshApp(): Promise<
 		new Map([["mock", new MockVectorStoreDriver()]]),
 	);
 	const secrets = new SecretResolver({ env: new EnvSecretProvider() });
-	const app = createApp({ store, drivers, secrets });
+	const auth = new AuthResolver({
+		mode: "disabled",
+		anonymousPolicy: "allow",
+		verifiers: [],
+	});
+	const app = createApp({ store, drivers, secrets, auth });
 	return async (method, path, body) => {
 		const init: RequestInit = { method };
 		if (body !== undefined) {

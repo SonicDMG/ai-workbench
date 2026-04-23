@@ -110,8 +110,9 @@ Deliverables:
   store).
 - Saved queries per catalog
   (`/api/v1/workspaces/{w}/catalogs/{c}/queries[/{q}]`).
-- Workspace-scoped API keys (`wb_workspace_api_keys`) — the runtime
-  finally grows an auth boundary.
+
+Workspace-scoped API keys moved into their own dedicated auth
+track — see [`auth.md`](auth.md) for the phased rollout.
 
 ## Phase 3 — Playground & UI
 

@@ -70,6 +70,8 @@ human-readable and may change. Currently emitted:
 | Status | Code | When |
 |---|---|---|
 | 400 | `validation_error` | Request body / params / query failed Zod validation. `message` carries the first failing field path and its reason (`name: Name is required`, `credentialsRef.token: expected '<provider>:<path>', e.g. 'env:FOO'`). |
+| 401 | `unauthorized` | Missing / malformed / invalid bearer token. `WWW-Authenticate: Bearer` set. See [`auth.md`](auth.md). |
+| 403 | `forbidden` | Token is valid but the subject lacks permission for the requested resource (reserved for the RBAC phase). |
 | 404 | `not_found` | Unknown route |
 | 404 | `workspace_not_found` | Workspace UID doesn't exist |
 | 404 | `catalog_not_found` | Catalog UID doesn't exist in workspace |
@@ -81,12 +83,28 @@ human-readable and may change. Currently emitted:
 
 ### Authentication
 
-**Not enforced today.** The runtime sits behind whatever auth boundary
-the operator deploys in front of it (a reverse proxy, an API gateway,
-etc.).
+`/api/v1/*` runs through a configurable auth middleware. The
+default posture (`auth.mode: disabled`) tags every request
+anonymous and lets it through — same behavior as before the
+middleware existed. Flip `auth.mode` to turn enforcement on. See
+[`auth.md`](auth.md) for the full contract, config, and rollout
+plan.
 
-Workspace-scoped API keys (`wb_workspace_api_keys`) are planned for
-Phase 2+ — see [`roadmap.md`](roadmap.md).
+Header format is `Authorization: Bearer <token>` (RFC 6750). On
+failure the response carries `WWW-Authenticate: Bearer` and the
+canonical error envelope:
+
+```json
+{ "error": { "code": "unauthorized", "message": "…", "requestId": "…" } }
+```
+
+Operational routes (`/`, `/healthz`, `/readyz`, `/version`,
+`/docs`, `/api/v1/openapi.json`) bypass the middleware so
+load balancers and ops tooling can always reach them.
+
+API-key issuance lands in a follow-up; OIDC after that. Both
+flow through the same middleware — routes don't need to care
+which verifier accepted the token.
 
 ### Request ID
 
