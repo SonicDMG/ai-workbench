@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
+import { loadDotEnv } from "./config/env-file.js";
 import { loadConfig, resolveConfigPath } from "./config/loader.js";
 import { storeFromConfig } from "./control-plane/factory.js";
 import { buildVectorStoreDriverRegistry } from "./drivers/factory.js";
@@ -9,6 +10,15 @@ import { FileSecretProvider } from "./secrets/file.js";
 import { SecretResolver } from "./secrets/provider.js";
 
 async function main(): Promise<void> {
+	// Load .env (repo-root by default) before anything reads `process.env`.
+	const envFile = loadDotEnv();
+	if (envFile.path) {
+		logger.info(
+			{ envFile: envFile.path, source: envFile.source },
+			"loaded env file",
+		);
+	}
+
 	const configPath = resolveConfigPath();
 	logger.info({ configPath }, "loading config");
 

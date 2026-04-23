@@ -214,6 +214,35 @@ changes." Since only the control-plane backend is configured here
 (workspaces themselves are runtime data), most day-to-day operations
 don't require a config change anyway.
 
+## `.env` file (dev convenience)
+
+The runtime auto-loads a `.env` file at startup so local dev doesn't
+need you to `export` secrets by hand. Uses Node 21.7+'s built-in
+`process.loadEnvFile` — no `dotenv` dependency.
+
+**Location.** Put it at the **repo root**. The runtime walks up from
+the process's current working directory looking for `.env`, stopping
+at the repo root (`.git` sentinel). That means the same file works
+whether you run `npm run dev` from the repo root or from
+`runtimes/typescript/`.
+
+**Precedence.** Values already present in `process.env` win —
+`.env` never overwrites shell exports or container env vars. Matches
+every other dotenv loader.
+
+**Override the path.** Set `WORKBENCH_ENV_FILE=/abs/path/to/.env` to
+skip the walk and load an explicit file (missing files fail loudly).
+Useful for production container boots where the token lives on a
+mounted secret.
+
+**Template.** [`.env.example`](../.env.example) at the repo root is
+a committed starting point — copy to `.env` and fill in the secrets
+you need. `.env` itself is gitignored.
+
+**Production.** The runtime ships the same loader in production, but
+standard container practice (Docker `-e` / K8s Secrets → env vars)
+usually means no `.env` is present and the loader silently skips.
+
 ## Examples
 
 - [`runtimes/typescript/examples/workbench.yaml`](../runtimes/typescript/examples/workbench.yaml) —
