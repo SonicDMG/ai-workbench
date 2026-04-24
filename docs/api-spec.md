@@ -521,12 +521,18 @@ UUID — any non-empty string).
 - `includeEmbeddings: true` returns the stored vector on each hit.
 
 **Text dispatch**: the route tries the driver's `searchByText()`
-first — that's the path Astra's `$vectorize` and other server-side
-embedding integrations take. On `NotSupportedError` the runtime
-falls back to a client-side embedding (built from the vector
-store's `embedding` config via the Vercel AI SDK) and then a
-normal vector search. See [`docs/playground.md`](playground.md)
-for the mental model.
+first — for Astra collections whose descriptor names a supported
+vectorize provider (`openai`, `azureOpenAI`, `cohere`, `jinaAI`,
+`mistral`, `nvidia`, `voyageAI`) and carries a `secretRef`, the
+driver opens a collection handle with the resolved API key as
+`embeddingApiKey` and issues `find(sort: { $vectorize: text })`.
+The runtime never sees or transmits the vector. Legacy
+collections (no `service` block) return a "vectorize not
+configured" error; the driver catches it and rethrows as
+`NotSupportedError`, after which the runtime falls back to a
+client-side embedding (built from the vector store's `embedding`
+config via the Vercel AI SDK) and runs a normal vector search.
+See [`docs/playground.md`](playground.md) for the mental model.
 
 **Response 200** — array of hits, sorted by `score` descending:
 

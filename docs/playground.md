@@ -83,13 +83,49 @@ names an unsupported provider, and `embedding_dimension_mismatch`
 (`400`) when the provider returns a vector whose length doesn't
 match the vector store's declared dimension.
 
+## Astra vectorize
+
+Astra's Data API can do the embedding itself when a collection is
+created with a `vector.service` block. The driver detects this
+path from the descriptor's `embedding` config: when the provider
+is one of `openai`, `azureOpenAI`, `cohere`, `jinaAI`, `mistral`,
+`nvidia`, `voyageAI` (allowlist in
+[`drivers/astra/vectorize.ts`](../runtimes/typescript/src/drivers/astra/vectorize.ts))
+**and** a `secretRef` is configured, the driver:
+
+1. At `createCollection` time, attaches
+   `{ provider, modelName }` to the collection's `vector.service`.
+   New collections under this runtime get server-side embedding by
+   default.
+2. At `searchByText` time, resolves the embedding secret, opens
+   the collection handle with `embeddingApiKey: <resolved>`, and
+   runs `find(sort: { $vectorize: text })`. The runtime never
+   sees or transmits the vector — Astra embeds and searches in a
+   single round trip.
+
+The secret rides as an `x-embedding-api-key` header per request
+(Astra's header-auth path), so operators can keep using the
+existing `env:OPENAI_API_KEY` style `secretRef`. If you'd prefer
+Astra-KMS shared secrets (by name), set
+`authentication.providerKey` directly on your collection — the
+driver leaves that path untouched.
+
+**Legacy collections** (created before this landed, or by another
+tool, without a `service` block) don't have vectorize. When the
+driver's `searchByText` catches Astra's
+`COLLECTION_VECTORIZE_NOT_CONFIGURED` family of errors it rethrows
+as `NotSupportedError`, which the route layer already treats as
+"fall back to client-side embedding" — so playground text queries
+continue to work on those collections with zero migration. The
+tradeoff: one extra round trip per query on legacy collections
+(the failed vectorize attempt) before the fallback kicks in.
+
 ## Future extensions
 
-- **Astra vectorize** — wire the astra driver's
-  `createCollection` / `upsert` / `searchByText` through the Data
-  API's `service` config and `$vectorize` so text queries stay on
-  the Astra side. Seam is already in place on the driver
-  interface; it's a follow-up PR.
+- **Upsert with `$vectorize`** — accept `{ id, text, payload }`
+  records on upsert and forward to Astra via `$vectorize`. Seam
+  isn't quite there yet (the VectorRecord schema still requires
+  `vector`); this is the natural next step.
 - **Document ingest** — a UI path for uploading text and chunking
   it into a vector store. Until that lands, upsert via the data
   plane (`POST .../records`) is the way.

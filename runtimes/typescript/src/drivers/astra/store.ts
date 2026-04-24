@@ -26,6 +26,8 @@ import type { SecretResolver } from "../../secrets/provider.js";
 import {
 	CollectionUnavailableError,
 	DimensionMismatchError,
+	NotSupportedError,
+	type SearchByTextRequest,
 	type SearchHit,
 	type SearchRequest,
 	type VectorRecord,
@@ -33,6 +35,11 @@ import {
 	type VectorStoreDriverContext,
 	WorkspaceMisconfiguredError,
 } from "../vector-store.js";
+import {
+	isVectorizeNotConfigured,
+	resolveVectorizeService,
+	type VectorizeService,
+} from "./vectorize.js";
 
 /** Our similarity enum → the enum astra-db-ts's CollectionVectorOptions uses. */
 function mapMetric(
@@ -46,6 +53,26 @@ function mapMetric(
 		case "euclidean":
 			return "euclidean";
 	}
+}
+
+/** Translate an Astra doc `{ _id, $vector, $similarity, ...payload }`
+ *  into a `SearchHit`. Reused by both `search` and `searchByText`. */
+function toHit(
+	doc: Record<string, unknown>,
+	includeEmbeddings?: boolean,
+): SearchHit {
+	const { _id, $vector, $similarity, ...payload } = doc as {
+		_id: string;
+		$vector?: number[];
+		$similarity?: number;
+		[k: string]: unknown;
+	};
+	return {
+		id: _id,
+		score: typeof $similarity === "number" ? $similarity : 0,
+		payload: Object.keys(payload).length > 0 ? payload : undefined,
+		vector: includeEmbeddings ? $vector : undefined,
+	};
 }
 
 function collectionName(descriptor: VectorStoreRecord): string {
@@ -62,18 +89,31 @@ function collectionName(descriptor: VectorStoreRecord): string {
  * tests inject a fake without depending on astra-db-ts's type
  * parameters.
  */
+export interface AstraCreateCollectionOptions {
+	vector: {
+		dimension: number;
+		metric: "cosine" | "dot_product" | "euclidean";
+		service?: VectorizeService;
+	};
+}
+
+export interface AstraCollectionHandleOptions {
+	/** Per-request API key for the upstream embedding provider. Used by
+	 *  $vectorize — Astra forwards this as an `x-embedding-api-key`
+	 *  header instead of dipping into its own KMS. */
+	embeddingApiKey?: string;
+}
+
 export interface AstraDbLike {
 	createCollection(
 		name: string,
-		opts: {
-			vector: {
-				dimension: number;
-				metric: "cosine" | "dot_product" | "euclidean";
-			};
-		},
+		opts: AstraCreateCollectionOptions,
 	): Promise<unknown>;
 	dropCollection(name: string): Promise<unknown>;
-	collection(name: string): AstraCollectionLike;
+	collection(
+		name: string,
+		opts?: AstraCollectionHandleOptions,
+	): AstraCollectionLike;
 }
 
 export interface AstraCollectionLike {
@@ -122,6 +162,7 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 	private readonly secrets: SecretResolver;
 	private readonly dbFactory: DbFactory;
 	private readonly dbs = new Map<string, AstraDbLike>();
+	private readonly embeddingKeys = new Map<string, string>();
 
 	constructor(opts: AstraVectorStoreDriverOptions) {
 		this.secrets = opts.secrets;
@@ -130,10 +171,12 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 
 	async createCollection(ctx: VectorStoreDriverContext): Promise<void> {
 		const db = await this.getDb(ctx.workspace);
+		const service = resolveVectorizeService(ctx.descriptor.embedding);
 		await db.createCollection(collectionName(ctx.descriptor), {
 			vector: {
 				dimension: ctx.descriptor.vectorDimension,
 				metric: mapMetric(ctx.descriptor.vectorSimilarity),
+				...(service ? { service } : {}),
 			},
 		});
 	}
@@ -195,21 +238,87 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 			includeSimilarity: true,
 		});
 		const docs = await cursor.toArray();
-		return docs.map((doc) => {
-			const { _id, $vector, $similarity, ...payload } = doc as {
-				_id: string;
-				$vector?: number[];
-				$similarity?: number;
-				[k: string]: unknown;
-			};
-			const hit: SearchHit = {
-				id: _id,
-				score: typeof $similarity === "number" ? $similarity : 0,
-				payload: Object.keys(payload).length > 0 ? payload : undefined,
-				vector: req.includeEmbeddings ? $vector : undefined,
-			};
-			return hit;
+		return docs.map((doc) => toHit(doc, req.includeEmbeddings));
+	}
+
+	/**
+	 * Server-side embedding via Astra's `$vectorize` sort. Requires the
+	 * collection to have been created with a `service` block — if the
+	 * descriptor's embedding isn't a provider we opt into, or Astra
+	 * reports the collection doesn't have vectorize wired up, throw
+	 * {@link NotSupportedError} so the route layer falls back to
+	 * client-side embedding.
+	 */
+	async searchByText(
+		ctx: VectorStoreDriverContext,
+		req: SearchByTextRequest,
+	): Promise<readonly SearchHit[]> {
+		const service = resolveVectorizeService(ctx.descriptor.embedding);
+		if (!service) {
+			throw new NotSupportedError(
+				"searchByText",
+				`embedding.provider '${ctx.descriptor.embedding.provider}' is not wired into Astra vectorize — falling back to client-side embedding`,
+			);
+		}
+		const embeddingApiKey = await this.resolveEmbeddingKey(ctx);
+		const topK = Math.max(1, Math.min(req.topK ?? 10, 1000));
+		const db = await this.getDb(ctx.workspace);
+		const coll = db.collection(collectionName(ctx.descriptor), {
+			embeddingApiKey,
 		});
+		try {
+			const cursor = coll.find(req.filter ?? {}, {
+				sort: { $vectorize: req.text },
+				limit: topK,
+				includeSimilarity: true,
+			});
+			const docs = await cursor.toArray();
+			return docs.map((doc) => toHit(doc, req.includeEmbeddings));
+		} catch (err) {
+			// Some tenants have collections created without the service
+			// block (pre-vectorize, or by a different tool). Translate
+			// the Astra "vectorize not configured" family of errors so
+			// the route layer falls back to client-side embedding on
+			// those collections automatically.
+			if (isVectorizeNotConfigured(err)) {
+				throw new NotSupportedError(
+					"searchByText",
+					"collection does not have an Astra vectorize service configured",
+				);
+			}
+			throw err;
+		}
+	}
+
+	/**
+	 * Resolve the embedding-provider API key for a descriptor. Used by
+	 * the vectorize path to attach an `x-embedding-api-key` header on
+	 * each collection call. Returns `undefined` when no secret is set
+	 * — in that case Astra has to fall back on its own KMS lookup
+	 * (configured out-of-band), or the call will 401.
+	 *
+	 * Cached per descriptor UID so a burst of queries only pays the
+	 * secret-resolver cost once. Workspace-level secrets rotate by
+	 * runtime restart, same as the DB-connection cache.
+	 */
+	private async resolveEmbeddingKey(
+		ctx: VectorStoreDriverContext,
+	): Promise<string | undefined> {
+		const ref = ctx.descriptor.embedding.secretRef;
+		if (!ref) return undefined;
+		const cached = this.embeddingKeys.get(ctx.descriptor.uid);
+		if (cached) return cached;
+		try {
+			const key = await this.secrets.resolve(ref);
+			this.embeddingKeys.set(ctx.descriptor.uid, key);
+			return key;
+		} catch (err) {
+			throw new CollectionUnavailableError(
+				`failed to resolve embedding.secretRef for vector store '${ctx.descriptor.uid}': ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			);
+		}
 	}
 
 	private async getDb(workspace: WorkspaceRecord): Promise<AstraDbLike> {
