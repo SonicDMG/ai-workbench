@@ -115,8 +115,16 @@ Shipped in this phase so far:
   that delegates to the catalog's bound vector store. Merges
   `catalogUid = catalog.uid` into the filter so a search cannot
   escape its catalog. Covered by scenario
-  `catalog-scoped-document-search`. Hybrid retrieval (lexical,
-  rerank) arrives alongside the lexical config wiring.
+  `catalog-scoped-document-search`.
+- **Hybrid + rerank lanes** on the search route. Driver contract
+  extended with optional `searchHybrid` and `rerank` methods; mock
+  driver implements both with a cheap tokenizer + min-max
+  normalization. Request body gains `hybrid`, `lexicalWeight`, and
+  `rerank` flags; descriptor-level `lexical.enabled` /
+  `reranking.enabled` feed the defaults. Drivers that lack either
+  method return 501 (`hybrid_not_supported` /
+  `rerank_not_supported`). Astra-native wiring is a follow-up —
+  today astra returns 501 if asked.
 - `POST .../catalogs/{c}/ingest` — **synchronous** end-to-end ingest.
   Chunks the input text, embeds each chunk (server-side via
   `$vectorize` when supported, otherwise client-side), upserts into
@@ -145,6 +153,12 @@ Shipped in this phase so far:
 
 Planned for the rest of 2b:
 
+- Async variant of ingest (`POST .../ingest?async=true`) returning a
+  job id.
+- `GET .../jobs/{jobId}` for status polling.
+- Streaming progress via SSE.
+- Astra-native `searchHybrid` + `rerank` (today's impl is mock-only;
+  astra returns 501).
 - Lexical + rerank lanes for the catalog-scoped search (today's
   implementation is vector-only).
 - Durable `JobStore` backends (file, astra) and in-flight job

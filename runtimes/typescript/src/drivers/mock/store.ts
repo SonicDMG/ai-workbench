@@ -18,8 +18,10 @@ import {
 	CollectionUnavailableError,
 	DimensionMismatchError,
 	NotSupportedError,
+	type RerankInput,
 	type SearchByTextRequest,
 	type SearchHit,
+	type SearchHybridRequest,
 	type SearchRequest,
 	type TextRecord,
 	type VectorRecord,
@@ -112,16 +114,24 @@ function matchesFilter(
 export class MockVectorStoreDriver implements VectorStoreDriver {
 	/** Outer key = workspace.uid + descriptor.uid; inner map = recordId → record. */
 	private readonly stores = new Map<Key, Map<string, VectorRecord>>();
+	/** Parallel text store populated by {@link upsertByText}. Keyed
+	 * the same way as {@link stores}, then by recordId. Used by
+	 * {@link searchHybrid} and {@link rerank} to compute lexical
+	 * scores. Records upserted via plain {@link upsert} (vectors only)
+	 * do not appear here and score 0 on lexical. */
+	private readonly texts = new Map<Key, Map<string, string>>();
 
 	async createCollection(ctx: VectorStoreDriverContext): Promise<void> {
 		// Idempotent: if it already exists, leave it alone.
-		if (!this.stores.has(keyOf(ctx))) {
-			this.stores.set(keyOf(ctx), new Map());
-		}
+		const k = keyOf(ctx);
+		if (!this.stores.has(k)) this.stores.set(k, new Map());
+		if (!this.texts.has(k)) this.texts.set(k, new Map());
 	}
 
 	async dropCollection(ctx: VectorStoreDriverContext): Promise<void> {
-		this.stores.delete(keyOf(ctx));
+		const k = keyOf(ctx);
+		this.stores.delete(k);
+		this.texts.delete(k);
 	}
 
 	async upsert(
@@ -148,7 +158,9 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 		id: string,
 	): Promise<{ deleted: boolean }> {
 		const store = this.requireStore(ctx);
-		return { deleted: store.delete(id) };
+		const deleted = store.delete(id);
+		this.texts.get(keyOf(ctx))?.delete(id);
+		return { deleted };
 	}
 
 	async search(
@@ -207,7 +219,75 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 			vector: mockEmbed(r.text, ctx.descriptor.vectorDimension),
 			payload: r.payload,
 		}));
-		return this.upsert(ctx, expanded);
+		const result = await this.upsert(ctx, expanded);
+		// Retain the raw text so searchHybrid / rerank have a lexical
+		// signal to work with. Keyed per collection.
+		const textsForStore = this.texts.get(keyOf(ctx)) ?? new Map();
+		for (const r of records) textsForStore.set(r.id, r.text);
+		this.texts.set(keyOf(ctx), textsForStore);
+		return result;
+	}
+
+	async searchHybrid(
+		ctx: VectorStoreDriverContext,
+		req: SearchHybridRequest,
+	): Promise<readonly SearchHit[]> {
+		// Same gate as searchByText — hybrid only makes sense when the
+		// descriptor opted into mock's text lane.
+		if (ctx.descriptor.embedding.provider !== "mock") {
+			throw new NotSupportedError(
+				"searchHybrid",
+				"mock driver only supports hybrid search when descriptor.embedding.provider == 'mock'",
+			);
+		}
+		const vectorHits = await this.search(ctx, {
+			vector: req.vector,
+			topK: 1000, // widen the pool; we cut down after combining
+			filter: req.filter,
+			includeEmbeddings: req.includeEmbeddings,
+		});
+		const texts = this.texts.get(keyOf(ctx));
+		const lexicalWeight = clamp01(req.lexicalWeight ?? 0.5);
+		const topK = Math.max(1, Math.min(req.topK ?? 10, 1000));
+
+		// Compute lexical score per hit, then min-max normalize vector
+		// + lexical into [0, 1] so the weighted sum is meaningful.
+		const queryTokens = tokenize(req.text);
+		const lexical = vectorHits.map((h) =>
+			lexicalScore(queryTokens, texts?.get(h.id) ?? ""),
+		);
+		const vectorRaw = vectorHits.map((h) => h.score);
+		const vectorNorm = minMaxNormalize(vectorRaw);
+		const lexicalNorm = minMaxNormalize(lexical);
+
+		const combined = vectorHits.map((h, i) => ({
+			...h,
+			score:
+				(1 - lexicalWeight) * (vectorNorm[i] ?? 0) +
+				lexicalWeight * (lexicalNorm[i] ?? 0),
+		}));
+		combined.sort((a, b) => b.score - a.score);
+		return combined.slice(0, topK);
+	}
+
+	async rerank(
+		ctx: VectorStoreDriverContext,
+		input: RerankInput,
+	): Promise<readonly SearchHit[]> {
+		if (ctx.descriptor.embedding.provider !== "mock") {
+			throw new NotSupportedError(
+				"rerank",
+				"mock driver only supports rerank when descriptor.embedding.provider == 'mock'",
+			);
+		}
+		const texts = this.texts.get(keyOf(ctx));
+		const queryTokens = tokenize(input.text);
+		const scored = input.hits.map((h) => ({
+			...h,
+			score: lexicalScore(queryTokens, texts?.get(h.id) ?? ""),
+		}));
+		scored.sort((a, b) => b.score - a.score);
+		return scored;
 	}
 
 	async searchByText(
@@ -244,4 +324,53 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 		}
 		return store;
 	}
+}
+
+/** Cheap lowercase tokenizer — good enough for the mock driver's
+ * lexical signal. Not Unicode-aware; operators with international
+ * content should point `lexical.analyzer` at a real implementation
+ * once the astra lexical lane lands. */
+function tokenize(text: string): readonly string[] {
+	return text
+		.toLowerCase()
+		.split(/[^a-z0-9]+/u)
+		.filter((t) => t.length > 0);
+}
+
+/** Lexical score = (matching tokens) / (stored token count). Defined
+ * per the mock's limited needs — NOT a faithful BM25. Empty stored
+ * text scores 0. */
+function lexicalScore(
+	queryTokens: readonly string[],
+	storedText: string,
+): number {
+	if (storedText.length === 0) return 0;
+	const storedTokens = tokenize(storedText);
+	if (storedTokens.length === 0) return 0;
+	const querySet = new Set(queryTokens);
+	let matches = 0;
+	for (const t of storedTokens) if (querySet.has(t)) matches++;
+	return matches / storedTokens.length;
+}
+
+/** Min-max normalize into `[0, 1]`. If all values are identical the
+ * output is all zeros — avoids a divide-by-zero and preserves the
+ * "no signal" interpretation. */
+function minMaxNormalize(values: readonly number[]): readonly number[] {
+	if (values.length === 0) return [];
+	let min = Number.POSITIVE_INFINITY;
+	let max = Number.NEGATIVE_INFINITY;
+	for (const v of values) {
+		if (v < min) min = v;
+		if (v > max) max = v;
+	}
+	const span = max - min;
+	if (span === 0) return values.map(() => 0);
+	return values.map((v) => (v - min) / span);
+}
+
+function clamp01(n: number): number {
+	if (n < 0) return 0;
+	if (n > 1) return 1;
+	return n;
 }

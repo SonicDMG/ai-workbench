@@ -338,6 +338,16 @@ export const SearchRequestSchema = z
 		topK: z.number().int().positive().max(1000).optional(),
 		filter: z.record(z.string(), z.unknown()).optional(),
 		includeEmbeddings: z.boolean().optional(),
+		/** Opt into the hybrid (vector + lexical) lane. Default follows
+		 * the bound store's `lexical.enabled` flag. Requires `text`
+		 * (the lexical lane can't operate without it). */
+		hybrid: z.boolean().optional(),
+		/** Weight of the lexical score in the hybrid combination,
+		 * `[0, 1]`. Only consulted when `hybrid: true`. Default 0.5. */
+		lexicalWeight: z.number().min(0).max(1).optional(),
+		/** Opt into the driver's reranker after the initial retrieval.
+		 * Default follows the bound store's `reranking.enabled` flag. */
+		rerank: z.boolean().optional(),
 	})
 	.refine((v) => (v.vector === undefined) !== (v.text === undefined), {
 		message: "exactly one of 'vector' or 'text' must be provided",

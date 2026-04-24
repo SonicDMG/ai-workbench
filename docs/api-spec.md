@@ -80,6 +80,9 @@ human-readable and may change. Currently emitted:
 | 404 | `job_not_found` | Job UID doesn't exist in the workspace |
 | 404 | `saved_query_not_found` | Saved query UID doesn't exist in the catalog |
 | 409 | `conflict` | Create with an already-taken UID |
+| 409 | `catalog_not_bound_to_vector_store` | Catalog-scoped search against a catalog whose `vectorStore` is `null` |
+| 501 | `hybrid_not_supported` | Caller asked for hybrid search on a workspace kind whose driver doesn't implement `searchHybrid` |
+| 501 | `rerank_not_supported` | Caller asked for rerank on a workspace kind whose driver doesn't implement `rerank` |
 | 409 | `catalog_not_bound_to_vector_store` | Catalog-scoped search, ingest, or saved-query run against a catalog whose `vectorStore` is `null` |
 | 400 | `dimension_mismatch` | Supplied vector length doesn't match the vector-store descriptor |
 | 400 | `embedding_unavailable` | Text search/upsert fallback could not build an embedder for the descriptor |
@@ -680,7 +683,10 @@ required; never both.
 {
   "text": "how do refunds work?",
   "topK": 5,
-  "filter": { "section": "billing" }
+  "filter": { "section": "billing" },
+  "hybrid": true,
+  "lexicalWeight": 0.3,
+  "rerank": true
 }
 ```
 
@@ -691,9 +697,28 @@ catalog UID unconditionally. Any caller-supplied `catalogUid` is
 overridden — a search can never escape its catalog. Other filter
 keys merge normally.
 
+**Hybrid + rerank lanes.**
+
+- `hybrid: true` runs the driver's combined vector + lexical lane.
+  Defaults to the bound store's `lexical.enabled`. Requires `text` —
+  the lexical signal has nothing to score against without it.
+  `lexicalWeight` (0..1, default 0.5) tunes how much the lexical
+  score contributes vs. the vector score.
+- `rerank: true` post-processes the retrieval hits through the
+  driver's reranker. Defaults to the bound store's
+  `reranking.enabled`. Also requires `text`.
+
+Drivers can support either, both, or neither. The `mock` driver
+supports both when the descriptor's `embedding.provider` is `"mock"`.
+The `astra` driver wires these flags through to the underlying
+store in a later slice — calling them with `hybrid: true` /
+`rerank: true` on an astra workspace returns 501 today.
+
 **Errors**
 
-- **400** `validation_error` — `vector` / `text` presence rules
+- **400** `validation_error` — `vector` / `text` presence rules,
+  including "hybrid: true requires text" and "rerank: true requires
+  text"
 - **400** `embedding_unavailable` — the fallback embedder could not be
   built (text path only)
 - **400** `embedding_dimension_mismatch` — provider returned a vector
@@ -703,6 +728,8 @@ keys merge normally.
   referenced store no longer does (stale binding)
 - **409** `catalog_not_bound_to_vector_store` — `catalog.vectorStore`
   is `null`
+- **501** `hybrid_not_supported` / `rerank_not_supported` — the
+  workspace kind's driver doesn't implement the requested lane
 
 Text records written through `POST /ingest` carry a `catalogUid`
 stamp on every chunk payload — that's what lets this route scope

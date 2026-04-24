@@ -74,6 +74,30 @@ export interface SearchByTextRequest extends SearchOptions {
 	readonly text: string;
 }
 
+/** A hybrid (vector + lexical) search. Requires both a vector AND the
+ * originating text — the lexical lane needs the raw query string the
+ * vector was derived from. Only implemented by drivers whose stores
+ * retain some lexical signal (Astra `$hybrid`, mock with stored
+ * text). The route layer catches {@link NotSupportedError} and
+ * surfaces it as a 501 to the caller. */
+export interface SearchHybridRequest extends SearchOptions {
+	readonly vector: readonly number[];
+	readonly text: string;
+	/** Weight of the lexical score relative to the vector score when
+	 * combining, in `[0, 1]`. Default `0.5` — equal weight. Drivers
+	 * are free to interpret this as a hint rather than a guarantee. */
+	readonly lexicalWeight?: number;
+}
+
+/** Input to driver-side reranking — the text of the original query
+ * and the hits to be reordered. The driver returns a new ordering
+ * (usually a prefix) of the same hits. Optional — drivers without a
+ * reranker throw {@link NotSupportedError}. */
+export interface RerankInput {
+	readonly text: string;
+	readonly hits: readonly SearchHit[];
+}
+
 /** A single result from a search. */
 export interface SearchHit {
 	readonly id: string;
@@ -131,6 +155,31 @@ export interface VectorStoreDriver {
 		ctx: VectorStoreDriverContext,
 		records: readonly TextRecord[],
 	): Promise<{ upserted: number }>;
+
+	/**
+	 * Hybrid (vector + lexical) search. Optional — drivers without a
+	 * lexical index throw {@link NotSupportedError} and the route layer
+	 * surfaces that as a 501 to the caller. Called only when the
+	 * request sets `hybrid: true` or the descriptor has
+	 * `lexical.enabled: true`.
+	 */
+	searchHybrid?(
+		ctx: VectorStoreDriverContext,
+		req: SearchHybridRequest,
+	): Promise<readonly SearchHit[]>;
+
+	/**
+	 * Driver-side reranker — takes the hits from a vector or hybrid
+	 * pass and reorders them using a second, higher-quality signal
+	 * (cross-encoder, Astra reranking service, etc.). Optional —
+	 * drivers without a reranker throw {@link NotSupportedError}.
+	 * Invoked only when the request sets `rerank: true` or the
+	 * descriptor has `reranking.enabled: true`.
+	 */
+	rerank?(
+		ctx: VectorStoreDriverContext,
+		input: RerankInput,
+	): Promise<readonly SearchHit[]>;
 }
 
 /* ------------------------------------------------------------------ */
