@@ -22,7 +22,11 @@ export function UserMenu() {
 	const cfg = useAuthConfig();
 	const session = useSession();
 
-	if (cfg.isPending || session.isPending) {
+	// `isLoading` (pending AND actually fetching) instead of
+	// `isPending` so a disabled session query — which happens when
+	// OIDC browser-login isn't configured — doesn't leave the menu
+	// stuck in its skeleton placeholder forever.
+	if (cfg.isLoading || session.isLoading) {
 		return <div aria-hidden className="h-8 w-8 rounded-full bg-slate-100" />;
 	}
 	const modes = cfg.data?.modes;

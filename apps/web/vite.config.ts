@@ -2,8 +2,20 @@ import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// Proxy /api/* to the TS runtime in dev so the UI is same-origin.
-// Override the target via VITE_API_TARGET when the runtime is not on :8080.
+// Proxy the runtime's URL prefixes to :8080 in dev so the UI is
+// effectively same-origin. In the shipped Docker image the runtime
+// serves the UI and the API on the same host, so there's no proxy
+// there — this config is dev-only. Override the target via
+// VITE_API_TARGET when the runtime is not on :8080.
+//
+// Prefixes:
+//   /api   — control-plane + data-plane JSON routes (since day 1)
+//   /auth  — OIDC browser-login endpoints (since #34). The UI probes
+//            /auth/config + /auth/me on mount to decide whether to
+//            show the login button; without this entry, dev logs a
+//            404 for each on every page load.
+//   /docs  — Scalar reference UI served by the runtime. Convenient
+//            for clicking the API-docs link in dev.
 export default defineConfig({
 	plugins: [react()],
 	resolve: {
@@ -15,6 +27,14 @@ export default defineConfig({
 		port: 5173,
 		proxy: {
 			"/api": {
+				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
+				changeOrigin: true,
+			},
+			"/auth": {
+				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
+				changeOrigin: true,
+			},
+			"/docs": {
 				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
 				changeOrigin: true,
 			},

@@ -20,12 +20,23 @@ export function useAuthConfig(): UseQueryResult<AuthConfig | null, Error> {
 	});
 }
 
-/** The current logged-in subject, or `null` if unauthenticated. */
+/**
+ * The current logged-in subject, or `null` if unauthenticated.
+ *
+ * Gated on the auth config's `modes.login` — when the runtime
+ * isn't running the OIDC browser-login flow, the `/auth/me` route
+ * isn't mounted and would 404. Firing it anyway paints a
+ * `Failed to load resource` line in the console on every page
+ * load, which users reasonably read as \"something is broken\".
+ */
 export function useSession(): UseQueryResult<SessionSubject | null, Error> {
+	const cfg = useAuthConfig();
+	const loginAvailable = cfg.data?.modes.login === true;
 	return useQuery({
 		queryKey: ["auth", "me"],
 		queryFn: fetchSessionSubject,
 		staleTime: 30_000,
 		retry: false,
+		enabled: loginAvailable,
 	});
 }
