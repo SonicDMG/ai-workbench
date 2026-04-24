@@ -138,10 +138,16 @@ Shipped in this phase so far:
   updates the job record (`processed`, `total`, `status`,
   `errorMessage`) through a `JobStore`. `GET .../jobs/{jobId}`
   polls; `GET .../jobs/{jobId}/events` streams updates via SSE,
-  closing on terminal states. Single-replica / in-memory only for
-  now — durable job backends are a follow-up; in-flight jobs do not
-  resume across restart. Not in conformance (timing-dependent);
-  covered by TypeScript runtime tests.
+  closing on terminal states. In-flight jobs don't resume across
+  restart (the pipeline's owning worker is gone); durable stores
+  still keep the record around for the operator. Not in conformance
+  (timing-dependent); covered by TypeScript runtime tests.
+- **Durable `JobStore` backends.** File (`<root>/jobs.json`) and
+  Astra (`wb_jobs_by_workspace`) impls auto-matched to
+  `controlPlane.driver`. Memory stays the default for ephemeral runs.
+  Shared contract suite (`tests/jobs/contract.ts`) runs the same 8
+  assertions against each backend. In-process pub/sub for SSE
+  subscribers; cross-replica fan-out remains future work.
 - **Saved queries** — `/api/v1/workspaces/{w}/catalogs/{c}/queries`
   CRUD + `POST /{q}/run` that replays through the catalog-scoped
   search path. Text-only; the `/run` endpoint merges the catalog's
@@ -153,18 +159,10 @@ Shipped in this phase so far:
 
 Planned for the rest of 2b:
 
-- Async variant of ingest (`POST .../ingest?async=true`) returning a
-  job id.
-- `GET .../jobs/{jobId}` for status polling.
-- Streaming progress via SSE.
 - Astra-native `searchHybrid` + `rerank` (today's impl is mock-only;
   astra returns 501).
-- Lexical + rerank lanes for the catalog-scoped search (today's
-  implementation is vector-only).
-- Durable `JobStore` backends (file, astra) and in-flight job
-  recovery across restart.
-- Saved queries per catalog
-  (`/api/v1/workspaces/{w}/catalogs/{c}/queries[/{q}]`).
+- Cross-replica job pub/sub + in-flight resume after restart (today
+  the record survives restart but the owning worker doesn't).
 
 Workspace-scoped API keys moved into their own dedicated auth
 track — see [`auth.md`](auth.md) for the phased rollout.

@@ -13,6 +13,7 @@ import type {
 	ApiKeyRow,
 	CatalogRow,
 	DocumentRow,
+	JobRow,
 	SavedQueryRow,
 	VectorStoreRow,
 	WorkspaceRow,
@@ -26,6 +27,8 @@ import {
 	CATALOGS_TABLE,
 	DOCUMENTS_DEFINITION,
 	DOCUMENTS_TABLE,
+	JOBS_DEFINITION,
+	JOBS_TABLE,
 	SAVED_QUERIES_DEFINITION,
 	SAVED_QUERIES_TABLE,
 	VECTOR_STORES_DEFINITION,
@@ -62,6 +65,7 @@ export async function openAstraClient(
 		vectorStores: db.table<VectorStoreRow>(VECTOR_STORES_TABLE),
 		documents: db.table<DocumentRow>(DOCUMENTS_TABLE),
 		savedQueries: db.table<SavedQueryRow>(SAVED_QUERIES_TABLE),
+		jobs: db.table<JobRow>(JOBS_TABLE),
 		apiKeys: db.table<ApiKeyRow>(API_KEYS_TABLE),
 		apiKeyLookup: db.table<ApiKeyLookupRow>(API_KEY_LOOKUP_TABLE),
 	};
@@ -87,6 +91,10 @@ async function ensureTables(db: Db): Promise<void> {
 		}),
 		db.createTable(SAVED_QUERIES_TABLE, {
 			definition: SAVED_QUERIES_DEFINITION,
+			ifNotExists: true,
+		}),
+		db.createTable(JOBS_TABLE, {
+			definition: JOBS_DEFINITION,
 			ifNotExists: true,
 		}),
 		db.createTable(API_KEYS_TABLE, {

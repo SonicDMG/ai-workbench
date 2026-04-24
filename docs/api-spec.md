@@ -888,10 +888,24 @@ persistent job backends.
 | `createdAt` | iso-8601 | |
 | `updatedAt` | iso-8601 | |
 
-**Persistence note.** Jobs are stored in memory today and lost on
-process restart. In-flight jobs from a previous run do not resume —
-the document row stays at `writing` / `failed` and the caller
-resubmits. Durable job backends (file, astra) are a later slice.
+**Persistence.** The job store auto-matches the control-plane
+driver:
+
+- `controlPlane.driver: memory` → jobs live in-process (lost on
+  restart).
+- `controlPlane.driver: file` → jobs serialize to
+  `<controlPlane.root>/jobs.json` alongside workspaces.json, survive
+  restart.
+- `controlPlane.driver: astra` → jobs live in `wb_jobs_by_workspace`,
+  reusing the existing Data API connection; durable across restart
+  and across replicas.
+
+In-flight jobs (`pending` / `running` at restart) are NOT resumed —
+the worker that owned them is gone. The record keeps its
+pre-restart status until a human or a follow-up slice with a
+resume-worker promotes it to `failed`. Callers that need
+restart-resume today should treat any `running` job older than a
+heartbeat threshold as failed and resubmit.
 
 ---
 

@@ -27,6 +27,7 @@ import type {
 	ApiKeyRow,
 	CatalogRow,
 	DocumentRow,
+	JobRow,
 	SavedQueryRow,
 	VectorStoreRow,
 	WorkspaceRow,
@@ -101,6 +102,7 @@ export function createFakeTablesBundle(): TablesBundle {
 		vectorStores: new FakeTable<VectorStoreRow>(),
 		documents: new FakeTable<DocumentRow>(),
 		savedQueries: new FakeTable<SavedQueryRow>(),
+		jobs: new FakeTable<JobRow>(),
 		apiKeys: new FakeTable<ApiKeyRow>(),
 		apiKeyLookup: new FakeTable<ApiKeyLookupRow>(),
 	};

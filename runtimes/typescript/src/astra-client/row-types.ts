@@ -113,3 +113,20 @@ export interface SavedQueryRow {
 	created_at: Iso;
 	updated_at: Iso;
 }
+
+export interface JobRow {
+	workspace: Uuid;
+	job_id: Uuid;
+	kind: string;
+	catalog_uid: Uuid | null;
+	document_uid: Uuid | null;
+	status: string;
+	processed: number;
+	total: number | null;
+	/** Serialized `Record<string, unknown>` on success. Same text-column
+	 * pattern as `filter_json` on saved queries. */
+	result_json: string | null;
+	error_message: string | null;
+	created_at: Iso;
+	updated_at: Iso;
+}

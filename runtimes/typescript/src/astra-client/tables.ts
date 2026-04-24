@@ -23,6 +23,7 @@ import type {
 	ApiKeyRow,
 	CatalogRow,
 	DocumentRow,
+	JobRow,
 	SavedQueryRow,
 	VectorStoreRow,
 	WorkspaceRow,
@@ -54,6 +55,7 @@ export interface TablesBundle {
 	readonly vectorStores: TableLike<VectorStoreRow>;
 	readonly documents: TableLike<DocumentRow>;
 	readonly savedQueries: TableLike<SavedQueryRow>;
+	readonly jobs: TableLike<JobRow>;
 	readonly apiKeys: TableLike<ApiKeyRow>;
 	readonly apiKeyLookup: TableLike<ApiKeyLookupRow>;
 }

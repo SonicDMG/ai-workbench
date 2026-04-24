@@ -10,9 +10,10 @@ import { MemoryPendingLoginStore } from "./auth/oidc/login/pending.js";
 import { loadDotEnv } from "./config/env-file.js";
 import { loadConfig, resolveConfigPath } from "./config/loader.js";
 import type { AuthConfig } from "./config/schema.js";
-import { storeFromConfig } from "./control-plane/factory.js";
+import { controlPlaneFromConfig } from "./control-plane/factory.js";
 import { buildVectorStoreDriverRegistry } from "./drivers/factory.js";
 import { makeEmbedderFactory } from "./embeddings/factory.js";
+import { buildJobStore } from "./jobs/factory.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
 import { EnvSecretProvider } from "./secrets/env.js";
 import { FileSecretProvider } from "./secrets/file.js";
@@ -45,7 +46,11 @@ async function main(): Promise<void> {
 		file: new FileSecretProvider(),
 	});
 
-	const store = await storeFromConfig(config, secrets);
+	const { store, astraTables } = await controlPlaneFromConfig(config, secrets);
+	const jobs = await buildJobStore({
+		controlPlane: config.controlPlane,
+		astraTables,
+	});
 	const drivers = buildVectorStoreDriverRegistry({ secrets });
 	const embedders = makeEmbedderFactory({ secrets });
 	const auth = await buildAuthResolver(config.auth, { store });
@@ -69,6 +74,7 @@ async function main(): Promise<void> {
 		secrets,
 		auth,
 		embedders,
+		jobs,
 		ui,
 		login,
 		readiness,

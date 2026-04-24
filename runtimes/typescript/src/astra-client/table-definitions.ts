@@ -173,3 +173,34 @@ export const SAVED_QUERIES_DEFINITION = {
 		partitionSort: { query_uid: 1 },
 	},
 } as const satisfies CreateTableDefinition;
+
+/**
+ * `wb_jobs_by_workspace` — background-operation records for async
+ * routes (today: ingest). Partitioned by workspace so every job
+ * lookup hits one partition; sorted by `job_id` so list endpoints
+ * (when they land) stay bounded.
+ *
+ * `result_json` holds a JSON-encoded summary on success — same
+ * text-column pattern as `filter_json` on saved queries.
+ */
+export const JOBS_TABLE = "wb_jobs_by_workspace";
+export const JOBS_DEFINITION = {
+	columns: {
+		workspace: "uuid",
+		job_id: "uuid",
+		kind: "text",
+		catalog_uid: "uuid",
+		document_uid: "uuid",
+		status: "text",
+		processed: "int",
+		total: "int",
+		result_json: "text",
+		error_message: "text",
+		created_at: "timestamp",
+		updated_at: "timestamp",
+	},
+	primaryKey: {
+		partitionBy: ["workspace"],
+		partitionSort: { job_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;

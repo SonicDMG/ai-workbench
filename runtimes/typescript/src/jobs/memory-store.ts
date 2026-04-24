@@ -1,26 +1,22 @@
 /**
  * In-memory {@link JobStore} — the default backend for single-process
- * deployments.
+ * ephemeral deployments.
  *
  * Internal shape:
  *   - `jobs: Map<\`${workspace}:${jobId}\`, JobRecord>`
- *   - `listeners: Map<\`${workspace}:${jobId}\`, Set<JobListener>>`
  *
- * Single-process means `subscribe()` is a pure in-memory map; the
- * producer (`update()`) and consumer (SSE handler) share the same
- * listener set. Cross-process pub/sub is a concern for persistent
- * backends.
+ * Pub/sub sits in a shared {@link JobSubscriptions} helper so the
+ * file + astra backends reuse it unchanged.
  *
- * `listeners` is never cleaned up — terminal jobs stick around with
- * their listener set empty after all subscribers unsubscribe. That's
- * fine at this slice's scale (jobs are per-request); a later slice
- * should add GC on terminal + no-subscribers.
+ * Not durable — state is lost on process exit. Use the file or astra
+ * backends for anything longer-lived than a single process invocation.
  */
 
 import { randomUUID } from "node:crypto";
 import { nowIso } from "../control-plane/defaults.js";
 import { ControlPlaneNotFoundError } from "../control-plane/errors.js";
 import type { JobListener, JobStore, Unsubscribe } from "./store.js";
+import { JobSubscriptions } from "./subscriptions.js";
 import type { CreateJobInput, JobRecord, UpdateJobInput } from "./types.js";
 
 function key(workspace: string, jobId: string): string {
@@ -29,7 +25,7 @@ function key(workspace: string, jobId: string): string {
 
 export class MemoryJobStore implements JobStore {
 	private readonly jobs = new Map<string, JobRecord>();
-	private readonly listeners = new Map<string, Set<JobListener>>();
+	private readonly subscriptions = new JobSubscriptions();
 
 	async create(input: CreateJobInput): Promise<JobRecord> {
 		const jobId = input.jobId ?? randomUUID();
@@ -66,36 +62,9 @@ export class MemoryJobStore implements JobStore {
 		if (!existing) {
 			throw new ControlPlaneNotFoundError("job", jobId);
 		}
-		const next: JobRecord = {
-			...existing,
-			...(patch.status !== undefined && { status: patch.status }),
-			...(patch.processed !== undefined && { processed: patch.processed }),
-			...(patch.total !== undefined && { total: patch.total }),
-			...(patch.result !== undefined && {
-				result: patch.result ? { ...patch.result } : null,
-			}),
-			...(patch.errorMessage !== undefined && {
-				errorMessage: patch.errorMessage,
-			}),
-			updatedAt: nowIso(),
-		};
+		const next: JobRecord = applyUpdate(existing, patch);
 		this.jobs.set(k, next);
-
-		// Fire listeners AFTER the store is consistent — a listener
-		// observing the update can immediately fetch and see the same
-		// state via `get()`.
-		const listeners = this.listeners.get(k);
-		if (listeners) {
-			for (const listener of listeners) {
-				// Defensive: never let one listener's error block others
-				// or reject this Promise.
-				try {
-					listener(next);
-				} catch {
-					// Swallow — listener is responsible for its own errors.
-				}
-			}
-		}
+		this.subscriptions.fire(workspace, jobId, next);
 		return next;
 	}
 
@@ -104,27 +73,37 @@ export class MemoryJobStore implements JobStore {
 		jobId: string,
 		listener: JobListener,
 	): Promise<Unsubscribe> {
-		const k = key(workspace, jobId);
-		let set = this.listeners.get(k);
-		if (!set) {
-			set = new Set();
-			this.listeners.set(k, set);
-		}
-		set.add(listener);
-
-		// Replay current state so subscribers don't race the first
-		// update.
-		const current = this.jobs.get(k);
+		const unsub = this.subscriptions.add(workspace, jobId, listener);
+		// Replay current state so callers don't race the first update.
+		const current = this.jobs.get(key(workspace, jobId));
 		if (current) {
 			try {
 				listener(current);
 			} catch {
-				// Swallow — same policy as update().
+				// ignore — same policy as subscriptions.fire
 			}
 		}
-
-		return () => {
-			set?.delete(listener);
-		};
+		return unsub;
 	}
+}
+
+/** Shared patch-application helper — used by every {@link JobStore}
+ * backend so update semantics don't drift between memory/file/astra. */
+export function applyUpdate(
+	existing: JobRecord,
+	patch: UpdateJobInput,
+): JobRecord {
+	return {
+		...existing,
+		...(patch.status !== undefined && { status: patch.status }),
+		...(patch.processed !== undefined && { processed: patch.processed }),
+		...(patch.total !== undefined && { total: patch.total }),
+		...(patch.result !== undefined && {
+			result: patch.result ? { ...patch.result } : null,
+		}),
+		...(patch.errorMessage !== undefined && {
+			errorMessage: patch.errorMessage,
+		}),
+		updatedAt: nowIso(),
+	};
 }

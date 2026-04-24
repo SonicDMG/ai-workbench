@@ -13,6 +13,7 @@
  */
 
 import { openAstraClient } from "../astra-client/client.js";
+import type { TablesBundle } from "../astra-client/tables.js";
 import type {
 	Config,
 	ControlPlaneConfig,
@@ -30,19 +31,30 @@ export interface BuildStoreOptions {
 	readonly secrets: SecretResolver;
 }
 
-export async function buildControlPlaneStore(
+/**
+ * Bundle returned by {@link buildControlPlane} — the store plus any
+ * auxiliary resources a sibling factory (today: the JobStore) might
+ * want to reuse rather than re-open. For memory/file backends
+ * `astraTables` is `undefined`; only the astra branch populates it.
+ */
+export interface BuiltControlPlane {
+	readonly store: ControlPlaneStore;
+	readonly astraTables: TablesBundle | undefined;
+}
+
+export async function buildControlPlane(
 	opts: BuildStoreOptions,
-): Promise<ControlPlaneStore> {
+): Promise<BuiltControlPlane> {
 	switch (opts.controlPlane.driver) {
 		case "memory": {
 			const store = new MemoryControlPlaneStore();
 			await seedMemoryStore(store, opts.seedWorkspaces);
-			return store;
+			return { store, astraTables: undefined };
 		}
 		case "file": {
 			const store = new FileControlPlaneStore({ root: opts.controlPlane.root });
 			await store.init?.();
-			return store;
+			return { store, astraTables: undefined };
 		}
 		case "astra": {
 			const token = await opts.secrets.resolve(opts.controlPlane.tokenRef);
@@ -51,9 +63,24 @@ export async function buildControlPlaneStore(
 				token,
 				keyspace: opts.controlPlane.keyspace,
 			});
-			return new AstraControlPlaneStore(tables);
+			return {
+				store: new AstraControlPlaneStore(tables),
+				astraTables: tables,
+			};
 		}
 	}
+}
+
+/**
+ * Backward-compatible wrapper. Prefer {@link buildControlPlane} when
+ * the caller wants the tables bundle too (e.g. for the JobStore
+ * factory).
+ */
+export async function buildControlPlaneStore(
+	opts: BuildStoreOptions,
+): Promise<ControlPlaneStore> {
+	const { store } = await buildControlPlane(opts);
+	return store;
 }
 
 async function seedMemoryStore(
@@ -79,6 +106,20 @@ export async function storeFromConfig(
 	secrets: SecretResolver,
 ): Promise<ControlPlaneStore> {
 	return buildControlPlaneStore({
+		controlPlane: config.controlPlane,
+		seedWorkspaces: config.seedWorkspaces,
+		secrets,
+	});
+}
+
+/** Same as {@link storeFromConfig} but returns the full
+ * {@link BuiltControlPlane} so the caller can hand the astra tables
+ * bundle to the JobStore factory. */
+export async function controlPlaneFromConfig(
+	config: Config,
+	secrets: SecretResolver,
+): Promise<BuiltControlPlane> {
+	return buildControlPlane({
 		controlPlane: config.controlPlane,
 		seedWorkspaces: config.seedWorkspaces,
 		secrets,
