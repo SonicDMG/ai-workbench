@@ -310,12 +310,26 @@ export const DeleteRecordResponseSchema = z
 	})
 	.openapi("DeleteRecordResponse");
 
+/**
+ * Data-plane search input.
+ *
+ * Either `vector` OR `text` must be present, not both. `text`
+ * triggers the driver's server-side embedding path when the
+ * collection supports it (e.g. Astra `$vectorize`); otherwise the
+ * runtime embeds client-side via the vector store's declared
+ * `embedding` config and falls back to a vector search. The route
+ * layer handles the dispatch — drivers never see both fields.
+ */
 export const SearchRequestSchema = z
 	.object({
-		vector: z.array(z.number()).min(1),
+		vector: z.array(z.number()).min(1).optional(),
+		text: z.string().min(1).optional(),
 		topK: z.number().int().positive().max(1000).optional(),
 		filter: z.record(z.string(), z.unknown()).optional(),
 		includeEmbeddings: z.boolean().optional(),
+	})
+	.refine((v) => (v.vector === undefined) !== (v.text === undefined), {
+		message: "exactly one of 'vector' or 'text' must be provided",
 	})
 	.openapi("SearchRequest");
 

@@ -24,6 +24,7 @@ import { MockVectorStoreDriver } from "../../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../../src/drivers/registry.js";
 import { EnvSecretProvider } from "../../src/secrets/env.js";
 import { SecretResolver } from "../../src/secrets/provider.js";
+import { makeFakeEmbedderFactory } from "../helpers/embedder.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // this file is at runtimes/typescript/tests/conformance/ → repo root is 4 levels up
@@ -62,7 +63,13 @@ function freshFetcher() {
 		anonymousPolicy: "allow",
 		verifiers: [],
 	});
-	const app = createApp({ store, drivers, secrets, auth });
+	const app = createApp({
+		store,
+		drivers,
+		secrets,
+		auth,
+		embedders: makeFakeEmbedderFactory(),
+	});
 	return async (method: string, path: string, body?: unknown) => {
 		const init: RequestInit = { method };
 		if (body !== undefined) {

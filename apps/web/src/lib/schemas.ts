@@ -91,6 +91,47 @@ export const CreatedApiKeyResponseSchema = z.object({
 });
 export type CreatedApiKeyResponse = z.infer<typeof CreatedApiKeyResponseSchema>;
 
+export const EmbeddingConfigSchema = z.object({
+	provider: z.string(),
+	model: z.string(),
+	endpoint: z.string().nullable(),
+	dimension: z.number().int().positive(),
+	secretRef: z.string().nullable(),
+});
+export type EmbeddingConfig = z.infer<typeof EmbeddingConfigSchema>;
+
+export const VectorStoreRecordSchema = z.object({
+	workspace: z.string().uuid(),
+	uid: z.string().uuid(),
+	name: z.string(),
+	vectorDimension: z.number().int().positive(),
+	vectorSimilarity: z.enum(["cosine", "dot", "euclidean"]),
+	embedding: EmbeddingConfigSchema,
+	lexical: z.object({
+		enabled: z.boolean(),
+		analyzer: z.string().nullable(),
+		options: z.record(z.string(), z.string()),
+	}),
+	reranking: z.object({
+		enabled: z.boolean(),
+		provider: z.string().nullable(),
+		model: z.string().nullable(),
+		endpoint: z.string().nullable(),
+		secretRef: z.string().nullable(),
+	}),
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type VectorStoreRecord = z.infer<typeof VectorStoreRecordSchema>;
+
+export const SearchHitSchema = z.object({
+	id: z.string(),
+	score: z.number(),
+	payload: z.record(z.string(), z.unknown()).optional(),
+	vector: z.array(z.number()).optional(),
+});
+export type SearchHit = z.infer<typeof SearchHitSchema>;
+
 export const KIND_LABELS: Record<WorkspaceKind, string> = {
 	astra: "Astra DB",
 	hcd: "Hyper-Converged Database",

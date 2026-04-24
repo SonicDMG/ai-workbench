@@ -8,9 +8,13 @@ import {
 	CreatedApiKeyResponseSchema,
 	type CreateWorkspaceInput,
 	ErrorEnvelopeSchema,
+	type SearchHit,
+	SearchHitSchema,
 	type TestConnectionResult,
 	TestConnectionResultSchema,
 	type UpdateWorkspaceInput,
+	type VectorStoreRecord,
+	VectorStoreRecordSchema,
 	type Workspace,
 	WorkspaceRecordSchema,
 } from "./schemas";
@@ -177,7 +181,33 @@ export const api = {
 			{ method: "DELETE" },
 			null,
 		),
+
+	listVectorStores: (workspace: string): Promise<VectorStoreRecord[]> =>
+		request(
+			`/workspaces/${workspace}/vector-stores`,
+			{ method: "GET" },
+			z.array(VectorStoreRecordSchema),
+		),
+
+	search: (
+		workspace: string,
+		vectorStore: string,
+		input: PlaygroundSearchInput,
+	): Promise<SearchHit[]> =>
+		request(
+			`/workspaces/${workspace}/vector-stores/${vectorStore}/search`,
+			{ method: "POST", body: JSON.stringify(input) },
+			z.array(SearchHitSchema),
+		),
 };
+
+export interface PlaygroundSearchInput {
+	readonly text?: string;
+	readonly vector?: number[];
+	readonly topK?: number;
+	readonly filter?: Record<string, unknown>;
+	readonly includeEmbeddings?: boolean;
+}
 
 // Normalize form empties to match the backend's nullable contract: empty
 // strings → null so the server doesn't see "". credentialsRef keys with

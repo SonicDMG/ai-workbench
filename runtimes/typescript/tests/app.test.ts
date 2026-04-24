@@ -9,6 +9,7 @@ import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
 import { SecretResolver } from "../src/secrets/provider.js";
+import { makeFakeEmbedderFactory } from "./helpers/embedder.js";
 
 // Tests fetch JSON and assert on properties; cast to `any` for ergonomic access.
 // biome-ignore lint/suspicious/noExplicitAny: test helper returns untyped JSON
@@ -35,7 +36,8 @@ function makeApp(authOpts?: {
 		anonymousPolicy: authOpts?.anonymousPolicy ?? "allow",
 		verifiers: mode === "apiKey" ? [new ApiKeyVerifier({ store })] : [],
 	});
-	const app = createApp({ store, drivers, secrets, auth });
+	const embedders = makeFakeEmbedderFactory();
+	const app = createApp({ store, drivers, secrets, auth, embedders });
 	return { app, store };
 }
 
@@ -786,6 +788,104 @@ describe("vector-store data plane", () => {
 			},
 		);
 		expect(searchRes.status).toBe(404);
+	});
+
+	test("search accepts { text } and falls back to client-side embedding", async () => {
+		const { app, ws, vs } = await setupStore();
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [{ id: "a", vector: vector(0) }],
+				}),
+			},
+		);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "hello world", topK: 1 }),
+			},
+		);
+		expect(res.status).toBe(200);
+		const hits = await json(res);
+		expect(hits).toHaveLength(1);
+		expect(hits[0].id).toBe("a");
+	});
+
+	test("search prefers driver.searchByText when the descriptor opts in (mock provider)", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const create = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					...BASE_VECTOR_STORE,
+					embedding: {
+						// `mock` provider → the mock driver's searchByText
+						// branch handles text instead of the runtime embedding
+						// fallback. No upstream SDK involved.
+						provider: "mock",
+						model: "mock-1",
+						endpoint: null,
+						dimension: 1536,
+						secretRef: "env:UNUSED",
+					},
+				}),
+			},
+		);
+		const vs = await json(create);
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [{ id: "a", vector: vector(0) }],
+				}),
+			},
+		);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "hello", topK: 1 }),
+			},
+		);
+		expect(res.status).toBe(200);
+	});
+
+	test("search rejects bodies with neither vector nor text", async () => {
+		const { app, ws, vs } = await setupStore();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ topK: 1 }),
+			},
+		);
+		expect(res.status).toBe(400);
+		expect((await json(res)).error.code).toBe("validation_error");
+	});
+
+	test("search rejects bodies with both vector and text", async () => {
+		const { app, ws, vs } = await setupStore();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ vector: vector(0), text: "hi" }),
+			},
+		);
+		expect(res.status).toBe(400);
 	});
 });
 

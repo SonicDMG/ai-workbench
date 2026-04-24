@@ -38,9 +38,8 @@ export interface VectorRecord {
 	readonly payload?: Readonly<Record<string, unknown>>;
 }
 
-/** A search request against a vector store. */
-export interface SearchRequest {
-	readonly vector: readonly number[];
+/** Fields shared by every search variant. */
+export interface SearchOptions {
 	/** Default 10, max 1000. */
 	readonly topK?: number;
 	/** Shallow-equal filter over payload keys. Nulls and missing keys
@@ -49,6 +48,20 @@ export interface SearchRequest {
 	readonly filter?: Readonly<Record<string, unknown>>;
 	/** Include the full embedding vector in each hit. Default false. */
 	readonly includeEmbeddings?: boolean;
+}
+
+/** A vector ANN search. Always supported. */
+export interface SearchRequest extends SearchOptions {
+	readonly vector: readonly number[];
+}
+
+/** A text search driven by the backend's own server-side embedding —
+ * e.g. Astra `$vectorize`. Only implemented by drivers whose
+ * underlying collections have a server-side embedding service wired
+ * up; the route layer catches {@link NotSupportedError} and falls
+ * back to client-side embedding + a vector search. */
+export interface SearchByTextRequest extends SearchOptions {
+	readonly text: string;
 }
 
 /** A single result from a search. */
@@ -80,6 +93,19 @@ export interface VectorStoreDriver {
 	search(
 		ctx: VectorStoreDriverContext,
 		req: SearchRequest,
+	): Promise<readonly SearchHit[]>;
+
+	/**
+	 * Server-side-embedded text search. Optional — drivers without a
+	 * server-side embedding path (today: everyone; tomorrow: Astra
+	 * once vectorize is wired through createCollection / upsert)
+	 * should either omit this method or throw {@link NotSupportedError}.
+	 * The route layer uses the throw to decide whether to fall back
+	 * to client-side embedding.
+	 */
+	searchByText?(
+		ctx: VectorStoreDriverContext,
+		req: SearchByTextRequest,
 	): Promise<readonly SearchHit[]>;
 }
 
@@ -130,5 +156,21 @@ export class DimensionMismatchError extends Error {
 	) {
 		super(`expected vector dimension ${expected}, got ${got}`);
 		this.name = "DimensionMismatchError";
+	}
+}
+
+/** Raised by a driver when an optional capability isn't available on
+ * the underlying collection — e.g. text search on a collection that
+ * wasn't created with a server-side embedding service. */
+export class NotSupportedError extends Error {
+	constructor(
+		public readonly capability: string,
+		reason?: string,
+	) {
+		super(
+			reason ??
+				`capability '${capability}' is not available on this collection`,
+		);
+		this.name = "NotSupportedError";
 	}
 }

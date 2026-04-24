@@ -494,9 +494,9 @@ UUID — any non-empty string).
 { "deleted": true }    // or false, if the record wasn't present
 ```
 
-### `POST /{vectorStoreId}/search` — vector search
+### `POST /{vectorStoreId}/search` — vector or text search
 
-**Request**
+**Request** — exactly one of `vector` or `text`:
 
 ```json
 {
@@ -507,11 +507,26 @@ UUID — any non-empty string).
 }
 ```
 
+```json
+{
+  "text": "winter sweater in blue",
+  "topK": 10
+}
+```
+
 - `topK` defaults to 10, clamped to `[1, 1000]`.
 - `filter` is shallow-equal on payload keys. Backends with richer
   filter languages may accept more; the portable subset is
   shallow-equal.
 - `includeEmbeddings: true` returns the stored vector on each hit.
+
+**Text dispatch**: the route tries the driver's `searchByText()`
+first — that's the path Astra's `$vectorize` and other server-side
+embedding integrations take. On `NotSupportedError` the runtime
+falls back to a client-side embedding (built from the vector
+store's `embedding` config via the Vercel AI SDK) and then a
+normal vector search. See [`docs/playground.md`](playground.md)
+for the mental model.
 
 **Response 200** — array of hits, sorted by `score` descending:
 
@@ -530,7 +545,13 @@ Score semantics match the descriptor's `vectorSimilarity`:
 | `dot` | Raw dot product; unbounded |
 | `euclidean` | `1 / (1 + distance)` so higher = closer |
 
-- **400** `dimension_mismatch`
+- **400** `validation_error` — neither or both of `vector`/`text`
+- **400** `dimension_mismatch` — supplied vector length mismatched
+- **400** `embedding_unavailable` — text search but the vector
+  store's `embedding` config can't be resolved (missing secret,
+  unknown provider, ...)
+- **400** `embedding_dimension_mismatch` — provider returned a
+  vector whose length doesn't match the store's declared dim
 - **404** `workspace_not_found` / `vector_store_not_found`
 
 ---

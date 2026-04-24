@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { BrandMark } from "@/components/brand/BrandMark";
 
@@ -23,6 +23,31 @@ export function AppShell({ children }: { children: ReactNode }) {
 						</div>
 					</Link>
 					<nav className="flex items-center gap-2 text-sm">
+						<NavLink
+							to="/"
+							end
+							className={({ isActive }) =>
+								`rounded-md px-3 py-1.5 transition-colors ${
+									isActive
+										? "text-slate-900 bg-slate-100"
+										: "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+								}`
+							}
+						>
+							Workspaces
+						</NavLink>
+						<NavLink
+							to="/playground"
+							className={({ isActive }) =>
+								`rounded-md px-3 py-1.5 transition-colors ${
+									isActive
+										? "text-slate-900 bg-slate-100"
+										: "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+								}`
+							}
+						>
+							Playground
+						</NavLink>
 						<UserMenu />
 						<a
 							href="/docs"

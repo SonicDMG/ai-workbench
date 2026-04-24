@@ -25,6 +25,7 @@ import { MockVectorStoreDriver } from "../../../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../../../src/drivers/registry.js";
 import { EnvSecretProvider } from "../../../src/secrets/env.js";
 import { SecretResolver } from "../../../src/secrets/provider.js";
+import { makeFakeEmbedderFactory } from "../../helpers/embedder.js";
 
 const ISSUER = "https://idp.test.example.com";
 const AUD = "workbench";
@@ -98,7 +99,13 @@ describe("app with auth.mode: oidc", () => {
 			anonymousPolicy: "reject",
 			verifiers: [new OidcVerifier({ config: oidcConfig(), getKey })],
 		});
-		const app = createApp({ store, drivers, secrets, auth });
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory(),
+		});
 
 		const token = await mintJwt(privateKey, {
 			sub: "alice",
@@ -132,7 +139,13 @@ describe("app with auth.mode: oidc", () => {
 			anonymousPolicy: "reject",
 			verifiers: [new OidcVerifier({ config: oidcConfig(), getKey })],
 		});
-		const app = createApp({ store, drivers, secrets, auth });
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory(),
+		});
 		const res = await app.request("/api/v1/workspaces");
 		expect(res.status).toBe(401);
 	});
@@ -159,7 +172,13 @@ describe("app with auth.mode: any (apiKey + oidc)", () => {
 				new OidcVerifier({ config: oidcConfig(), getKey }),
 			],
 		});
-		const app = createApp({ store, drivers, secrets, auth });
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory(),
+		});
 
 		// Issue an API key via the public route using a JWT-authed
 		// operator — proves oidc works end-to-end.

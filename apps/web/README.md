@@ -68,6 +68,7 @@ split is declared in [`vite.config.ts`](vite.config.ts):
 | `forms` | `react-hook-form`, `@hookform/resolvers` | Only when a form renders (lazy via the detail / onboarding routes) |
 | `OnboardingPage` | The two-step onboarding wizard | `/onboarding` visit |
 | `WorkspaceDetailPage` | Detail + edit + API-key + test-connection panels | `/workspaces/:uid` visit |
+| `PlaygroundPage` | Query form + results table | `/playground` visit |
 
 `zod` and `forms` are deliberately kept in separate chunks: `zod`
 is imported by the eager API client, so it has to preload; lumping
@@ -86,6 +87,7 @@ navigation shows the shared loader while the chunk streams.
 | `/` | Workspaces list. Redirects to `/onboarding` when empty. |
 | `/onboarding` | Two-step wizard — pick a backend kind, then fill details. |
 | `/workspaces/:uid` | Detail + edit + destructive delete (with type-to-confirm). |
+| `/playground` | Ad-hoc text / vector queries against a workspace's vector stores. See [`docs/playground.md`](../../docs/playground.md). |
 
 ## Stack
 

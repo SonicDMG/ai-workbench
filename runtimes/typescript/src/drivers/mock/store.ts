@@ -17,6 +17,8 @@
 import {
 	CollectionUnavailableError,
 	DimensionMismatchError,
+	NotSupportedError,
+	type SearchByTextRequest,
 	type SearchHit,
 	type SearchRequest,
 	type VectorRecord,
@@ -69,6 +71,32 @@ function score(
 		case "euclidean":
 			return euclidean(a, b);
 	}
+}
+
+/**
+ * Deterministic FNV-1a-seeded pseudo-embedding. Same text → same
+ * vector; repeatable across test runs. Unit-norm so cosine works.
+ */
+export function mockEmbed(text: string, dimension: number): number[] {
+	let h = 0x811c9dc5;
+	for (let i = 0; i < text.length; i++) {
+		h ^= text.charCodeAt(i);
+		h = Math.imul(h, 0x01000193);
+	}
+	const out = new Array<number>(dimension);
+	let sq = 0;
+	for (let i = 0; i < dimension; i++) {
+		// xorshift seeded with the FNV hash
+		h ^= h << 13;
+		h ^= h >>> 17;
+		h ^= h << 5;
+		const v = (h & 0xffff) / 0x10000 - 0.5;
+		out[i] = v;
+		sq += v * v;
+	}
+	const norm = Math.sqrt(sq) || 1;
+	for (let i = 0; i < dimension; i++) out[i] = (out[i] as number) / norm;
+	return out;
 }
 
 function matchesFilter(
@@ -146,6 +174,38 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 		}
 		hits.sort((a, b) => b.score - a.score);
 		return hits.slice(0, topK);
+	}
+
+	/**
+	 * Deterministic pseudo-embedding of a text string.
+	 *
+	 * Used only by `searchByText` in the mock driver so tests can
+	 * exercise the route's driver-first dispatch branch without
+	 * pulling in the Vercel SDK. The same hash is applied at upsert
+	 * time if the caller uses `payload.$mockText`, so queries find
+	 * the documents they "embedded" with the same seed.
+	 */
+	async searchByText(
+		ctx: VectorStoreDriverContext,
+		req: SearchByTextRequest,
+	): Promise<readonly SearchHit[]> {
+		// Refuse unless the descriptor opted into mock server-side
+		// embedding via `embedding.provider == "mock"`. Matches the
+		// real-driver contract: text search only works when the
+		// underlying collection was set up for it.
+		if (ctx.descriptor.embedding.provider !== "mock") {
+			throw new NotSupportedError(
+				"searchByText",
+				"mock driver only supports text search when descriptor.embedding.provider == 'mock'",
+			);
+		}
+		const vector = mockEmbed(req.text, ctx.descriptor.vectorDimension);
+		return this.search(ctx, {
+			vector,
+			topK: req.topK,
+			filter: req.filter,
+			includeEmbeddings: req.includeEmbeddings,
+		});
 	}
 
 	private requireStore(

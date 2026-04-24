@@ -22,6 +22,7 @@ import type { AuthResolver } from "./auth/resolver.js";
 import type { AuthConfig } from "./config/schema.js";
 import type { ControlPlaneStore } from "./control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "./drivers/registry.js";
+import type { EmbedderFactory } from "./embeddings/factory.js";
 import { ApiError, errorEnvelope } from "./lib/errors.js";
 import { makeOpenApi } from "./lib/openapi.js";
 import { requestId } from "./lib/request-id.js";
@@ -51,6 +52,7 @@ export interface AppOptions {
 	readonly drivers: VectorStoreDriverRegistry;
 	readonly secrets: SecretResolver;
 	readonly auth: AuthResolver;
+	readonly embedders: EmbedderFactory;
 	readonly ui?: UiAssets | null;
 	readonly login?: AppLoginOptions | null;
 	readonly requestIdHeader?: string;
@@ -119,7 +121,11 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	app.route("/api/v1/workspaces", apiKeyRoutes(opts.store));
 	app.route(
 		"/api/v1/workspaces",
-		vectorStoreRoutes({ store: opts.store, drivers: opts.drivers }),
+		vectorStoreRoutes({
+			store: opts.store,
+			drivers: opts.drivers,
+			embedders: opts.embedders,
+		}),
 	);
 
 	app.doc31("/api/v1/openapi.json", {

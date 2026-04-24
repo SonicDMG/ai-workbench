@@ -20,6 +20,9 @@ const WorkspaceDetailPage = lazy(() =>
 		default: m.WorkspaceDetailPage,
 	})),
 );
+const PlaygroundPage = lazy(() =>
+	import("@/pages/PlaygroundPage").then((m) => ({ default: m.PlaygroundPage })),
+);
 
 export function App() {
 	return (
@@ -34,6 +37,7 @@ export function App() {
 								path="/workspaces/:uid"
 								element={<WorkspaceDetailPage />}
 							/>
+							<Route path="/playground" element={<PlaygroundPage />} />
 							<Route path="*" element={<Navigate to="/" replace />} />
 						</Routes>
 					</Suspense>

@@ -12,6 +12,7 @@ import { loadConfig, resolveConfigPath } from "./config/loader.js";
 import type { AuthConfig } from "./config/schema.js";
 import { storeFromConfig } from "./control-plane/factory.js";
 import { buildVectorStoreDriverRegistry } from "./drivers/factory.js";
+import { makeEmbedderFactory } from "./embeddings/factory.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
 import { EnvSecretProvider } from "./secrets/env.js";
 import { FileSecretProvider } from "./secrets/file.js";
@@ -46,6 +47,7 @@ async function main(): Promise<void> {
 
 	const store = await storeFromConfig(config, secrets);
 	const drivers = buildVectorStoreDriverRegistry({ secrets });
+	const embedders = makeEmbedderFactory({ secrets });
 	const auth = await buildAuthResolver(config.auth, { store });
 
 	const login = await buildLoginOptions(config.auth, secrets);
@@ -65,6 +67,7 @@ async function main(): Promise<void> {
 		drivers,
 		secrets,
 		auth,
+		embedders,
 		ui,
 		login,
 		requestIdHeader: config.runtime.requestIdHeader,

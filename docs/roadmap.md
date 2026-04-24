@@ -122,7 +122,12 @@ ingesting files, and inspecting results.
 Deliverables:
 
 - Static `/playground` and `/ingest` assets served by the runtime.
-- Playground API: `POST /api/v1/workspaces/{w}/playground/query`.
+  - Playground UI: ✅ shipped. See [`docs/playground.md`](playground.md).
+  - Ingest UI: pending.
+- Playground API: ✅ shipped as an extension of the existing
+  `POST /api/v1/workspaces/{w}/vector-stores/{vs}/search` data-plane
+  route — accepts either `{ vector }` or `{ text }`. No new
+  endpoint.
 - UI consumes the existing `/api/v1/*` surface — no special admin API.
 - UI + default TS runtime ship as one Docker image. ✅ shipped —
   the image builds `apps/web` in a first stage and serves it out of

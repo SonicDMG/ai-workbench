@@ -10,6 +10,7 @@ import { VectorStoreDriverRegistry } from "../../src/drivers/registry.js";
 import { EnvSecretProvider } from "../../src/secrets/env.js";
 import { SecretResolver } from "../../src/secrets/provider.js";
 import { buildUiAssets } from "../../src/ui/assets.js";
+import { makeFakeEmbedderFactory } from "../helpers/embedder.js";
 
 /**
  * End-to-end checks for the single-image path: runtime mounted with a
@@ -45,6 +46,7 @@ describe("app with UI assets", () => {
 			drivers,
 			secrets,
 			auth,
+			embedders: makeFakeEmbedderFactory(),
 			ui: buildUiAssets(tmp),
 		});
 	});
@@ -135,7 +137,13 @@ describe("app without UI assets", () => {
 			anonymousPolicy: "allow",
 			verifiers: [],
 		});
-		const app = createApp({ store, drivers, secrets, auth });
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory(),
+		});
 		const res = await app.request("/");
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { name: string };

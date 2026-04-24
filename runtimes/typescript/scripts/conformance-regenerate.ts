@@ -23,6 +23,7 @@ import { AuthResolver } from "../src/auth/resolver.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
+import { makeEmbedderFactory } from "../src/embeddings/factory.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
 import { SecretResolver } from "../src/secrets/provider.js";
 
@@ -62,7 +63,13 @@ async function fetcherForFreshApp(): Promise<
 		anonymousPolicy: "allow",
 		verifiers: [],
 	});
-	const app = createApp({ store, drivers, secrets, auth });
+	const app = createApp({
+		store,
+		drivers,
+		secrets,
+		auth,
+		embedders: makeEmbedderFactory({ secrets }),
+	});
 	return async (method, path, body) => {
 		const init: RequestInit = { method };
 		if (body !== undefined) {

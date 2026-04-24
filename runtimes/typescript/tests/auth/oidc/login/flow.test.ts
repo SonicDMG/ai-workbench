@@ -37,6 +37,7 @@ import { MockVectorStoreDriver } from "../../../../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../../../../src/drivers/registry.js";
 import { EnvSecretProvider } from "../../../../src/secrets/env.js";
 import { SecretResolver } from "../../../../src/secrets/provider.js";
+import { makeFakeEmbedderFactory } from "../../../helpers/embedder.js";
 
 const ISSUER = "https://idp.test.example.com";
 const AUD = "workbench";
@@ -162,6 +163,7 @@ async function buildAppWithLogin(privateKey: CryptoKey, imported: unknown) {
 		drivers,
 		secrets,
 		auth,
+		embedders: makeFakeEmbedderFactory(),
 		login: {
 			authConfig: cfg,
 			endpoints: {
@@ -364,6 +366,7 @@ describe("/auth/* without browser-login configured", () => {
 			drivers,
 			secrets,
 			auth,
+			embedders: makeFakeEmbedderFactory(),
 			login: {
 				authConfig: {
 					mode: "disabled",
