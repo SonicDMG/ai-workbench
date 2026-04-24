@@ -887,6 +887,125 @@ describe("vector-store data plane", () => {
 		);
 		expect(res.status).toBe(400);
 	});
+
+	test("upsert accepts { id, text } records and embeds them client-side when the driver can't", async () => {
+		const { app, ws, vs } = await setupStore();
+		// Mock driver with provider != "mock" → driver.upsertByText
+		// throws NotSupported; runUpsert falls back to client-embed
+		// via the fake embedder.
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{ id: "a", text: "hello" },
+						{ id: "b", text: "world" },
+					],
+				}),
+			},
+		);
+		expect(res.status).toBe(200);
+		expect((await json(res)).upserted).toBe(2);
+
+		// The records made it in (can search them back).
+		const searchRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "hello", topK: 2 }),
+			},
+		);
+		expect(searchRes.status).toBe(200);
+		expect(await json(searchRes)).toHaveLength(2);
+	});
+
+	test("upsert takes the driver-native text path when the descriptor opts in (mock provider)", async () => {
+		const { app, store } = makeApp();
+		const wsMock = await store.createWorkspace(MOCK_WORKSPACE);
+		const create = await app.request(
+			`/api/v1/workspaces/${wsMock.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					...BASE_VECTOR_STORE,
+					embedding: {
+						provider: "mock",
+						model: "mock-1",
+						endpoint: null,
+						dimension: 1536,
+						secretRef: "env:UNUSED",
+					},
+				}),
+			},
+		);
+		const vsMock = await json(create);
+
+		const res = await app.request(
+			`/api/v1/workspaces/${wsMock.uid}/vector-stores/${vsMock.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [{ id: "a", text: "hello" }],
+				}),
+			},
+		);
+		expect(res.status).toBe(200);
+		expect((await json(res)).upserted).toBe(1);
+	});
+
+	test("upsert accepts a mixed vector/text batch (embeds the text rows, passes vectors through)", async () => {
+		const { app, ws, vs } = await setupStore();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{ id: "a", vector: vector(0) },
+						{ id: "b", text: "sibling" },
+					],
+				}),
+			},
+		);
+		expect(res.status).toBe(200);
+		expect((await json(res)).upserted).toBe(2);
+	});
+
+	test("upsert rejects records with neither vector nor text", async () => {
+		const { app, ws, vs } = await setupStore();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [{ id: "a" }],
+				}),
+			},
+		);
+		expect(res.status).toBe(400);
+	});
+
+	test("upsert rejects records with both vector and text", async () => {
+		const { app, ws, vs } = await setupStore();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [{ id: "a", vector: vector(0), text: "oops" }],
+				}),
+			},
+		);
+		expect(res.status).toBe(400);
+	});
 });
 
 describe("error handling", () => {

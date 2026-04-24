@@ -38,6 +38,16 @@ export interface VectorRecord {
 	readonly payload?: Readonly<Record<string, unknown>>;
 }
 
+/** A text-valued record that the backend is expected to embed itself
+ * (Astra `$vectorize`) or that the route layer will embed client-side
+ * before handing to {@link VectorStoreDriver.upsert} when the driver
+ * can't. Parallel to {@link SearchByTextRequest} — same dispatch model. */
+export interface TextRecord {
+	readonly id: string;
+	readonly text: string;
+	readonly payload?: Readonly<Record<string, unknown>>;
+}
+
 /** Fields shared by every search variant. */
 export interface SearchOptions {
 	/** Default 10, max 1000. */
@@ -107,6 +117,20 @@ export interface VectorStoreDriver {
 		ctx: VectorStoreDriverContext,
 		req: SearchByTextRequest,
 	): Promise<readonly SearchHit[]>;
+
+	/**
+	 * Server-side-embedded upsert. Receives `{id, text, payload?}`
+	 * records and forwards them via the backend's own embedding service
+	 * (Astra `$vectorize`). Optional — omit or throw
+	 * {@link NotSupportedError} on drivers/collections that can't do
+	 * server-side embedding; the route layer will then embed
+	 * client-side via the descriptor's `embedding` config and fall
+	 * back to a plain {@link upsert}.
+	 */
+	upsertByText?(
+		ctx: VectorStoreDriverContext,
+		records: readonly TextRecord[],
+	): Promise<{ upserted: number }>;
 }
 
 /* ------------------------------------------------------------------ */

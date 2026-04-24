@@ -30,6 +30,7 @@ import {
 	type SearchByTextRequest,
 	type SearchHit,
 	type SearchRequest,
+	type TextRecord,
 	type VectorRecord,
 	type VectorStoreDriver,
 	type VectorStoreDriverContext,
@@ -239,6 +240,52 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 		});
 		const docs = await cursor.toArray();
 		return docs.map((doc) => toHit(doc, req.includeEmbeddings));
+	}
+
+	/**
+	 * Server-side-embedded upsert via Astra's `$vectorize` field on
+	 * insertMany. Symmetric to {@link searchByText}: rejects upfront
+	 * when the descriptor's embedding provider isn't allowlisted, and
+	 * translates Astra's "vectorize not configured" errors into
+	 * {@link NotSupportedError} so the route layer falls back to
+	 * client-side embedding for legacy collections.
+	 */
+	async upsertByText(
+		ctx: VectorStoreDriverContext,
+		records: readonly TextRecord[],
+	): Promise<{ upserted: number }> {
+		const service = resolveVectorizeService(ctx.descriptor.embedding);
+		if (!service) {
+			throw new NotSupportedError(
+				"upsertByText",
+				`embedding.provider '${ctx.descriptor.embedding.provider}' is not wired into Astra vectorize — falling back to client-side embedding`,
+			);
+		}
+		if (records.length === 0) return { upserted: 0 };
+
+		const embeddingApiKey = await this.resolveEmbeddingKey(ctx);
+		const db = await this.getDb(ctx.workspace);
+		const coll = db.collection(collectionName(ctx.descriptor), {
+			embeddingApiKey,
+		});
+
+		const docs = records.map((r) => ({
+			_id: r.id,
+			$vectorize: r.text,
+			...(r.payload ?? {}),
+		}));
+		try {
+			await coll.insertMany(docs);
+			return { upserted: records.length };
+		} catch (err) {
+			if (isVectorizeNotConfigured(err)) {
+				throw new NotSupportedError(
+					"upsertByText",
+					"collection does not have an Astra vectorize service configured",
+				);
+			}
+			throw err;
+		}
 	}
 
 	/**

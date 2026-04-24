@@ -186,6 +186,65 @@ describe("AstraVectorStoreDriver + vectorize", () => {
 		).rejects.toBeInstanceOf(NotSupportedError);
 	});
 
+	test("upsertByText inserts $vectorize documents and attaches embeddingApiKey", async () => {
+		const { driver, fake } = build();
+		const d = descriptor();
+		const ctx = { workspace: WORKSPACE, descriptor: d };
+		await driver.createCollection(ctx);
+
+		const res = await driver.upsertByText!(ctx, [
+			{ id: "a", text: "hello", payload: { tag: "greet" } },
+			{ id: "b", text: "world" },
+		]);
+		expect(res.upserted).toBe(2);
+
+		// Inspect the fake's collection to confirm the docs were
+		// written with $vectorize (not $vector) and the payload was
+		// preserved.
+		const collMap = (
+			fake as unknown as {
+				collections: Map<
+					string,
+					{ docs: Map<string, Record<string, unknown>> }
+				>;
+			}
+		).collections.get("vs");
+		const a = collMap?.docs.get("a");
+		expect(a?.$vectorize).toBe("hello");
+		expect(a?.$vector).toBeUndefined();
+		expect(a?.tag).toBe("greet");
+
+		const handle = fake.handleCalls.at(-1);
+		expect(handle?.opts?.embeddingApiKey).toBe("sk-embed");
+	});
+
+	test("upsertByText throws NotSupported when the provider isn't on the allowlist", async () => {
+		const { driver } = build();
+		const d = descriptor({
+			embedding: {
+				provider: "homegrown",
+				model: "unknown",
+				endpoint: null,
+				dimension: 8,
+				secretRef: "env:TEST_EMBEDDING_KEY",
+			},
+		});
+		const ctx = { workspace: WORKSPACE, descriptor: d };
+		await driver.createCollection(ctx);
+		await expect(
+			driver.upsertByText!(ctx, [{ id: "a", text: "hi" }]),
+		).rejects.toBeInstanceOf(NotSupportedError);
+	});
+
+	test("upsertByText is a no-op when records is empty", async () => {
+		const { driver } = build();
+		const d = descriptor();
+		const ctx = { workspace: WORKSPACE, descriptor: d };
+		await driver.createCollection(ctx);
+		const res = await driver.upsertByText!(ctx, []);
+		expect(res.upserted).toBe(0);
+	});
+
 	test("searchByText caches the embedding key across calls", async () => {
 		const { driver, fake } = build();
 		const d = descriptor();

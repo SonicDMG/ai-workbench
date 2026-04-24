@@ -21,6 +21,7 @@ import {
 	type SearchByTextRequest,
 	type SearchHit,
 	type SearchRequest,
+	type TextRecord,
 	type VectorRecord,
 	type VectorStoreDriver,
 	type VectorStoreDriverContext,
@@ -185,6 +186,30 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 	 * time if the caller uses `payload.$mockText`, so queries find
 	 * the documents they "embedded" with the same seed.
 	 */
+	/**
+	 * Server-side-embedded upsert. Mirrors searchByText: only fires
+	 * when `descriptor.embedding.provider === "mock"` (the opt-in flag
+	 * for mock vectorize). Calls mockEmbed per record, then routes
+	 * through regular upsert.
+	 */
+	async upsertByText(
+		ctx: VectorStoreDriverContext,
+		records: readonly TextRecord[],
+	): Promise<{ upserted: number }> {
+		if (ctx.descriptor.embedding.provider !== "mock") {
+			throw new NotSupportedError(
+				"upsertByText",
+				"mock driver only supports text upsert when descriptor.embedding.provider == 'mock'",
+			);
+		}
+		const expanded: VectorRecord[] = records.map((r) => ({
+			id: r.id,
+			vector: mockEmbed(r.text, ctx.descriptor.vectorDimension),
+			payload: r.payload,
+		}));
+		return this.upsert(ctx, expanded);
+	}
+
 	async searchByText(
 		ctx: VectorStoreDriverContext,
 		req: SearchByTextRequest,

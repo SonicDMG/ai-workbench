@@ -120,12 +120,21 @@ continue to work on those collections with zero migration. The
 tradeoff: one extra round trip per query on legacy collections
 (the failed vectorize attempt) before the fallback kicks in.
 
+Upsert uses the same dispatch:
+
+- `{id, vector, payload}` → `driver.upsert` (unchanged)
+- `{id, text, payload}` → `driver.upsertByText` first (Astra
+  `$vectorize` on insertMany, mock driver's pseudo-embed when
+  the descriptor opts in). On `NotSupportedError` — unsupported
+  provider or legacy collection — the route embeds client-side
+  via the Vercel AI SDK and retries through plain `upsert`.
+- Mixed batches → client-embed the text records, combine with the
+  vector records, one transactional `upsert` call. (Splitting
+  across `upsertByText` + `upsert` would break transactional
+  semantics on the underlying collection.)
+
 ## Future extensions
 
-- **Upsert with `$vectorize`** — accept `{ id, text, payload }`
-  records on upsert and forward to Astra via `$vectorize`. Seam
-  isn't quite there yet (the VectorRecord schema still requires
-  `vector`); this is the natural next step.
 - **Document ingest** — a UI path for uploading text and chunking
   it into a vector store. Until that lands, upsert via the data
   plane (`POST .../records`) is the way.

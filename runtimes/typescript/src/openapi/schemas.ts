@@ -284,11 +284,22 @@ export const UpdateVectorStoreInputSchema = z
 
 /* ---------------- Vector-store data plane ---------------- */
 
+/**
+ * Input shape for upsert. Each record carries either a `vector` OR
+ * a `text` (not both, not neither). Text records trigger the same
+ * server-side-or-client-side dispatch as the search route — drivers
+ * that support `$vectorize` (Astra with a `service` block) take
+ * them natively; others fall back to the runtime's Embedder.
+ */
 export const VectorRecordSchema = z
 	.object({
 		id: z.string().min(1),
-		vector: z.array(z.number()).min(1),
+		vector: z.array(z.number()).min(1).optional(),
+		text: z.string().min(1).optional(),
 		payload: z.record(z.string(), z.unknown()).optional(),
+	})
+	.refine((r) => (r.vector === undefined) !== (r.text === undefined), {
+		message: "exactly one of 'vector' or 'text' must be provided per record",
 	})
 	.openapi("VectorRecord");
 

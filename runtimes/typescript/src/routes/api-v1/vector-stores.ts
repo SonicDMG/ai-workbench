@@ -332,7 +332,12 @@ export function vectorStoreRoutes(
 				vectorStoreId,
 			);
 			const driver = drivers.for(workspace);
-			const res = await driver.upsert({ workspace, descriptor }, body.records);
+			const res = await runUpsert({
+				ctx: { workspace, descriptor },
+				driver,
+				embedders,
+				records: body.records,
+			});
 			return c.json(res, 200);
 		},
 	);
@@ -519,4 +524,106 @@ async function runSearch(args: {
 	}
 	const vector = await embedder.embed(text);
 	return driver.search(ctx, { vector, ...sharedOpts });
+}
+
+type UpsertInput = ReadonlyArray<{
+	id: string;
+	vector?: readonly number[];
+	text?: string;
+	payload?: Readonly<Record<string, unknown>>;
+}>;
+
+/**
+ * Dispatch an upsert across the driver's two paths.
+ *
+ *  1. All records carry `vector` → straight to {@link VectorStoreDriver.upsert}
+ *  2. All records carry `text` → try {@link VectorStoreDriver.upsertByText}
+ *     first (Astra vectorize, mock provider). On NotSupported,
+ *     client-embed each text record and retry through plain `upsert`.
+ *  3. Mixed → skip the driver-native path entirely (no way to combine
+ *     server-side `$vectorize` with client-side vectors transactionally)
+ *     and embed the text records client-side.
+ *
+ * Keeps transactional semantics intact: one call to `driver.upsert`
+ * or `driver.upsertByText`, not two.
+ */
+async function runUpsert(args: {
+	ctx: { workspace: WorkspaceRecord; descriptor: VectorStoreRecord };
+	driver: ReturnType<VectorStoreDriverRegistry["for"]>;
+	embedders: EmbedderFactory;
+	records: UpsertInput;
+}): Promise<{ upserted: number }> {
+	const { ctx, driver, embedders, records } = args;
+	const hasText = records.some((r) => r.text !== undefined);
+	const hasVector = records.some((r) => r.vector !== undefined);
+
+	if (!hasText) {
+		// Fast path: all-vector. Same shape as pre-PR.
+		return driver.upsert(
+			ctx,
+			records.map((r) => ({
+				id: r.id,
+				vector: r.vector as readonly number[],
+				payload: r.payload,
+			})),
+		);
+	}
+
+	if (!hasVector && driver.upsertByText) {
+		// All-text + driver exposes the vectorize path. Try it; on
+		// NotSupported (e.g. legacy collection without service config)
+		// fall through to client-side embedding below.
+		try {
+			return await driver.upsertByText(
+				ctx,
+				records.map((r) => ({
+					id: r.id,
+					text: r.text as string,
+					payload: r.payload,
+				})),
+			);
+		} catch (err) {
+			if (!(err instanceof NotSupportedError)) throw err;
+		}
+	}
+
+	// Fallback + mixed path: embed every text record client-side, then
+	// combine with the (already-vector) records and send as one upsert.
+	const embedder = await buildEmbedderOr400(ctx, embedders);
+	const embedded = await Promise.all(
+		records.map(async (r) => {
+			if (r.vector !== undefined) {
+				return { id: r.id, vector: r.vector, payload: r.payload };
+			}
+			const vector = await embedder.embed(r.text as string);
+			return { id: r.id, vector, payload: r.payload };
+		}),
+	);
+	return driver.upsert(ctx, embedded);
+}
+
+async function buildEmbedderOr400(
+	ctx: { descriptor: VectorStoreRecord },
+	embedders: EmbedderFactory,
+) {
+	try {
+		const embedder = await embedders.forConfig(ctx.descriptor.embedding);
+		if (embedder.dimension !== ctx.descriptor.vectorDimension) {
+			throw new ApiError(
+				"embedding_dimension_mismatch",
+				`embedder returned dimension ${embedder.dimension} but vector store expects ${ctx.descriptor.vectorDimension}`,
+				400,
+			);
+		}
+		return embedder;
+	} catch (err) {
+		if (err instanceof ApiError) throw err;
+		throw new ApiError(
+			"embedding_unavailable",
+			err instanceof Error
+				? err.message
+				: "embedding provider is not available for this vector store",
+			400,
+		);
+	}
 }

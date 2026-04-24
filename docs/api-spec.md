@@ -456,15 +456,16 @@ underlying Data API Collection **and** removes the descriptor.
 `vectorDimension` on a populated store is a data-migration operation
 not yet supported.
 
-### `POST /{vectorStoreId}/records` — upsert vectors
+### `POST /{vectorStoreId}/records` — upsert records
 
-**Request**
+**Request** — each record carries exactly one of `vector` or `text`:
 
 ```json
 {
   "records": [
     { "id": "doc-1", "vector": [0.01, -0.02, ...], "payload": { "title": "…" } },
-    { "id": "doc-2", "vector": [...] }
+    { "id": "doc-2", "text": "winter sweater in blue" },
+    { "id": "doc-3", "text": "summer shorts", "payload": { "tag": "apparel" } }
   ]
 }
 ```
@@ -473,6 +474,14 @@ not yet supported.
 - `id` is the application's identifier; re-upsert replaces the prior
   value.
 - `vector.length` must equal the descriptor's `vectorDimension`.
+- **Text dispatch** mirrors search: the route tries
+  `driver.upsertByText()` for all-text batches (Astra `$vectorize`
+  inserts for collections with a service block). On
+  `NotSupportedError` the runtime embeds each text record via the
+  vector store's `embedding` config and retries through plain
+  `upsert`. Mixed batches always embed client-side so the whole
+  batch stays in one transactional call. See
+  [`docs/playground.md`](playground.md).
 
 **Response 200**
 
@@ -480,7 +489,10 @@ not yet supported.
 { "upserted": 2 }
 ```
 
+- **400** `validation_error` — a record has neither or both of `vector`/`text`
 - **400** `dimension_mismatch` — at least one vector has the wrong length
+- **400** `embedding_unavailable` — text records + descriptor's embedding config can't be resolved
+- **400** `embedding_dimension_mismatch` — provider returned a vector whose length doesn't match the descriptor
 - **404** `workspace_not_found` / `vector_store_not_found`
 
 ### `DELETE /{vectorStoreId}/records/{recordId}`
