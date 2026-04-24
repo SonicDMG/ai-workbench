@@ -1,5 +1,4 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -66,12 +65,21 @@ export function CreateVectorStoreDialog({
 		},
 	});
 
-	useEffect(() => {
-		if (!open) {
+	// Reset form + mutation state when the dialog transitions to
+	// closed. Wired through the Dialog's onOpenChange callback
+	// instead of a `useEffect` because TanStack Query's `useMutation`
+	// result has a fresh identity on every render — including that
+	// reference in an effect's dep array causes a self-triggering
+	// reset loop (Maximum update depth exceeded) after the first
+	// call. Form's API is stable but we reset through the same
+	// handler for symmetry.
+	function handleOpenChange(next: boolean): void {
+		if (!next) {
 			form.reset();
 			create.reset();
 		}
-	}, [open, form, create]);
+		onOpenChange(next);
+	}
 
 	async function onSubmit(values: CreateVectorStoreInput) {
 		// Keep the outer + embedding dimension in lock-step at submit
@@ -84,7 +92,7 @@ export function CreateVectorStoreDialog({
 		try {
 			const vs = await create.mutateAsync(normalized);
 			toast.success(`Vector store '${vs.name}' created`);
-			onOpenChange(false);
+			handleOpenChange(false);
 		} catch (err) {
 			const msg =
 				err instanceof ApiError
@@ -99,7 +107,7 @@ export function CreateVectorStoreDialog({
 	const errors = form.formState.errors;
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
+		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogContent className="max-w-xl">
 				<DialogHeader>
 					<DialogTitle>Create a vector store</DialogTitle>
@@ -241,7 +249,7 @@ export function CreateVectorStoreDialog({
 						<Button
 							type="button"
 							variant="ghost"
-							onClick={() => onOpenChange(false)}
+							onClick={() => handleOpenChange(false)}
 							disabled={create.isPending}
 						>
 							Cancel
