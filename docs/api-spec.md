@@ -78,6 +78,7 @@ human-readable and may change. Currently emitted:
 | 404 | `vector_store_not_found` | Vector-store UID doesn't exist in workspace |
 | 404 | `document_not_found` | Document UID doesn't exist in the catalog |
 | 409 | `conflict` | Create with an already-taken UID |
+| 409 | `catalog_not_bound_to_vector_store` | Catalog-scoped search against a catalog whose `vectorStore` is `null` |
 | 400 | `dimension_mismatch` | Supplied vector length doesn't match the vector-store descriptor |
 | 400 | `embedding_unavailable` | Text search/upsert fallback could not build an embedder for the descriptor |
 | 400 | `embedding_dimension_mismatch` | Embedder output dimension doesn't match the descriptor |
@@ -662,19 +663,63 @@ Fetch / patch / delete. `PUT` accepts every field from the create body
 access — requesting a document from a catalog it does not belong to —
 returns `404 document_not_found`.
 
+### `POST /search`
+
+Catalog-scoped vector / text search. Delegates to the vector store
+bound at `catalog.vectorStore`, merging `catalogUid = catalog.uid`
+into the effective filter so records outside the catalog are
+invisible.
+
+**Request** — identical envelope to
+`POST /vector-stores/{id}/search`. Either `vector` OR `text` is
+required; never both.
+
+```json
+{
+  "text": "how do refunds work?",
+  "topK": 5,
+  "filter": { "section": "billing" }
+}
+```
+
+**Response** — `200` array of `SearchHit`, highest score first.
+
+**Scope merging.** The server sets `filter.catalogUid` to the path's
+catalog UID unconditionally. Any caller-supplied `catalogUid` is
+overridden — a search can never escape its catalog. Other filter
+keys merge normally.
+
+**Errors**
+
+- **400** `validation_error` — `vector` / `text` presence rules
+- **400** `embedding_unavailable` — the fallback embedder could not be
+  built (text path only)
+- **400** `embedding_dimension_mismatch` — provider returned a vector
+  whose length doesn't match the bound store's declared dim
+- **404** `workspace_not_found` / `catalog_not_found`
+- **404** `vector_store_not_found` — the binding exists but the
+  referenced store no longer does (stale binding)
+- **409** `catalog_not_bound_to_vector_store` — `catalog.vectorStore`
+  is `null`
+
+Text records are ingested with their `catalogUid` stamped into the
+payload — that stamping is what lets this route scope correctly.
+The ingest pipeline (Phase 2b) will own that write; today the route
+works against any records that carry a matching `catalogUid`
+regardless of how they arrived.
+
 ---
 
 ## Planned routes
 
 These do not exist yet. Shapes may shift before they land.
 
-### Phase 2 — Ingest, search, queries
+### Phase 2 — Ingest, queries
 
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/ingest` | Chunk + embed + write (async job) |
 | `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}` | Poll an ingest job |
-| `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/documents/search` | Catalog-scoped hybrid search |
 | (CRUD) | `/api/v1/workspaces/{w}/catalogs/{c}/queries[/{q}]` | Saved queries per catalog |
 
 ### Phase 3 — Playground

@@ -50,6 +50,7 @@ import {
 	VectorStoreRecordSchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
+import { dispatchSearch, toMutableHits } from "./search-dispatch.js";
 
 export interface VectorStoreRouteDeps {
 	readonly store: ControlPlaneStore;
@@ -439,28 +440,8 @@ export function vectorStoreRoutes(
 			);
 			const driver = drivers.for(workspace);
 			const ctx = { workspace, descriptor };
-
-			// Three paths, picked in this order:
-			//   1. body.vector → straight through to driver.search
-			//   2. body.text + driver.searchByText present + doesn't
-			//      throw NotSupported → server-side embedding (vectorize)
-			//   3. body.text + fallback to client-side embedding via
-			//      the descriptor's `embedding` config
-			const hits = await runSearch({
-				ctx,
-				driver,
-				body,
-				embedders,
-			});
-			// Copy to mutable shape — route response inference requires
-			// non-readonly arrays.
-			const mutable = hits.map((h) => ({
-				id: h.id,
-				score: h.score,
-				...(h.payload !== undefined && { payload: { ...h.payload } }),
-				...(h.vector !== undefined && { vector: [...h.vector] }),
-			}));
-			return c.json(mutable, 200);
+			const hits = await dispatchSearch({ ctx, driver, body, embedders });
+			return c.json(toMutableHits(hits), 200);
 		},
 	);
 
@@ -479,73 +460,6 @@ async function assertVectorStoreNotReferenced(
 			`vector store '${descriptorUid}' is referenced by catalog '${ref.uid}'`,
 		);
 	}
-}
-
-async function runSearch(args: {
-	ctx: { workspace: WorkspaceRecord; descriptor: VectorStoreRecord };
-	driver: ReturnType<VectorStoreDriverRegistry["for"]>;
-	embedders: EmbedderFactory;
-	body: {
-		vector?: number[];
-		text?: string;
-		topK?: number;
-		filter?: Record<string, unknown>;
-		includeEmbeddings?: boolean;
-	};
-}) {
-	const { ctx, driver, embedders, body } = args;
-	const sharedOpts = {
-		topK: body.topK,
-		filter: body.filter,
-		includeEmbeddings: body.includeEmbeddings,
-	};
-
-	if (body.vector !== undefined) {
-		return driver.search(ctx, { vector: body.vector, ...sharedOpts });
-	}
-
-	const text = body.text;
-	if (text === undefined) {
-		// Zod refinement already rejects this, but the extra check
-		// satisfies the type narrower below.
-		throw new ApiError(
-			"validation_error",
-			"exactly one of 'vector' or 'text' is required",
-			400,
-		);
-	}
-
-	// 1. Driver-native text search (vectorize). Skip on NotSupported.
-	if (driver.searchByText) {
-		try {
-			return await driver.searchByText(ctx, { text, ...sharedOpts });
-		} catch (err) {
-			if (!(err instanceof NotSupportedError)) throw err;
-		}
-	}
-
-	// 2. Client-side embedding + vector search.
-	let embedder: Awaited<ReturnType<EmbedderFactory["forConfig"]>>;
-	try {
-		embedder = await embedders.forConfig(ctx.descriptor.embedding);
-	} catch (err) {
-		throw new ApiError(
-			"embedding_unavailable",
-			err instanceof Error
-				? err.message
-				: "embedding provider is not available for this vector store",
-			400,
-		);
-	}
-	if (embedder.dimension !== ctx.descriptor.vectorDimension) {
-		throw new ApiError(
-			"embedding_dimension_mismatch",
-			`embedder returned dimension ${embedder.dimension} but vector store expects ${ctx.descriptor.vectorDimension}`,
-			400,
-		);
-	}
-	const vector = await embedder.embed(text);
-	return driver.search(ctx, { vector, ...sharedOpts });
 }
 
 type UpsertInput = ReadonlyArray<{

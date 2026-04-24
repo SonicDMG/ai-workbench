@@ -6,6 +6,7 @@
  *   `/api/v1/workspaces`                          workspaces CRUD
  *   `/api/v1/workspaces/{w}/catalogs`             catalogs CRUD
  *   `/api/v1/workspaces/{w}/catalogs/{c}/documents`  document metadata CRUD
+ *   `/api/v1/workspaces/{w}/catalogs/{c}/documents/search`  catalog-scoped search
  *   `/api/v1/workspaces/{w}/vector-stores`        vector-store descriptor CRUD
  *   `/api/v1/openapi.json`                        generated OpenAPI doc
  *   `/docs`                                       Scalar-rendered docs
@@ -123,7 +124,14 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		}),
 	);
 	app.route("/api/v1/workspaces", catalogRoutes(opts.store));
-	app.route("/api/v1/workspaces", documentRoutes(opts.store));
+	app.route(
+		"/api/v1/workspaces",
+		documentRoutes({
+			store: opts.store,
+			drivers: opts.drivers,
+			embedders: opts.embedders,
+		}),
+	);
 	app.route("/api/v1/workspaces", apiKeyRoutes(opts.store));
 	app.route(
 		"/api/v1/workspaces",

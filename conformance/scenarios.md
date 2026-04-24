@@ -128,3 +128,22 @@ plaintext is returned exactly once; list responses expose metadata
 without the stored hash.
 
 Fixture: `fixtures/workspace-api-key-lifecycle.json`.
+
+---
+
+## Scenario 11 — `catalog-scoped-document-search`
+
+`POST /catalogs/{c}/documents/search` delegates to the catalog's bound
+vector store, merging the catalog UID into the filter as `catalogUid`.
+Records without that payload key (or with a different value) are
+invisible to the search; a caller-supplied `catalogUid` filter is
+overridden by the path's catalog.
+
+Steps cover:
+
+1. A search returning only the record whose payload carries the
+   matching `catalogUid`.
+2. A `409 catalog_not_bound_to_vector_store` when the catalog has no
+   `vectorStore` binding.
+
+Fixture: `fixtures/catalog-scoped-document-search.json`.

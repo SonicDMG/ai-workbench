@@ -672,6 +672,254 @@ describe("document routes", () => {
 	});
 });
 
+describe("catalog-scoped document search", () => {
+	const vector = (seed: number, dim = 1536): number[] =>
+		Array.from({ length: dim }, (_, i) => Math.sin(seed + i));
+
+	async function seedCatalogWithStore(opts?: { bindVectorStore?: boolean }) {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const vsRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(BASE_VECTOR_STORE),
+			},
+		);
+		const vs = await json(vsRes);
+		const catalog = await store.createCatalog(ws.uid, {
+			name: "support",
+			vectorStore: opts?.bindVectorStore === false ? null : vs.uid,
+		});
+		return { app, store, ws, vs, catalog };
+	}
+
+	test("filters results by catalog scope", async () => {
+		const { app, store, ws, vs, catalog } = await seedCatalogWithStore();
+		const other = await store.createCatalog(ws.uid, {
+			name: "other",
+			vectorStore: vs.uid,
+		});
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{
+							id: "a",
+							vector: vector(0),
+							payload: { catalogUid: catalog.uid, tag: "a" },
+						},
+						{
+							id: "b",
+							vector: vector(0),
+							payload: { catalogUid: other.uid, tag: "b" },
+						},
+					],
+				}),
+			},
+		);
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ vector: vector(0), topK: 10 }),
+			},
+		);
+		expect(res.status).toBe(200);
+		const hits = await json(res);
+		expect(hits).toHaveLength(1);
+		expect(hits[0].id).toBe("a");
+	});
+
+	test("merges caller filter with catalog scope", async () => {
+		const { app, ws, vs, catalog } = await seedCatalogWithStore();
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{
+							id: "keep",
+							vector: vector(0),
+							payload: { catalogUid: catalog.uid, tag: "keep" },
+						},
+						{
+							id: "drop",
+							vector: vector(0),
+							payload: { catalogUid: catalog.uid, tag: "drop" },
+						},
+					],
+				}),
+			},
+		);
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					vector: vector(0),
+					topK: 10,
+					filter: { tag: "keep" },
+				}),
+			},
+		);
+		const hits = await json(res);
+		expect(hits).toHaveLength(1);
+		expect(hits[0].id).toBe("keep");
+	});
+
+	test("caller-supplied catalogUid in filter cannot escape scope", async () => {
+		const { app, store, ws, vs, catalog } = await seedCatalogWithStore();
+		const other = await store.createCatalog(ws.uid, {
+			name: "other",
+			vectorStore: vs.uid,
+		});
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{
+							id: "a",
+							vector: vector(0),
+							payload: { catalogUid: catalog.uid },
+						},
+						{
+							id: "b",
+							vector: vector(0),
+							payload: { catalogUid: other.uid },
+						},
+					],
+				}),
+			},
+		);
+
+		// Caller *asks* for the other catalog's docs — the server must
+		// ignore it and return only records scoped to the path's catalog.
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					vector: vector(0),
+					topK: 10,
+					filter: { catalogUid: other.uid },
+				}),
+			},
+		);
+		const hits = await json(res);
+		expect(hits).toHaveLength(1);
+		expect(hits[0].id).toBe("a");
+	});
+
+	test("409 when catalog has no vectorStore binding", async () => {
+		const { app, ws, catalog } = await seedCatalogWithStore({
+			bindVectorStore: false,
+		});
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ vector: vector(0) }),
+			},
+		);
+		expect(res.status).toBe(409);
+		const body = await json(res);
+		expect(body.error.code).toBe("catalog_not_bound_to_vector_store");
+	});
+
+	test("404 when catalog does not exist", async () => {
+		const { app, ws } = await seedCatalogWithStore();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/00000000-0000-0000-0000-000000000000/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ vector: vector(0) }),
+			},
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("catalog_not_found");
+	});
+
+	test("404 when workspace does not exist", async () => {
+		const { app, catalog } = await seedCatalogWithStore();
+		const res = await app.request(
+			`/api/v1/workspaces/00000000-0000-0000-0000-000000000000/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ vector: vector(0) }),
+			},
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("workspace_not_found");
+	});
+
+	test("accepts { text } and falls back to client-side embedding", async () => {
+		const { app, ws, vs, catalog } = await seedCatalogWithStore();
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{
+							id: "a",
+							vector: vector(0),
+							payload: { catalogUid: catalog.uid },
+						},
+					],
+				}),
+			},
+		);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "hello", topK: 1 }),
+			},
+		);
+		expect(res.status).toBe(200);
+		const hits = await json(res);
+		expect(hits).toHaveLength(1);
+		expect(hits[0].id).toBe("a");
+	});
+
+	test("rejects bodies with neither vector nor text", async () => {
+		const { app, ws, catalog } = await seedCatalogWithStore();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ topK: 1 }),
+			},
+		);
+		expect(res.status).toBe(400);
+		const body = await json(res);
+		expect(body.error.code).toBe("validation_error");
+	});
+});
+
 describe("vector-store routes", () => {
 	test("POST creates a descriptor row and provisions a collection", async () => {
 		const { app, store } = makeApp();

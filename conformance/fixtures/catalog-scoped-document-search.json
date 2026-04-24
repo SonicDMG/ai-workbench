@@ -1,0 +1,224 @@
+{
+	"slug": "catalog-scoped-document-search",
+	"description": "POST /catalogs/{c}/documents/search delegates to the catalog's bound vector store, merging `catalogUid = catalog.uid` into the filter. Records in other catalogs are invisible; an unbound catalog returns 409 catalog_not_bound_to_vector_store.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"endpoint": null,
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"name": "vs",
+					"vectorDimension": 4
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"lexical": {
+						"analyzer": null,
+						"enabled": false,
+						"options": {}
+					},
+					"name": "vs",
+					"reranking": {
+						"enabled": false,
+						"endpoint": null,
+						"model": null,
+						"provider": null,
+						"secretRef": null
+					},
+					"uid": "{{UUID_2}}",
+					"updatedAt": "{{TS}}",
+					"vectorDimension": 4,
+					"vectorSimilarity": "cosine",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"name": "support",
+					"vectorStore": "{{UUID_2}}"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"description": null,
+					"name": "support",
+					"uid": "{{UUID_3}}",
+					"updatedAt": "{{TS}}",
+					"vectorStore": "{{UUID_2}}",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"name": "other",
+					"vectorStore": "{{UUID_2}}"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"description": null,
+					"name": "other",
+					"uid": "{{UUID_4}}",
+					"updatedAt": "{{TS}}",
+					"vectorStore": "{{UUID_2}}",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": {
+					"records": [
+						{
+							"id": "s1",
+							"payload": {
+								"catalogUid": "{{UUID_3}}",
+								"tag": "t"
+							},
+							"vector": [1, 0, 0, 0]
+						},
+						{
+							"id": "o1",
+							"payload": {
+								"catalogUid": "{{UUID_4}}",
+								"tag": "t"
+							},
+							"vector": [0.9, 0.1, 0, 0]
+						}
+					]
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_2}}/records"
+			},
+			"response": {
+				"body": {
+					"upserted": 2
+				},
+				"status": 200
+			},
+			"step": 5
+		},
+		{
+			"request": {
+				"body": {
+					"topK": 10,
+					"vector": [1, 0, 0, 0]
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_3}}/documents/search"
+			},
+			"response": {
+				"body": [
+					{
+						"id": "s1",
+						"payload": {
+							"catalogUid": "{{UUID_3}}",
+							"tag": "t"
+						},
+						"score": 1
+					}
+				],
+				"status": 200
+			},
+			"step": 6
+		},
+		{
+			"request": {
+				"body": {
+					"name": "unbound"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"description": null,
+					"name": "unbound",
+					"uid": "{{UUID_5}}",
+					"updatedAt": "{{TS}}",
+					"vectorStore": null,
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 7
+		},
+		{
+			"request": {
+				"body": {
+					"vector": [1, 0, 0, 0]
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_5}}/documents/search"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "catalog_not_bound_to_vector_store",
+						"message": "catalog '{{UUID_5}}' has no vectorStore binding; bind one with PUT /catalogs/{id} before searching",
+						"requestId": "{{REQID_1}}"
+					}
+				},
+				"status": 409
+			},
+			"step": 8
+		}
+	]
+}

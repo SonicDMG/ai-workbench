@@ -329,5 +329,74 @@
 				"path": "/api/v1/workspaces/$1.uid/api-keys"
 			}
 		]
+	},
+	{
+		"slug": "catalog-scoped-document-search",
+		"description": "POST /catalogs/{c}/documents/search delegates to the catalog's bound vector store, merging `catalogUid = catalog.uid` into the filter. Records in other catalogs are invisible; an unbound catalog returns 409 catalog_not_bound_to_vector_store.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/vector-stores",
+				"body": {
+					"name": "vs",
+					"vectorDimension": 4,
+					"embedding": {
+						"provider": "mock",
+						"model": "mock-embedder",
+						"endpoint": null,
+						"dimension": 4,
+						"secretRef": null
+					}
+				}
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs",
+				"body": { "name": "support", "vectorStore": "$2.uid" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs",
+				"body": { "name": "other", "vectorStore": "$2.uid" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/records",
+				"body": {
+					"records": [
+						{
+							"id": "s1",
+							"vector": [1, 0, 0, 0],
+							"payload": { "catalogUid": "$3.uid", "tag": "t" }
+						},
+						{
+							"id": "o1",
+							"vector": [0.9, 0.1, 0, 0],
+							"payload": { "catalogUid": "$4.uid", "tag": "t" }
+						}
+					]
+				}
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/documents/search",
+				"body": { "vector": [1, 0, 0, 0], "topK": 10 }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs",
+				"body": { "name": "unbound" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$7.uid/documents/search",
+				"body": { "vector": [1, 0, 0, 0] }
+			}
+		]
 	}
 ]
