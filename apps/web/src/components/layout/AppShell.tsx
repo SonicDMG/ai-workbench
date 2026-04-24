@@ -1,11 +1,54 @@
 import type { ReactNode } from "react";
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, type NavLinkProps } from "react-router-dom";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { BrandMark } from "@/components/brand/BrandMark";
 
+/**
+ * Header-level tab. NavLink with a visible active state that reads
+ * as selected at a glance — previous styling (text-slate-900 +
+ * bg-slate-100) was subtle enough that users were asking whether
+ * the tabs worked at all.
+ */
+function NavTab({
+	to,
+	end,
+	children,
+}: {
+	to: NavLinkProps["to"];
+	end?: boolean;
+	children: ReactNode;
+}) {
+	return (
+		<NavLink
+			to={to}
+			end={end}
+			className={({ isActive }) =>
+				[
+					"relative rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+					isActive
+						? "text-[var(--color-brand-700)] bg-[color-mix(in_oklch,var(--color-brand-500)_10%,white)]"
+						: "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+				].join(" ")
+			}
+		>
+			{({ isActive }) => (
+				<>
+					{children}
+					{isActive ? (
+						<span
+							aria-hidden
+							className="absolute inset-x-3 -bottom-px h-[2px] rounded-full bg-[var(--color-brand-500)]"
+						/>
+					) : null}
+				</>
+			)}
+		</NavLink>
+	);
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
 	return (
-		<div className="min-h-full flex flex-col app-backdrop">
+		<div className="min-h-full flex flex-col">
 			<header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/70">
 				{/* Thin brand-hued accent line — reads as "this is a DataStax
 				    product" at a glance without needing a big masthead. */}
@@ -29,32 +72,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 							</span>
 						</div>
 					</Link>
-					<nav className="flex items-center gap-2 text-sm">
-						<NavLink
-							to="/"
-							end
-							className={({ isActive }) =>
-								`rounded-md px-3 py-1.5 transition-colors ${
-									isActive
-										? "text-slate-900 bg-slate-100"
-										: "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-								}`
-							}
-						>
+					<nav className="flex items-center gap-1 text-sm">
+						<NavTab to="/" end>
 							Workspaces
-						</NavLink>
-						<NavLink
-							to="/playground"
-							className={({ isActive }) =>
-								`rounded-md px-3 py-1.5 transition-colors ${
-									isActive
-										? "text-slate-900 bg-slate-100"
-										: "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-								}`
-							}
-						>
-							Playground
-						</NavLink>
+						</NavTab>
+						<NavTab to="/playground">Playground</NavTab>
+						<span className="mx-1 h-5 w-px bg-slate-200" aria-hidden />
 						<UserMenu />
 						<a
 							href="/docs"
@@ -67,7 +90,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 					</nav>
 				</div>
 			</header>
-			<main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
+			<main className="app-backdrop mx-auto w-full max-w-6xl flex-1 px-6 py-10">
 				{children}
 			</main>
 			<footer className="border-t border-slate-200 bg-white/60">
