@@ -422,6 +422,6 @@ describe("AstraVectorStoreDriver hybrid + rerank", () => {
 		// hits. The dispatcher's route-level `rerank: true` flow
 		// surfaces as 501 on Astra — verified by the dispatcher's own
 		// tests. Here we just pin the shape.
-		expect(driver.rerank).toBeUndefined();
+		expect("rerank" in driver).toBe(false);
 	});
 });
