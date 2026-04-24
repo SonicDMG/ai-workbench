@@ -10,6 +10,7 @@ import { ApiKeysPanel } from "@/components/workspaces/ApiKeysPanel";
 import { DeleteDialog } from "@/components/workspaces/DeleteDialog";
 import { KindBadge } from "@/components/workspaces/KindBadge";
 import { TestConnectionPanel } from "@/components/workspaces/TestConnectionPanel";
+import { VectorStoresPanel } from "@/components/workspaces/VectorStoresPanel";
 import { WorkspaceForm } from "@/components/workspaces/WorkspaceForm";
 import {
 	useDeleteWorkspace,
@@ -206,6 +207,11 @@ export function WorkspaceDetailPage() {
 					<Card>
 						<CardContent className="pt-5">
 							<TestConnectionPanel uid={data.uid} />
+						</CardContent>
+					</Card>
+					<Card>
+						<CardContent className="pt-5">
+							<VectorStoresPanel workspace={data.uid} />
 						</CardContent>
 					</Card>
 					<Card>

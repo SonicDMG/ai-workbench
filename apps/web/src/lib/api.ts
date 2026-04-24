@@ -6,6 +6,7 @@ import {
 	type CreateApiKeyInput,
 	type CreatedApiKeyResponse,
 	CreatedApiKeyResponseSchema,
+	type CreateVectorStoreInput,
 	type CreateWorkspaceInput,
 	ErrorEnvelopeSchema,
 	type SearchHit,
@@ -187,6 +188,23 @@ export const api = {
 			`/workspaces/${workspace}/vector-stores`,
 			{ method: "GET" },
 			z.array(VectorStoreRecordSchema),
+		),
+
+	createVectorStore: (
+		workspace: string,
+		input: CreateVectorStoreInput,
+	): Promise<VectorStoreRecord> =>
+		request(
+			`/workspaces/${workspace}/vector-stores`,
+			{ method: "POST", body: JSON.stringify(input) },
+			VectorStoreRecordSchema,
+		),
+
+	deleteVectorStore: (workspace: string, uid: string): Promise<void> =>
+		request(
+			`/workspaces/${workspace}/vector-stores/${uid}`,
+			{ method: "DELETE" },
+			null,
 		),
 
 	search: (

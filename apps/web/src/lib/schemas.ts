@@ -100,6 +100,31 @@ export const EmbeddingConfigSchema = z.object({
 });
 export type EmbeddingConfig = z.infer<typeof EmbeddingConfigSchema>;
 
+export const VectorSimilaritySchema = z.enum(["cosine", "dot", "euclidean"]);
+export type VectorSimilarity = z.infer<typeof VectorSimilaritySchema>;
+
+export const CreateVectorStoreInputSchema = z.object({
+	name: z.string().min(1, "Name is required"),
+	vectorDimension: z
+		.number()
+		.int()
+		.positive("Dimension must be a positive integer"),
+	vectorSimilarity: VectorSimilaritySchema.default("cosine"),
+	embedding: z.object({
+		provider: z.string().min(1, "Provider is required"),
+		model: z.string().min(1, "Model is required"),
+		endpoint: z.string().nullable(),
+		dimension: z.number().int().positive(),
+		secretRef: z
+			.string()
+			.regex(/^[a-z][a-z0-9]*:.+/i, "Expected '<provider>:<path>'")
+			.nullable(),
+	}),
+});
+export type CreateVectorStoreInput = z.infer<
+	typeof CreateVectorStoreInputSchema
+>;
+
 export const VectorStoreRecordSchema = z.object({
 	workspace: z.string().uuid(),
 	uid: z.string().uuid(),
