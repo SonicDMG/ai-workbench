@@ -102,18 +102,21 @@ result.
 
 Shipped in this phase so far:
 
-- `POST .../catalogs/{c}/documents/search` — catalog-scoped search
-  that delegates to the catalog's bound vector store. Merges
-  `catalogUid = catalog.uid` into the filter so a search cannot
-  escape its catalog. Covered by scenario
-  `catalog-scoped-document-search`. Hybrid retrieval (lexical,
-  rerank) arrives alongside the lexical config wiring.
+- **Embedding seam.** `Embedder` / `EmbedderFactory` landed in Phase 3
+  for the Playground; reused verbatim by the ingest pipeline — no new
+  contract needed.
+- **Chunking seam.** `Chunker` contract at
+  `runtimes/typescript/src/ingest/chunker.ts` plus a reference
+  `RecursiveCharacterChunker` impl. Char-based, respects natural text
+  boundaries (`\n\n`, `\n`, `. `, `? `, `! `, ` `), overlap-aware, with
+  a shared contract suite (`tests/ingest/chunker-contract.ts`) that
+  any future chunker must pass.
 
 Planned for the rest of 2b:
 
-- Chunking service contract and reference implementation (in-process).
-- Embedding service contract and reference implementation.
-- `POST .../catalogs/{c}/ingest` with async job semantics.
+- `POST .../catalogs/{c}/ingest` with async job semantics — wires the
+  chunker + embedder + upsert together; stamps `catalogUid` and
+  `documentUid` into every record's payload.
 - `GET .../jobs/{jobId}` for status polling.
 - Streaming progress via SSE.
 - Lexical + rerank lanes for the catalog-scoped search (today's
