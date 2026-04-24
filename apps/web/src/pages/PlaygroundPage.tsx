@@ -1,6 +1,6 @@
-import { RefreshCw, Sparkles } from "lucide-react";
+import { Plus, RefreshCw, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
 	EmptyState,
@@ -18,6 +18,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { CreateVectorStoreDialog } from "@/components/workspaces/CreateVectorStoreDialog";
 import { usePlaygroundSearch } from "@/hooks/usePlaygroundSearch";
 import { useVectorStores } from "@/hooks/useVectorStores";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
@@ -120,59 +121,98 @@ function WorkspaceVectorStoreSelect({
 }) {
 	const vsQuery = useVectorStores(workspaceUid || undefined);
 	const vectorStores = vsQuery.data ?? [];
+	const [createOpen, setCreateOpen] = useState(false);
+	const isEmpty =
+		Boolean(workspaceUid) && !vsQuery.isLoading && vectorStores.length === 0;
 
 	return (
-		<div className="grid gap-4 sm:grid-cols-2">
-			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="pg-workspace">Workspace</Label>
-				<Select value={workspaceUid} onValueChange={setWorkspaceUid}>
-					<SelectTrigger id="pg-workspace" aria-label="Workspace">
-						<SelectValue placeholder="Select a workspace" />
-					</SelectTrigger>
-					<SelectContent>
-						{workspaces.map((w) => (
-							<SelectItem key={w.uid} value={w.uid}>
-								{w.name}{" "}
-								<span className="text-xs text-slate-500 font-mono ml-1">
-									{w.kind}
-								</span>
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+		<div className="flex flex-col gap-3">
+			<div className="grid gap-4 sm:grid-cols-2">
+				<div className="flex flex-col gap-1.5">
+					<Label htmlFor="pg-workspace">Workspace</Label>
+					<Select value={workspaceUid} onValueChange={setWorkspaceUid}>
+						<SelectTrigger id="pg-workspace" aria-label="Workspace">
+							<SelectValue placeholder="Select a workspace" />
+						</SelectTrigger>
+						<SelectContent>
+							{workspaces.map((w) => (
+								<SelectItem key={w.uid} value={w.uid}>
+									{w.name}{" "}
+									<span className="text-xs text-slate-500 font-mono ml-1">
+										{w.kind}
+									</span>
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
+				<div className="flex flex-col gap-1.5">
+					<Label htmlFor="pg-vs">Vector store</Label>
+					<Select
+						value={vectorStoreUid}
+						onValueChange={setVectorStoreUid}
+						disabled={!workspaceUid || vectorStores.length === 0}
+					>
+						<SelectTrigger id="pg-vs" aria-label="Vector store">
+							<SelectValue
+								placeholder={
+									!workspaceUid
+										? "Pick a workspace first"
+										: vsQuery.isLoading
+											? "Loading…"
+											: vectorStores.length === 0
+												? "No vector stores yet — create one"
+												: "Select a vector store"
+								}
+							/>
+						</SelectTrigger>
+						<SelectContent>
+							{vectorStores.map((vs) => (
+								<SelectItem key={vs.uid} value={vs.uid}>
+									{vs.name}{" "}
+									<span className="text-xs text-slate-500 font-mono ml-1">
+										dim {vs.vectorDimension}
+									</span>
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
 			</div>
-			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="pg-vs">Vector store</Label>
-				<Select
-					value={vectorStoreUid}
-					onValueChange={setVectorStoreUid}
-					disabled={!workspaceUid || vectorStores.length === 0}
-				>
-					<SelectTrigger id="pg-vs" aria-label="Vector store">
-						<SelectValue
-							placeholder={
-								!workspaceUid
-									? "Pick a workspace first"
-									: vsQuery.isLoading
-										? "Loading…"
-										: vectorStores.length === 0
-											? "No vector stores in this workspace"
-											: "Select a vector store"
-							}
-						/>
-					</SelectTrigger>
-					<SelectContent>
-						{vectorStores.map((vs) => (
-							<SelectItem key={vs.uid} value={vs.uid}>
-								{vs.name}{" "}
-								<span className="text-xs text-slate-500 font-mono ml-1">
-									dim {vs.vectorDimension}
-								</span>
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-			</div>
+
+			{isEmpty ? (
+				<div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50/80 px-4 py-3">
+					<p className="text-sm text-slate-600">
+						This workspace has no vector stores yet. Create one to start
+						querying.
+					</p>
+					<div className="flex items-center gap-2">
+						<Button variant="ghost" size="sm" asChild>
+							<Link to={`/workspaces/${workspaceUid}`}>Manage</Link>
+						</Button>
+						<Button
+							variant="brand"
+							size="sm"
+							onClick={() => setCreateOpen(true)}
+						>
+							<Plus className="h-4 w-4" /> New vector store
+						</Button>
+					</div>
+				</div>
+			) : null}
+
+			{workspaceUid ? (
+				<CreateVectorStoreDialog
+					workspace={workspaceUid}
+					open={createOpen}
+					onOpenChange={(o) => {
+						setCreateOpen(o);
+						// On close after a successful create, the useVectorStores
+						// query is invalidated by the mutation; selecting the new
+						// store is the user's next click.
+					}}
+				/>
+			) : null}
 		</div>
 	);
 }
