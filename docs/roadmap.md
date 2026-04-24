@@ -123,8 +123,17 @@ Shipped in this phase so far:
   `rerank` flags; descriptor-level `lexical.enabled` /
   `reranking.enabled` feed the defaults. Drivers that lack either
   method return 501 (`hybrid_not_supported` /
-  `rerank_not_supported`). Astra-native wiring is a follow-up —
-  today astra returns 501 if asked.
+  `rerank_not_supported`).
+- **Astra-native hybrid + rerank**. `searchHybrid` on the Astra
+  driver uses `findAndRerank` (astra-db-ts's native hybrid API):
+  vector + lexical + reranker combined in one call. Requires the
+  descriptor to opt into both `lexical.enabled` and
+  `reranking.enabled`; `createCollection` passes those options to
+  the Data API so the collection is provisioned with a lexical
+  index + reranker service. Standalone `rerank` stays unimplemented
+  on Astra (astra-db-ts doesn't expose that primitive); callers set
+  `hybrid: true` to get the combined path. `lexicalWeight` is a
+  no-op on Astra — the reranker owns the blend.
 - `POST .../catalogs/{c}/ingest` — **synchronous** end-to-end ingest.
   Chunks the input text, embeds each chunk (server-side via
   `$vectorize` when supported, otherwise client-side), upserts into
@@ -159,8 +168,6 @@ Shipped in this phase so far:
 
 Planned for the rest of 2b:
 
-- Astra-native `searchHybrid` + `rerank` (today's impl is mock-only;
-  astra returns 501).
 - Cross-replica job pub/sub + in-flight resume after restart (today
   the record survives restart but the owning worker doesn't).
 

@@ -708,11 +708,21 @@ keys merge normally.
   driver's reranker. Defaults to the bound store's
   `reranking.enabled`. Also requires `text`.
 
-Drivers can support either, both, or neither. The `mock` driver
-supports both when the descriptor's `embedding.provider` is `"mock"`.
-The `astra` driver wires these flags through to the underlying
-store in a later slice — calling them with `hybrid: true` /
-`rerank: true` on an astra workspace returns 501 today.
+Drivers can support either, both, or neither.
+
+- `mock` — supports both when the descriptor's `embedding.provider`
+  is `"mock"`. Hybrid and rerank are two separate phases in the
+  dispatcher.
+- `astra` — supports hybrid natively via `findAndRerank` (astra-
+  db-ts's built-in API). Requires the descriptor to opt into both
+  `lexical.enabled: true` **and** `reranking.enabled: true` — the
+  collection is provisioned with a lexical index and reranker
+  service at create time. Standalone `rerank` is **not** exposed on
+  Astra because the Data API combines retrieval + reranking in one
+  call; callers that want rerank set `hybrid: true`. `lexicalWeight`
+  is ignored on Astra — the reranker owns the blend. A
+  `rerank: true` request against an Astra workspace therefore
+  returns 501 unless paired with `hybrid: true`.
 
 **Errors**
 

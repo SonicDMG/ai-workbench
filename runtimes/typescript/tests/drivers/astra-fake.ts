@@ -71,6 +71,8 @@ class FakeCollection implements AstraCollectionLike {
 		readonly service: AstraCreateCollectionOptions["vector"]["service"] | null,
 		readonly dimension: number,
 		readonly handleOpts: AstraCollectionHandleOptions | undefined,
+		readonly lexicalEnabled: boolean = false,
+		readonly rerankEnabled: boolean = false,
 	) {}
 
 	async insertOne(doc: Record<string, unknown>): Promise<unknown> {
@@ -150,6 +152,108 @@ class FakeCollection implements AstraCollectionLike {
 			},
 		};
 	}
+
+	findAndRerank(
+		filter: Record<string, unknown>,
+		opts?: {
+			sort?: { $hybrid: string | Record<string, unknown> };
+			limit?: number;
+			hybridLimits?: number | Record<string, number>;
+			rerankOn?: string;
+			rerankQuery?: string;
+			includeScores?: boolean;
+		},
+	): {
+		toArray(): Promise<
+			Array<{
+				document: Record<string, unknown>;
+				scores: Record<string, number>;
+			}>
+		>;
+	} {
+		if (!this.lexicalEnabled || !this.rerankEnabled) {
+			// Match the shape the real Data API produces when the
+			// collection wasn't created with hybrid wiring.
+			const name = this.name;
+			return {
+				async toArray() {
+					throw new FakeVectorizeNotConfiguredError(name);
+				},
+			};
+		}
+
+		const hybrid = opts?.sort?.$hybrid;
+		const $lexical = (
+			typeof hybrid === "object" && hybrid !== null
+				? (hybrid as { $lexical?: string }).$lexical
+				: typeof hybrid === "string"
+					? hybrid
+					: undefined
+		) as string | undefined;
+		const $vectorOpt =
+			typeof hybrid === "object" && hybrid !== null
+				? ((hybrid as { $vector?: number[] }).$vector ?? null)
+				: null;
+		const $vectorize =
+			typeof hybrid === "object" && hybrid !== null
+				? ((hybrid as { $vectorize?: string }).$vectorize ?? null)
+				: null;
+		const vector =
+			$vectorOpt ??
+			($vectorize ? pseudoEmbed($vectorize, this.dimension) : null);
+		const limit = opts?.limit ?? 10;
+
+		// For each doc: compute the two scores, combine with a simple
+		// 50/50 rerank. Faithful enough for ordering assertions in
+		// contract tests; real Astra's reranker is model-specific.
+		const rows: Array<{
+			document: Record<string, unknown>;
+			scores: Record<string, number>;
+		}> = [];
+		for (const doc of this.docs.values()) {
+			const { _id: _i, $vector: _v, ...payload } = doc;
+			if (
+				!Object.entries(filter).every(
+					([k, v]) => (payload as Record<string, unknown>)[k] === v,
+				)
+			) {
+				continue;
+			}
+			const vecScore = vector
+				? cosine((doc.$vector as number[]) ?? [], vector)
+				: 0;
+			const lexScore =
+				$lexical !== undefined ? fakeLexicalScore($lexical, doc) : 0;
+			const rerankerScore = 0.5 * vecScore + 0.5 * lexScore;
+			rows.push({
+				document: { ...doc },
+				scores: {
+					$vector: vecScore,
+					$lexical: lexScore,
+					$reranker: rerankerScore,
+				},
+			});
+		}
+		rows.sort((a, b) => (b.scores.$reranker ?? 0) - (a.scores.$reranker ?? 0));
+		const sliced = rows.slice(0, limit);
+		return {
+			async toArray() {
+				return sliced;
+			},
+		};
+	}
+}
+
+/** Token-overlap score over a stringified payload. Not faithful to
+ * a real lexical index — just gives the contract tests something
+ * deterministic to assert on. */
+function fakeLexicalScore(query: string, doc: Record<string, unknown>): number {
+	const haystack = JSON.stringify(doc).toLowerCase();
+	const tokens = query.toLowerCase().split(/\W+/).filter(Boolean);
+	if (tokens.length === 0) return 0;
+	let matches = 0;
+	for (const t of tokens) if (haystack.includes(t)) matches++;
+	return matches / tokens.length;
 }
 
 export class FakeDb implements AstraDbLike {
@@ -180,6 +284,8 @@ export class FakeDb implements AstraDbLike {
 					opts.vector.service ?? null,
 					opts.vector.dimension,
 					undefined,
+					opts.lexical?.enabled === true,
+					opts.rerank?.enabled === true,
 				),
 			);
 		}

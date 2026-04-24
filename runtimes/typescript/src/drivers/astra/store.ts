@@ -29,6 +29,7 @@ import {
 	NotSupportedError,
 	type SearchByTextRequest,
 	type SearchHit,
+	type SearchHybridRequest,
 	type SearchRequest,
 	type TextRecord,
 	type VectorRecord,
@@ -76,6 +77,43 @@ function toHit(
 	};
 }
 
+/**
+ * Translate a `findAndRerank` row (`{ document, scores }`) into a
+ * `SearchHit`. Score priority: `$reranker` > `$vector` > `$lexical`.
+ * The reranker score is the post-blend signal the caller usually
+ * wants; we fall back to the individual lane scores if the reranker
+ * didn't run (shouldn't happen on a correctly-configured collection
+ * but keeps the code honest).
+ */
+function rerankedToHit(
+	row: {
+		document: Record<string, unknown>;
+		scores: Record<string, number>;
+	},
+	includeEmbeddings?: boolean,
+): SearchHit {
+	const { _id, $vector, ...payload } = row.document as {
+		_id: string;
+		$vector?: number[];
+		[k: string]: unknown;
+	};
+	const scores = row.scores ?? {};
+	const score =
+		typeof scores.$reranker === "number"
+			? scores.$reranker
+			: typeof scores.$vector === "number"
+				? scores.$vector
+				: typeof scores.$lexical === "number"
+					? scores.$lexical
+					: 0;
+	return {
+		id: _id,
+		score,
+		payload: Object.keys(payload).length > 0 ? payload : undefined,
+		vector: includeEmbeddings ? $vector : undefined,
+	};
+}
+
 function collectionName(descriptor: VectorStoreRecord): string {
 	// Astra collection names are [a-zA-Z][a-zA-Z0-9_]* up to 48 chars.
 	// Descriptor.name is human-authored; fall back to the uid (stripped
@@ -95,6 +133,24 @@ export interface AstraCreateCollectionOptions {
 		dimension: number;
 		metric: "cosine" | "dot_product" | "euclidean";
 		service?: VectorizeService;
+	};
+	/** Lexical-index configuration. When `enabled: true` Astra provisions
+	 * a BM25-style lexical index over the collection that `findAndRerank`
+	 * can combine with vector hits. See the descriptor's
+	 * `lexical.analyzer` for per-language tuning. */
+	lexical?: {
+		enabled: boolean;
+		analyzer?: string | null;
+	};
+	/** Reranker configuration. When `enabled: true` Astra attaches a
+	 * reranker service to the collection; `findAndRerank` then
+	 * combines vector + lexical hits through it. */
+	rerank?: {
+		enabled: boolean;
+		service?: {
+			provider: string;
+			modelName: string;
+		};
 	};
 }
 
@@ -130,6 +186,40 @@ export interface AstraCollectionLike {
 			projection?: Record<string, unknown>;
 		},
 	): { toArray(): Promise<Array<Record<string, unknown>>> };
+	/**
+	 * Hybrid vector + lexical search with optional reranker. astra-db-ts
+	 * surfaces this as `findAndRerank(filter, { sort: { $hybrid }, ... })`.
+	 * Returns `RerankedResult`-shaped rows — the narrow shape here
+	 * covers the fields we read.
+	 */
+	findAndRerank?(
+		filter: Record<string, unknown>,
+		opts?: {
+			sort?: { $hybrid: AstraHybridSortObject | string };
+			limit?: number;
+			hybridLimits?: number | Record<string, number>;
+			rerankOn?: string;
+			rerankQuery?: string;
+			includeScores?: boolean;
+			projection?: Record<string, unknown>;
+		},
+	): {
+		toArray(): Promise<
+			Array<{
+				document: Record<string, unknown>;
+				scores: Record<string, number>;
+			}>
+		>;
+	};
+}
+
+/** Structural mirror of astra-db-ts's `HybridSortObject`. Either
+ * `$vectorize` (let Astra embed the text) or `$vector` (caller
+ * supplies the vector) — plus `$lexical` for the lexical lane. */
+export interface AstraHybridSortObject {
+	$vectorize?: string;
+	$lexical?: string;
+	$vector?: readonly number[];
 }
 
 /**
@@ -173,12 +263,36 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 	async createCollection(ctx: VectorStoreDriverContext): Promise<void> {
 		const db = await this.getDb(ctx.workspace);
 		const service = resolveVectorizeService(ctx.descriptor.embedding);
+		const { lexical, reranking } = ctx.descriptor;
+		if (reranking.enabled && (!reranking.provider || !reranking.model)) {
+			throw new WorkspaceMisconfiguredError(
+				ctx.workspace.uid,
+				"reranking.provider+reranking.model",
+			);
+		}
 		await db.createCollection(collectionName(ctx.descriptor), {
 			vector: {
 				dimension: ctx.descriptor.vectorDimension,
 				metric: mapMetric(ctx.descriptor.vectorSimilarity),
 				...(service ? { service } : {}),
 			},
+			...(lexical.enabled && {
+				lexical: {
+					enabled: true,
+					analyzer: lexical.analyzer,
+				},
+			}),
+			...(reranking.enabled &&
+				reranking.provider &&
+				reranking.model && {
+					rerank: {
+						enabled: true,
+						service: {
+							provider: reranking.provider,
+							modelName: reranking.model,
+						},
+					},
+				}),
 		});
 	}
 
@@ -331,6 +445,83 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 				throw new NotSupportedError(
 					"searchByText",
 					"collection does not have an Astra vectorize service configured",
+				);
+			}
+			throw err;
+		}
+	}
+
+	/**
+	 * Native Astra hybrid search — vector + lexical merged by a reranker.
+	 * Uses `findAndRerank`, which Astra exposes as one atomic call: it
+	 * fans out a vector query and a lexical query, then reranks the
+	 * union through the collection's configured reranker service.
+	 *
+	 * Requires BOTH `lexical.enabled` AND `reranking.enabled` on the
+	 * descriptor — Astra's hybrid path is inseparable from reranking.
+	 * We throw `NotSupportedError` when either is off so the route
+	 * layer surfaces a 501 with a clear reason; callers on Astra
+	 * should enable both to use this lane.
+	 *
+	 * `lexicalWeight` is accepted on the wire but not honored here —
+	 * Astra's reranker owns the blend. Documented in api-spec.md.
+	 */
+	async searchHybrid(
+		ctx: VectorStoreDriverContext,
+		req: SearchHybridRequest,
+	): Promise<readonly SearchHit[]> {
+		if (!ctx.descriptor.lexical.enabled) {
+			throw new NotSupportedError(
+				"searchHybrid",
+				"vector store's `lexical.enabled` is false — hybrid search requires a lexical index",
+			);
+		}
+		if (!ctx.descriptor.reranking.enabled) {
+			throw new NotSupportedError(
+				"searchHybrid",
+				"vector store's `reranking.enabled` is false — Astra hybrid search runs through a reranker service; configure `reranking` on the descriptor to use this lane",
+			);
+		}
+		const expectedDim = ctx.descriptor.vectorDimension;
+		if (req.vector.length !== expectedDim) {
+			throw new DimensionMismatchError(expectedDim, req.vector.length);
+		}
+		const embeddingApiKey = await this.resolveEmbeddingKey(ctx);
+		const db = await this.getDb(ctx.workspace);
+		const coll = db.collection(collectionName(ctx.descriptor), {
+			embeddingApiKey,
+		});
+		if (!coll.findAndRerank) {
+			throw new NotSupportedError(
+				"searchHybrid",
+				"astra-db-ts handle does not expose findAndRerank — upgrade astra-db-ts to a version with hybrid support",
+			);
+		}
+		const topK = Math.max(1, Math.min(req.topK ?? 10, 1000));
+		try {
+			const cursor = coll.findAndRerank(req.filter ?? {}, {
+				sort: {
+					$hybrid: {
+						$vector: [...req.vector],
+						$lexical: req.text,
+					},
+				},
+				limit: topK,
+				includeScores: true,
+			});
+			const rows = await cursor.toArray();
+			return rows.map((row) => rerankedToHit(row, req.includeEmbeddings));
+		} catch (err) {
+			// Some collections get here despite passing the descriptor
+			// gate — e.g. a collection created before lexical/rerank
+			// was enabled on the descriptor and then updated. Translate
+			// "not configured" errors into NotSupported so the route
+			// layer returns 501 with a useful message; other errors
+			// bubble up.
+			if (isVectorizeNotConfigured(err)) {
+				throw new NotSupportedError(
+					"searchHybrid",
+					"collection does not have hybrid/reranker wiring; re-create with lexical + reranking enabled",
 				);
 			}
 			throw err;
