@@ -28,6 +28,7 @@ import type { CatalogRecord, DocumentRecord } from "@/lib/schemas";
 import { formatDate } from "@/lib/utils";
 import { CreateCatalogDialog } from "./CreateCatalogDialog";
 import { IngestDialog } from "./IngestDialog";
+import { SavedQueriesSection } from "./SavedQueriesSection";
 
 /**
  * Workspace-scoped catalog management + ingest trigger.
@@ -232,23 +233,29 @@ function CatalogRow({
 				</div>
 			</div>
 			{expanded ? (
-				<div className="border-t border-slate-100 bg-slate-50/50 p-3">
-					{docs.isLoading ? (
-						<p className="text-xs text-slate-500 inline-flex items-center gap-2">
-							<Loader2 className="h-3 w-3 animate-spin" /> Loading documents…
+				<div className="border-t border-slate-100 bg-slate-50/50 p-3 flex flex-col gap-4">
+					<div className="flex flex-col gap-2">
+						<p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+							Documents
 						</p>
-					) : docs.isError ? (
-						<p className="text-xs text-red-600">
-							Couldn't load documents: {docs.error.message}
-						</p>
-					) : (docs.data?.length ?? 0) === 0 ? (
-						<p className="text-xs text-slate-500">
-							No documents yet. Click{" "}
-							<span className="font-medium">Ingest</span> to add one.
-						</p>
-					) : (
-						<DocumentList rows={docs.data ?? []} />
-					)}
+						{docs.isLoading ? (
+							<p className="text-xs text-slate-500 inline-flex items-center gap-2">
+								<Loader2 className="h-3 w-3 animate-spin" /> Loading documents…
+							</p>
+						) : docs.isError ? (
+							<p className="text-xs text-red-600">
+								Couldn't load documents: {docs.error.message}
+							</p>
+						) : (docs.data?.length ?? 0) === 0 ? (
+							<p className="text-xs text-slate-500">
+								No documents yet. Click{" "}
+								<span className="font-medium">Ingest</span> to add one.
+							</p>
+						) : (
+							<DocumentList rows={docs.data ?? []} />
+						)}
+					</div>
+					<SavedQueriesSection workspace={workspace} catalogId={catalog.uid} />
 				</div>
 			) : null}
 		</div>

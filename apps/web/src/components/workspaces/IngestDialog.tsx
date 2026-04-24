@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertTriangle, CheckCircle2, Loader2, Upload, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -37,6 +37,43 @@ const FormSchema = z.object({
 });
 type FormInput = z.infer<typeof FormSchema>;
 
+/** Text-ish file types we read directly into the textarea. PDFs,
+ * docx, and other binary formats need server-side parsing and are
+ * out of scope for this MVP — the backend expects plain text on
+ * `/ingest`. */
+const READABLE_EXTENSIONS = [
+	".txt",
+	".md",
+	".markdown",
+	".json",
+	".csv",
+	".tsv",
+	".log",
+	".rst",
+	".xml",
+	".html",
+	".htm",
+	".yaml",
+	".yml",
+];
+/** Hard cap on file size. 5 MB is generous for text but keeps a
+ * runaway upload from freezing the browser — the runtime's chunker
+ * will cheerfully process a 5 MB document. */
+const MAX_BYTES = 5 * 1024 * 1024;
+
+function isReadable(file: File): boolean {
+	const name = file.name.toLowerCase();
+	if (READABLE_EXTENSIONS.some((ext) => name.endsWith(ext))) return true;
+	// Fall back to the browser-reported MIME type. `text/*` is always
+	// safe; other types (application/json, application/xml, …) we
+	// pick out explicitly.
+	return (
+		file.type.startsWith("text/") ||
+		file.type === "application/json" ||
+		file.type === "application/xml"
+	);
+}
+
 export function IngestDialog({
 	workspace,
 	catalog,
@@ -51,6 +88,9 @@ export function IngestDialog({
 	const ingest = useAsyncIngest(workspace, catalog.uid);
 	const [jobId, setJobId] = useState<string | null>(null);
 	const poll = useJobPoller(workspace, jobId ?? undefined);
+	const [droppedFile, setDroppedFile] = useState<File | null>(null);
+	const [dragActive, setDragActive] = useState(false);
+	const fileInputRef = useRef<HTMLInputElement | null>(null);
 
 	const form = useForm<FormInput>({
 		resolver: zodResolver(FormSchema),
@@ -64,9 +104,44 @@ export function IngestDialog({
 			form.reset();
 			ingest.reset();
 			setJobId(null);
+			setDroppedFile(null);
+			setDragActive(false);
 		}
 		onOpenChange(next);
 	}
+
+	const consumeFile = useCallback(
+		async (file: File): Promise<void> => {
+			if (!isReadable(file)) {
+				toast.error("Unsupported file type", {
+					description: `${file.name} isn't a text file. Upload one of: ${READABLE_EXTENSIONS.join(", ")}.`,
+				});
+				return;
+			}
+			if (file.size > MAX_BYTES) {
+				toast.error("File too large", {
+					description: `${file.name} is ${(file.size / 1024 / 1024).toFixed(1)} MB; max is ${MAX_BYTES / 1024 / 1024} MB.`,
+				});
+				return;
+			}
+			try {
+				const text = await file.text();
+				form.setValue("text", text, {
+					shouldValidate: true,
+					shouldDirty: true,
+				});
+				if (!form.getValues("sourceFilename")) {
+					form.setValue("sourceFilename", file.name, { shouldDirty: true });
+				}
+				setDroppedFile(file);
+			} catch (err) {
+				toast.error("Couldn't read file", {
+					description: err instanceof Error ? err.message : "Unknown error",
+				});
+			}
+		},
+		[form],
+	);
 
 	// Surface terminal errors as toasts once, without blocking the
 	// dialog (the user may want to read the failure in-place before
@@ -130,6 +205,81 @@ export function IngestDialog({
 					onSubmit={form.handleSubmit(onSubmit)}
 					className="flex flex-col gap-4"
 				>
+					{/* biome-ignore lint/a11y/noStaticElementInteractions: drop
+					    zone is a pointer affordance; keyboard users get the
+					    in-zone "browse" button. */}
+					<div
+						onDragOver={(e) => {
+							if (inFlight || succeeded) return;
+							e.preventDefault();
+							setDragActive(true);
+						}}
+						onDragLeave={() => setDragActive(false)}
+						onDrop={(e) => {
+							if (inFlight || succeeded) return;
+							e.preventDefault();
+							setDragActive(false);
+							const file = e.dataTransfer.files?.[0];
+							if (file) void consumeFile(file);
+						}}
+						className={`relative flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-4 text-sm transition-colors ${
+							dragActive
+								? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)]"
+								: "border-slate-300 bg-slate-50"
+						} ${inFlight || succeeded ? "opacity-60" : ""}`}
+					>
+						<input
+							ref={fileInputRef}
+							type="file"
+							accept={READABLE_EXTENSIONS.join(",")}
+							className="hidden"
+							onChange={(e) => {
+								const file = e.target.files?.[0];
+								if (file) void consumeFile(file);
+								e.target.value = "";
+							}}
+						/>
+						{droppedFile ? (
+							<div className="flex items-center gap-2 text-slate-700">
+								<Upload className="h-4 w-4 text-slate-500" aria-hidden />
+								<span className="font-mono text-xs">{droppedFile.name}</span>
+								<span className="text-xs text-slate-500">
+									({(droppedFile.size / 1024).toFixed(1)} KB)
+								</span>
+								<button
+									type="button"
+									onClick={() => {
+										setDroppedFile(null);
+										form.setValue("text", "", { shouldValidate: true });
+									}}
+									className="text-slate-400 hover:text-slate-600"
+									aria-label="Clear uploaded file"
+									disabled={inFlight || succeeded}
+								>
+									<X className="h-3.5 w-3.5" />
+								</button>
+							</div>
+						) : (
+							<>
+								<Upload className="h-5 w-5 text-slate-400" aria-hidden />
+								<p className="text-slate-600">
+									Drop a text file here or{" "}
+									<button
+										type="button"
+										onClick={() => fileInputRef.current?.click()}
+										className="font-medium text-[var(--color-brand-700)] hover:underline"
+										disabled={inFlight || succeeded}
+									>
+										browse
+									</button>
+								</p>
+								<p className="text-xs text-slate-500">
+									Text, Markdown, JSON, CSV, YAML, … up to{" "}
+									{MAX_BYTES / 1024 / 1024} MB
+								</p>
+							</>
+						)}
+					</div>
 					<div className="flex flex-col gap-1.5">
 						<Label htmlFor="ingest-filename">Source filename (optional)</Label>
 						<Input

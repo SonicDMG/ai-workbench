@@ -261,6 +261,31 @@ export const AsyncIngestResponseSchema = z.object({
 });
 export type AsyncIngestResponse = z.infer<typeof AsyncIngestResponseSchema>;
 
+/* ---------------- Saved queries ---------------- */
+
+export const SavedQueryRecordSchema = z.object({
+	workspace: z.string().uuid(),
+	catalogUid: z.string().uuid(),
+	queryUid: z.string().uuid(),
+	name: z.string(),
+	description: z.string().nullable(),
+	text: z.string(),
+	topK: z.number().int().positive().max(1000).nullable(),
+	filter: z.record(z.string(), z.unknown()).nullable(),
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type SavedQueryRecord = z.infer<typeof SavedQueryRecordSchema>;
+
+export const CreateSavedQueryInputSchema = z.object({
+	name: z.string().min(1, "Name is required"),
+	description: z.string().or(z.literal("")).nullable().optional(),
+	text: z.string().min(1, "Text is required"),
+	topK: z.number().int().positive().max(1000).nullable().optional(),
+	filter: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+export type CreateSavedQueryInput = z.infer<typeof CreateSavedQueryInputSchema>;
+
 export const KIND_LABELS: Record<WorkspaceKind, string> = {
 	astra: "Astra DB",
 	hcd: "Hyper-Converged Database",

@@ -36,7 +36,12 @@ export function QueryForm({
 	const [vectorStr, setVectorStr] = useState("");
 	const [topK, setTopK] = useState(10);
 	const [filterStr, setFilterStr] = useState("");
+	const [hybrid, setHybrid] = useState(false);
+	const [rerank, setRerank] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+
+	const lexicalSupported = vectorStore.lexical.enabled;
+	const rerankSupported = vectorStore.reranking.enabled;
 
 	function submit() {
 		setError(null);
@@ -60,7 +65,19 @@ export function QueryForm({
 				setError("text is required");
 				return;
 			}
-			onRun({ topK, filter, text: text.trim() });
+			onRun({
+				topK,
+				filter,
+				text: text.trim(),
+				...(hybrid && { hybrid: true }),
+				...(rerank && { rerank: true }),
+			});
+			return;
+		}
+		if (hybrid || rerank) {
+			setError(
+				"hybrid and rerank require a text query — switch to the Text tab or clear the toggles",
+			);
 			return;
 		}
 		let vec: number[];
@@ -154,6 +171,31 @@ export function QueryForm({
 				</div>
 			</div>
 
+			<div className="flex flex-wrap items-center gap-4 border-t border-slate-100 pt-3 text-sm">
+				<LaneToggle
+					id="pg-hybrid"
+					label="Hybrid"
+					description={
+						lexicalSupported
+							? "Vector + lexical, combined by the driver."
+							: "This vector store doesn't have lexical enabled — the driver will return 501."
+					}
+					checked={hybrid}
+					onChange={setHybrid}
+				/>
+				<LaneToggle
+					id="pg-rerank"
+					label="Rerank"
+					description={
+						rerankSupported
+							? "Reorder hits through the driver's reranker service."
+							: "This vector store doesn't have reranking enabled — the driver will return 501."
+					}
+					checked={rerank}
+					onChange={setRerank}
+				/>
+			</div>
+
 			{error ? (
 				<div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
 					{error}
@@ -167,6 +209,39 @@ export function QueryForm({
 				</Button>
 			</div>
 		</div>
+	);
+}
+
+function LaneToggle({
+	id,
+	label,
+	description,
+	checked,
+	onChange,
+}: {
+	id: string;
+	label: string;
+	description: string;
+	checked: boolean;
+	onChange: (v: boolean) => void;
+}) {
+	return (
+		<label
+			htmlFor={id}
+			className="inline-flex items-start gap-2 cursor-pointer text-sm text-slate-700"
+		>
+			<input
+				id={id}
+				type="checkbox"
+				checked={checked}
+				onChange={(e) => onChange(e.target.checked)}
+				className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[var(--color-brand-600)] focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+			/>
+			<span className="flex flex-col">
+				<span className="font-medium">{label}</span>
+				<span className="text-xs text-slate-500">{description}</span>
+			</span>
+		</label>
 	);
 }
 

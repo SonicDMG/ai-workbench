@@ -11,6 +11,7 @@ import {
 	type CreateCatalogInput,
 	type CreatedApiKeyResponse,
 	CreatedApiKeyResponseSchema,
+	type CreateSavedQueryInput,
 	type CreateVectorStoreInput,
 	type CreateWorkspaceInput,
 	type DocumentRecord,
@@ -19,6 +20,8 @@ import {
 	type IngestRequest,
 	type JobRecord,
 	JobRecordSchema,
+	type SavedQueryRecord,
+	SavedQueryRecordSchema,
 	type SearchHit,
 	SearchHitSchema,
 	type TestConnectionResult,
@@ -297,6 +300,60 @@ export const api = {
 			{ method: "GET" },
 			JobRecordSchema,
 		),
+
+	/* -------- Saved queries -------- */
+
+	listSavedQueries: (
+		workspace: string,
+		catalogId: string,
+	): Promise<SavedQueryRecord[]> =>
+		request(
+			`/workspaces/${workspace}/catalogs/${catalogId}/queries`,
+			{ method: "GET" },
+			z.array(SavedQueryRecordSchema),
+		),
+
+	createSavedQuery: (
+		workspace: string,
+		catalogId: string,
+		input: CreateSavedQueryInput,
+	): Promise<SavedQueryRecord> =>
+		request(
+			`/workspaces/${workspace}/catalogs/${catalogId}/queries`,
+			{
+				method: "POST",
+				body: JSON.stringify({
+					name: input.name,
+					description: input.description ? input.description : null,
+					text: input.text,
+					topK: input.topK ?? null,
+					filter: input.filter ?? null,
+				}),
+			},
+			SavedQueryRecordSchema,
+		),
+
+	deleteSavedQuery: (
+		workspace: string,
+		catalogId: string,
+		queryId: string,
+	): Promise<void> =>
+		request(
+			`/workspaces/${workspace}/catalogs/${catalogId}/queries/${queryId}`,
+			{ method: "DELETE" },
+			null,
+		),
+
+	runSavedQuery: (
+		workspace: string,
+		catalogId: string,
+		queryId: string,
+	): Promise<SearchHit[]> =>
+		request(
+			`/workspaces/${workspace}/catalogs/${catalogId}/queries/${queryId}/run`,
+			{ method: "POST" },
+			z.array(SearchHitSchema),
+		),
 };
 
 export interface PlaygroundSearchInput {
@@ -305,6 +362,12 @@ export interface PlaygroundSearchInput {
 	readonly topK?: number;
 	readonly filter?: Record<string, unknown>;
 	readonly includeEmbeddings?: boolean;
+	/** Opt into the hybrid (vector + lexical) lane. Requires `text`. */
+	readonly hybrid?: boolean;
+	/** Weight of the lexical score in the hybrid combination (0..1). */
+	readonly lexicalWeight?: number;
+	/** Opt into driver-side reranking after retrieval. Requires `text`. */
+	readonly rerank?: boolean;
 }
 
 // Normalize form empties to match the backend's nullable contract: empty
