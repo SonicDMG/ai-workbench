@@ -1,4 +1,4 @@
-import { Boxes, Plus, RefreshCw } from "lucide-react";
+import { Boxes, Layers, Plus, RefreshCw } from "lucide-react";
 import { Link, Navigate } from "react-router-dom";
 import {
 	EmptyState,
@@ -38,15 +38,20 @@ export function WorkspacesPage() {
 	return (
 		<div className="flex flex-col gap-6">
 			<div className="flex items-start justify-between gap-4">
-				<div>
-					<h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-						Workspaces
-					</h1>
-					<p className="mt-1 text-sm text-slate-500">
-						{workspaces.length}{" "}
-						{workspaces.length === 1 ? "workspace" : "workspaces"} · sorted by
-						creation time
-					</p>
+				<div className="flex items-start gap-3">
+					<span className="brand-tile" aria-hidden>
+						<Layers className="h-5 w-5" />
+					</span>
+					<div>
+						<h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+							Workspaces
+						</h1>
+						<p className="mt-1 text-sm text-slate-500">
+							{workspaces.length}{" "}
+							{workspaces.length === 1 ? "workspace" : "workspaces"} · sorted by
+							creation time
+						</p>
+					</div>
 				</div>
 				<div className="flex items-center gap-2">
 					<Button
@@ -71,7 +76,11 @@ export function WorkspacesPage() {
 
 			{workspaces.length === 0 ? (
 				<EmptyState
-					icon={<Boxes className="h-12 w-12" />}
+					icon={
+						<span className="brand-tile h-14 w-14 rounded-2xl" aria-hidden>
+							<Boxes className="h-7 w-7" />
+						</span>
+					}
 					title="No workspaces yet"
 					description="Workspaces isolate your catalogs, vector stores, and documents — one per tenant, environment, or customer."
 					actions={

@@ -5,8 +5,15 @@ import { BrandMark } from "@/components/brand/BrandMark";
 
 export function AppShell({ children }: { children: ReactNode }) {
 	return (
-		<div className="min-h-full flex flex-col">
-			<header className="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/70">
+		<div className="min-h-full flex flex-col app-backdrop">
+			<header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/70">
+				{/* Thin brand-hued accent line — reads as "this is a DataStax
+				    product" at a glance without needing a big masthead. */}
+				<div
+					aria-hidden
+					className="h-[2px] w-full"
+					style={{ background: "var(--gradient-brand)" }}
+				/>
 				<div className="mx-auto max-w-6xl px-6 py-3 flex items-center justify-between gap-6">
 					<Link
 						to="/"
@@ -60,7 +67,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 					</nav>
 				</div>
 			</header>
-			<main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
+			<main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
 				{children}
 			</main>
 			<footer className="border-t border-slate-200 bg-white/60">

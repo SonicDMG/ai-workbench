@@ -86,3 +86,125 @@ samp,
 		);
 	pointer-events: none;
 }
+
+/*
+ * App-shell backdrop — very subtle coloured glow anchored to the
+ * top of the viewport so the slate-heavy workspace pages feel less
+ * flat without making the content harder to read.
+ *
+ * Two radial blobs in the brand + accent hues, feathered so at
+ * normal reading positions the backdrop reads as "warm white". Not
+ * fixed — it scrolls with the content so the top of each page gets
+ * the hero treatment and the list further down stays neutral.
+ */
+.app-backdrop {
+	position: relative;
+	isolation: isolate;
+}
+.app-backdrop::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background-image:
+		radial-gradient(
+			ellipse 60% 40% at 15% 0%,
+			color-mix(in oklch, var(--color-brand-500) 18%, transparent),
+			transparent 70%
+		),
+		radial-gradient(
+			ellipse 55% 35% at 85% 5%,
+			color-mix(in oklch, var(--color-accent-500) 14%, transparent),
+			transparent 70%
+		);
+	pointer-events: none;
+}
+
+/* Page-header chip — small brand-coloured tile that anchors a
+ * page title alongside a lucide icon. */
+.brand-tile {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 2.5rem;
+	width: 2.5rem;
+	border-radius: 0.75rem;
+	background: var(--gradient-brand);
+	color: white;
+	box-shadow:
+		0 1px 0 0 rgba(255, 255, 255, 0.3) inset,
+		0 6px 14px -6px color-mix(in oklch, var(--color-brand-600) 55%, transparent);
+}
+
+/* Softly-elevated card that picks up a tinted border on hover.
+ * Opt-in via className so existing `Card` usage is untouched. */
+.card-lift {
+	transition:
+		transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1),
+		box-shadow 180ms cubic-bezier(0.2, 0.9, 0.3, 1),
+		border-color 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.card-lift:hover {
+	transform: translateY(-1px);
+	box-shadow:
+		0 1px 2px 0 rgba(15, 23, 42, 0.04),
+		0 10px 24px -12px
+		color-mix(in oklch, var(--color-brand-500) 35%, transparent);
+	border-color: color-mix(in oklch, var(--color-brand-500) 35%, #e2e8f0);
+}
+
+/* ---------- Motion ---------- */
+
+@keyframes wb-fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+@keyframes wb-scale-in {
+	from {
+		opacity: 0;
+		transform: translate(-50%, -48%) scale(0.97);
+	}
+	to {
+		opacity: 1;
+		transform: translate(-50%, -50%) scale(1);
+	}
+}
+@keyframes wb-scale-out {
+	from {
+		opacity: 1;
+		transform: translate(-50%, -50%) scale(1);
+	}
+	to {
+		opacity: 0;
+		transform: translate(-50%, -48%) scale(0.97);
+	}
+}
+
+/* Opt-in animation classes for Radix data-[state=*] bindings — Tailwind 4
+ * doesn't ship these by default. Used on Dialog/Select primitives. */
+.animate-wb-fade-in {
+	animation: wb-fade-in 160ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.animate-wb-scale-in {
+	animation: wb-scale-in 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.animate-wb-scale-out {
+	animation: wb-scale-out 140ms cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.animate-wb-fade-in,
+	.animate-wb-scale-in,
+	.animate-wb-scale-out,
+	.card-lift {
+		animation: none !important;
+		transition: none !important;
+	}
+	.card-lift:hover {
+		transform: none;
+	}
+}

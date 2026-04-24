@@ -14,11 +14,11 @@ export function DialogContent({
 }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>) {
 	return (
 		<DialogPrimitive.Portal>
-			<DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+			<DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm data-[state=open]:animate-wb-fade-in data-[state=closed]:animate-wb-fade-in" />
 			<DialogPrimitive.Content
 				className={cn(
-					"fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-slate-200 bg-white p-6 shadow-xl rounded-xl",
-					"data-[state=open]:animate-in data-[state=closed]:animate-out",
+					"fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-[0_20px_50px_-20px_rgba(15,23,42,0.25)]",
+					"data-[state=open]:animate-wb-scale-in data-[state=closed]:animate-wb-scale-out",
 					className,
 				)}
 				{...props}

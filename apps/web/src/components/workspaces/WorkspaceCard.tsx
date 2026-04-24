@@ -7,7 +7,7 @@ import { KindBadge } from "./KindBadge";
 
 export function WorkspaceCard({ workspace }: { workspace: Workspace }) {
 	return (
-		<Card className="group relative transition-shadow hover:shadow-md">
+		<Card className="group card-lift relative border-slate-200/80 bg-white/90">
 			<Link
 				to={`/workspaces/${workspace.uid}`}
 				className="absolute inset-0 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
@@ -15,14 +15,16 @@ export function WorkspaceCard({ workspace }: { workspace: Workspace }) {
 			/>
 			<CardHeader className="flex-row items-start justify-between gap-3">
 				<div className="min-w-0">
-					<CardTitle className="truncate">{workspace.name}</CardTitle>
+					<CardTitle className="truncate transition-colors group-hover:text-[var(--color-brand-700)]">
+						{workspace.name}
+					</CardTitle>
 					<p className="text-xs text-slate-500 mt-1 font-mono truncate">
 						{workspace.uid}
 					</p>
 				</div>
 				<div className="flex items-center gap-2 shrink-0">
 					<KindBadge kind={workspace.kind} />
-					<ArrowUpRight className="h-4 w-4 text-slate-400 group-hover:text-slate-900 transition-colors" />
+					<ArrowUpRight className="h-4 w-4 text-slate-400 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-[var(--color-brand-600)]" />
 				</div>
 			</CardHeader>
 			<CardContent>

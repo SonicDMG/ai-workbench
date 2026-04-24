@@ -64,18 +64,19 @@ export function PlaygroundPage() {
 	return (
 		<div className="flex flex-col gap-6">
 			<div className="flex items-start justify-between gap-4">
-				<div>
-					<h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-						<Sparkles
-							className="h-6 w-6 text-[var(--color-brand-600)]"
-							aria-hidden
-						/>
-						Playground
-					</h1>
-					<p className="mt-1 text-sm text-slate-600">
-						Run vector or text queries against a workspace's vector store and
-						inspect the top hits. No state is saved — this is a scratchpad.
-					</p>
+				<div className="flex items-start gap-3">
+					<span className="brand-tile" aria-hidden>
+						<Sparkles className="h-5 w-5" />
+					</span>
+					<div>
+						<h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+							Playground
+						</h1>
+						<p className="mt-1 text-sm text-slate-600">
+							Run vector or text queries against a workspace's vector store and
+							inspect the top hits. No state is saved — this is a scratchpad.
+						</p>
+					</div>
 				</div>
 			</div>
 

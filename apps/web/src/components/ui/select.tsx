@@ -40,8 +40,8 @@ export function SelectContent({
 				position="popper"
 				sideOffset={4}
 				className={cn(
-					"relative z-50 min-w-[8rem] overflow-hidden rounded-md border border-slate-200 bg-white text-slate-900 shadow-lg",
-					"data-[state=open]:animate-in data-[state=closed]:animate-out",
+					"relative z-50 min-w-[8rem] overflow-hidden rounded-md border border-slate-200 bg-white text-slate-900 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)]",
+					"data-[state=open]:animate-wb-fade-in",
 					className,
 				)}
 				{...props}
