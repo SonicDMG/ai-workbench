@@ -3,12 +3,22 @@ import { getAuthToken } from "./authToken";
 import {
 	type ApiKeyRecord,
 	ApiKeyRecordSchema,
+	type AsyncIngestResponse,
+	AsyncIngestResponseSchema,
+	type CatalogRecord,
+	CatalogRecordSchema,
 	type CreateApiKeyInput,
+	type CreateCatalogInput,
 	type CreatedApiKeyResponse,
 	CreatedApiKeyResponseSchema,
 	type CreateVectorStoreInput,
 	type CreateWorkspaceInput,
+	type DocumentRecord,
+	DocumentRecordSchema,
 	ErrorEnvelopeSchema,
+	type IngestRequest,
+	type JobRecord,
+	JobRecordSchema,
 	type SearchHit,
 	SearchHitSchema,
 	type TestConnectionResult,
@@ -216,6 +226,76 @@ export const api = {
 			`/workspaces/${workspace}/vector-stores/${vectorStore}/search`,
 			{ method: "POST", body: JSON.stringify(input) },
 			z.array(SearchHitSchema),
+		),
+
+	/* -------- Catalogs -------- */
+
+	listCatalogs: (workspace: string): Promise<CatalogRecord[]> =>
+		request(
+			`/workspaces/${workspace}/catalogs`,
+			{ method: "GET" },
+			z.array(CatalogRecordSchema),
+		),
+
+	createCatalog: (
+		workspace: string,
+		input: CreateCatalogInput,
+	): Promise<CatalogRecord> =>
+		request(
+			`/workspaces/${workspace}/catalogs`,
+			{
+				method: "POST",
+				body: JSON.stringify({
+					name: input.name,
+					description: input.description ? input.description : null,
+					vectorStore: input.vectorStore ?? null,
+				}),
+			},
+			CatalogRecordSchema,
+		),
+
+	deleteCatalog: (workspace: string, catalogId: string): Promise<void> =>
+		request(
+			`/workspaces/${workspace}/catalogs/${catalogId}`,
+			{ method: "DELETE" },
+			null,
+		),
+
+	/* -------- Documents -------- */
+
+	listDocuments: (
+		workspace: string,
+		catalogId: string,
+	): Promise<DocumentRecord[]> =>
+		request(
+			`/workspaces/${workspace}/catalogs/${catalogId}/documents`,
+			{ method: "GET" },
+			z.array(DocumentRecordSchema),
+		),
+
+	/* -------- Ingest + jobs -------- */
+
+	/**
+	 * Async ingest. The response comes back immediately with a job +
+	 * document pointer; the pipeline runs in the background and the
+	 * caller polls {@link api.getJob} for progress.
+	 */
+	ingestAsync: (
+		workspace: string,
+		catalogId: string,
+		input: IngestRequest,
+	): Promise<AsyncIngestResponse> =>
+		request(
+			`/workspaces/${workspace}/catalogs/${catalogId}/ingest?async=true`,
+			{ method: "POST", body: JSON.stringify(input) },
+			AsyncIngestResponseSchema,
+		),
+
+	getJob: (workspace: string, jobId: string): Promise<JobRecord> =>
+		request(
+			`/workspaces/${workspace}/jobs/${jobId}`,
+			{ method: "GET" },
+			JobRecordSchema,
 		),
 };
 

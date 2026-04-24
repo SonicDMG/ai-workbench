@@ -7,6 +7,7 @@ import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApiKeysPanel } from "@/components/workspaces/ApiKeysPanel";
+import { CatalogsPanel } from "@/components/workspaces/CatalogsPanel";
 import { DeleteDialog } from "@/components/workspaces/DeleteDialog";
 import { KindBadge } from "@/components/workspaces/KindBadge";
 import { TestConnectionPanel } from "@/components/workspaces/TestConnectionPanel";
@@ -212,6 +213,11 @@ export function WorkspaceDetailPage() {
 					<Card>
 						<CardContent className="pt-5">
 							<VectorStoresPanel workspace={data.uid} />
+						</CardContent>
+					</Card>
+					<Card>
+						<CardContent className="pt-5">
+							<CatalogsPanel workspace={data.uid} />
 						</CardContent>
 					</Card>
 					<Card>

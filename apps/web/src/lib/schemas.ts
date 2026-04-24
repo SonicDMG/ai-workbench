@@ -157,6 +157,110 @@ export const SearchHitSchema = z.object({
 });
 export type SearchHit = z.infer<typeof SearchHitSchema>;
 
+/* ---------------- Catalogs ---------------- */
+
+export const CatalogRecordSchema = z.object({
+	workspace: z.string().uuid(),
+	uid: z.string().uuid(),
+	name: z.string(),
+	description: z.string().nullable(),
+	vectorStore: z.string().uuid().nullable(),
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type CatalogRecord = z.infer<typeof CatalogRecordSchema>;
+
+export const CreateCatalogInputSchema = z.object({
+	name: z.string().min(1, "Name is required"),
+	description: z.string().or(z.literal("")).nullable().optional(),
+	vectorStore: z.string().uuid().nullable().optional(),
+});
+export type CreateCatalogInput = z.infer<typeof CreateCatalogInputSchema>;
+
+/* ---------------- Documents ---------------- */
+
+export const DocumentStatusSchema = z.enum([
+	"pending",
+	"chunking",
+	"embedding",
+	"writing",
+	"ready",
+	"failed",
+]);
+export type DocumentStatus = z.infer<typeof DocumentStatusSchema>;
+
+export const DocumentRecordSchema = z.object({
+	workspace: z.string().uuid(),
+	catalogUid: z.string().uuid(),
+	documentUid: z.string().uuid(),
+	sourceDocId: z.string().nullable(),
+	sourceFilename: z.string().nullable(),
+	fileType: z.string().nullable(),
+	fileSize: z.number().int().nonnegative().nullable(),
+	md5Hash: z.string().nullable(),
+	chunkTotal: z.number().int().nonnegative().nullable(),
+	ingestedAt: z.string().nullable(),
+	updatedAt: z.string(),
+	status: DocumentStatusSchema,
+	errorMessage: z.string().nullable(),
+	metadata: z.record(z.string(), z.string()),
+});
+export type DocumentRecord = z.infer<typeof DocumentRecordSchema>;
+
+/* ---------------- Jobs ---------------- */
+
+export const JobStatusSchema = z.enum([
+	"pending",
+	"running",
+	"succeeded",
+	"failed",
+]);
+export type JobStatus = z.infer<typeof JobStatusSchema>;
+
+export const JobRecordSchema = z.object({
+	workspace: z.string().uuid(),
+	jobId: z.string().uuid(),
+	kind: z.enum(["ingest"]),
+	catalogUid: z.string().uuid().nullable(),
+	documentUid: z.string().uuid().nullable(),
+	status: JobStatusSchema,
+	processed: z.number().int().nonnegative(),
+	total: z.number().int().nonnegative().nullable(),
+	result: z.record(z.string(), z.unknown()).nullable(),
+	errorMessage: z.string().nullable(),
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type JobRecord = z.infer<typeof JobRecordSchema>;
+
+/* ---------------- Ingest ---------------- */
+
+export const IngestChunkerOptionsSchema = z.object({
+	maxChars: z.number().int().positive().optional(),
+	minChars: z.number().int().nonnegative().optional(),
+	overlapChars: z.number().int().nonnegative().optional(),
+});
+export type IngestChunkerOptions = z.infer<typeof IngestChunkerOptionsSchema>;
+
+export const IngestRequestSchema = z.object({
+	text: z.string().min(1, "Content is required"),
+	sourceFilename: z.string().nullable().optional(),
+	fileType: z.string().nullable().optional(),
+	metadata: z.record(z.string(), z.string()).optional(),
+	chunker: IngestChunkerOptionsSchema.optional(),
+});
+export type IngestRequest = z.infer<typeof IngestRequestSchema>;
+
+/**
+ * Response from `POST /ingest?async=true` — the 202 envelope that
+ * ties together the job to poll and the document row to watch.
+ */
+export const AsyncIngestResponseSchema = z.object({
+	job: JobRecordSchema,
+	document: DocumentRecordSchema,
+});
+export type AsyncIngestResponse = z.infer<typeof AsyncIngestResponseSchema>;
+
 export const KIND_LABELS: Record<WorkspaceKind, string> = {
 	astra: "Astra DB",
 	hcd: "Hyper-Converged Database",
