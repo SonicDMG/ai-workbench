@@ -11,7 +11,7 @@ runnable artifact and a stable slice of the HTTP contract.
 | 1a | Control-plane CRUD (`/api/v1/workspaces`, `/catalogs`, `/vector-stores`) | ✅ Shipped |
 | 1b | Vector-store data plane (provisioning, upsert, search) | ✅ Shipped |
 | 2a | Document metadata CRUD (`/catalogs/{c}/documents`) | ✅ Shipped |
-| 2b | Ingest + catalog-scoped search + saved queries | In progress — catalog-scoped search shipped |
+| 2b | Ingest + catalog-scoped search + saved queries | In progress — catalog-scoped search + sync ingest shipped |
 | 2c | Server-side embedding (Astra `$vectorize`) for search + upsert | ✅ Shipped |
 | 3 | Playground + UI | ✅ Shipped |
 | Auth | Middleware, API keys, OIDC verifier, browser login | ✅ Shipped (1–3b); 3c (silent refresh) + 4 (RBAC) planned |
@@ -111,12 +111,25 @@ Shipped in this phase so far:
   boundaries (`\n\n`, `\n`, `. `, `? `, `! `, ` `), overlap-aware, with
   a shared contract suite (`tests/ingest/chunker-contract.ts`) that
   any future chunker must pass.
+- `POST .../catalogs/{c}/documents/search` — catalog-scoped search
+  that delegates to the catalog's bound vector store. Merges
+  `catalogUid = catalog.uid` into the filter so a search cannot
+  escape its catalog. Covered by scenario
+  `catalog-scoped-document-search`. Hybrid retrieval (lexical,
+  rerank) arrives alongside the lexical config wiring.
+- `POST .../catalogs/{c}/ingest` — **synchronous** end-to-end ingest.
+  Chunks the input text, embeds each chunk (server-side via
+  `$vectorize` when supported, otherwise client-side), upserts into
+  the catalog's bound store, and creates a `Document` row with
+  `status: ready`. Failures mark the row `failed` with
+  `errorMessage` before re-raising. Chunk payloads carry
+  `catalogUid`, `documentUid`, `chunkIndex`, plus caller metadata.
+  Covered by scenario `catalog-ingest-basic`.
 
 Planned for the rest of 2b:
 
-- `POST .../catalogs/{c}/ingest` with async job semantics — wires the
-  chunker + embedder + upsert together; stamps `catalogUid` and
-  `documentUid` into every record's payload.
+- Async variant of ingest (`POST .../ingest?async=true`) returning a
+  job id.
 - `GET .../jobs/{jobId}` for status polling.
 - Streaming progress via SSE.
 - Lexical + rerank lanes for the catalog-scoped search (today's

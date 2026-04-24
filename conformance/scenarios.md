@@ -147,3 +147,19 @@ Steps cover:
    `vectorStore` binding.
 
 Fixture: `fixtures/catalog-scoped-document-search.json`.
+
+---
+
+## Scenario 12 — `catalog-ingest-basic`
+
+`POST /catalogs/{c}/ingest` chunks the input text, embeds each chunk,
+upserts into the catalog's bound vector store, and creates a
+`Document` row with `status: ready`. The subsequent
+`GET /documents` reflects the registered row, and a catalog-scoped
+search finds the freshly ingested chunks (their payloads carry
+`catalogUid` + `documentUid` + `chunkIndex`).
+
+An ingest against a catalog whose `vectorStore` is `null` returns
+`409 catalog_not_bound_to_vector_store`.
+
+Fixture: `fixtures/catalog-ingest-basic.json`.

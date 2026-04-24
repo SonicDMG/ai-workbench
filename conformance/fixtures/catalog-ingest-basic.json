@@ -1,0 +1,211 @@
+{
+	"slug": "catalog-ingest-basic",
+	"description": "POST /catalogs/{c}/ingest chunks + embeds + upserts synchronously. Document row is created with status=ready and chunkTotal reflects chunker output. A second ingest against an unbound catalog returns 409 catalog_not_bound_to_vector_store.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"endpoint": null,
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"name": "vs",
+					"vectorDimension": 4
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"lexical": {
+						"analyzer": null,
+						"enabled": false,
+						"options": {}
+					},
+					"name": "vs",
+					"reranking": {
+						"enabled": false,
+						"endpoint": null,
+						"model": null,
+						"provider": null,
+						"secretRef": null
+					},
+					"uid": "{{UUID_2}}",
+					"updatedAt": "{{TS}}",
+					"vectorDimension": 4,
+					"vectorSimilarity": "cosine",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"name": "kb",
+					"vectorStore": "{{UUID_2}}"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"description": null,
+					"name": "kb",
+					"uid": "{{UUID_3}}",
+					"updatedAt": "{{TS}}",
+					"vectorStore": "{{UUID_2}}",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"chunker": {
+						"maxChars": 20,
+						"minChars": 5,
+						"overlapChars": 3
+					},
+					"sourceFilename": "fruit.md",
+					"text": "Apples are red. Bananas are yellow."
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_3}}/ingest"
+			},
+			"response": {
+				"body": {
+					"chunks": 3,
+					"document": {
+						"catalogUid": "{{UUID_3}}",
+						"chunkTotal": 3,
+						"documentUid": "{{UUID_4}}",
+						"errorMessage": null,
+						"fileSize": null,
+						"fileType": null,
+						"ingestedAt": "{{TS}}",
+						"md5Hash": null,
+						"metadata": {},
+						"sourceDocId": null,
+						"sourceFilename": "fruit.md",
+						"status": "ready",
+						"updatedAt": "{{TS}}",
+						"workspace": "{{UUID_1}}"
+					}
+				},
+				"status": 201
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_3}}/documents"
+			},
+			"response": {
+				"body": [
+					{
+						"catalogUid": "{{UUID_3}}",
+						"chunkTotal": 3,
+						"documentUid": "{{UUID_4}}",
+						"errorMessage": null,
+						"fileSize": null,
+						"fileType": null,
+						"ingestedAt": "{{TS}}",
+						"md5Hash": null,
+						"metadata": {},
+						"sourceDocId": null,
+						"sourceFilename": "fruit.md",
+						"status": "ready",
+						"updatedAt": "{{TS}}",
+						"workspace": "{{UUID_1}}"
+					}
+				],
+				"status": 200
+			},
+			"step": 5
+		},
+		{
+			"request": {
+				"body": {
+					"name": "unbound"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"description": null,
+					"name": "unbound",
+					"uid": "{{UUID_5}}",
+					"updatedAt": "{{TS}}",
+					"vectorStore": null,
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 6
+		},
+		{
+			"request": {
+				"body": {
+					"text": "no home for this"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_5}}/ingest"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "catalog_not_bound_to_vector_store",
+						"message": "catalog '{{UUID_5}}' has no vectorStore binding; bind one with PUT /catalogs/{id} before ingesting",
+						"requestId": "{{REQID_1}}"
+					}
+				},
+				"status": 409
+			},
+			"step": 7
+		}
+	]
+}

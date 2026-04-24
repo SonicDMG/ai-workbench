@@ -672,6 +672,200 @@ describe("document routes", () => {
 	});
 });
 
+describe("catalog ingest", () => {
+	async function seedBoundCatalog(opts?: { bindVectorStore?: boolean }) {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const vsRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(BASE_VECTOR_STORE),
+			},
+		);
+		const vs = await json(vsRes);
+		const catalog = await store.createCatalog(ws.uid, {
+			name: "kb",
+			vectorStore: opts?.bindVectorStore === false ? null : vs.uid,
+		});
+		return { app, store, ws, vs, catalog };
+	}
+
+	test("chunks + upserts + marks document ready", async () => {
+		const { app, store, ws, catalog } = await seedBoundCatalog();
+		const text =
+			"First paragraph about apples.\n\nSecond paragraph about oranges is a bit longer and keeps going.\n\nThird paragraph about bananas and a whole lot more text to push past the default chunk size thresholds without needing ridiculous input.";
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text,
+					sourceFilename: "fruit.md",
+					fileType: "text/markdown",
+					metadata: { source: "seed" },
+					chunker: { maxChars: 80, minChars: 20, overlapChars: 10 },
+				}),
+			},
+		);
+		expect(res.status).toBe(201);
+		const body = await json(res);
+		expect(body.chunks).toBeGreaterThan(0);
+		expect(body.document.status).toBe("ready");
+		expect(body.document.chunkTotal).toBe(body.chunks);
+		expect(body.document.ingestedAt).toBeTruthy();
+		expect(body.document.metadata).toEqual({ source: "seed" });
+
+		// The chunks are searchable through the catalog-scoped route —
+		// ingest's stamping is exactly what the search route filters on.
+		const searchRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "apples", topK: 5 }),
+			},
+		);
+		expect(searchRes.status).toBe(200);
+		const hits = await json(searchRes);
+		expect(hits.length).toBeGreaterThan(0);
+		expect(hits[0].payload.documentUid).toBe(body.document.documentUid);
+		expect(hits[0].payload.catalogUid).toBe(catalog.uid);
+		expect(typeof hits[0].payload.chunkIndex).toBe("number");
+		// The list endpoint sees the row too.
+		const listRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents`,
+		);
+		const list = await json(listRes);
+		expect(list).toHaveLength(1);
+		expect(list[0].documentUid).toBe(body.document.documentUid);
+
+		void store;
+	});
+
+	test("409 when catalog has no vectorStore binding", async () => {
+		const { app, ws, catalog } = await seedBoundCatalog({
+			bindVectorStore: false,
+		});
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "hello world" }),
+			},
+		);
+		expect(res.status).toBe(409);
+		const body = await json(res);
+		expect(body.error.code).toBe("catalog_not_bound_to_vector_store");
+	});
+
+	test("404 when catalog does not exist", async () => {
+		const { app, ws } = await seedBoundCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/00000000-0000-0000-0000-000000000000/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "hi" }),
+			},
+		);
+		expect(res.status).toBe(404);
+		expect((await json(res)).error.code).toBe("catalog_not_found");
+	});
+
+	test("404 when workspace does not exist", async () => {
+		const { app, catalog } = await seedBoundCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/00000000-0000-0000-0000-000000000000/catalogs/${catalog.uid}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "hi" }),
+			},
+		);
+		expect(res.status).toBe(404);
+		expect((await json(res)).error.code).toBe("workspace_not_found");
+	});
+
+	test("rejects empty text via Zod validation", async () => {
+		const { app, ws, catalog } = await seedBoundCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "" }),
+			},
+		);
+		expect(res.status).toBe(400);
+		expect((await json(res)).error.code).toBe("validation_error");
+	});
+
+	test("marks document failed when upsert throws, then re-raises", async () => {
+		// Build an app whose embedder factory reports a different
+		// dimension than the vector store descriptor declares — the
+		// fallback client-side embedding lane throws
+		// embedding_dimension_mismatch. The mock driver's upsertByText
+		// path throws NotSupported for non-`mock` providers, so the
+		// dispatcher falls through to client-side embedding, which is
+		// the path we want to exercise.
+		const store = new MemoryControlPlaneStore();
+		const driver = new MockVectorStoreDriver();
+		const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const auth = new AuthResolver({
+			mode: "disabled",
+			anonymousPolicy: "allow",
+			verifiers: [],
+		});
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory({ wrongDimension: 4 }),
+		});
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const vsRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(BASE_VECTOR_STORE),
+			},
+		);
+		const vs = await json(vsRes);
+		const catalog = await store.createCatalog(ws.uid, {
+			name: "bad",
+			vectorStore: vs.uid,
+		});
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "some text to chunk and embed" }),
+			},
+		);
+		expect(res.status).toBe(400);
+		const body = await json(res);
+		expect(body.error.code).toBe("embedding_dimension_mismatch");
+
+		// The document row was created, and then marked failed.
+		const docs = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents`,
+		);
+		const list = await json(docs);
+		expect(list).toHaveLength(1);
+		expect(list[0].status).toBe("failed");
+		expect(list[0].errorMessage).toBeTruthy();
+	});
+});
+
 describe("catalog-scoped document search", () => {
 	const vector = (seed: number, dim = 1536): number[] =>
 		Array.from({ length: dim }, (_, i) => Math.sin(seed + i));

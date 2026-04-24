@@ -353,6 +353,51 @@ export const SearchHitSchema = z
 	})
 	.openapi("SearchHit");
 
+/* ---------------- Ingest ---------------- */
+
+export const IngestChunkerOptionsSchema = z
+	.object({
+		maxChars: z.number().int().positive().optional(),
+		minChars: z.number().int().nonnegative().optional(),
+		overlapChars: z.number().int().nonnegative().optional(),
+	})
+	.openapi("IngestChunkerOptions");
+
+/**
+ * Ingest one document's worth of raw text. The runtime chunks the text,
+ * embeds each chunk (server-side via `$vectorize` if the vector store
+ * supports it, otherwise client-side), and upserts the chunks into the
+ * catalog's bound vector store. A {@link Document} metadata row is
+ * created alongside — caller can omit `uid` to have one generated.
+ */
+export const IngestRequestSchema = z
+	.object({
+		/** Raw text to chunk. Required; empty strings are rejected. */
+		text: z.string().min(1),
+		/** Optional UID for the created document — generated if omitted. */
+		uid: z.string().uuid().optional(),
+		sourceDocId: z.string().nullable().optional(),
+		sourceFilename: z.string().nullable().optional(),
+		fileType: z.string().nullable().optional(),
+		fileSize: z.number().int().nonnegative().nullable().optional(),
+		md5Hash: z.string().nullable().optional(),
+		/** Merged onto every chunk record's payload. `catalogUid` and
+		 * `documentUid` are reserved and always overridden by the runtime. */
+		metadata: z.record(z.string(), z.string()).optional(),
+		/** Override the default chunker options. */
+		chunker: IngestChunkerOptionsSchema.optional(),
+	})
+	.openapi("IngestRequest");
+
+export const IngestResponseSchema = z
+	.object({
+		document: DocumentRecordSchema,
+		/** Number of chunks produced and upserted. Equals
+		 * `document.chunkTotal` on success. */
+		chunks: z.number().int().nonnegative(),
+	})
+	.openapi("IngestResponse");
+
 /* ---------------- Params ---------------- */
 
 export const WorkspaceIdParamSchema = z

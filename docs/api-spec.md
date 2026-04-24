@@ -702,11 +702,76 @@ keys merge normally.
 - **409** `catalog_not_bound_to_vector_store` — `catalog.vectorStore`
   is `null`
 
-Text records are ingested with their `catalogUid` stamped into the
-payload — that stamping is what lets this route scope correctly.
-The ingest pipeline (Phase 2b) will own that write; today the route
-works against any records that carry a matching `catalogUid`
-regardless of how they arrived.
+Text records written through `POST /ingest` carry a `catalogUid`
+stamp on every chunk payload — that's what lets this route scope
+correctly. The route also works against any records that carry a
+matching `catalogUid` regardless of how they arrived.
+
+### `POST /ingest`
+
+Synchronous end-to-end ingest. Chunks the input text, embeds every
+chunk (server-side via `$vectorize` where the bound store supports
+it, otherwise client-side via the descriptor's `embedding` config),
+upserts the chunks into the bound vector store, and creates a
+`Document` metadata row with `status: ready` + `chunkTotal`.
+
+**Request**
+
+```json
+{
+  "text": "Apples are red. Bananas are yellow.",
+  "sourceFilename": "fruit.md",
+  "metadata": { "source": "seed" },
+  "chunker": { "maxChars": 1000, "minChars": 100, "overlapChars": 150 }
+}
+```
+
+All fields except `text` are optional. `chunker` overrides the
+runtime defaults for this call only. `metadata` is merged onto every
+chunk's payload; the reserved keys `catalogUid`, `documentUid`, and
+`chunkIndex` are always set by the runtime and will override any
+caller-supplied values.
+
+**Response 201**
+
+```json
+{
+  "document": { "status": "ready", "chunkTotal": 3, "...": "..." },
+  "chunks": 3
+}
+```
+
+**Chunk payloads.** Every chunk upserted to the vector store carries:
+
+- `catalogUid` — the catalog's UID (used by `/documents/search`)
+- `documentUid` — the UID of the `Document` row this ingest created
+- `chunkIndex` — 0-based position within the source document
+- `chunker.id` — the chunker impl that produced the slice
+  (`recursive-char:1` today)
+- Plus every caller-supplied `metadata` key
+
+**Errors**
+
+- **400** `validation_error` — missing/empty `text`, bad chunker
+  config, or the Zod schema otherwise fails
+- **400** `embedding_unavailable` — client-side embedding fallback
+  could not build an embedder (missing secret, etc.)
+- **400** `embedding_dimension_mismatch` — embedder dimension
+  disagrees with the bound store
+- **404** `workspace_not_found` / `catalog_not_found`
+- **404** `vector_store_not_found` — stale binding (catalog points at
+  a deleted store)
+- **409** `catalog_not_bound_to_vector_store` — `catalog.vectorStore`
+  is `null`
+
+**Failure semantics.** When chunking or upsert throws, the
+`Document` row is marked `status: failed` with `errorMessage` before
+the error is re-raised. Operators can inspect the row via
+`GET /documents/{id}`.
+
+Async ingest (job polling + SSE progress) is a Phase 2b follow-up;
+this route is the synchronous entry point that larger inputs will
+build on.
 
 ---
 
@@ -714,11 +779,11 @@ regardless of how they arrived.
 
 These do not exist yet. Shapes may shift before they land.
 
-### Phase 2 — Ingest, queries
+### Phase 2 — Ingest async + queries
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/ingest` | Chunk + embed + write (async job) |
+| `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/ingest?async=true` | Async variant that returns a job id |
 | `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}` | Poll an ingest job |
 | (CRUD) | `/api/v1/workspaces/{w}/catalogs/{c}/queries[/{q}]` | Saved queries per catalog |
 
