@@ -29,15 +29,22 @@ export default defineConfig({
 				//  - `react` gets its own chunk so router + query both pin to
 				//    the same copy (Vite hoists duplicates otherwise).
 				//  - `query` is heavy (~40kB gz) but used on every page.
-				//  - `forms` is only pulled in on detail / onboarding routes.
-				//    With lazy routes it still splits automatically, but
-				//    naming it stabilizes the URL across builds.
+				//  - `zod` is on the eager path because lib/api.ts validates
+				//    every response through a schema — naming it makes that
+				//    eagerness explicit. Grouping it into `forms` was a bug:
+				//    Vite correctly preloads every chunk an eager import
+				//    reaches, so bundling `zod` with the lazy form libs
+				//    pulled the whole `forms` chunk into first paint.
+				//  - `forms` now only holds `react-hook-form` + resolvers,
+				//    which ARE only referenced from the lazy routes, so the
+				//    chunk stays out of the initial preload graph.
 				//  - `radix` is a cluster of primitives; grouping them avoids
 				//    dozens of tiny async chunks.
 				manualChunks: {
 					react: ["react", "react-dom", "react-router-dom"],
 					query: ["@tanstack/react-query"],
-					forms: ["react-hook-form", "@hookform/resolvers", "zod"],
+					zod: ["zod"],
+					forms: ["react-hook-form", "@hookform/resolvers"],
 					radix: [
 						"@radix-ui/react-dialog",
 						"@radix-ui/react-label",

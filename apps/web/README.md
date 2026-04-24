@@ -64,9 +64,16 @@ split is declared in [`vite.config.ts`](vite.config.ts):
 | `react` | `react`, `react-dom`, `react-router-dom` | Initial page load |
 | `query` | `@tanstack/react-query` | Initial page load |
 | `radix` | All `@radix-ui/*` primitives | Initial page load |
-| `forms` | `react-hook-form`, `@hookform/resolvers`, `zod` | Only when a form renders (lazy via the detail / onboarding routes) |
+| `zod` | `zod` — used by `lib/api.ts` to validate every response | Initial page load |
+| `forms` | `react-hook-form`, `@hookform/resolvers` | Only when a form renders (lazy via the detail / onboarding routes) |
 | `OnboardingPage` | The two-step onboarding wizard | `/onboarding` visit |
 | `WorkspaceDetailPage` | Detail + edit + API-key + test-connection panels | `/workspaces/:uid` visit |
+
+`zod` and `forms` are deliberately kept in separate chunks: `zod`
+is imported by the eager API client, so it has to preload; lumping
+`react-hook-form` in with it would pull a form library into first
+paint for no reason. The split is verifiable via `modulepreload`
+tags in the built `index.html`.
 
 Route components are lazy via `React.lazy(...)` and wrapped in a
 `<Suspense fallback={<LoadingState />}>` at the shell level, so
