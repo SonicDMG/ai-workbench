@@ -40,8 +40,9 @@ DELETE /api/v1/workspaces/{uid}        → cascade delete
 `DELETE` cascades to:
 
 - Every catalog under the workspace.
-- Every vector-store descriptor under the workspace.
-- Every document under any of those catalogs (Phase 2+).
+- Every vector-store descriptor under the workspace, after dropping its
+  underlying collection through the workspace's driver.
+- Every document under any of those catalogs.
 
 ### Isolation
 
@@ -139,17 +140,16 @@ The store enforces:
 
 - A catalog's `vectorStore` field (if non-null) must reference a
   vector store in the same workspace.
-- `DELETE` a vector store does **not** cascade through catalogs that
-  reference it. Blocking this at the store level is planned for
-  Phase 2 when documents enter the picture and the dependency graph
-  becomes real.
+- `DELETE` a vector store is blocked with `409 conflict` while any
+  catalog references it. Clear or move the catalog binding first, then
+  delete the vector store.
 
 The relationship:
 
 ```
 workspace ──► catalog  ──► vector-store descriptor  (N:1)
                 │
-                └──► documents (Phase 2+)
+                └──► documents
 ```
 
 ## Seeding workspaces for local dev

@@ -146,6 +146,53 @@
 		]
 	},
 	{
+		"slug": "catalog-vector-store-reference-integrity",
+		"description": "Catalogs can only bind vector stores in the same workspace, and referenced vector stores cannot be deleted out from under catalogs.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs",
+				"body": {
+					"name": "bad",
+					"vectorStore": "00000000-0000-4000-8000-0000000000ff"
+				}
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/vector-stores",
+				"body": {
+					"name": "vs",
+					"vectorDimension": 4,
+					"embedding": {
+						"provider": "mock",
+						"model": "mock-embedder",
+						"endpoint": null,
+						"dimension": 4,
+						"secretRef": null
+					}
+				}
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs",
+				"body": { "name": "good", "vectorStore": "$3.uid" }
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.uid/vector-stores/$3.uid"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid/vector-stores/$3.uid"
+			}
+		]
+	},
+	{
 		"slug": "document-crud-basic",
 		"description": "Document metadata CRUD under a catalog: create → list → get → update → delete, including a cross-catalog scoping 404.",
 		"steps": [

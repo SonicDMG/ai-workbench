@@ -22,7 +22,7 @@ Astra Data API (via language-native SDK: astrapy, astra-db-ts, …)
 
 | Runtime | Path | Status | Astra SDK |
 |---|---|---|---|
-| TypeScript | [`typescript/`](./typescript/) | Operational through Phase 2a (workspaces + catalogs + vector-store CRUD + data plane + document metadata CRUD) | `@datastax/astra-db-ts` |
+| TypeScript | [`typescript/`](./typescript/) | Operational through Phase 3 + auth (UI, playground, API keys, OIDC login, vector/text search + upsert) | `@datastax/astra-db-ts` |
 | Python | [`python/`](./python/) | Scaffold — routes return 501 until implemented | `astrapy` (pending) |
 | Java | [`java/`](./java/) | Scaffold (Spring Boot) — routes return 501 until implemented | `astra-db-java` (pending) |
 

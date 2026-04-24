@@ -21,7 +21,10 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { assertWorkspaceAccess } from "../../auth/authz.js";
-import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
+import {
+	ControlPlaneConflictError,
+	ControlPlaneNotFoundError,
+} from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type {
 	VectorStoreRecord,
@@ -192,6 +195,10 @@ export function vectorStoreRoutes(
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
 					description: "Workspace or vector store not found",
 				},
+				409: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description: "A catalog still references this vector store",
+				},
 			},
 		}),
 		async (c) => {
@@ -282,6 +289,7 @@ export function vectorStoreRoutes(
 			// Drop collection first; if the driver is OK with idempotent drops,
 			// a subsequent retry still works. If this fails, the descriptor
 			// survives so the operator can inspect.
+			await assertVectorStoreNotReferenced(store, workspaceId, vectorStoreId);
 			const driver = drivers.for(workspace);
 			await driver.dropCollection({ workspace, descriptor });
 			await store.deleteVectorStore(workspaceId, vectorStoreId);
@@ -457,6 +465,20 @@ export function vectorStoreRoutes(
 	);
 
 	return app;
+}
+
+async function assertVectorStoreNotReferenced(
+	store: ControlPlaneStore,
+	workspaceUid: string,
+	descriptorUid: string,
+): Promise<void> {
+	const catalogs = await store.listCatalogs(workspaceUid);
+	const ref = catalogs.find((c) => c.vectorStore === descriptorUid);
+	if (ref) {
+		throw new ControlPlaneConflictError(
+			`vector store '${descriptorUid}' is referenced by catalog '${ref.uid}'`,
+		);
+	}
 }
 
 async function runSearch(args: {

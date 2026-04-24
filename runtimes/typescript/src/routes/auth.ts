@@ -190,7 +190,7 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 
 	app.get("/me", (c) => {
 		const auth = c.get("auth");
-		if (!auth || !auth.authenticated || !auth.subject) {
+		if (!auth?.authenticated || !auth.subject) {
 			return c.json({ error: { code: "unauthorized" } }, 401);
 		}
 		return c.json({

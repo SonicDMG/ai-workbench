@@ -74,9 +74,15 @@ Current scenarios:
 | `catalog-under-workspace` | Catalogs scoped per workspace |
 | `vector-store-definition` | Vector-store descriptor create + read |
 | `vector-store-upsert-and-search` | Phase 1b data plane — upsert, search with payload filter, single-record delete (and re-delete noop) |
+| `catalog-vector-store-reference-integrity` | Catalog bindings must reference existing same-workspace vector stores; referenced vector stores delete with `409 conflict` |
+| `document-crud-basic` | Document metadata CRUD + cross-catalog isolation |
+| `workspace-kind-is-immutable` | Workspace `kind` cannot be changed after creation |
+| `workspace-credentials-must-be-secret-ref` | Raw credential values are rejected before reaching the SecretResolver |
+| `workspace-test-connection-mock` | Mock workspace connection probe response shape |
+| `workspace-api-key-lifecycle` | API-key issue, list, revoke, list lifecycle |
 
-More land as Phase 2 routes (documents, ingest, search, queries)
-ship.
+More land as ingest, catalog-scoped search, saved queries, chat, and
+MCP routes ship.
 
 ## Fixtures
 

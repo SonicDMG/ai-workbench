@@ -173,6 +173,9 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		input: CreateCatalogInput,
 	): Promise<CatalogRecord> {
 		await this.assertWorkspace(workspace);
+		if (input.vectorStore !== undefined && input.vectorStore !== null) {
+			await this.assertVectorStore(workspace, input.vectorStore);
+		}
 		const uid = input.uid ?? randomUUID();
 		if (await this.tables.catalogs.findOne({ workspace, uid })) {
 			throw new ControlPlaneConflictError(
@@ -199,6 +202,9 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		patch: UpdateCatalogInput,
 	): Promise<CatalogRecord> {
 		await this.assertWorkspace(workspace);
+		if (patch.vectorStore !== undefined && patch.vectorStore !== null) {
+			await this.assertVectorStore(workspace, patch.vectorStore);
+		}
 		const existing = await this.tables.catalogs.findOne({ workspace, uid });
 		if (!existing) throw new ControlPlaneNotFoundError("catalog", uid);
 		const base = catalogFromRow(existing);
@@ -318,6 +324,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		uid: string,
 	): Promise<{ deleted: boolean }> {
 		await this.assertWorkspace(workspace);
+		await this.assertVectorStoreNotReferenced(workspace, uid);
 		const existing = await this.tables.vectorStores.findOne({ workspace, uid });
 		if (!existing) return { deleted: false };
 		await this.tables.vectorStores.deleteOne({ workspace, uid });
@@ -576,5 +583,30 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			uid: catalog,
 		});
 		if (!row) throw new ControlPlaneNotFoundError("catalog", catalog);
+	}
+
+	private async assertVectorStore(
+		workspace: string,
+		vectorStore: string,
+	): Promise<void> {
+		await this.assertWorkspace(workspace);
+		const row = await this.tables.vectorStores.findOne({
+			workspace,
+			uid: vectorStore,
+		});
+		if (!row) throw new ControlPlaneNotFoundError("vector store", vectorStore);
+	}
+
+	private async assertVectorStoreNotReferenced(
+		workspace: string,
+		vectorStore: string,
+	): Promise<void> {
+		const catalogs = await this.tables.catalogs.find({ workspace }).toArray();
+		const ref = catalogs.find((c) => c.vector_store === vectorStore);
+		if (ref) {
+			throw new ControlPlaneConflictError(
+				`vector store '${vectorStore}' is referenced by catalog '${ref.uid}'`,
+			);
+		}
 	}
 }

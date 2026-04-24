@@ -210,6 +210,9 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		input: CreateCatalogInput,
 	): Promise<CatalogRecord> {
 		await this.assertWorkspace(workspace);
+		if (input.vectorStore !== undefined && input.vectorStore !== null) {
+			await this.assertVectorStore(workspace, input.vectorStore);
+		}
 		return this.mutate<"catalogs", CatalogRecord>("catalogs", (rows) => {
 			const uid = input.uid ?? randomUUID();
 			if (rows.some((c) => c.workspace === workspace && c.uid === uid)) {
@@ -237,6 +240,9 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		patch: UpdateCatalogInput,
 	): Promise<CatalogRecord> {
 		await this.assertWorkspace(workspace);
+		if (patch.vectorStore !== undefined && patch.vectorStore !== null) {
+			await this.assertVectorStore(workspace, patch.vectorStore);
+		}
 		return this.mutate<"catalogs", CatalogRecord>("catalogs", (rows) => {
 			const idx = rows.findIndex(
 				(c) => c.workspace === workspace && c.uid === uid,
@@ -386,6 +392,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		uid: string,
 	): Promise<{ deleted: boolean }> {
 		await this.assertWorkspace(workspace);
+		await this.assertVectorStoreNotReferenced(workspace, uid);
 		return this.mutate<"vector-stores", { deleted: boolean }>(
 			"vector-stores",
 			(rows) => {
@@ -692,6 +699,32 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		const cat = await this.getCatalog(workspace, catalog);
 		if (!cat) {
 			throw new ControlPlaneNotFoundError("catalog", catalog);
+		}
+	}
+
+	private async assertVectorStore(
+		workspace: string,
+		vectorStore: string,
+	): Promise<void> {
+		await this.assertWorkspace(workspace);
+		const vs = await this.getVectorStore(workspace, vectorStore);
+		if (!vs) {
+			throw new ControlPlaneNotFoundError("vector store", vectorStore);
+		}
+	}
+
+	private async assertVectorStoreNotReferenced(
+		workspace: string,
+		vectorStore: string,
+	): Promise<void> {
+		const catalogs = await this.readAll<CatalogRecord>("catalogs");
+		const ref = catalogs.find(
+			(c) => c.workspace === workspace && c.vectorStore === vectorStore,
+		);
+		if (ref) {
+			throw new ControlPlaneConflictError(
+				`vector store '${vectorStore}' is referenced by catalog '${ref.uid}'`,
+			);
 		}
 	}
 }

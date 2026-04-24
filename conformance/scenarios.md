@@ -13,12 +13,11 @@ able to execute all scenarios and produce responses that match (after
 - Scenarios are ordered. Later steps may reference values from earlier
   responses via `$N.field` (1-indexed to step number) — e.g. `$1.uid`
   means "the `uid` from step 1's response body".
-- The runtime under test is always configured to point its Astra
-  backend at `http://localhost:4010` (mock-astra) with keyspace
-  `workbench` and token `test-token`.
-- No authentication on the `/api/v1/*` surface in Phase 1a — the
-  runtime itself is the auth boundary, but workspace-scoped tokens
-  haven't landed yet.
+- Conformance runs with auth disabled. Auth-specific behavior is pinned
+  by runtime tests; portable API-key lifecycle response shapes are
+  still included here.
+- The canonical TypeScript harness uses an in-memory control plane and
+  the mock vector-store driver so fixtures stay deterministic.
 
 ---
 
@@ -52,165 +51,80 @@ Fixture: `fixtures/catalog-under-workspace.json`.
 
 ## Scenario 3 — `vector-store-definition`
 
-Creates a **vector store descriptor row** (the row in
-`wb_vector_store_by_workspace`). Does NOT provision the underlying
-Data API Collection — that's scenario 4.
+Creates a vector-store descriptor and verifies it can be fetched.
 
-1. `POST /api/v1/workspaces` — body `{"name": "w", "kind": "astra"}`
-2. `POST /api/v1/workspaces/$1.uid/vector-stores` — body:
-   ```json
-   {
-     "name": "vs",
-     "vectorDimension": 1536,
-     "embedding": {
-       "provider": "openai",
-       "model": "text-embedding-3-small",
-       "dimension": 1536,
-       "secretRef": "env:OPENAI_API_KEY"
-     }
-   }
-   ```
+1. `POST /api/v1/workspaces` — body `{"name": "w", "kind": "mock"}`
+2. `POST /api/v1/workspaces/$1.uid/vector-stores` — body includes
+   `vectorDimension: 4` and a mock embedding config.
 3. `GET /api/v1/workspaces/$1.uid/vector-stores/$2.uid`
 
 Fixture: `fixtures/vector-store-definition.json`.
 
 ---
 
-## Scenario 4 — `vector-store-provision-and-search` *(Phase 1b)*
+## Scenario 4 — `vector-store-upsert-and-search`
 
-End-to-end: create descriptor row, provision underlying Data API
-Collection, upsert a record, search. Not required for Phase 1a
-conformance — included here so the shape is visible early.
+End-to-end data plane: create a vector store, upsert records, search
+with a payload filter, then delete a record twice to pin idempotency.
 
-1. `POST /api/v1/workspaces` — body `{"name": "w", "kind": "astra"}`
-2. `POST /api/v1/workspaces/$1.uid/vector-stores` (as scenario 3)
-3. *(Provisioning of the underlying collection is a side-effect of
-   step 2 in the final design; step is listed here as a TBD for
-   whatever explicit operation the Phase 1b API introduces.)*
-4. `POST /api/v1/workspaces/$1.uid/vector-stores/$2.uid/records` —
-   body `{"records": [{"id": "doc-1", "vector": [...], "payload":
-   {...}}]}`
-5. `POST /api/v1/workspaces/$1.uid/vector-stores/$2.uid/search` —
-   body `{"vector": [...], "topK": 5}`
-
-Fixture: `fixtures/vector-store-provision-and-search.json` *(TBD)*.
+Fixture: `fixtures/vector-store-upsert-and-search.json`.
 
 ---
 
-## Scenario 5 — `document-crud-basic` *(Phase 2)*
+## Scenario 5 — `catalog-vector-store-reference-integrity`
+
+Catalog/vector-store binding invariants.
+
+1. Creating a catalog with a missing `vectorStore` returns
+   `404 vector_store_not_found`.
+2. Creating a catalog bound to an existing vector store succeeds.
+3. Deleting that referenced vector store returns `409 conflict`.
+4. Fetching the vector store still succeeds after the blocked delete.
+
+Fixture: `fixtures/catalog-vector-store-reference-integrity.json`.
+
+---
+
+## Scenario 6 — `document-crud-basic`
 
 Document metadata CRUD under a catalog, plus a cross-catalog scoping
-check. Two catalogs are created so step 8 can confirm that a document
-registered under catalog A is not visible under catalog B in the same
-workspace.
-
-1. `POST /api/v1/workspaces` — body `{"name": "w", "kind": "astra"}`
-2. `POST /api/v1/workspaces/$1.uid/catalogs` — body `{"name": "support"}`
-3. `POST /api/v1/workspaces/$1.uid/catalogs` — body `{"name": "other"}`
-4. `POST /api/v1/workspaces/$1.uid/catalogs/$2.uid/documents` — body
-   `{"sourceFilename": "readme.md", "fileType": "text/markdown",
-     "fileSize": 1024, "metadata": {"source": "upload"}}`
-5. `GET  /api/v1/workspaces/$1.uid/catalogs/$2.uid/documents`
-6. `GET  /api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid`
-7. `PUT  /api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid`
-   — body `{"status": "ready", "chunkTotal": 7}`
-8. `GET  /api/v1/workspaces/$1.uid/catalogs/$3.uid/documents/$4.documentUid`
-   *(cross-catalog — expect `404 document_not_found`)*
-9. `DELETE /api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid`
-10. `GET  /api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid`
-    *(post-delete — expect `404 document_not_found`)*
+check and a post-delete 404.
 
 Fixture: `fixtures/document-crud-basic.json`.
 
 ---
 
-## Scenario 6 — `workspace-kind-is-immutable`
+## Scenario 7 — `workspace-kind-is-immutable`
 
-Nails down the PR-15 invariant: a workspace's `kind` cannot change
-after creation. Every runtime MUST reject the PUT body with
-`400 validation_error` in the canonical envelope, and the stored
-record MUST still show the original kind.
-
-1. `POST /api/v1/workspaces` — body `{"name": "w", "kind": "astra"}`
-2. `PUT  /api/v1/workspaces/$1.uid` — body `{"kind": "mock"}`
-   *(expect `400 validation_error`)*
-3. `GET  /api/v1/workspaces/$1.uid`
-   *(expect the record still reports `"kind": "astra"`)*
+A workspace's `kind` cannot change after creation. Every runtime MUST
+reject a `PUT` body containing `kind` with `400 validation_error`.
 
 Fixture: `fixtures/workspace-kind-is-immutable.json`.
 
 ---
 
-## Scenario 7 — `workspace-credentials-must-be-secret-ref`
+## Scenario 8 — `workspace-credentials-must-be-secret-ref`
 
-Nails down the PR-15 invariant: every value in `credentialsRef` must
-be a SecretRef (`<provider>:<path>` like `env:ASTRA_TOKEN`). Raw
-tokens are rejected at the request boundary — they never reach the
-SecretResolver.
-
-1. `POST /api/v1/workspaces` — body
-   `{"name": "w", "kind": "astra", "credentialsRef": {"token": "raw-token-here"}}`
-   *(expect `400 validation_error`; the workspace is NOT created)*
-2. `GET  /api/v1/workspaces`
-   *(expect an empty list)*
+Raw credential values are rejected with `400 validation_error` before
+they can reach the `SecretResolver`.
 
 Fixture: `fixtures/workspace-credentials-must-be-secret-ref.json`.
 
 ---
 
-## Scenario 8 — `workspace-test-connection-mock`
+## Scenario 9 — `workspace-test-connection-mock`
 
-Pins the response shape of the `POST
-/workspaces/{uid}/test-connection` probe. The mock kind is always
-reachable and requires no credentials, so it's the one case that's
-deterministic regardless of how the runtime resolves secrets — every
-runtime MUST emit `{ok: true, kind: "mock", details: "..."}`.
-
-1. `POST /api/v1/workspaces` — body `{"name": "w", "kind": "mock"}`
-2. `POST /api/v1/workspaces/$1.uid/test-connection`
-   *(expect `200`, `body.ok === true`, `body.kind === "mock"`)*
+`POST /workspaces/{uid}/test-connection` on a mock workspace always
+reports `ok: true` with the portable response shape.
 
 Fixture: `fixtures/workspace-test-connection-mock.json`.
 
-*(Astra / HCD / OpenRAG probes hit the SecretResolver; their
-pass/fail result depends on the process's env vars. Scenarios that
-pin those paths would be non-portable, so they live only as
-runtime-level unit tests, not as conformance fixtures.)*
-
 ---
 
-## Scenario 9 — `workspace-api-key-lifecycle`
+## Scenario 10 — `workspace-api-key-lifecycle`
 
-Full CRUD for workspace-scoped API keys:
-
-1. `POST /api/v1/workspaces` — body `{"name": "w", "kind": "mock"}`
-2. `POST /api/v1/workspaces/$1.uid/api-keys` — body `{"label": "ci"}`
-   *(expect `201`, body `{plaintext: "wb_live_…", key: {...}}`)*
-3. `GET  /api/v1/workspaces/$1.uid/api-keys`
-   *(expect one row; no `hash` field visible)*
-4. `DELETE /api/v1/workspaces/$1.uid/api-keys/$2.key.keyId`
-   *(expect `204`)*
-5. `GET  /api/v1/workspaces/$1.uid/api-keys`
-   *(expect same row, now with `revokedAt` populated)*
-
-Pins the envelope invariants: plaintext returned exactly once;
-`hash` never crosses the boundary; revoke is soft (row survives,
-`revokedAt` set). Tokens + prefixes are normalized to
-`{{WB_TOKEN_N}}` / `{{WB_PREFIX_N}}` placeholders so the fixture
-stays deterministic across runs.
+Full workspace API-key lifecycle: issue, list, revoke, list. The
+plaintext is returned exactly once; list responses expose metadata
+without the stored hash.
 
 Fixture: `fixtures/workspace-api-key-lifecycle.json`.
-
----
-
-## Adding a scenario
-
-1. Append a new section to this file.
-2. Add the matching entry to
-   [`scenarios.json`](./scenarios.json).
-3. Implement the routes in the canonical TypeScript runtime at
-   [`../runtimes/typescript/src/routes/`](../runtimes/typescript/src/routes/).
-4. Run `npm run conformance:regenerate` to materialize the fixture
-   from the TS runtime's responses.
-5. Run every other runtime's tests. Any that drift surface in CI —
-   update those runtimes in the same PR.

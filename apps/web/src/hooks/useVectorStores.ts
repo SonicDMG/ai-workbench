@@ -20,7 +20,7 @@ export function useVectorStores(
 		queryKey: workspace
 			? keys.all(workspace)
 			: ["workspaces", "_", "vector-stores"],
-		queryFn: () => api.listVectorStores(workspace!),
+		queryFn: () => (workspace ? api.listVectorStores(workspace) : []),
 		enabled: Boolean(workspace),
 	});
 }

@@ -201,8 +201,8 @@ samp,
 	.animate-wb-scale-in,
 	.animate-wb-scale-out,
 	.card-lift {
-		animation: none !important;
-		transition: none !important;
+		animation: none;
+		transition: none;
 	}
 	.card-lift:hover {
 		transform: none;

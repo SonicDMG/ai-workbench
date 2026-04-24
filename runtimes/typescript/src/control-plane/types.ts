@@ -1,10 +1,9 @@
 /**
  * Canonical record types for the control plane.
  *
- * These types are backend-agnostic: the CQL tables in
- * `src/control-plane/astra/migrations/0001_init.cql` are one physical
- * realization, but `memory` and `file` backends hold the same logical shape
- * in process memory / on disk. Any new backend implements
+ * These types are backend-agnostic: the Astra backend stores the same
+ * logical shape in Data API Tables, while `memory` and `file` keep it in
+ * process memory / on disk. Any new backend implements
  * {@link ControlPlaneStore} against this vocabulary.
  *
  * Conventions:

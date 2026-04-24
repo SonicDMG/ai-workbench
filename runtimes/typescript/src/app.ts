@@ -116,7 +116,11 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	}
 	app.route(
 		"/api/v1/workspaces",
-		workspaceRoutes({ store: opts.store, secrets: opts.secrets }),
+		workspaceRoutes({
+			store: opts.store,
+			secrets: opts.secrets,
+			drivers: opts.drivers,
+		}),
 	);
 	app.route("/api/v1/workspaces", catalogRoutes(opts.store));
 	app.route("/api/v1/workspaces", documentRoutes(opts.store));

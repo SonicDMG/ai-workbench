@@ -210,7 +210,8 @@ when the descriptor is created.
   workspace return `404 workspace_not_found`.
 - Cascade delete:
   - `DELETE /api/v1/workspaces/{w}` → drops the workspace, its
-    catalogs, its vector-store descriptors, and its documents.
+    catalogs, its vector-store descriptors, its documents, and the
+    underlying vector-store collections.
   - `DELETE /api/v1/workspaces/{w}/catalogs/{c}` → drops the
     catalog and its documents.
 - **Catalog → vector-store binding is N:1** (multiple catalogs may

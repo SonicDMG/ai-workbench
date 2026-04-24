@@ -15,6 +15,11 @@ import {
 } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
+import type {
+	VectorStoreRecord,
+	WorkspaceRecord,
+} from "../../control-plane/types.js";
+import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import { makeOpenApi } from "../../lib/openapi.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
@@ -30,10 +35,11 @@ import type { SecretResolver } from "../../secrets/provider.js";
 export interface WorkspaceRouteDeps {
 	readonly store: ControlPlaneStore;
 	readonly secrets: SecretResolver;
+	readonly drivers: VectorStoreDriverRegistry;
 }
 
 export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
-	const { store, secrets } = deps;
+	const { store, secrets, drivers } = deps;
 	const app = makeOpenApi();
 
 	app.openapi(
@@ -112,6 +118,11 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
 					description: "Workspace not found",
 				},
+				503: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description:
+						"Driver for this workspace kind is not available while dropping vector-store collections",
+				},
 			},
 		}),
 		async (c) => {
@@ -177,6 +188,11 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
 			assertWorkspaceAccess(c, workspaceId);
+			const workspace = await store.getWorkspace(workspaceId);
+			if (!workspace)
+				throw new ControlPlaneNotFoundError("workspace", workspaceId);
+			const descriptors = await store.listVectorStores(workspaceId);
+			await dropWorkspaceCollections({ workspace, descriptors, drivers });
 			const { deleted } = await store.deleteWorkspace(workspaceId);
 			if (!deleted)
 				throw new ControlPlaneNotFoundError("workspace", workspaceId);
@@ -251,4 +267,17 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 	);
 
 	return app;
+}
+
+async function dropWorkspaceCollections(args: {
+	readonly workspace: WorkspaceRecord;
+	readonly descriptors: readonly VectorStoreRecord[];
+	readonly drivers: VectorStoreDriverRegistry;
+}): Promise<void> {
+	const { workspace, descriptors, drivers } = args;
+	if (descriptors.length === 0) return;
+	const driver = drivers.for(workspace);
+	for (const descriptor of descriptors) {
+		await driver.dropCollection({ workspace, descriptor });
+	}
 }

@@ -272,7 +272,7 @@ control and unlocks public secret-scanning.
   Leaves the row visible with `revokedAt` set; next request
   bearing the token gets `401 unauthorized`.
 
-**Storage**: two CQL tables under the Astra control plane —
+**Storage**: two Data API Tables under the Astra control plane —
 `wb_api_key_by_workspace` (primary, partitioned by workspace) and
 `wb_api_key_lookup` (secondary, partitioned by prefix) so the
 verifier resolves a prefix in O(1) without scanning every

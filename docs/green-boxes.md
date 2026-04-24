@@ -21,7 +21,7 @@ picks which one to target at deploy time via `BACKEND_URL`.
 
 | Runtime | Location | Status | Astra SDK |
 |---|---|---|---|
-| **TypeScript** (default) | [`runtimes/typescript/`](../runtimes/typescript/) | Operational through Phase 2a (workspace/catalog/vector-store CRUD + data plane + document metadata CRUD) | `@datastax/astra-db-ts` |
+| **TypeScript** (default) | [`runtimes/typescript/`](../runtimes/typescript/) | Operational through Phase 3 + auth (UI, playground, API keys, OIDC login, vector/text search + upsert) | `@datastax/astra-db-ts` |
 | **Python** | [`runtimes/python/`](../runtimes/python/) | FastAPI scaffold — routes return 501 until implemented | `astrapy` (pending) |
 | **Java** | [`runtimes/java/`](../runtimes/java/) | Spring Boot scaffold — routes return 501 until implemented | `astra-db-java` (pending) |
 

@@ -1,0 +1,180 @@
+{
+	"slug": "catalog-vector-store-reference-integrity",
+	"description": "Catalogs can only bind vector stores in the same workspace, and referenced vector stores cannot be deleted out from under catalogs.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"endpoint": null,
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"name": "bad",
+					"vectorStore": "{{UUID_2}}"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "vector_store_not_found",
+						"message": "vector store '{{UUID_2}}' not found",
+						"requestId": "{{REQID_1}}"
+					}
+				},
+				"status": 404
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"name": "vs",
+					"vectorDimension": 4
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"lexical": {
+						"analyzer": null,
+						"enabled": false,
+						"options": {}
+					},
+					"name": "vs",
+					"reranking": {
+						"enabled": false,
+						"endpoint": null,
+						"model": null,
+						"provider": null,
+						"secretRef": null
+					},
+					"uid": "{{UUID_3}}",
+					"updatedAt": "{{TS}}",
+					"vectorDimension": 4,
+					"vectorSimilarity": "cosine",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"name": "good",
+					"vectorStore": "{{UUID_3}}"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"description": null,
+					"name": "good",
+					"uid": "{{UUID_4}}",
+					"updatedAt": "{{TS}}",
+					"vectorStore": "{{UUID_3}}",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_3}}"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "conflict",
+						"message": "vector store '{{UUID_3}}' is referenced by catalog '{{UUID_4}}'",
+						"requestId": "{{REQID_2}}"
+					}
+				},
+				"status": 409
+			},
+			"step": 5
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_3}}"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"lexical": {
+						"analyzer": null,
+						"enabled": false,
+						"options": {}
+					},
+					"name": "vs",
+					"reranking": {
+						"enabled": false,
+						"endpoint": null,
+						"model": null,
+						"provider": null,
+						"secretRef": null
+					},
+					"uid": "{{UUID_3}}",
+					"updatedAt": "{{TS}}",
+					"vectorDimension": 4,
+					"vectorSimilarity": "cosine",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 6
+		}
+	]
+}

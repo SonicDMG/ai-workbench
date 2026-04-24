@@ -24,11 +24,11 @@ function makeApp(authOpts?: {
 }): {
 	app: ReturnType<typeof createApp>;
 	store: ControlPlaneStore;
+	driver: MockVectorStoreDriver;
 } {
 	const store = new MemoryControlPlaneStore();
-	const drivers = new VectorStoreDriverRegistry(
-		new Map([["mock", new MockVectorStoreDriver()]]),
-	);
+	const driver = new MockVectorStoreDriver();
+	const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
 	const secrets = new SecretResolver({ env: new EnvSecretProvider() });
 	const mode = authOpts?.mode ?? "disabled";
 	const auth = new AuthResolver({
@@ -38,7 +38,7 @@ function makeApp(authOpts?: {
 	});
 	const embedders = makeFakeEmbedderFactory();
 	const app = createApp({ store, drivers, secrets, auth, embedders });
-	return { app, store };
+	return { app, store, driver };
 }
 
 const BASE_WORKSPACE = { name: "w1", kind: "astra" as const };
@@ -221,6 +221,29 @@ describe("workspace routes", () => {
 		});
 		expect(res.status).toBe(204);
 		expect(await store.getWorkspace(created.uid)).toBeNull();
+	});
+
+	test("DELETE drops vector-store collections before removing the workspace", async () => {
+		const { app, store, driver } = makeApp();
+		const workspace = await store.createWorkspace(MOCK_WORKSPACE);
+		const descriptor = await store.createVectorStore(workspace.uid, {
+			...BASE_VECTOR_STORE,
+			vectorDimension: 3,
+			embedding: { ...BASE_VECTOR_STORE.embedding, dimension: 3 },
+		});
+		const ctx = { workspace, descriptor };
+		await driver.createCollection(ctx);
+		await driver.upsert(ctx, [{ id: "a", vector: [1, 0, 0] }]);
+
+		const res = await app.request(`/api/v1/workspaces/${workspace.uid}`, {
+			method: "DELETE",
+		});
+
+		expect(res.status).toBe(204);
+		expect(await store.getWorkspace(workspace.uid)).toBeNull();
+		await expect(driver.search(ctx, { vector: [1, 0, 0] })).rejects.toThrow(
+			/not provisioned/,
+		);
 	});
 
 	test("DELETE returns 404 for unknown uid", async () => {
@@ -455,6 +478,22 @@ describe("catalog routes", () => {
 		expect(body.error.code).toBe("workspace_not_found");
 	});
 
+	test("POST with unknown vectorStore returns 404", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}/catalogs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "support",
+				vectorStore: "00000000-0000-4000-8000-0000000000ff",
+			}),
+		});
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("vector_store_not_found");
+	});
+
 	test("GET lists catalogs for the workspace", async () => {
 		const { app, store } = makeApp();
 		const ws = await store.createWorkspace(BASE_WORKSPACE);
@@ -463,6 +502,25 @@ describe("catalog routes", () => {
 		const res = await app.request(`/api/v1/workspaces/${ws.uid}/catalogs`);
 		const body = await json(res);
 		expect(body).toHaveLength(2);
+	});
+
+	test("PUT with unknown vectorStore returns 404", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const cat = await store.createCatalog(ws.uid, { name: "support" });
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${cat.uid}`,
+			{
+				method: "PUT",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					vectorStore: "00000000-0000-4000-8000-0000000000ff",
+				}),
+			},
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("vector_store_not_found");
 	});
 });
 
@@ -649,6 +707,31 @@ describe("vector-store routes", () => {
 		expect(res.status).toBe(503);
 		const body = await json(res);
 		expect(body.error.code).toBe("driver_unavailable");
+	});
+
+	test("DELETE returns 409 when a catalog references the vector store", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const create = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(BASE_VECTOR_STORE),
+			},
+		);
+		const vs = await json(create);
+		await store.createCatalog(ws.uid, { name: "support", vectorStore: vs.uid });
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}`,
+			{ method: "DELETE" },
+		);
+
+		expect(res.status).toBe(409);
+		const body = await json(res);
+		expect(body.error.code).toBe("conflict");
+		expect(await store.getVectorStore(ws.uid, vs.uid)).not.toBeNull();
 	});
 });
 

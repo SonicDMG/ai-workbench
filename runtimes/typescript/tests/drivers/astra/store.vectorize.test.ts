@@ -75,6 +75,18 @@ function build(): { driver: AstraVectorStoreDriver; fake: FakeDb } {
 	return { driver, fake };
 }
 
+function requireSearchByText(driver: AstraVectorStoreDriver) {
+	const searchByText = driver.searchByText;
+	if (!searchByText) throw new Error("expected searchByText to be implemented");
+	return searchByText.bind(driver);
+}
+
+function requireUpsertByText(driver: AstraVectorStoreDriver) {
+	const upsertByText = driver.upsertByText;
+	if (!upsertByText) throw new Error("expected upsertByText to be implemented");
+	return upsertByText.bind(driver);
+}
+
 describe("AstraVectorStoreDriver + vectorize", () => {
 	const savedToken = process.env.TEST_ASTRA_TOKEN;
 	const savedEmbedKey = process.env.TEST_EMBEDDING_KEY;
@@ -145,7 +157,8 @@ describe("AstraVectorStoreDriver + vectorize", () => {
 			{ id: "b", vector: [0, 1, 0, 0, 0, 0, 0, 0] },
 		]);
 
-		const hits = await driver.searchByText!(ctx, { text: "hello", topK: 2 });
+		const searchByText = requireSearchByText(driver);
+		const hits = await searchByText(ctx, { text: "hello", topK: 2 });
 		expect(hits).toHaveLength(2);
 
 		// embeddingApiKey should be set on every searchByText call.
@@ -166,8 +179,9 @@ describe("AstraVectorStoreDriver + vectorize", () => {
 		});
 		const ctx = { workspace: WORKSPACE, descriptor: d };
 		await driver.createCollection(ctx);
+		const searchByText = requireSearchByText(driver);
 		await expect(
-			driver.searchByText!(ctx, { text: "hi", topK: 1 }),
+			searchByText(ctx, { text: "hi", topK: 1 }),
 		).rejects.toBeInstanceOf(NotSupportedError);
 	});
 
@@ -181,8 +195,9 @@ describe("AstraVectorStoreDriver + vectorize", () => {
 		// $vectorize sort will throw FakeVectorizeNotConfiguredError
 		// (matching the real Astra error shape).
 		fake.collection("vs"); // ensure the handle exists
+		const searchByText = requireSearchByText(driver);
 		await expect(
-			driver.searchByText!(ctx, { text: "hi", topK: 1 }),
+			searchByText(ctx, { text: "hi", topK: 1 }),
 		).rejects.toBeInstanceOf(NotSupportedError);
 	});
 
@@ -192,7 +207,8 @@ describe("AstraVectorStoreDriver + vectorize", () => {
 		const ctx = { workspace: WORKSPACE, descriptor: d };
 		await driver.createCollection(ctx);
 
-		const res = await driver.upsertByText!(ctx, [
+		const upsertByText = requireUpsertByText(driver);
+		const res = await upsertByText(ctx, [
 			{ id: "a", text: "hello", payload: { tag: "greet" } },
 			{ id: "b", text: "world" },
 		]);
@@ -231,8 +247,9 @@ describe("AstraVectorStoreDriver + vectorize", () => {
 		});
 		const ctx = { workspace: WORKSPACE, descriptor: d };
 		await driver.createCollection(ctx);
+		const upsertByText = requireUpsertByText(driver);
 		await expect(
-			driver.upsertByText!(ctx, [{ id: "a", text: "hi" }]),
+			upsertByText(ctx, [{ id: "a", text: "hi" }]),
 		).rejects.toBeInstanceOf(NotSupportedError);
 	});
 
@@ -241,7 +258,8 @@ describe("AstraVectorStoreDriver + vectorize", () => {
 		const d = descriptor();
 		const ctx = { workspace: WORKSPACE, descriptor: d };
 		await driver.createCollection(ctx);
-		const res = await driver.upsertByText!(ctx, []);
+		const upsertByText = requireUpsertByText(driver);
+		const res = await upsertByText(ctx, []);
 		expect(res.upserted).toBe(0);
 	});
 
@@ -253,12 +271,13 @@ describe("AstraVectorStoreDriver + vectorize", () => {
 		await driver.upsert(ctx, [{ id: "a", vector: [1, 0, 0, 0, 0, 0, 0, 0] }]);
 
 		// First call: resolver reads the current env → caches "sk-embed".
-		await driver.searchByText!(ctx, { text: "one" });
+		const searchByText = requireSearchByText(driver);
+		await searchByText(ctx, { text: "one" });
 		// Mutate env between calls — second call should hit the cache
 		// and ignore the new value, proving the resolver isn't being
 		// called twice on every searchByText.
 		process.env.TEST_EMBEDDING_KEY = "will-not-be-read";
-		await driver.searchByText!(ctx, { text: "two" });
+		await searchByText(ctx, { text: "two" });
 		const keys = fake.handleCalls
 			.filter((h) => h.opts?.embeddingApiKey !== undefined)
 			.map((h) => h.opts?.embeddingApiKey);

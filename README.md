@@ -113,15 +113,20 @@ All routes documented at `/docs` (Scalar UI) and
 |---|---|---|
 | `GET / POST` | `/api/v1/workspaces` | List / create workspaces |
 | `GET / PUT / DELETE` | `/api/v1/workspaces/{w}` | Workspace CRUD (DELETE cascades) |
+| `POST` | `/api/v1/workspaces/{w}/test-connection` | Resolve configured workspace credential refs |
 | `GET / POST` | `/api/v1/workspaces/{w}/catalogs` | List / create catalogs |
 | `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/catalogs/{c}` | Catalog CRUD (DELETE cascades to documents) |
+| `GET / POST` | `/api/v1/workspaces/{w}/catalogs/{c}/documents` | List / create document metadata |
+| `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/catalogs/{c}/documents/{d}` | Document metadata CRUD |
 | `GET / POST` | `/api/v1/workspaces/{w}/vector-stores` | List / create vector-store descriptors (POST provisions the collection too) |
 | `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/vector-stores/{v}` | Descriptor CRUD (DELETE drops the collection) |
-| `POST` | `/api/v1/workspaces/{w}/vector-stores/{v}/records` | Upsert vectors |
+| `POST` | `/api/v1/workspaces/{w}/vector-stores/{v}/records` | Upsert vector or text records |
 | `DELETE` | `/api/v1/workspaces/{w}/vector-stores/{v}/records/{rid}` | Delete one |
-| `POST` | `/api/v1/workspaces/{w}/vector-stores/{v}/search` | Vector search |
+| `POST` | `/api/v1/workspaces/{w}/vector-stores/{v}/search` | Vector or text search |
+| `GET / POST` | `/api/v1/workspaces/{w}/api-keys` | List / issue workspace API keys |
+| `DELETE` | `/api/v1/workspaces/{w}/api-keys/{keyId}` | Revoke a workspace API key |
 
-Documents, ingestion, and catalog-scoped search land in Phase 2 —
+Ingestion, catalog-scoped search, and saved queries land in Phase 2b —
 [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Documentation
@@ -160,7 +165,7 @@ ai-workbench/
 │   │   │   └── routes/
 │   │   │       ├── operational.ts
 │   │   │       └── api-v1/
-│   │   ├── tests/                    # Vitest suite (122+ tests)
+│   │   ├── tests/                    # Vitest suite (349+ tests)
 │   │   ├── scripts/
 │   │   ├── examples/workbench.yaml
 │   │   ├── package.json

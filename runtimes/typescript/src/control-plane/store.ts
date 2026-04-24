@@ -4,7 +4,7 @@
  * Implementations:
  *  - {@link ./memory/store.MemoryControlPlaneStore} — in-process, default.
  *  - {@link ./file/store.FileControlPlaneStore} — JSON on disk, single-node.
- *  - `AstraControlPlaneStore` (Phase 1a.2) — CQL via secure-connect-bundle.
+ *  - `AstraControlPlaneStore` — Data API Tables via astra-db-ts.
  *
  * Every method is async to allow any backend to be I/O-bound. Synchronous
  * backends simply resolve immediately.

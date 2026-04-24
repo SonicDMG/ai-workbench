@@ -165,6 +165,9 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		input: CreateCatalogInput,
 	): Promise<CatalogRecord> {
 		await this.assertWorkspace(workspace);
+		if (input.vectorStore !== undefined && input.vectorStore !== null) {
+			await this.assertVectorStore(workspace, input.vectorStore);
+		}
 		const uid = input.uid ?? randomUUID();
 		const bucket = this.catalogs.get(workspace) ?? new Map();
 		if (bucket.has(uid)) {
@@ -193,6 +196,9 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		patch: UpdateCatalogInput,
 	): Promise<CatalogRecord> {
 		await this.assertWorkspace(workspace);
+		if (patch.vectorStore !== undefined && patch.vectorStore !== null) {
+			await this.assertVectorStore(workspace, patch.vectorStore);
+		}
 		const existing = this.catalogs.get(workspace)?.get(uid);
 		if (!existing) {
 			throw new ControlPlaneNotFoundError("catalog", uid);
@@ -303,6 +309,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		uid: string,
 	): Promise<{ deleted: boolean }> {
 		await this.assertWorkspace(workspace);
+		this.assertVectorStoreNotReferenced(workspace, uid);
 		return {
 			deleted: this.vectorStores.get(workspace)?.delete(uid) ?? false,
 		};
@@ -507,6 +514,30 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		await this.assertWorkspace(workspace);
 		if (!this.catalogs.get(workspace)?.has(catalog)) {
 			throw new ControlPlaneNotFoundError("catalog", catalog);
+		}
+	}
+
+	private async assertVectorStore(
+		workspace: string,
+		vectorStore: string,
+	): Promise<void> {
+		await this.assertWorkspace(workspace);
+		if (!this.vectorStores.get(workspace)?.has(vectorStore)) {
+			throw new ControlPlaneNotFoundError("vector store", vectorStore);
+		}
+	}
+
+	private assertVectorStoreNotReferenced(
+		workspace: string,
+		vectorStore: string,
+	): void {
+		const ref = Array.from(this.catalogs.get(workspace)?.values() ?? []).find(
+			(c) => c.vectorStore === vectorStore,
+		);
+		if (ref) {
+			throw new ControlPlaneConflictError(
+				`vector store '${vectorStore}' is referenced by catalog '${ref.uid}'`,
+			);
 		}
 	}
 }

@@ -116,10 +116,12 @@ async function buildAppWithLogin(privateKey: CryptoKey, imported: unknown) {
 	// The OIDC verifier reuses the same imported key that our mock
 	// IdP will return tokens signed against.
 	const getKey = async () => imported as Awaited<ReturnType<typeof importJWK>>;
+	const oidc = cfg.oidc;
+	if (!oidc) throw new Error("test auth config must include oidc");
 	const auth = new AuthResolver({
 		mode: "oidc",
 		anonymousPolicy: "reject",
-		verifiers: [new OidcVerifier({ config: cfg.oidc!, getKey })],
+		verifiers: [new OidcVerifier({ config: oidc, getKey })],
 	});
 
 	// A stub token endpoint. The route handler calls this via global
@@ -341,7 +343,8 @@ describe("/auth/* flow", () => {
 				"state",
 			);
 			expect(state).toBeTruthy();
-			const entry = fx.pending.take(state!);
+			if (!state) throw new Error("expected login redirect to include state");
+			const entry = fx.pending.take(state);
 			expect(entry?.redirectAfter).toBe("/");
 		} finally {
 			fx.restoreFetch();

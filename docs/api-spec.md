@@ -78,8 +78,14 @@ human-readable and may change. Currently emitted:
 | 404 | `vector_store_not_found` | Vector-store UID doesn't exist in workspace |
 | 404 | `document_not_found` | Document UID doesn't exist in the catalog |
 | 409 | `conflict` | Create with an already-taken UID |
+| 400 | `dimension_mismatch` | Supplied vector length doesn't match the vector-store descriptor |
+| 400 | `embedding_unavailable` | Text search/upsert fallback could not build an embedder for the descriptor |
+| 400 | `embedding_dimension_mismatch` | Embedder output dimension doesn't match the descriptor |
+| 422 | `workspace_misconfigured` | Workspace is missing endpoint, token, keyspace, or similar driver-required config |
 | 500 | `internal_error` | Unhandled exception |
 | 503 | `control_plane_unavailable` | Backing store is unreachable |
+| 503 | `collection_unavailable` | Underlying vector collection is unreachable or missing |
+| 503 | `driver_unavailable` | Workspace kind has no registered vector-store driver |
 
 ### Authentication
 
@@ -102,9 +108,9 @@ Operational routes (`/`, `/healthz`, `/readyz`, `/version`,
 `/docs`, `/api/v1/openapi.json`) bypass the middleware so
 load balancers and ops tooling can always reach them.
 
-API-key issuance lands in a follow-up; OIDC after that. Both
-flow through the same middleware — routes don't need to care
-which verifier accepted the token.
+API-key issuance, OIDC bearer verification, and browser OIDC login
+are implemented. All verifier modes flow through the same middleware —
+routes don't need to care which verifier accepted the token.
 
 ### Request ID
 
@@ -261,10 +267,13 @@ Patch one or more of `name`, `endpoint`, `credentialsRef`,
 ### `DELETE /api/v1/workspaces/{workspaceId}`
 
 Cascades to the workspace's catalogs, vector-store descriptors, and
-documents.
+documents. Before removing the control-plane rows, the runtime drops
+each underlying vector-store collection through the workspace's driver.
 
 - **204** — deleted
 - **404** `workspace_not_found`
+- **503** `driver_unavailable` — workspace has vector stores but no
+  registered driver to drop their collections
 
 ### `POST /api/v1/workspaces/{workspaceId}/test-connection`
 
@@ -399,6 +408,7 @@ single vector store).
 
 - **201** — the created `Catalog`
 - **404** `workspace_not_found`
+- **404** `vector_store_not_found` — `vectorStore` points at a missing descriptor
 - **409** `conflict` — `uid` collision
 
 ### `GET /{catalogId}` / `PUT /{catalogId}` / `DELETE /{catalogId}`
@@ -458,6 +468,8 @@ default to `{ enabled: false, ... }` if omitted.
 
 `GET` and `PUT` operate on the descriptor only. `DELETE` drops the
 underlying Data API Collection **and** removes the descriptor.
+If any catalog still references the vector store, `DELETE` returns
+`409 conflict`; clear or move those catalog bindings first.
 
 `PUT` does NOT re-provision the collection — changing
 `vectorDimension` on a populated store is a data-migration operation

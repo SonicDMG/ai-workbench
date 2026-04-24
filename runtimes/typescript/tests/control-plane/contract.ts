@@ -228,6 +228,58 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
+		test("catalog vectorStore must reference a vector store in the same workspace", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({
+					name: "w",
+					kind: "mock",
+				});
+				const missing = "00000000-0000-4000-8000-0000000000ff";
+				await expect(
+					store.createCatalog(ws.uid, {
+						name: "c",
+						vectorStore: missing,
+					}),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+
+				const cat = await store.createCatalog(ws.uid, { name: "c" });
+				await expect(
+					store.updateCatalog(ws.uid, cat.uid, { vectorStore: missing }),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteVectorStore is blocked while catalogs reference it", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({
+					name: "w",
+					kind: "mock",
+				});
+				const vs = await store.createVectorStore(ws.uid, {
+					name: "shared-vs",
+					...VECTOR_STORE_BASE,
+				});
+				const cat = await store.createCatalog(ws.uid, {
+					name: "c",
+					vectorStore: vs.uid,
+				});
+				await expect(
+					store.deleteVectorStore(ws.uid, vs.uid),
+				).rejects.toBeInstanceOf(ControlPlaneConflictError);
+
+				await store.updateCatalog(ws.uid, cat.uid, { vectorStore: null });
+				await expect(store.deleteVectorStore(ws.uid, vs.uid)).resolves.toEqual({
+					deleted: true,
+				});
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("vector store defaults are applied", async () => {
 			const { store, cleanup } = await factory();
 			try {
