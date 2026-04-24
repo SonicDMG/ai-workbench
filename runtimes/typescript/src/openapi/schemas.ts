@@ -353,6 +353,44 @@ export const SearchHitSchema = z
 	})
 	.openapi("SearchHit");
 
+/* ---------------- Saved query ---------------- */
+
+export const SavedQueryRecordSchema = z
+	.object({
+		workspace: z.string().uuid(),
+		catalogUid: z.string().uuid(),
+		queryUid: z.string().uuid(),
+		name: z.string(),
+		description: z.string().nullable(),
+		text: z.string(),
+		topK: z.number().int().positive().max(1000).nullable(),
+		filter: z.record(z.string(), z.unknown()).nullable(),
+		createdAt: z.string(),
+		updatedAt: z.string(),
+	})
+	.openapi("SavedQuery");
+
+export const CreateSavedQueryInputSchema = z
+	.object({
+		uid: z.string().uuid().optional(),
+		name: z.string().min(1),
+		description: z.string().nullable().optional(),
+		text: z.string().min(1),
+		topK: z.number().int().positive().max(1000).nullable().optional(),
+		filter: z.record(z.string(), z.unknown()).nullable().optional(),
+	})
+	.openapi("CreateSavedQueryInput");
+
+export const UpdateSavedQueryInputSchema = z
+	.object({
+		name: z.string().min(1).optional(),
+		description: z.string().nullable().optional(),
+		text: z.string().min(1).optional(),
+		topK: z.number().int().positive().max(1000).nullable().optional(),
+		filter: z.record(z.string(), z.unknown()).nullable().optional(),
+	})
+	.openapi("UpdateSavedQueryInput");
+
 /* ---------------- Ingest ---------------- */
 
 export const IngestChunkerOptionsSchema = z
@@ -445,6 +483,14 @@ export const ApiKeyIdParamSchema = z
 	.uuid()
 	.openapi({
 		param: { name: "keyId", in: "path" },
+		example: "00000000-0000-0000-0000-000000000000",
+	});
+
+export const SavedQueryIdParamSchema = z
+	.string()
+	.uuid()
+	.openapi({
+		param: { name: "queryId", in: "path" },
 		example: "00000000-0000-0000-0000-000000000000",
 	});
 

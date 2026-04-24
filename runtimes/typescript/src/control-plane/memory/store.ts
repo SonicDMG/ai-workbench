@@ -31,11 +31,13 @@ import type {
 	ControlPlaneStore,
 	CreateCatalogInput,
 	CreateDocumentInput,
+	CreateSavedQueryInput,
 	CreateVectorStoreInput,
 	CreateWorkspaceInput,
 	PersistApiKeyInput,
 	UpdateCatalogInput,
 	UpdateDocumentInput,
+	UpdateSavedQueryInput,
 	UpdateVectorStoreInput,
 	UpdateWorkspaceInput,
 } from "../store.js";
@@ -43,6 +45,7 @@ import type {
 	ApiKeyRecord,
 	CatalogRecord,
 	DocumentRecord,
+	SavedQueryRecord,
 	VectorStoreRecord,
 	WorkspaceRecord,
 } from "../types.js";
@@ -71,6 +74,10 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		Map<string, VectorStoreRecord>
 	>();
 	private readonly documents = new Map<string, Map<string, DocumentRecord>>();
+	private readonly savedQueries = new Map<
+		string,
+		Map<string, SavedQueryRecord>
+	>();
 	private readonly apiKeys = new Map<string, Map<string, ApiKeyRecord>>();
 	private readonly apiKeyPrefixIndex = new Map<string, ApiKeyRecord>();
 
@@ -135,6 +142,9 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		this.vectorStores.delete(uid);
 		for (const key of Array.from(this.documents.keys())) {
 			if (key.startsWith(`${uid}:`)) this.documents.delete(key);
+		}
+		for (const key of Array.from(this.savedQueries.keys())) {
+			if (key.startsWith(`${uid}:`)) this.savedQueries.delete(key);
 		}
 		const keys = this.apiKeys.get(uid);
 		if (keys) {
@@ -226,6 +236,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		const bucket = this.catalogs.get(workspace);
 		const deleted = bucket?.delete(uid) ?? false;
 		this.documents.delete(docKey(workspace, uid));
+		this.savedQueries.delete(docKey(workspace, uid));
 		return { deleted };
 	}
 
@@ -419,6 +430,100 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		return {
 			deleted:
 				this.documents.get(docKey(workspace, catalog))?.delete(uid) ?? false,
+		};
+	}
+
+	/* ---------------- Saved queries ---------------- */
+
+	async listSavedQueries(
+		workspace: string,
+		catalog: string,
+	): Promise<readonly SavedQueryRecord[]> {
+		await this.assertCatalog(workspace, catalog);
+		return Array.from(
+			this.savedQueries.get(docKey(workspace, catalog))?.values() ?? [],
+		);
+	}
+
+	async getSavedQuery(
+		workspace: string,
+		catalog: string,
+		uid: string,
+	): Promise<SavedQueryRecord | null> {
+		await this.assertCatalog(workspace, catalog);
+		return this.savedQueries.get(docKey(workspace, catalog))?.get(uid) ?? null;
+	}
+
+	async createSavedQuery(
+		workspace: string,
+		catalog: string,
+		input: CreateSavedQueryInput,
+	): Promise<SavedQueryRecord> {
+		await this.assertCatalog(workspace, catalog);
+		const key = docKey(workspace, catalog);
+		const uid = input.uid ?? randomUUID();
+		const bucket = this.savedQueries.get(key) ?? new Map();
+		if (bucket.has(uid)) {
+			throw new ControlPlaneConflictError(
+				`saved query with uid '${uid}' already exists in catalog '${catalog}'`,
+			);
+		}
+		const now = nowIso();
+		const record: SavedQueryRecord = {
+			workspace,
+			catalogUid: catalog,
+			queryUid: uid,
+			name: input.name,
+			description: input.description ?? null,
+			text: input.text,
+			topK: input.topK ?? null,
+			filter: input.filter ? Object.freeze({ ...input.filter }) : null,
+			createdAt: now,
+			updatedAt: now,
+		};
+		bucket.set(uid, record);
+		this.savedQueries.set(key, bucket);
+		return record;
+	}
+
+	async updateSavedQuery(
+		workspace: string,
+		catalog: string,
+		uid: string,
+		patch: UpdateSavedQueryInput,
+	): Promise<SavedQueryRecord> {
+		await this.assertCatalog(workspace, catalog);
+		const key = docKey(workspace, catalog);
+		const existing = this.savedQueries.get(key)?.get(uid);
+		if (!existing) {
+			throw new ControlPlaneNotFoundError("saved query", uid);
+		}
+		const next: SavedQueryRecord = {
+			...existing,
+			...(patch.name !== undefined && { name: patch.name }),
+			...(patch.description !== undefined && {
+				description: patch.description,
+			}),
+			...(patch.text !== undefined && { text: patch.text }),
+			...(patch.topK !== undefined && { topK: patch.topK }),
+			...(patch.filter !== undefined && {
+				filter: patch.filter ? Object.freeze({ ...patch.filter }) : null,
+			}),
+			updatedAt: nowIso(),
+		};
+		this.savedQueries.get(key)?.set(uid, next);
+		return next;
+	}
+
+	async deleteSavedQuery(
+		workspace: string,
+		catalog: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertCatalog(workspace, catalog);
+		return {
+			deleted:
+				this.savedQueries.get(docKey(workspace, catalog))?.delete(uid) ?? false,
 		};
 	}
 

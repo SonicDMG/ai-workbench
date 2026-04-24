@@ -1114,6 +1114,236 @@ describe("catalog-scoped document search", () => {
 	});
 });
 
+describe("saved queries", () => {
+	async function seedCatalog(opts?: { bindVectorStore?: boolean }) {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const vsRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(BASE_VECTOR_STORE),
+			},
+		);
+		const vs = await json(vsRes);
+		const catalog = await store.createCatalog(ws.uid, {
+			name: "kb",
+			vectorStore: opts?.bindVectorStore === false ? null : vs.uid,
+		});
+		return { app, store, ws, vs, catalog };
+	}
+
+	test("CRUD lifecycle (create → list → get → update → delete)", async () => {
+		const { app, ws, catalog } = await seedCatalog();
+		const created = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "apples",
+					description: "find apple docs",
+					text: "apples",
+					topK: 5,
+					filter: { tag: "fruit" },
+				}),
+			},
+		);
+		expect(created.status).toBe(201);
+		const rec = await json(created);
+		expect(rec.queryUid).toMatch(/^[0-9a-f-]{36}$/);
+		expect(rec.name).toBe("apples");
+		expect(rec.filter).toEqual({ tag: "fruit" });
+
+		const list = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries`,
+		);
+		expect(list.status).toBe(200);
+		const listBody = await json(list);
+		expect(listBody).toHaveLength(1);
+
+		const got = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}`,
+		);
+		expect(got.status).toBe(200);
+		expect((await json(got)).text).toBe("apples");
+
+		const updated = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}`,
+			{
+				method: "PUT",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ name: "APPLES", filter: null }),
+			},
+		);
+		const updatedBody = await json(updated);
+		expect(updatedBody.name).toBe("APPLES");
+		expect(updatedBody.filter).toBeNull();
+
+		const del = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}`,
+			{ method: "DELETE" },
+		);
+		expect(del.status).toBe(204);
+		const delAgain = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}`,
+			{ method: "DELETE" },
+		);
+		expect(delAgain.status).toBe(404);
+	});
+
+	test("POST /run replays the saved query through catalog-scoped search", async () => {
+		const { app, ws, vs, catalog } = await seedCatalog();
+		// Seed a record whose payload matches both the saved filter and the
+		// catalog scope.
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{
+							id: "a",
+							text: "apples are red",
+							payload: { catalogUid: catalog.uid, tag: "fruit" },
+						},
+						{
+							id: "b",
+							text: "bananas are yellow",
+							payload: { catalogUid: catalog.uid, tag: "fruit" },
+						},
+					],
+				}),
+			},
+		);
+
+		const created = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "apples",
+					text: "apples",
+					topK: 5,
+					filter: { tag: "fruit" },
+				}),
+			},
+		);
+		const rec = await json(created);
+
+		const run = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}/run`,
+			{ method: "POST" },
+		);
+		expect(run.status).toBe(200);
+		const hits = await json(run);
+		expect(hits.length).toBeGreaterThan(0);
+		expect(hits[0].payload.catalogUid).toBe(catalog.uid);
+	});
+
+	test("/run enforces catalog scope even when saved filter tries to escape", async () => {
+		const { app, store, ws, vs, catalog } = await seedCatalog();
+		const other = await store.createCatalog(ws.uid, {
+			name: "other",
+			vectorStore: vs.uid,
+		});
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/records`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					records: [
+						{
+							id: "a",
+							text: "apples are red",
+							payload: { catalogUid: catalog.uid },
+						},
+						{
+							id: "b",
+							text: "bananas are yellow",
+							payload: { catalogUid: other.uid },
+						},
+					],
+				}),
+			},
+		);
+
+		// The saved query tries to request `catalogUid=other.uid` in its
+		// filter — the run route must override with the path's catalog,
+		// so only `a` should come back.
+		const created = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "escape attempt",
+					text: "fruit",
+					filter: { catalogUid: other.uid },
+				}),
+			},
+		);
+		const rec = await json(created);
+
+		const run = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}/run`,
+			{ method: "POST" },
+		);
+		const hits = await json(run);
+		expect(hits.length).toBe(1);
+		expect(hits[0].id).toBe("a");
+	});
+
+	test("POST /run → 404 when the saved query does not exist", async () => {
+		const { app, ws, catalog } = await seedCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/00000000-0000-0000-0000-000000000000/run`,
+			{ method: "POST" },
+		);
+		expect(res.status).toBe(404);
+		expect((await json(res)).error.code).toBe("saved_query_not_found");
+	});
+
+	test("POST /run → 409 when catalog has no vectorStore binding", async () => {
+		const { app, ws, catalog } = await seedCatalog({ bindVectorStore: false });
+		const created = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ name: "q", text: "hi" }),
+			},
+		);
+		const rec = await json(created);
+		const run = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}/run`,
+			{ method: "POST" },
+		);
+		expect(run.status).toBe(409);
+		expect((await json(run)).error.code).toBe(
+			"catalog_not_bound_to_vector_store",
+		);
+	});
+
+	test("rejects empty name/text via Zod validation", async () => {
+		const { app, ws, catalog } = await seedCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ name: "", text: "" }),
+			},
+		);
+		expect(res.status).toBe(400);
+		expect((await json(res)).error.code).toBe("validation_error");
+	});
+});
+
 describe("vector-store routes", () => {
 	test("POST creates a descriptor row and provisions a collection", async () => {
 		const { app, store } = makeApp();

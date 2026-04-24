@@ -7,6 +7,7 @@
  *   `/api/v1/workspaces/{w}/catalogs`             catalogs CRUD
  *   `/api/v1/workspaces/{w}/catalogs/{c}/documents`  document metadata CRUD
  *   `/api/v1/workspaces/{w}/catalogs/{c}/documents/search`  catalog-scoped search
+ *   `/api/v1/workspaces/{w}/catalogs/{c}/queries`  saved queries CRUD + /run
  *   `/api/v1/workspaces/{w}/vector-stores`        vector-store descriptor CRUD
  *   `/api/v1/openapi.json`                        generated OpenAPI doc
  *   `/docs`                                       Scalar-rendered docs
@@ -32,6 +33,7 @@ import { apiKeyRoutes } from "./routes/api-v1/api-keys.js";
 import { catalogRoutes } from "./routes/api-v1/catalogs.js";
 import { documentRoutes } from "./routes/api-v1/documents.js";
 import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
+import { savedQueryRoutes } from "./routes/api-v1/saved-queries.js";
 import { vectorStoreRoutes } from "./routes/api-v1/vector-stores.js";
 import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
 import { authLoginRoutes } from "./routes/auth.js";
@@ -127,6 +129,14 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	app.route(
 		"/api/v1/workspaces",
 		documentRoutes({
+			store: opts.store,
+			drivers: opts.drivers,
+			embedders: opts.embedders,
+		}),
+	);
+	app.route(
+		"/api/v1/workspaces",
+		savedQueryRoutes({
 			store: opts.store,
 			drivers: opts.drivers,
 			embedders: opts.embedders,

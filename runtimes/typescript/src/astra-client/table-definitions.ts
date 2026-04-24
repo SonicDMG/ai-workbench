@@ -144,3 +144,32 @@ export const DOCUMENTS_DEFINITION = {
 		partitionSort: { document_uid: 1 },
 	},
 } as const satisfies CreateTableDefinition;
+
+/**
+ * `wb_saved_queries_by_catalog` — reusable search recipes scoped to a
+ * catalog. Partitioned by (workspace, catalog) and sorted by query_uid
+ * so the list endpoint's scan is bounded to one partition.
+ *
+ * `filter_json` is a serialized `Record<string, unknown>` — `text`
+ * column because the filter's value types are unbounded. The runtime
+ * parses on read; the field is opaque to the backend.
+ */
+export const SAVED_QUERIES_TABLE = "wb_saved_queries_by_catalog";
+export const SAVED_QUERIES_DEFINITION = {
+	columns: {
+		workspace: "uuid",
+		catalog_uid: "uuid",
+		query_uid: "uuid",
+		name: "text",
+		description: "text",
+		text: "text",
+		top_k: "int",
+		filter_json: "text",
+		created_at: "timestamp",
+		updated_at: "timestamp",
+	},
+	primaryKey: {
+		partitionBy: ["workspace", "catalog_uid"],
+		partitionSort: { query_uid: 1 },
+	},
+} as const satisfies CreateTableDefinition;

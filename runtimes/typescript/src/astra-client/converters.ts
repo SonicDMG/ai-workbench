@@ -10,6 +10,7 @@ import type {
 	ApiKeyRecord,
 	CatalogRecord,
 	DocumentRecord,
+	SavedQueryRecord,
 	VectorStoreRecord,
 	WorkspaceRecord,
 } from "../control-plane/types.js";
@@ -17,6 +18,7 @@ import type {
 	ApiKeyRow,
 	CatalogRow,
 	DocumentRow,
+	SavedQueryRow,
 	VectorStoreRow,
 	WorkspaceRow,
 } from "./row-types.js";
@@ -178,6 +180,42 @@ export function documentFromRow(row: DocumentRow): DocumentRecord {
 		status: row.status,
 		errorMessage: row.error_message,
 		metadata: { ...(row.metadata ?? {}) },
+	};
+}
+
+/* ------------------------------------------------------------------ */
+/* Saved query                                                        */
+/* ------------------------------------------------------------------ */
+
+export function savedQueryToRow(r: SavedQueryRecord): SavedQueryRow {
+	return {
+		workspace: r.workspace,
+		catalog_uid: r.catalogUid,
+		query_uid: r.queryUid,
+		name: r.name,
+		description: r.description,
+		text: r.text,
+		top_k: r.topK,
+		filter_json: r.filter ? JSON.stringify(r.filter) : null,
+		created_at: r.createdAt,
+		updated_at: r.updatedAt,
+	};
+}
+
+export function savedQueryFromRow(row: SavedQueryRow): SavedQueryRecord {
+	return {
+		workspace: row.workspace,
+		catalogUid: row.catalog_uid,
+		queryUid: row.query_uid,
+		name: row.name,
+		description: row.description,
+		text: row.text,
+		topK: row.top_k,
+		filter: row.filter_json
+			? (JSON.parse(row.filter_json) as Record<string, unknown>)
+			: null,
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
 	};
 }
 

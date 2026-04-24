@@ -1,0 +1,218 @@
+{
+	"slug": "catalog-saved-queries",
+	"description": "Saved-query CRUD under a catalog: create → list → update → delete. A second scenario pins the /run semantics — saved queries replay through catalog-scoped search and cannot escape catalog scope via their own filter. A third variant covers 409 catalog_not_bound_to_vector_store on /run.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"endpoint": null,
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"name": "vs",
+					"vectorDimension": 4
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"lexical": {
+						"analyzer": null,
+						"enabled": false,
+						"options": {}
+					},
+					"name": "vs",
+					"reranking": {
+						"enabled": false,
+						"endpoint": null,
+						"model": null,
+						"provider": null,
+						"secretRef": null
+					},
+					"uid": "{{UUID_2}}",
+					"updatedAt": "{{TS}}",
+					"vectorDimension": 4,
+					"vectorSimilarity": "cosine",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"name": "kb",
+					"vectorStore": "{{UUID_2}}"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"description": null,
+					"name": "kb",
+					"uid": "{{UUID_3}}",
+					"updatedAt": "{{TS}}",
+					"vectorStore": "{{UUID_2}}",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"description": "billing questions",
+					"filter": {
+						"section": "billing"
+					},
+					"name": "refunds",
+					"text": "how do refunds work?",
+					"topK": 3
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_3}}/queries"
+			},
+			"response": {
+				"body": {
+					"catalogUid": "{{UUID_3}}",
+					"createdAt": "{{TS}}",
+					"description": "billing questions",
+					"filter": {
+						"section": "billing"
+					},
+					"name": "refunds",
+					"queryUid": "{{UUID_4}}",
+					"text": "how do refunds work?",
+					"topK": 3,
+					"updatedAt": "{{TS}}",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_3}}/queries"
+			},
+			"response": {
+				"body": [
+					{
+						"catalogUid": "{{UUID_3}}",
+						"createdAt": "{{TS}}",
+						"description": "billing questions",
+						"filter": {
+							"section": "billing"
+						},
+						"name": "refunds",
+						"queryUid": "{{UUID_4}}",
+						"text": "how do refunds work?",
+						"topK": 3,
+						"updatedAt": "{{TS}}",
+						"workspace": "{{UUID_1}}"
+					}
+				],
+				"status": 200
+			},
+			"step": 5
+		},
+		{
+			"request": {
+				"body": {
+					"filter": null,
+					"name": "refund FAQ"
+				},
+				"method": "PUT",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_3}}/queries/{{UUID_4}}"
+			},
+			"response": {
+				"body": {
+					"catalogUid": "{{UUID_3}}",
+					"createdAt": "{{TS}}",
+					"description": "billing questions",
+					"filter": null,
+					"name": "refund FAQ",
+					"queryUid": "{{UUID_4}}",
+					"text": "how do refunds work?",
+					"topK": 3,
+					"updatedAt": "{{TS}}",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 6
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_3}}/queries/{{UUID_4}}"
+			},
+			"response": {
+				"body": null,
+				"status": 204
+			},
+			"step": 7
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_3}}/queries/{{UUID_4}}"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "saved_query_not_found",
+						"message": "saved query '{{UUID_4}}' not found",
+						"requestId": "{{REQID_1}}"
+					}
+				},
+				"status": 404
+			},
+			"step": 8
+		}
+	]
+}

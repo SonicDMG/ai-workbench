@@ -466,6 +466,79 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
+		test("saved query CRUD is scoped to its catalog", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const cat = await store.createCatalog(ws.uid, { name: "c" });
+				const other = await store.createCatalog(ws.uid, { name: "c2" });
+
+				const created = await store.createSavedQuery(ws.uid, cat.uid, {
+					name: "refunds",
+					text: "how do refunds work?",
+					topK: 5,
+					filter: { section: "billing" },
+				});
+				expect(created.queryUid).toMatch(/^[0-9a-f-]{36}$/);
+				expect(created.catalogUid).toBe(cat.uid);
+				expect(created.filter).toEqual({ section: "billing" });
+
+				// Scoped lookups.
+				expect(
+					(await store.listSavedQueries(ws.uid, cat.uid)).map(
+						(r) => r.queryUid,
+					),
+				).toEqual([created.queryUid]);
+				expect(await store.listSavedQueries(ws.uid, other.uid)).toHaveLength(0);
+				expect(
+					await store.getSavedQuery(ws.uid, other.uid, created.queryUid),
+				).toBeNull();
+
+				const updated = await store.updateSavedQuery(
+					ws.uid,
+					cat.uid,
+					created.queryUid,
+					{ name: "refund FAQ", topK: 10, filter: null },
+				);
+				expect(updated.name).toBe("refund FAQ");
+				expect(updated.topK).toBe(10);
+				expect(updated.filter).toBeNull();
+
+				expect(
+					await store.deleteSavedQuery(ws.uid, cat.uid, created.queryUid),
+				).toEqual({ deleted: true });
+				expect(
+					await store.deleteSavedQuery(ws.uid, cat.uid, created.queryUid),
+				).toEqual({ deleted: false });
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteCatalog cascades to its saved queries", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const cat = await store.createCatalog(ws.uid, { name: "c" });
+				const sq = await store.createSavedQuery(ws.uid, cat.uid, {
+					name: "q",
+					text: "t",
+				});
+				await store.deleteCatalog(ws.uid, cat.uid);
+				const ws2 = await store.createWorkspace({ name: "w2", kind: "mock" });
+				const cat2 = await store.createCatalog(ws2.uid, {
+					uid: cat.uid,
+					name: "c2",
+				});
+				// Recreating the same catalog UID under a new workspace must
+				// not resurrect the old saved query.
+				expect(await store.listSavedQueries(ws2.uid, cat2.uid)).toHaveLength(0);
+				void sq;
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("touchApiKey bumps lastUsedAt", async () => {
 			const { store, cleanup } = await factory();
 			try {

@@ -149,6 +149,30 @@ export interface RerankingConfig {
 	readonly secretRef: SecretRef | null;
 }
 
+/**
+ * A saved search recipe scoped to a catalog. Replayed verbatim against
+ * catalog-scoped search (`POST /catalogs/{c}/documents/search`).
+ *
+ * Text-only by design — stored vectors don't serialize usefully and
+ * raise the bar on size + provenance.
+ */
+export interface SavedQueryRecord {
+	readonly workspace: string;
+	readonly catalogUid: string;
+	readonly queryUid: string;
+	readonly name: string;
+	readonly description: string | null;
+	/** The search text. Required; empty queries are rejected at create time. */
+	readonly text: string;
+	/** Optional cap on the number of hits returned by `/run`. */
+	readonly topK: number | null;
+	/** Optional shallow-equal payload filter. Never carries `catalogUid` — the
+	 * search route enforces catalog scope automatically. */
+	readonly filter: Readonly<Record<string, unknown>> | null;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+}
+
 /** A vector store (collection) owned by a workspace. */
 export interface VectorStoreRecord {
 	readonly workspace: string;

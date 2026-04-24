@@ -31,6 +31,8 @@ import {
 	catalogToRow,
 	documentFromRow,
 	documentToRow,
+	savedQueryFromRow,
+	savedQueryToRow,
 	vectorStoreFromRow,
 	vectorStoreToRow,
 	workspaceFromRow,
@@ -53,11 +55,13 @@ import type {
 	ControlPlaneStore,
 	CreateCatalogInput,
 	CreateDocumentInput,
+	CreateSavedQueryInput,
 	CreateVectorStoreInput,
 	CreateWorkspaceInput,
 	PersistApiKeyInput,
 	UpdateCatalogInput,
 	UpdateDocumentInput,
+	UpdateSavedQueryInput,
 	UpdateVectorStoreInput,
 	UpdateWorkspaceInput,
 } from "../store.js";
@@ -65,6 +69,7 @@ import type {
 	ApiKeyRecord,
 	CatalogRecord,
 	DocumentRecord,
+	SavedQueryRecord,
 	VectorStoreRecord,
 	WorkspaceRecord,
 } from "../types.js";
@@ -146,6 +151,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			this.tables.catalogs.deleteMany({ workspace: uid }),
 			this.tables.vectorStores.deleteMany({ workspace: uid }),
 			this.tables.documents.deleteMany({ workspace: uid }),
+			this.tables.savedQueries.deleteMany({ workspace: uid }),
 			this.tables.apiKeys.deleteMany({ workspace: uid }),
 		]);
 		return { deleted: true };
@@ -233,10 +239,10 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		const existing = await this.tables.catalogs.findOne({ workspace, uid });
 		if (!existing) return { deleted: false };
 		await this.tables.catalogs.deleteOne({ workspace, uid });
-		await this.tables.documents.deleteMany({
-			workspace,
-			catalog_uid: uid,
-		});
+		await Promise.all([
+			this.tables.documents.deleteMany({ workspace, catalog_uid: uid }),
+			this.tables.savedQueries.deleteMany({ workspace, catalog_uid: uid }),
+		]);
 		return { deleted: true };
 	}
 
@@ -467,6 +473,129 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			workspace,
 			catalog_uid: catalog,
 			document_uid: uid,
+		});
+		return { deleted: true };
+	}
+
+	/* ---------------- Saved queries ---------------- */
+
+	async listSavedQueries(
+		workspace: string,
+		catalog: string,
+	): Promise<readonly SavedQueryRecord[]> {
+		await this.assertCatalog(workspace, catalog);
+		const rows = await this.tables.savedQueries
+			.find({ workspace, catalog_uid: catalog })
+			.toArray();
+		return rows.map(savedQueryFromRow);
+	}
+
+	async getSavedQuery(
+		workspace: string,
+		catalog: string,
+		uid: string,
+	): Promise<SavedQueryRecord | null> {
+		await this.assertCatalog(workspace, catalog);
+		const row = await this.tables.savedQueries.findOne({
+			workspace,
+			catalog_uid: catalog,
+			query_uid: uid,
+		});
+		return row ? savedQueryFromRow(row) : null;
+	}
+
+	async createSavedQuery(
+		workspace: string,
+		catalog: string,
+		input: CreateSavedQueryInput,
+	): Promise<SavedQueryRecord> {
+		await this.assertCatalog(workspace, catalog);
+		const uid = input.uid ?? randomUUID();
+		if (
+			await this.tables.savedQueries.findOne({
+				workspace,
+				catalog_uid: catalog,
+				query_uid: uid,
+			})
+		) {
+			throw new ControlPlaneConflictError(
+				`saved query with uid '${uid}' already exists in catalog '${catalog}'`,
+			);
+		}
+		const now = nowIso();
+		const record: SavedQueryRecord = {
+			workspace,
+			catalogUid: catalog,
+			queryUid: uid,
+			name: input.name,
+			description: input.description ?? null,
+			text: input.text,
+			topK: input.topK ?? null,
+			filter: input.filter ? { ...input.filter } : null,
+			createdAt: now,
+			updatedAt: now,
+		};
+		await this.tables.savedQueries.insertOne(savedQueryToRow(record));
+		return record;
+	}
+
+	async updateSavedQuery(
+		workspace: string,
+		catalog: string,
+		uid: string,
+		patch: UpdateSavedQueryInput,
+	): Promise<SavedQueryRecord> {
+		await this.assertCatalog(workspace, catalog);
+		const existing = await this.tables.savedQueries.findOne({
+			workspace,
+			catalog_uid: catalog,
+			query_uid: uid,
+		});
+		if (!existing) throw new ControlPlaneNotFoundError("saved query", uid);
+		const base = savedQueryFromRow(existing);
+		const next: SavedQueryRecord = {
+			...base,
+			...(patch.name !== undefined && { name: patch.name }),
+			...(patch.description !== undefined && {
+				description: patch.description,
+			}),
+			...(patch.text !== undefined && { text: patch.text }),
+			...(patch.topK !== undefined && { topK: patch.topK }),
+			...(patch.filter !== undefined && {
+				filter: patch.filter ? { ...patch.filter } : null,
+			}),
+			updatedAt: nowIso(),
+		};
+		const nextRow = savedQueryToRow(next);
+		const {
+			workspace: _w,
+			catalog_uid: _c,
+			query_uid: _q,
+			...fields
+		} = nextRow;
+		await this.tables.savedQueries.updateOne(
+			{ workspace, catalog_uid: catalog, query_uid: uid },
+			{ $set: fields },
+		);
+		return next;
+	}
+
+	async deleteSavedQuery(
+		workspace: string,
+		catalog: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertCatalog(workspace, catalog);
+		const existing = await this.tables.savedQueries.findOne({
+			workspace,
+			catalog_uid: catalog,
+			query_uid: uid,
+		});
+		if (!existing) return { deleted: false };
+		await this.tables.savedQueries.deleteOne({
+			workspace,
+			catalog_uid: catalog,
+			query_uid: uid,
 		});
 		return { deleted: true };
 	}

@@ -163,3 +163,16 @@ An ingest against a catalog whose `vectorStore` is `null` returns
 `409 catalog_not_bound_to_vector_store`.
 
 Fixture: `fixtures/catalog-ingest-basic.json`.
+
+---
+
+## Scenario 13 — `catalog-saved-queries`
+
+Saved-query CRUD under a catalog. Pins the wire shapes every runtime
+must produce on create/list/update/delete plus the post-delete 404
+(`saved_query_not_found`). `/run` semantics (replaying a saved query
+through catalog-scoped search, with the catalog UID always winning
+over the saved filter) stay in runtime tests — they depend on
+embedding providers that aren't portable across runtimes.
+
+Fixture: `fixtures/catalog-saved-queries.json`.

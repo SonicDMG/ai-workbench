@@ -23,6 +23,7 @@ import type {
 	ApiKeyRow,
 	CatalogRow,
 	DocumentRow,
+	SavedQueryRow,
 	VectorStoreRow,
 	WorkspaceRow,
 } from "./row-types.js";
@@ -52,6 +53,7 @@ export interface TablesBundle {
 	readonly catalogs: TableLike<CatalogRow>;
 	readonly vectorStores: TableLike<VectorStoreRow>;
 	readonly documents: TableLike<DocumentRow>;
+	readonly savedQueries: TableLike<SavedQueryRow>;
 	readonly apiKeys: TableLike<ApiKeyRow>;
 	readonly apiKeyLookup: TableLike<ApiKeyLookupRow>;
 }

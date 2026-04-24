@@ -452,5 +452,64 @@
 				"body": { "vector": [1, 0, 0, 0] }
 			}
 		]
+	},
+	{
+		"slug": "catalog-saved-queries",
+		"description": "Saved-query CRUD under a catalog: create → list → update → delete. A second scenario pins the /run semantics — saved queries replay through catalog-scoped search and cannot escape catalog scope via their own filter. A third variant covers 409 catalog_not_bound_to_vector_store on /run.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/vector-stores",
+				"body": {
+					"name": "vs",
+					"vectorDimension": 4,
+					"embedding": {
+						"provider": "mock",
+						"model": "mock-embedder",
+						"endpoint": null,
+						"dimension": 4,
+						"secretRef": null
+					}
+				}
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs",
+				"body": { "name": "kb", "vectorStore": "$2.uid" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/queries",
+				"body": {
+					"name": "refunds",
+					"description": "billing questions",
+					"text": "how do refunds work?",
+					"topK": 3,
+					"filter": { "section": "billing" }
+				}
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/queries"
+			},
+			{
+				"method": "PUT",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/queries/$4.queryUid",
+				"body": { "name": "refund FAQ", "filter": null }
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/queries/$4.queryUid"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/queries/$4.queryUid"
+			}
+		]
 	}
 ]

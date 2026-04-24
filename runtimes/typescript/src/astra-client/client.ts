@@ -13,6 +13,7 @@ import type {
 	ApiKeyRow,
 	CatalogRow,
 	DocumentRow,
+	SavedQueryRow,
 	VectorStoreRow,
 	WorkspaceRow,
 } from "./row-types.js";
@@ -25,6 +26,8 @@ import {
 	CATALOGS_TABLE,
 	DOCUMENTS_DEFINITION,
 	DOCUMENTS_TABLE,
+	SAVED_QUERIES_DEFINITION,
+	SAVED_QUERIES_TABLE,
 	VECTOR_STORES_DEFINITION,
 	VECTOR_STORES_TABLE,
 	WORKSPACES_DEFINITION,
@@ -58,6 +61,7 @@ export async function openAstraClient(
 		catalogs: db.table<CatalogRow>(CATALOGS_TABLE),
 		vectorStores: db.table<VectorStoreRow>(VECTOR_STORES_TABLE),
 		documents: db.table<DocumentRow>(DOCUMENTS_TABLE),
+		savedQueries: db.table<SavedQueryRow>(SAVED_QUERIES_TABLE),
 		apiKeys: db.table<ApiKeyRow>(API_KEYS_TABLE),
 		apiKeyLookup: db.table<ApiKeyLookupRow>(API_KEY_LOOKUP_TABLE),
 	};
@@ -79,6 +83,10 @@ async function ensureTables(db: Db): Promise<void> {
 		}),
 		db.createTable(DOCUMENTS_TABLE, {
 			definition: DOCUMENTS_DEFINITION,
+			ifNotExists: true,
+		}),
+		db.createTable(SAVED_QUERIES_TABLE, {
+			definition: SAVED_QUERIES_DEFINITION,
 			ifNotExists: true,
 		}),
 		db.createTable(API_KEYS_TABLE, {
