@@ -5,13 +5,16 @@ import { Toaster } from "sonner";
 import { LoadingState } from "@/components/common/states";
 import { AppShell } from "@/components/layout/AppShell";
 import { queryClient } from "@/lib/query";
+import { PlaygroundPage } from "@/pages/PlaygroundPage";
 import { WorkspacesPage } from "@/pages/WorkspacesPage";
 
-// The list page is the landing route and cheap to render, so it's
-// eager. The detail + onboarding pages pull in react-hook-form,
-// @hookform/resolvers, and a chunk of workspace-specific UI that
-// first-paint users rarely need; lazy-load them so the initial
-// bundle stays under the ~500 kB warning threshold.
+// Workspaces is the landing route; Playground is one of two top-level
+// nav targets and needs to swap in cleanly when the user clicks its
+// tab — keeping it eager eliminates a Suspense boundary from the
+// navigation path that was making URL-changes-but-content-stuck reports
+// reproducible. The two heavier flow pages stay lazy because they
+// pull in react-hook-form + zod, which is what the bundle-split work
+// (#36/#37) was actually trying to keep off first paint.
 const OnboardingPage = lazy(() =>
 	import("@/pages/OnboardingPage").then((m) => ({ default: m.OnboardingPage })),
 );
@@ -19,9 +22,6 @@ const WorkspaceDetailPage = lazy(() =>
 	import("@/pages/WorkspaceDetailPage").then((m) => ({
 		default: m.WorkspaceDetailPage,
 	})),
-);
-const PlaygroundPage = lazy(() =>
-	import("@/pages/PlaygroundPage").then((m) => ({ default: m.PlaygroundPage })),
 );
 
 export function App() {

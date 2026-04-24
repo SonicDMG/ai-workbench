@@ -5,9 +5,13 @@ import { BrandMark } from "@/components/brand/BrandMark";
 
 /**
  * Header-level tab. NavLink with a visible active state that reads
- * as selected at a glance — previous styling (text-slate-900 +
- * bg-slate-100) was subtle enough that users were asking whether
- * the tabs worked at all.
+ * as selected at a glance.
+ *
+ * Active treatment is purely className-driven (no children-as-render-
+ * prop) — combining the two NavLink render-prop signatures was
+ * suspected of contributing to a "URL changes but content stays"
+ * report on tab clicks; this keeps the component's render path
+ * minimal.
  */
 function NavTab({
 	to,
@@ -25,23 +29,14 @@ function NavTab({
 			className={({ isActive }) =>
 				[
 					"relative rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+					"after:pointer-events-none after:absolute after:inset-x-3 after:-bottom-px after:h-[2px] after:rounded-full after:transition-opacity",
 					isActive
-						? "text-[var(--color-brand-700)] bg-[color-mix(in_oklch,var(--color-brand-500)_10%,white)]"
-						: "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+						? "text-[var(--color-brand-700)] bg-[color-mix(in_oklch,var(--color-brand-500)_10%,white)] after:bg-[var(--color-brand-500)] after:opacity-100"
+						: "text-slate-600 hover:bg-slate-100 hover:text-slate-900 after:opacity-0",
 				].join(" ")
 			}
 		>
-			{({ isActive }) => (
-				<>
-					{children}
-					{isActive ? (
-						<span
-							aria-hidden
-							className="absolute inset-x-3 -bottom-px h-[2px] rounded-full bg-[var(--color-brand-500)]"
-						/>
-					) : null}
-				</>
-			)}
+			{children}
 		</NavLink>
 	);
 }
