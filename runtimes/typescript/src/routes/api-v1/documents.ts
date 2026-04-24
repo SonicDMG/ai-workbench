@@ -27,12 +27,19 @@ import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
-import type { Chunker } from "../../ingest/chunker.js";
-import { RecursiveCharacterChunker } from "../../ingest/recursive-chunker.js";
+import { CATALOG_SCOPE_KEY } from "../../ingest/payload-keys.js";
+import type {
+	IngestContext,
+	IngestInput,
+	IngestPipelineDeps,
+} from "../../ingest/pipeline.js";
+import { runIngest } from "../../ingest/pipeline.js";
+import type { JobStore } from "../../jobs/store.js";
 import { ApiError } from "../../lib/errors.js";
 import { makeOpenApi } from "../../lib/openapi.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
+	AsyncIngestResponseSchema,
 	CatalogIdParamSchema,
 	CreateDocumentInputSchema,
 	DocumentIdParamSchema,
@@ -46,39 +53,72 @@ import {
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
 import { dispatchSearch, toMutableHits } from "./search-dispatch.js";
-import { dispatchUpsert } from "./upsert-dispatch.js";
+
+/**
+ * Background worker for `POST /ingest?async=true`. Runs {@link runIngest}
+ * with a progress callback that updates the associated job record.
+ *
+ * This function **never throws**: any failure is caught, the job is
+ * flipped to `failed` with `errorMessage`, and the document row's
+ * status is already handled by {@link runIngest}. That lets the
+ * caller spawn it with `void` without worrying about unhandled
+ * rejections.
+ */
+async function runAsyncIngest(args: {
+	readonly deps: IngestPipelineDeps;
+	readonly jobsStore: JobStore;
+	readonly ctx: IngestContext;
+	readonly input: IngestInput;
+	readonly jobId: string;
+	readonly workspaceId: string;
+}): Promise<void> {
+	const { deps, jobsStore, ctx, input, jobId, workspaceId } = args;
+	try {
+		await jobsStore.update(workspaceId, jobId, { status: "running" });
+		const result = await runIngest(deps, ctx, input, (p) => {
+			// Swallow an update failure — telemetry only, shouldn't kill
+			// the pipeline.
+			void jobsStore
+				.update(workspaceId, jobId, {
+					processed: p.processed,
+					total: p.total,
+				})
+				.catch(() => undefined);
+		});
+		await jobsStore.update(workspaceId, jobId, {
+			status: "succeeded",
+			result: { chunks: result.chunks },
+		});
+	} catch (err) {
+		await jobsStore
+			.update(workspaceId, jobId, {
+				status: "failed",
+				errorMessage: err instanceof Error ? err.message : String(err),
+			})
+			.catch(() => undefined);
+	}
+}
 
 export interface DocumentRouteDeps {
 	readonly store: ControlPlaneStore;
 	readonly drivers: VectorStoreDriverRegistry;
 	readonly embedders: EmbedderFactory;
+	/** Required — the async-ingest path persists progress through it. */
+	readonly jobs: JobStore;
 }
 
-/**
- * Payload key that carries the catalog UID on every record written by
- * the ingest pipeline. The search route merges `{ [CATALOG_SCOPE_KEY]:
- * catalog.uid }` into the caller's filter so results stay within the
- * catalog; the ingest route stamps the same key on every chunk it
- * upserts. One shared constant keeps the two sides in lock-step.
- */
-export const CATALOG_SCOPE_KEY = "catalogUid";
-
-/**
- * Payload key that identifies which source document a chunk belongs
- * to. Stamped by the ingest pipeline alongside {@link CATALOG_SCOPE_KEY}.
- * Filtering on `documentUid` is how future surfaces (document-scoped
- * search, "show chunks of this doc") will narrow.
- */
-export const DOCUMENT_SCOPE_KEY = "documentUid";
-
-/**
- * Payload key that records a chunk's 0-based position within its
- * source document. Useful for reassembling context around a hit.
- */
-export const CHUNK_INDEX_KEY = "chunkIndex";
+// `CATALOG_SCOPE_KEY`, `DOCUMENT_SCOPE_KEY`, and `CHUNK_INDEX_KEY`
+// moved to `src/ingest/payload-keys.ts`. Re-exported here so existing
+// consumers (including the saved-queries route and downstream code)
+// keep working without a file-by-file path update.
+export {
+	CATALOG_SCOPE_KEY,
+	CHUNK_INDEX_KEY,
+	DOCUMENT_SCOPE_KEY,
+} from "../../ingest/payload-keys.js";
 
 export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
-	const { store, drivers, embedders } = deps;
+	const { store, drivers, embedders, jobs } = deps;
 	const app = makeOpenApi();
 
 	app.openapi(
@@ -162,11 +202,21 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 			tags: ["documents"],
 			summary: "Ingest a document: chunk, embed, upsert",
 			description:
-				"Synchronous ingest. Chunks `text` via the runtime's chunker, embeds each chunk (server-side via `$vectorize` when the bound store supports it, otherwise client-side), and upserts the chunks into the catalog's bound vector store. Creates a Document metadata row stamped with `status: ready` and `chunkTotal`. Failures mark the row `status: failed` with `errorMessage` before re-raising.",
+				"Chunks `text`, embeds each chunk (server-side via `$vectorize` when the bound store supports it, otherwise client-side), and upserts into the catalog's bound vector store. Creates a Document metadata row; failures mark it `status: failed` with `errorMessage`. With `?async=true` the request returns 202 with a `job` pointer instead — the pipeline runs in the background and the document status plus the job's `processed`/`total`/`status` fields track progress. Clients poll `GET /jobs/{jobId}` or stream `GET /jobs/{jobId}/events`.",
 			request: {
 				params: z.object({
 					workspaceId: WorkspaceIdParamSchema,
 					catalogId: CatalogIdParamSchema,
+				}),
+				query: z.object({
+					async: z
+						.enum(["true", "false"])
+						.optional()
+						.openapi({
+							param: { name: "async", in: "query" },
+							description:
+								"When 'true', run the pipeline in the background and return 202 with a job pointer. Default is synchronous (201).",
+						}),
 				}),
 				body: {
 					content: { "application/json": { schema: IngestRequestSchema } },
@@ -175,7 +225,13 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 			responses: {
 				201: {
 					content: { "application/json": { schema: IngestResponseSchema } },
-					description: "Document created and chunks upserted",
+					description: "Document created and chunks upserted (sync path)",
+				},
+				202: {
+					content: {
+						"application/json": { schema: AsyncIngestResponseSchema },
+					},
+					description: "Ingest queued; poll the job for progress",
 				},
 				400: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
@@ -194,6 +250,7 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, catalogId } = c.req.valid("param");
+			const { async: asyncMode } = c.req.valid("query");
 			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 
@@ -221,16 +278,8 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 				);
 			}
 
-			const chunker: Chunker = new RecursiveCharacterChunker(body.chunker);
-			const chunks = chunker.chunk({
-				text: body.text,
-				metadata: body.metadata,
-			});
-
-			// Register the document up front so callers can see status
-			// progression even if embed/upsert throws. The metadata we
-			// persist on the row is exactly what came in — chunker
-			// metadata stays on the per-chunk payloads, not the doc.
+			// Document row goes in first regardless of async mode — both
+			// paths need a durable anchor for status tracking.
 			const document = await store.createDocument(workspaceId, catalogId, {
 				uid: body.uid,
 				sourceDocId: body.sourceDocId,
@@ -238,54 +287,56 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 				fileType: body.fileType,
 				fileSize: body.fileSize,
 				md5Hash: body.md5Hash,
-				chunkTotal: chunks.length,
 				status: "writing",
 				metadata: body.metadata,
 			});
 
-			const driver = drivers.for(workspace);
-			const ctx = { workspace, descriptor };
+			const ingestCtx = {
+				workspace,
+				catalog,
+				descriptor,
+				documentUid: document.documentUid,
+			};
 
-			try {
-				if (chunks.length > 0) {
-					await dispatchUpsert({
-						ctx,
-						driver,
-						embedders,
-						records: chunks.map((chunk) => ({
-							id: `${document.documentUid}:${chunk.index}`,
-							text: chunk.text,
-							payload: {
-								...chunk.metadata,
-								[CATALOG_SCOPE_KEY]: catalog.uid,
-								[DOCUMENT_SCOPE_KEY]: document.documentUid,
-								[CHUNK_INDEX_KEY]: chunk.index,
-							},
-						})),
-					});
-				}
-				const ready = await store.updateDocument(
+			if (asyncMode === "true") {
+				const job = await jobs.create({
+					workspace: workspaceId,
+					kind: "ingest",
+					catalogUid: catalogId,
+					documentUid: document.documentUid,
+				});
+				// Detached execution — route returns immediately with 202.
+				// Errors are captured into the job record; no thrown
+				// promise escapes the runtime.
+				void runAsyncIngest({
+					deps: { store, drivers, embedders },
+					jobsStore: jobs,
+					ctx: ingestCtx,
+					input: body,
+					jobId: job.jobId,
 					workspaceId,
-					catalogId,
-					document.documentUid,
-					{
-						status: "ready",
-						ingestedAt: new Date().toISOString(),
-					},
-				);
-				return c.json({ document: ready, chunks: chunks.length }, 201);
-			} catch (err) {
-				// Mark the document failed and re-raise so the caller
-				// sees the underlying error. Swallowing the update error
-				// on purpose — the original failure is more informative.
-				await store
-					.updateDocument(workspaceId, catalogId, document.documentUid, {
-						status: "failed",
-						errorMessage: err instanceof Error ? err.message : String(err),
-					})
-					.catch(() => undefined);
-				throw err;
+				});
+				return c.json({ job, document }, 202);
 			}
+
+			// Sync path.
+			const result = await runIngest(
+				{ store, drivers, embedders },
+				ingestCtx,
+				body,
+			);
+			const ready = await store.getDocument(
+				workspaceId,
+				catalogId,
+				document.documentUid,
+			);
+			return c.json(
+				{
+					document: ready ?? document,
+					chunks: result.chunks,
+				},
+				201,
+			);
 		},
 	);
 

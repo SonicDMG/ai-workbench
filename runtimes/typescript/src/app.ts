@@ -7,6 +7,8 @@
  *   `/api/v1/workspaces/{w}/catalogs`             catalogs CRUD
  *   `/api/v1/workspaces/{w}/catalogs/{c}/documents`  document metadata CRUD
  *   `/api/v1/workspaces/{w}/catalogs/{c}/documents/search`  catalog-scoped search
+ *   `/api/v1/workspaces/{w}/catalogs/{c}/ingest`  sync + async ingest
+ *   `/api/v1/workspaces/{w}/jobs/{jobId}`         job poll + SSE
  *   `/api/v1/workspaces/{w}/catalogs/{c}/queries`  saved queries CRUD + /run
  *   `/api/v1/workspaces/{w}/vector-stores`        vector-store descriptor CRUD
  *   `/api/v1/openapi.json`                        generated OpenAPI doc
@@ -25,6 +27,8 @@ import type { AuthConfig } from "./config/schema.js";
 import type { ControlPlaneStore } from "./control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "./drivers/registry.js";
 import type { EmbedderFactory } from "./embeddings/factory.js";
+import { MemoryJobStore } from "./jobs/memory-store.js";
+import type { JobStore } from "./jobs/store.js";
 import { ApiError, errorEnvelope } from "./lib/errors.js";
 import { makeOpenApi } from "./lib/openapi.js";
 import { requestId } from "./lib/request-id.js";
@@ -33,6 +37,7 @@ import { apiKeyRoutes } from "./routes/api-v1/api-keys.js";
 import { catalogRoutes } from "./routes/api-v1/catalogs.js";
 import { documentRoutes } from "./routes/api-v1/documents.js";
 import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
+import { jobRoutes } from "./routes/api-v1/jobs.js";
 import { savedQueryRoutes } from "./routes/api-v1/saved-queries.js";
 import { vectorStoreRoutes } from "./routes/api-v1/vector-stores.js";
 import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
@@ -57,6 +62,8 @@ export interface AppOptions {
 	readonly secrets: SecretResolver;
 	readonly auth: AuthResolver;
 	readonly embedders: EmbedderFactory;
+	/** Optional — a {@link MemoryJobStore} is constructed if absent. */
+	readonly jobs?: JobStore;
 	readonly ui?: UiAssets | null;
 	readonly login?: AppLoginOptions | null;
 	readonly readiness?: ReadinessSignal;
@@ -65,6 +72,7 @@ export interface AppOptions {
 
 export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
+	const jobsStore: JobStore = opts.jobs ?? new MemoryJobStore();
 
 	app.use("*", requestId(opts.requestIdHeader));
 
@@ -132,8 +140,10 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			store: opts.store,
 			drivers: opts.drivers,
 			embedders: opts.embedders,
+			jobs: jobsStore,
 		}),
 	);
+	app.route("/api/v1/workspaces", jobRoutes({ jobs: jobsStore }));
 	app.route(
 		"/api/v1/workspaces",
 		savedQueryRoutes({

@@ -436,6 +436,48 @@ export const IngestResponseSchema = z
 	})
 	.openapi("IngestResponse");
 
+/** Lifecycle of a background job. */
+export const JobStatusSchema = z
+	.enum(["pending", "running", "succeeded", "failed"])
+	.openapi("JobStatus");
+
+export const JobRecordSchema = z
+	.object({
+		workspace: z.string().uuid(),
+		jobId: z.string().uuid(),
+		kind: z.enum(["ingest"]),
+		catalogUid: z.string().uuid().nullable(),
+		documentUid: z.string().uuid().nullable(),
+		status: JobStatusSchema,
+		processed: z.number().int().nonnegative(),
+		total: z.number().int().nonnegative().nullable(),
+		result: z.record(z.string(), z.unknown()).nullable(),
+		errorMessage: z.string().nullable(),
+		createdAt: z.string(),
+		updatedAt: z.string(),
+	})
+	.openapi("Job");
+
+/**
+ * 202 envelope for `POST /ingest?async=true`. Returns both the
+ * freshly-created job and the document row — callers can track
+ * either; they stay in sync as the pipeline progresses.
+ */
+export const AsyncIngestResponseSchema = z
+	.object({
+		job: JobRecordSchema,
+		document: DocumentRecordSchema,
+	})
+	.openapi("AsyncIngestResponse");
+
+export const JobIdParamSchema = z
+	.string()
+	.uuid()
+	.openapi({
+		param: { name: "jobId", in: "path" },
+		example: "00000000-0000-0000-0000-000000000000",
+	});
+
 /* ---------------- Params ---------------- */
 
 export const WorkspaceIdParamSchema = z
