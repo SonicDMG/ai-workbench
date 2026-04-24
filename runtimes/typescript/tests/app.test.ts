@@ -104,6 +104,42 @@ describe("operational routes", () => {
 		});
 		expect(res.headers.get("X-Request-Id")).toBe("abc-123");
 	});
+
+	test("GET /readyz returns 503 draining when the readiness signal is flipped", async () => {
+		// Construct with an explicit readiness signal so we can flip
+		// it mid-test — this is the path root.ts's SIGTERM handler
+		// takes during graceful shutdown.
+		const store = new MemoryControlPlaneStore();
+		const drivers = new VectorStoreDriverRegistry(
+			new Map([["mock", new MockVectorStoreDriver()]]),
+		);
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const auth = new AuthResolver({
+			mode: "disabled",
+			anonymousPolicy: "allow",
+			verifiers: [],
+		});
+		const readiness = { draining: false };
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory(),
+			readiness,
+		});
+
+		expect((await app.request("/readyz")).status).toBe(200);
+		readiness.draining = true;
+		const res = await app.request("/readyz");
+		expect(res.status).toBe(503);
+		const body = await json(res);
+		expect(body.error.code).toBe("draining");
+
+		// healthz should still be 200 — the process is alive even
+		// while draining; only readiness flips.
+		expect((await app.request("/healthz")).status).toBe(200);
+	});
 });
 
 describe("workspace routes", () => {

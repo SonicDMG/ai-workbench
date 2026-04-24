@@ -141,13 +141,20 @@ Liveness. Returns `200` as long as the process is running.
 
 ### `GET /readyz`
 
-Readiness. Returns `200` once the control-plane store is reachable
-and workspaces can be listed. The payload carries a workspace count
+Readiness. `200` once the control-plane store is reachable and
+workspaces can be listed. The payload carries a workspace count
 rather than a list — avoids O(N) responses when the store grows.
 
 ```json
 { "status": "ready", "workspaces": 3 }
 ```
+
+Returns `503 draining` during graceful shutdown (`SIGINT` /
+`SIGTERM`). Kubernetes-style readiness probes will stop routing
+traffic while the runtime finishes in-flight requests. See
+[`configuration.md`](configuration.md#graceful-shutdown) for the
+drain sequence. `/healthz` stays `200` throughout so
+`livenessProbe` doesn't restart a healthy, draining process.
 
 ### `GET /version`
 

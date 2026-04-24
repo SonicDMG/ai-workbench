@@ -263,6 +263,27 @@ changes." Since only the control-plane backend is configured here
 (workspaces themselves are runtime data), most day-to-day operations
 don't require a config change anyway.
 
+## Graceful shutdown
+
+`SIGINT` and `SIGTERM` trigger a graceful-shutdown sequence:
+
+1. `/readyz` starts returning `503 draining`. Kubernetes-style
+   readiness probes will stop routing traffic here.
+2. `server.close()` stops accepting new connections. In-flight
+   requests keep going.
+3. When every connection finishes (or after 15 seconds, whichever
+   comes first), the control-plane store closes and the process
+   exits `0`. A timeout exits `1` so the supervisor knows we didn't
+   drain cleanly.
+4. A second `SIGINT` / `SIGTERM` while the first is still draining
+   short-circuits straight to exit — the operator can force-kill a
+   stuck process without waiting for the timeout.
+
+`/healthz` stays `200` throughout the drain (the process is still
+alive, just closed to new traffic). That's the split that k8s
+expects — `livenessProbe` hits `/healthz`, `readinessProbe` hits
+`/readyz`.
+
 ## `.env` file (dev convenience)
 
 The runtime auto-loads a `.env` file at startup so local dev doesn't

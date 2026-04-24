@@ -62,6 +62,7 @@ async function main(): Promise<void> {
 		);
 	}
 
+	const readiness = { draining: false };
 	const app = createApp({
 		store,
 		drivers,
@@ -70,11 +71,12 @@ async function main(): Promise<void> {
 		embedders,
 		ui,
 		login,
+		readiness,
 		requestIdHeader: config.runtime.requestIdHeader,
 	});
 
 	const port = config.runtime.port;
-	serve({ fetch: app.fetch, port }, async (info) => {
+	const server = serve({ fetch: app.fetch, port }, async (info) => {
 		const workspaces = await store.listWorkspaces();
 		logger.info(
 			{
@@ -89,10 +91,49 @@ async function main(): Promise<void> {
 		);
 	});
 
-	const shutdown = (signal: string) => async () => {
-		logger.info({ signal }, "shutting down");
-		await store.close?.();
-		process.exit(0);
+	// Graceful shutdown: stop accepting new connections, wait for
+	// in-flight requests to finish (up to SHUTDOWN_TIMEOUT_MS), then
+	// close the control plane and exit. A second signal short-circuits
+	// straight to exit so operators can force-kill a stuck process.
+	const SHUTDOWN_TIMEOUT_MS = 15_000;
+	let shuttingDown = false;
+	const shutdown = (signal: string) => () => {
+		if (shuttingDown) {
+			logger.warn({ signal }, "second shutdown signal — forcing exit");
+			process.exit(1);
+			return;
+		}
+		shuttingDown = true;
+		readiness.draining = true;
+		logger.info(
+			{ signal, timeoutMs: SHUTDOWN_TIMEOUT_MS },
+			"shutting down — /readyz now returns 503, draining in-flight requests",
+		);
+
+		const forceKill = setTimeout(() => {
+			logger.error(
+				{ signal, timeoutMs: SHUTDOWN_TIMEOUT_MS },
+				"in-flight requests did not drain in time — forcing exit",
+			);
+			process.exit(1);
+		}, SHUTDOWN_TIMEOUT_MS);
+		forceKill.unref();
+
+		server.close(async (err) => {
+			if (err) {
+				logger.error({ err: err.message }, "server.close failed");
+			}
+			try {
+				await store.close?.();
+			} catch (closeErr) {
+				logger.error(
+					{ err: closeErr instanceof Error ? closeErr.message : "unknown" },
+					"control-plane close failed",
+				);
+			}
+			clearTimeout(forceKill);
+			process.exit(err ? 1 : 0);
+		});
 	};
 	process.on("SIGINT", shutdown("SIGINT"));
 	process.on("SIGTERM", shutdown("SIGTERM"));

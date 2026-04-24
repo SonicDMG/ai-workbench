@@ -1,17 +1,31 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { ControlPlaneStore } from "../control-plane/store.js";
+import { errorEnvelope } from "../lib/errors.js";
 import { makeOpenApi } from "../lib/openapi.js";
 import type { AppEnv } from "../lib/types.js";
 import {
 	BannerSchema,
+	ErrorEnvelopeSchema,
 	HealthSchema,
 	ReadySchema,
 	VersionSchema,
 } from "../openapi/schemas.js";
 import { BUILD_TIME, COMMIT, VERSION } from "../version.js";
 
+/**
+ * Opt-in drain signal. `root.ts` flips `draining` on SIGINT/SIGTERM
+ * so `/readyz` reports 503 during graceful-shutdown drain even
+ * though new connections are still being accepted. Load balancers
+ * with a readiness probe will route traffic away without us having
+ * to slam the port closed mid-request.
+ */
+export interface ReadinessSignal {
+	draining: boolean;
+}
+
 export function operationalRoutes(
 	store: ControlPlaneStore,
+	readiness?: ReadinessSignal,
 ): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
 
@@ -67,9 +81,24 @@ export function operationalRoutes(
 					content: { "application/json": { schema: ReadySchema } },
 					description: "Control plane is reachable",
 				},
+				503: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description:
+						"Not ready — either the process is draining on shutdown or the control plane is unreachable",
+				},
 			},
 		}),
 		async (c) => {
+			if (readiness?.draining) {
+				return c.json(
+					errorEnvelope(
+						c,
+						"draining",
+						"runtime is shutting down; traffic should be routed elsewhere",
+					),
+					503,
+				);
+			}
 			const workspaces = await store.listWorkspaces();
 			return c.json(
 				{ status: "ready" as const, workspaces: workspaces.length },

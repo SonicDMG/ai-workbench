@@ -34,6 +34,7 @@ import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
 import { vectorStoreRoutes } from "./routes/api-v1/vector-stores.js";
 import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
 import { authLoginRoutes } from "./routes/auth.js";
+import type { ReadinessSignal } from "./routes/operational.js";
 import { operationalRoutes } from "./routes/operational.js";
 import type { SecretResolver } from "./secrets/provider.js";
 import { isSpaPath, type UiAssets } from "./ui/assets.js";
@@ -55,6 +56,7 @@ export interface AppOptions {
 	readonly embedders: EmbedderFactory;
 	readonly ui?: UiAssets | null;
 	readonly login?: AppLoginOptions | null;
+	readonly readiness?: ReadinessSignal;
 	readonly requestIdHeader?: string;
 }
 
@@ -97,7 +99,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		authMiddleware({ resolver: opts.auth, cookie: cookieMiddlewareCfg }),
 	);
 
-	app.route("/", operationalRoutes(opts.store));
+	app.route("/", operationalRoutes(opts.store, opts.readiness));
 
 	if (opts.login) {
 		app.route(

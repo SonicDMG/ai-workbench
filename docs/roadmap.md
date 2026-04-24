@@ -12,7 +12,9 @@ runnable artifact and a stable slice of the HTTP contract.
 | 1b | Vector-store data plane (provisioning, upsert, search) | ✅ Shipped |
 | 2a | Document metadata CRUD (`/catalogs/{c}/documents`) | ✅ Shipped |
 | 2b | Ingest + catalog-scoped search + saved queries | Planned |
-| 3 | Playground + UI | Planned |
+| 2c | Server-side embedding (Astra `$vectorize`) for search + upsert | ✅ Shipped |
+| 3 | Playground + UI | ✅ Shipped |
+| Auth | Middleware, API keys, OIDC verifier, browser login | ✅ Shipped (1–3b); 3c (silent refresh) + 4 (RBAC) planned |
 | 4+ | Chats, MCP | Reserved |
 
 ## Phase 0 — Bootstrap ✅
@@ -114,25 +116,59 @@ Deliverables:
 Workspace-scoped API keys moved into their own dedicated auth
 track — see [`auth.md`](auth.md) for the phased rollout.
 
-## Phase 3 — Playground & UI
+## Phase 2c — Server-side embedding (Astra vectorize) ✅
 
-**Goal:** a browser UI for exploring workspaces, running searches,
-ingesting files, and inspecting results.
+Astra Data API collections created under this runtime opt into
+server-side embedding when the descriptor's `embedding` names a
+supported provider (`openai`, `azureOpenAI`, `cohere`, `jinaAI`,
+`mistral`, `nvidia`, `voyageAI`). The driver:
 
-Deliverables:
+- Passes `vector.service: { provider, modelName }` at
+  `createCollection`.
+- Routes `search(text)` via `find(sort: { $vectorize: text })` in
+  `searchByText`.
+- Routes `upsert([{text}])` via `insertMany({ $vectorize, ... })` in
+  `upsertByText`.
+- Attaches the resolved embedding API key as
+  `x-embedding-api-key` per request (header auth, not Astra KMS).
 
-- Static `/playground` and `/ingest` assets served by the runtime.
-  - Playground UI: ✅ shipped. See [`docs/playground.md`](playground.md).
-  - Ingest UI: pending.
-- Playground API: ✅ shipped as an extension of the existing
-  `POST /api/v1/workspaces/{w}/vector-stores/{vs}/search` data-plane
-  route — accepts either `{ vector }` or `{ text }`. No new
-  endpoint.
-- UI consumes the existing `/api/v1/*` surface — no special admin API.
-- UI + default TS runtime ship as one Docker image. ✅ shipped —
-  the image builds `apps/web` in a first stage and serves it out of
-  `/app/public`. See [`runtimes/typescript/Dockerfile`](../runtimes/typescript/Dockerfile)
-  and [`docs/configuration.md`](configuration.md) `runtime.uiDir`.
+Legacy collections without a `service` block raise
+`COLLECTION_VECTORIZE_NOT_CONFIGURED`; the driver catches and
+rethrows as `NotSupportedError`, after which the route layer falls
+back to client-side embedding via the Vercel AI SDK. No migration
+required on existing data. See [`docs/playground.md`](playground.md)
+for the dispatch model.
+
+## Phase 3 — Playground & UI ✅
+
+Browser UI for exploring workspaces, managing their vector stores,
+and running searches against them.
+
+Shipped:
+
+- **`/`** — workspace list + onboarding wizard.
+- **`/workspaces/{uid}`** — detail, test-connection, vector-store
+  CRUD panel, API-key issue/revoke panel.
+- **`/playground`** — ad-hoc vector + text queries with expandable
+  results. See [`docs/playground.md`](playground.md).
+- Playground API: text queries via an extension of the existing
+  `POST .../search` route (accepts either `{ vector }` or `{ text }`
+  — no new endpoint). Upsert followed the same pattern for text
+  records.
+- UI consumes the existing `/api/v1/*` surface — no special admin
+  API.
+- UI + default TS runtime ship as one Docker image — the image
+  builds `apps/web` in a first stage and serves it out of
+  `/app/public`. See
+  [`runtimes/typescript/Dockerfile`](../runtimes/typescript/Dockerfile)
+  and [`docs/configuration.md`](configuration.md)'s `runtime.uiDir`.
+
+Not yet shipped:
+
+- Ingest UI (upload → chunk → embed). Upsert via `POST .../records`
+  is the path today.
+- Catalog/document browsing UI.
+- Saved queries.
 
 ## Phase 4+ — Chats, MCP
 
