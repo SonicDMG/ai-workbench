@@ -1,0 +1,368 @@
+---
+// biome-ignore-all lint/correctness/noUnusedVariables: bindings declared
+// in this Astro frontmatter block are referenced from the template
+// below. Biome's TS-only frontmatter parser doesn't see those usages.
+
+// Plain Astro landing page (no StarlightPage wrapper).
+//
+// Why not StarlightPage? The current Starlight + Astro release pair
+// has a known frontmatter-schema issue with mixed zod v3/v4 in the
+// dependency tree that makes StarlightPage fail at build time on
+// this repo. Until that's resolved upstream we hand-roll the splash
+// page with minimal markup. Doc pages still go through Starlight as
+// normal — only the home and 404 routes are bare.
+const SITE_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+// Pre-compute every doc URL in one place. Biome's TS-only
+// frontmatter parser doesn't see references inside the Astro
+// template, so a `docHref(slug)` helper would read as unused.
+const links = {
+	architecture: `${SITE_BASE}/architecture/`,
+	apiSpec: `${SITE_BASE}/api-spec/`,
+	auth: `${SITE_BASE}/auth/`,
+	greenBoxes: `${SITE_BASE}/green-boxes/`,
+	playground: `${SITE_BASE}/playground/`,
+	roadmap: `${SITE_BASE}/roadmap/`,
+};
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>AI Workbench</title>
+		<meta
+			name="description"
+			content="An HTTP runtime that sits in front of Astra DB — workspaces, catalogs, vector stores, ingest, and a browser playground."
+		/>
+		<style>
+			:root {
+				color-scheme: light dark;
+				--bg: #0b1220;
+				--bg-elev: #111a2c;
+				--fg: #e6edf6;
+				--muted: #94a3b8;
+				--accent: #60a5fa;
+				--accent-strong: #93c5fd;
+				--card: #0f1830;
+				--border: #1e293b;
+				font-family:
+					-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans,
+					Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+				line-height: 1.6;
+			}
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				background: radial-gradient(
+						ellipse at top,
+						rgba(37, 99, 235, 0.18),
+						transparent 50%
+					),
+					var(--bg);
+				color: var(--fg);
+			}
+			.container {
+				max-width: 980px;
+				margin: 0 auto;
+				padding: 4rem 1.5rem 6rem;
+			}
+			header.brand {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				margin-bottom: 4rem;
+			}
+			.brand .logo {
+				font-weight: 700;
+				font-size: 1.05rem;
+				letter-spacing: -0.01em;
+			}
+			.brand nav a {
+				color: var(--muted);
+				text-decoration: none;
+				margin-left: 1.25rem;
+				font-size: 0.95rem;
+			}
+			.brand nav a:hover {
+				color: var(--fg);
+			}
+			.hero h1 {
+				font-size: clamp(2.5rem, 6vw, 4.25rem);
+				line-height: 1.05;
+				letter-spacing: -0.025em;
+				margin: 0 0 1.25rem;
+				background: linear-gradient(
+					90deg,
+					var(--accent-strong),
+					#c4b5fd 70%,
+					#fda4af
+				);
+				-webkit-background-clip: text;
+				background-clip: text;
+				color: transparent;
+			}
+			.hero p.lede {
+				font-size: 1.2rem;
+				color: var(--muted);
+				margin: 0 0 2rem;
+				max-width: 50rem;
+			}
+			.cta {
+				display: inline-flex;
+				align-items: center;
+				gap: 0.5rem;
+				padding: 0.7rem 1.1rem;
+				border-radius: 8px;
+				font-weight: 500;
+				text-decoration: none;
+				font-size: 0.95rem;
+			}
+			.cta.primary {
+				background: var(--accent);
+				color: #0b1220;
+			}
+			.cta.primary:hover {
+				background: var(--accent-strong);
+			}
+			.cta.ghost {
+				color: var(--fg);
+				border: 1px solid var(--border);
+				margin-left: 0.75rem;
+			}
+			.cta.ghost:hover {
+				border-color: var(--accent);
+			}
+			h2 {
+				margin: 4rem 0 1.5rem;
+				font-size: 1.5rem;
+				letter-spacing: -0.01em;
+			}
+			.grid {
+				display: grid;
+				gap: 1rem;
+				grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+			}
+			.card {
+				background: var(--card);
+				border: 1px solid var(--border);
+				border-radius: 10px;
+				padding: 1.25rem 1.25rem 1.5rem;
+			}
+			.card h3 {
+				margin: 0 0 0.4rem;
+				font-size: 1rem;
+				color: var(--accent-strong);
+			}
+			.card p {
+				margin: 0;
+				color: var(--muted);
+				font-size: 0.93rem;
+			}
+			.linklist {
+				display: grid;
+				gap: 0.75rem;
+				grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+			}
+			.linklist a {
+				display: block;
+				padding: 1rem 1.1rem;
+				border-radius: 10px;
+				border: 1px solid var(--border);
+				background: var(--card);
+				text-decoration: none;
+				color: var(--fg);
+				transition: border-color 0.15s ease, transform 0.15s ease;
+			}
+			.linklist a:hover {
+				border-color: var(--accent);
+				transform: translateY(-1px);
+			}
+			.linklist .title {
+				display: flex;
+				align-items: center;
+				gap: 0.5rem;
+				font-weight: 500;
+			}
+			.linklist .desc {
+				margin-top: 0.3rem;
+				font-size: 0.88rem;
+				color: var(--muted);
+			}
+			pre {
+				background: var(--bg-elev);
+				padding: 1rem 1.25rem;
+				border-radius: 10px;
+				border: 1px solid var(--border);
+				overflow-x: auto;
+				font-size: 0.88rem;
+				color: #cbd5e1;
+			}
+			footer {
+				margin-top: 6rem;
+				padding-top: 1.5rem;
+				border-top: 1px solid var(--border);
+				color: var(--muted);
+				font-size: 0.88rem;
+				display: flex;
+				justify-content: space-between;
+				flex-wrap: wrap;
+				gap: 0.75rem;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<header class="brand">
+				<span class="logo">AI Workbench</span>
+				<nav>
+					<a href={links.architecture}>Docs</a>
+					<a href={links.apiSpec}>API</a>
+					<a href={links.roadmap}>Roadmap</a>
+					<a href="https://github.com/datastax/ai-workbench">GitHub</a>
+				</nav>
+			</header>
+
+			<section class="hero">
+				<h1>One HTTP contract.<br />Language-native runtimes.</h1>
+				<p class="lede">
+					AI Workbench is a self-hosted HTTP runtime + UI for building
+					knowledge bases on top of DataStax Astra. Workspaces, catalogs,
+					vector stores, ingest, hybrid + rerank search, and a browser
+					playground — all in one Docker image.
+				</p>
+				<a class="cta primary" href={links.architecture}>
+					Read the docs →
+				</a>
+				<a class="cta ghost" href="https://github.com/datastax/ai-workbench">
+					View on GitHub
+				</a>
+			</section>
+
+			<h2>Highlights</h2>
+			<div class="grid">
+				<div class="card">
+					<h3>One contract, N runtimes</h3>
+					<p>
+						The HTTP API is the contract. The default TypeScript runtime
+						ships bundled with the UI; alternative-language "green boxes"
+						(Python, Java) live as siblings under <code>runtimes/</code>
+						and pass the same fixture-enforced conformance suite.
+					</p>
+				</div>
+				<div class="card">
+					<h3>Pluggable control plane</h3>
+					<p>
+						Workspaces, catalogs, and vector-store descriptors persist in
+						one of three backends: <code>memory</code> (default),
+						<code>file</code> (JSON on disk), or <code>astra</code> (Data
+						API Tables). Same API contract.
+					</p>
+				</div>
+				<div class="card">
+					<h3>Astra-native, no wrappers</h3>
+					<p>
+						The TS runtime uses <code>@datastax/astra-db-ts</code> directly;
+						the Python runtime will use <code>astrapy</code>. No middleware,
+						no shimming.
+					</p>
+				</div>
+				<div class="card">
+					<h3>Browser playground + ingest</h3>
+					<p>
+						The bundled web UI runs vector / text / hybrid / rerank queries
+						against any workspace's vector store, and ingests documents
+						through a chunk → embed → upsert pipeline that streams
+						progress.
+					</p>
+				</div>
+				<div class="card">
+					<h3>Secrets by reference</h3>
+					<p>
+						Credentials never live in records — fields like
+						<code>credentialsRef</code> hold <code>provider:path</code>
+						pointers (<code>env:FOO</code>, <code>file:/path</code>)
+						resolved on demand by a pluggable <code>SecretResolver</code>.
+					</p>
+				</div>
+				<div class="card">
+					<h3>OIDC + silent refresh</h3>
+					<p>
+						The auth middleware handles workspace-scoped
+						<code>wb_live_*</code> API keys and OIDC bearer tokens, with a
+						browser login flow (PKCE) and silent token refresh so users
+						don't see mid-session re-logins.
+					</p>
+				</div>
+			</div>
+
+			<h2>Where to next</h2>
+			<div class="linklist">
+				<a href={links.architecture}>
+					<div class="title">Architecture →</div>
+					<div class="desc">
+						System model, components, data flow, control-plane drivers.
+					</div>
+				</a>
+				<a href={links.greenBoxes}>
+					<div class="title">Green boxes →</div>
+					<div class="desc">
+						The multi-runtime model: why language-native, how to add one.
+					</div>
+				</a>
+				<a href={links.apiSpec}>
+					<div class="title">API spec →</div>
+					<div class="desc">
+						HTTP contract narrative — every route, every error, every
+						shape.
+					</div>
+				</a>
+				<a href={links.auth}>
+					<div class="title">Authentication →</div>
+					<div class="desc">
+						Middleware, API keys, OIDC, silent refresh, threat model.
+					</div>
+				</a>
+				<a href={links.playground}>
+					<div class="title">Playground →</div>
+					<div class="desc">
+						UX, text/vector dispatch, hybrid + rerank toggles, ingest
+						dialog.
+					</div>
+				</a>
+				<a href={links.roadmap}>
+					<div class="title">Roadmap →</div>
+					<div class="desc">
+						Phased delivery plan, what's shipped, what's reserved.
+					</div>
+				</a>
+			</div>
+
+			<h2>Quickstart</h2>
+			<pre><code>{`# Clone + install
+git clone https://github.com/datastax/ai-workbench.git
+cd ai-workbench
+npm ci && npm run install:ts
+
+# Boot with the default in-memory control plane
+npm run dev                            # http://localhost:8080
+
+# Hit it
+curl http://localhost:8080/healthz     # {"status":"ok"}
+curl http://localhost:8080/docs        # Scalar-rendered API reference`}</code></pre>
+
+			<footer>
+				<span>
+					AI Workbench — built by <a href="https://www.datastax.com">DataStax</a>.
+				</span>
+				<span>
+					<a href="https://github.com/datastax/ai-workbench"
+						>github.com/datastax/ai-workbench</a
+					>
+				</span>
+			</footer>
+		</div>
+	</body>
+</html>

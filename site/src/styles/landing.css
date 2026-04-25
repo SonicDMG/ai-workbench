@@ -1,0 +1,25 @@
+/*
+ * Light brand tweaks. Starlight's default theme already looks
+ * great; this just pulls the accent toward DataStax brand blue
+ * and tightens the splash hero so the landing doesn't feel
+ * generic. Keep this file tiny — anything bigger should be a
+ * theme-level decision, not a one-off override.
+ */
+
+:root {
+	--sl-color-accent-low: #0d2845;
+	--sl-color-accent: #2563eb;
+	--sl-color-accent-high: #93c5fd;
+}
+
+:root[data-theme="light"] {
+	--sl-color-accent-low: #dbeafe;
+	--sl-color-accent: #2563eb;
+	--sl-color-accent-high: #1d4ed8;
+}
+
+/* Splash hero: tighten the spacing on small screens; the default
+ * leaves a lot of vertical air on phones. */
+.hero-html {
+	padding-block: clamp(2rem, 6vw, 4rem);
+}

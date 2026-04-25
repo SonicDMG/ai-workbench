@@ -1,0 +1,21 @@
+{
+	"name": "ai-workbench-site",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"description": "AI Workbench landing page + docs site (Astro + Starlight). Markdown source lives in /docs at the repo root; this app renders it.",
+	"scripts": {
+		"stage-docs": "node scripts/stage-docs.mjs",
+		"predev": "npm run stage-docs",
+		"prebuild": "npm run stage-docs",
+		"dev": "astro dev",
+		"build": "astro build",
+		"preview": "astro preview",
+		"check": "astro check"
+	},
+	"dependencies": {
+		"@astrojs/starlight": "0.34.0",
+		"astro": "5.5.4",
+		"sharp": "^0.33.5"
+	}
+}
