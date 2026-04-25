@@ -11,6 +11,7 @@ import { Toaster } from "sonner";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { LoadingState } from "@/components/common/states";
 import { AppShell } from "@/components/layout/AppShell";
+import { useSilentRefresh } from "@/hooks/useSession";
 import { queryClient } from "@/lib/query";
 import { PlaygroundPage } from "@/pages/PlaygroundPage";
 import { WorkspacesPage } from "@/pages/WorkspacesPage";
@@ -35,6 +36,7 @@ export function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
 			<BrowserRouter>
+				<SessionRunloop />
 				<AppShell>
 					<RoutedView />
 				</AppShell>
@@ -42,6 +44,18 @@ export function App() {
 			</BrowserRouter>
 		</QueryClientProvider>
 	);
+}
+
+/**
+ * Mounts the silent-refresh timer so it lives for the entire app's
+ * lifetime, not per-route. Renders nothing — it's a side-effect
+ * carrier. Lives below `QueryClientProvider` so it can talk to the
+ * shared cache and below `BrowserRouter` only so it sits next to
+ * the rest of the routed tree (no router APIs are used here).
+ */
+function SessionRunloop() {
+	useSilentRefresh();
+	return null;
 }
 
 /**

@@ -32,7 +32,7 @@ import {
 	type Workspace,
 	WorkspaceRecordSchema,
 } from "./schemas";
-import { fetchAuthConfig, loginHref } from "./session";
+import { fetchAuthConfig, loginHref, refreshSession } from "./session";
 
 const BASE = "/api/v1";
 
@@ -70,6 +70,7 @@ async function request<T>(
 	path: string,
 	init: RequestInit,
 	responseSchema: z.ZodType<T> | null,
+	opts: { readonly retryAfterRefresh?: boolean } = {},
 ): Promise<T> {
 	const token = getAuthToken();
 	const authHeader: Record<string, string> = token
@@ -94,8 +95,13 @@ async function request<T>(
 
 	if (res.status === 401 && !token) {
 		// Session expired (or never existed) and no paste-token is
-		// active. If OIDC login is available the user should go there
-		// instead of seeing a cryptic "unauthorized" in a toast.
+		// active. Phase 3c: try a silent refresh once before falling
+		// through to the login redirect. The check returns true only
+		// when the runtime advertises `refreshPath` in /auth/config —
+		// for the apiKey-only and disabled-auth deployments it's a no-op.
+		if (opts.retryAfterRefresh !== false && (await trySilentRefresh())) {
+			return request(path, init, responseSchema, { retryAfterRefresh: false });
+		}
 		await maybeRedirectToLogin();
 	}
 
@@ -119,6 +125,33 @@ async function request<T>(
 
 	if (responseSchema === null) return undefined as T;
 	return responseSchema.parse(body);
+}
+
+/**
+ * Single-flight gate: only one /auth/refresh request is in flight at
+ * a time. Concurrent 401s from a wall of in-flight queries all wait
+ * on the same refresh attempt and either retry or redirect together.
+ * The promise resolves to `true` when the cookie was rotated and the
+ * caller should retry.
+ */
+let inFlightRefresh: Promise<boolean> | null = null;
+async function trySilentRefresh(): Promise<boolean> {
+	if (inFlightRefresh) return inFlightRefresh;
+	inFlightRefresh = (async () => {
+		try {
+			const cfg = await fetchAuthConfig();
+			if (!cfg?.refreshPath) return false;
+			const result = await refreshSession(cfg.refreshPath);
+			return result !== null;
+		} catch {
+			return false;
+		}
+	})();
+	try {
+		return await inFlightRefresh;
+	} finally {
+		inFlightRefresh = null;
+	}
 }
 
 const WorkspaceListSchema = z.array(WorkspaceRecordSchema);

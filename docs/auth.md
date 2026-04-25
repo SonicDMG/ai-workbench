@@ -245,7 +245,7 @@ Out of scope for now:
 | 2 | `mode: apiKey` — workspace-scoped `wb_live_*` keys, issue/revoke routes, UI | ✅ shipped |
 | 3a | `mode: oidc` — JWT verification via JWKS; `any` mode enables both | ✅ shipped |
 | 3b | Browser OIDC login flow (PKCE) — replaces paste-a-token with `/auth/{login,callback,me,logout}` + signed session cookie | ✅ shipped |
-| 3c | Silent refresh via `refresh_token` grant, so users don't see mid-session re-logins | later |
+| 3c | Silent refresh via `refresh_token` grant, so users don't see mid-session re-logins | ✅ shipped |
 | 4 | Roles + per-route enforcement; audit logging | later |
 
 Each phase is independently shippable. `disabled` stays the
@@ -397,14 +397,93 @@ configured path.
   `sessionSecretRef` and restarting. Sessions signed with the old
   key stop validating and users re-login. There's no dual-key
   validation period yet.
-- **Access-token lifetime = session lifetime.** When the upstream
-  token expires, the cookie's `Max-Age` also elapses; the UI
-  gets a 401 on its next API call and `lib/api.ts` auto-redirects
-  to `/auth/login`. Silent refresh via the `refresh_token` grant
-  is Phase 3c.
+- **Silent refresh keeps the cookie ahead of the curve (Phase 3c).**
+  When the IdP returns a `refresh_token` on the initial code
+  exchange, the runtime stores it in the same signed session
+  cookie as the access token. The UI calls `POST /auth/refresh`
+  (a) on a timer at ~80% of the access-token lifetime, and (b) as
+  a fallback when an API call comes back `401`. The runtime
+  swaps the refresh token at the IdP, sets a fresh `Set-Cookie`,
+  and the UI retries — no browser redirect, no in-flight blip.
+  When refresh is unavailable (no `refresh_token`, IdP rejected
+  the rotation, or the runtime's verifier rejects the new
+  access token) the UI falls through to the login redirect as
+  before.
 - **Logout does not RP-initiate.** `POST /auth/logout` clears the
   local session cookie but does not redirect through the IdP's
   `end_session_endpoint`. Browsers remain logged in at the IdP
   (intentional for shared-device scenarios — users stay signed
   into Okta even after clicking "Log out" here). RP-initiated
   logout can come in a follow-up.
+
+## Silent refresh (Phase 3c)
+
+The session cookie carries the IdP's `refresh_token` alongside the
+access token, both inside the same HMAC-signed payload. That changes
+exactly one threat-model line item from before: cookie theft used
+to give an attacker the active session until access-token expiry
+(typically an hour). With the refresh token in the cookie, theft
+gives the attacker a session as long as the IdP's refresh-token
+lifetime allows. Two mitigations:
+
+1. **The cookie remains `HttpOnly` + signed**, so JS still can't
+   read or forge it. The threat is exfiltration via a network MITM
+   or browser compromise, not XSS.
+2. **Operators with sensitive deployments can disable refresh**
+   simply by setting their IdP's app to *not* issue
+   `refresh_token` for browser flows. The runtime degrades
+   gracefully: `canRefresh: false` in `/auth/me`, no scheduled
+   refresh on the UI side, behavior reverts to Phase 3b
+   (re-login on expiry).
+
+### `POST /auth/refresh`
+
+Accepts the session cookie and returns:
+
+```json
+{ "ok": true, "expiresAt": 1735689600 }
+```
+
+with a fresh `Set-Cookie` carrying the new access token (and any
+rotated refresh token). On failure — no cookie, no
+`refresh_token` in the payload, IdP rejected the grant, or the
+new access token doesn't pass the runtime's own verifier — the
+endpoint clears the cookie and returns `401` with one of:
+`no_refresh_token`, `refresh_failed`, or `token_validation_failed`.
+
+### `GET /auth/me` additions
+
+```json
+{
+  "id": "alice",
+  "label": "alice@example.com",
+  "type": "oidc",
+  "workspaceScopes": ["…"],
+  "expiresAt": 1735689600,
+  "canRefresh": true
+}
+```
+
+`expiresAt` is read out of the JWT's `exp` claim (the token has
+already passed verification at this point — we're not re-validating,
+just exposing the value). It's `null` for opaque tokens.
+`canRefresh` mirrors whether a `refresh_token` is in the cookie.
+
+### `GET /auth/config` additions
+
+Adds `refreshPath: "/auth/refresh"` (or `null` when login isn't
+configured). The UI keys off this to decide whether to schedule
+the timer at all.
+
+### UI scheduling
+
+`apps/web/src/hooks/useSession.ts:useSilentRefresh` registers a
+single `setTimeout` that fires at ~80% of the access token's
+remaining lifetime, clamped to `[30s, 30min]`. On success it
+invalidates `["auth", "me"]` so the next render re-reads
+`expiresAt` and the loop continues.
+
+`apps/web/src/lib/api.ts:request` runs a single-flight refresh
+attempt on any 401: concurrent in-flight queries all wait on the
+same `/auth/refresh` call and either retry together or fall
+through to the login redirect together.

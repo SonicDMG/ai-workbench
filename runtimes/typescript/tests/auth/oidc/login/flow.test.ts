@@ -127,6 +127,10 @@ async function buildAppWithLogin(privateKey: CryptoKey, imported: unknown) {
 	// A stub token endpoint. The route handler calls this via global
 	// fetch; override it for the duration of each test.
 	const mintedByCode = new Map<string, string>();
+	// Phase 3c: tokens issued against a refresh_token grant. Tests
+	// register the same JWT they want the IdP to "mint" on refresh.
+	const mintedByRefresh = new Map<string, string>();
+	let lastIssuedRefreshToken: string | null = null;
 	const origFetch = globalThis.fetch;
 	globalThis.fetch = (async (
 		input: URL | string | Request,
@@ -140,6 +144,30 @@ async function buildAppWithLogin(privateKey: CryptoKey, imported: unknown) {
 					: input.url;
 		if (url.endsWith("/token")) {
 			const body = new URLSearchParams(String(init?.body ?? ""));
+			const grant = body.get("grant_type") ?? "";
+
+			if (grant === "refresh_token") {
+				const rt = body.get("refresh_token") ?? "";
+				const token = mintedByRefresh.get(rt);
+				if (!token) {
+					return new Response(JSON.stringify({ error: "invalid_grant" }), {
+						status: 400,
+					});
+				}
+				return new Response(
+					JSON.stringify({
+						access_token: token,
+						token_type: "Bearer",
+						expires_in: 3600,
+						id_token: token,
+						// IdPs that rotate hand back a new RT; we leave it
+						// matching the input here so tests can re-use it.
+						refresh_token: rt,
+					}),
+					{ status: 200 },
+				);
+			}
+
 			const code = body.get("code") ?? "";
 			const token = mintedByCode.get(code);
 			if (!token) {
@@ -147,12 +175,17 @@ async function buildAppWithLogin(privateKey: CryptoKey, imported: unknown) {
 					status: 400,
 				});
 			}
+			// Mint a refresh_token alongside so the cookie carries one.
+			const rt = `rt-${code}`;
+			lastIssuedRefreshToken = rt;
+			mintedByRefresh.set(rt, token);
 			return new Response(
 				JSON.stringify({
 					access_token: token,
 					token_type: "Bearer",
 					expires_in: 3600,
 					id_token: token,
+					refresh_token: rt,
 				}),
 				{ status: 200 },
 			);
@@ -184,6 +217,8 @@ async function buildAppWithLogin(privateKey: CryptoKey, imported: unknown) {
 		app,
 		workspace: ws,
 		mintedByCode,
+		mintedByRefresh,
+		getLastIssuedRefreshToken: () => lastIssuedRefreshToken,
 		pending,
 		cookie,
 		cfg,
@@ -326,6 +361,153 @@ describe("/auth/* flow", () => {
 				headers: { cookie: "wb_session=bogus.AAAA" },
 			});
 			expect(res.status).toBe(401);
+		} finally {
+			fx.restoreFetch();
+		}
+	});
+
+	test("/auth/config advertises refreshPath when login is wired", async () => {
+		const fx = await buildAppWithLogin(privateKey, imported);
+		try {
+			const res = await fx.app.request("/auth/config");
+			const body = (await res.json()) as { refreshPath: string | null };
+			expect(body.refreshPath).toBe("/auth/refresh");
+		} finally {
+			fx.restoreFetch();
+		}
+	});
+
+	test("/auth/me exposes expiresAt and canRefresh from the cookie", async () => {
+		const fx = await buildAppWithLogin(privateKey, imported);
+		try {
+			// Run a full callback so we get a real cookie carrying the
+			// JWT we just minted.
+			const code = "code-me-1";
+			const jwt = await mintJwt(privateKey, { sub: "alice" });
+			fx.mintedByCode.set(code, jwt);
+
+			const loginRes = await fx.app.request("/auth/login", {
+				headers: { host: "app.test" },
+			});
+			const state = new URL(
+				loginRes.headers.get("location") ?? "",
+			).searchParams.get("state");
+			const cbRes = await fx.app.request(
+				`/auth/callback?state=${state}&code=${code}`,
+				{ headers: { host: "app.test" } },
+			);
+			const setCookie = cbRes.headers.get("set-cookie") ?? "";
+			const cookieValue = setCookie.slice(
+				"wb_session=".length,
+				setCookie.indexOf(";"),
+			);
+
+			const meRes = await fx.app.request("/auth/me", {
+				headers: { cookie: `wb_session=${cookieValue}` },
+			});
+			expect(meRes.status).toBe(200);
+			const me = (await meRes.json()) as {
+				expiresAt: number | null;
+				canRefresh: boolean;
+			};
+			expect(typeof me.expiresAt).toBe("number");
+			expect((me.expiresAt ?? 0) > Math.floor(Date.now() / 1000)).toBe(true);
+			expect(me.canRefresh).toBe(true);
+		} finally {
+			fx.restoreFetch();
+		}
+	});
+
+	test("/auth/refresh swaps the cookie for a fresh access token", async () => {
+		const fx = await buildAppWithLogin(privateKey, imported);
+		try {
+			// Walk through callback to seed the cookie with an rt.
+			const code = "code-refresh-1";
+			const jwt1 = await mintJwt(privateKey, { sub: "alice" });
+			fx.mintedByCode.set(code, jwt1);
+
+			const loginRes = await fx.app.request("/auth/login", {
+				headers: { host: "app.test" },
+			});
+			const state = new URL(
+				loginRes.headers.get("location") ?? "",
+			).searchParams.get("state");
+			const cbRes = await fx.app.request(
+				`/auth/callback?state=${state}&code=${code}`,
+				{ headers: { host: "app.test" } },
+			);
+			const setCookie1 = cbRes.headers.get("set-cookie") ?? "";
+			const cookie1 = setCookie1.slice(
+				"wb_session=".length,
+				setCookie1.indexOf(";"),
+			);
+
+			// Re-bind the same refresh_token to a freshly-minted JWT —
+			// simulates the IdP issuing a new access_token on refresh.
+			const rt = fx.getLastIssuedRefreshToken();
+			expect(rt).toBeTruthy();
+			const jwt2 = await mintJwt(privateKey, { sub: "alice" });
+			fx.mintedByRefresh.set(rt as string, jwt2);
+
+			const refreshRes = await fx.app.request("/auth/refresh", {
+				method: "POST",
+				headers: { cookie: `wb_session=${cookie1}` },
+			});
+			expect(refreshRes.status).toBe(200);
+			const body = (await refreshRes.json()) as {
+				ok: boolean;
+				expiresAt: number | null;
+			};
+			expect(body.ok).toBe(true);
+			expect(typeof body.expiresAt).toBe("number");
+
+			// New cookie was issued and decodes to the new JWT.
+			const setCookie2 = refreshRes.headers.get("set-cookie") ?? "";
+			expect(setCookie2).toMatch(/^wb_session=/);
+			const cookie2 = decodeURIComponent(
+				setCookie2.slice("wb_session=".length, setCookie2.indexOf(";")),
+			);
+			const payload = fx.cookie.verify(cookie2);
+			expect(payload?.accessToken).toBe(jwt2);
+			expect(payload?.refreshToken).toBe(rt);
+		} finally {
+			fx.restoreFetch();
+		}
+	});
+
+	test("/auth/refresh without a session cookie → 401 no_refresh_token", async () => {
+		const fx = await buildAppWithLogin(privateKey, imported);
+		try {
+			const res = await fx.app.request("/auth/refresh", { method: "POST" });
+			expect(res.status).toBe(401);
+			const body = (await res.json()) as { error: { code: string } };
+			expect(body.error.code).toBe("no_refresh_token");
+		} finally {
+			fx.restoreFetch();
+		}
+	});
+
+	test("/auth/refresh clears the cookie when the IdP rejects the rt", async () => {
+		const fx = await buildAppWithLogin(privateKey, imported);
+		try {
+			// Manually craft a session cookie carrying a refresh_token
+			// the mock IdP doesn't recognize.
+			const handcrafted = fx.cookie.sign({
+				accessToken: await mintJwt(privateKey, { sub: "alice" }),
+				issuedAt: Math.floor(Date.now() / 1000),
+				refreshToken: "rt-totally-bogus",
+			});
+			const res = await fx.app.request("/auth/refresh", {
+				method: "POST",
+				headers: {
+					cookie: `wb_session=${encodeURIComponent(handcrafted)}`,
+				},
+			});
+			expect(res.status).toBe(401);
+			const body = (await res.json()) as { error: { code: string } };
+			expect(body.error.code).toBe("refresh_failed");
+			// Cookie was cleared.
+			expect(res.headers.get("set-cookie")).toMatch(/Max-Age=0/);
 		} finally {
 			fx.restoreFetch();
 		}

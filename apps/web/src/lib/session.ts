@@ -13,6 +13,14 @@ export interface SessionSubject {
 	readonly label: string | null;
 	readonly type: "apiKey" | "oidc";
 	readonly workspaceScopes: readonly string[] | null;
+	/** Unix seconds when the access token expires, or null when the
+	 * token is opaque (no JWT exp claim). Used to schedule silent
+	 * refresh before the runtime starts rejecting requests. */
+	readonly expiresAt: number | null;
+	/** True when the session cookie carries a usable refresh_token —
+	 * the UI then schedules a refresh ahead of expiry and attempts
+	 * one on a 401 before redirecting to login. */
+	readonly canRefresh: boolean;
 }
 
 export interface AuthConfig {
@@ -22,6 +30,7 @@ export interface AuthConfig {
 		readonly login: boolean;
 	};
 	readonly loginPath: string | null;
+	readonly refreshPath: string | null;
 }
 
 async function getJson<T>(path: string): Promise<T | null> {
@@ -41,6 +50,37 @@ export function fetchAuthConfig(): Promise<AuthConfig | null> {
 
 export function fetchSessionSubject(): Promise<SessionSubject | null> {
 	return getJson<SessionSubject>("/auth/me");
+}
+
+export interface RefreshResult {
+	readonly ok: true;
+	readonly expiresAt: number | null;
+}
+
+/**
+ * Attempt a silent token refresh. Returns the new expiry on success,
+ * `null` on any failure (no cookie, IdP rejected, network blip).
+ * Callers treat `null` as "fall back to the login redirect."
+ */
+export async function refreshSession(
+	refreshPath: string,
+): Promise<RefreshResult | null> {
+	try {
+		const res = await fetch(refreshPath, {
+			method: "POST",
+			credentials: "include",
+			headers: { accept: "application/json" },
+		});
+		if (!res.ok) return null;
+		const body = (await res.json()) as {
+			ok?: boolean;
+			expiresAt?: number | null;
+		};
+		if (!body.ok) return null;
+		return { ok: true, expiresAt: body.expiresAt ?? null };
+	} catch {
+		return null;
+	}
 }
 
 export async function logout(): Promise<void> {

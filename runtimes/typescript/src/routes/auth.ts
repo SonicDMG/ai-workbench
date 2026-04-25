@@ -1,12 +1,13 @@
 /**
- * Browser OIDC login flow (Phase 3b).
+ * Browser OIDC login flow.
  *
- * Five endpoints mounted under `/auth`:
+ * Six endpoints mounted under `/auth`:
  *
  *   GET  /auth/config    — what the UI should offer: oidc? apiKey?
  *   GET  /auth/login     — 302 to the IdP's authorization endpoint
  *   GET  /auth/callback  — exchange code, set session cookie, redirect
  *   GET  /auth/me        — current session subject, or 401
+ *   POST /auth/refresh   — swap refresh_token for a fresh cookie (3c)
  *   POST /auth/logout    — clear the cookie, redirect
  *
  * The flow is authorization-code-with-PKCE (RFC 7636) regardless of
@@ -14,13 +15,30 @@
  * specific class of code-interception attacks. State binds the
  * callback to the login it came from; the PKCE verifier is kept in
  * an in-process `PendingLoginStore` and consumed at callback time.
+ *
+ * Phase 3c — silent refresh:
+ * - `/auth/callback` now persists `tokens.refresh_token` (when the
+ *   IdP returns one) into the signed session cookie alongside the
+ *   access token. Same trust boundary; same HttpOnly + signed
+ *   envelope.
+ * - `/auth/refresh` reads the cookie, calls the IdP's token endpoint
+ *   with `grant_type=refresh_token`, and re-issues the cookie
+ *   without a browser redirect. The UI calls it ahead of access-
+ *   token expiry and (as a fallback) on a 401.
+ * - `/auth/me` now exposes `expiresAt` (read out of the JWT's `exp`
+ *   claim) so the UI can schedule the refresh without decoding the
+ *   token client-side.
  */
 
 import { type Context, Hono } from "hono";
+import { decodeJwt } from "jose";
 import type { CookieSigner } from "../auth/oidc/login/cookie.js";
 import { parseCookie, serializeCookie } from "../auth/oidc/login/cookie.js";
 import type { OidcEndpoints } from "../auth/oidc/login/discovery.js";
-import { exchangeAuthorizationCode } from "../auth/oidc/login/exchange.js";
+import {
+	exchangeAuthorizationCode,
+	refreshAccessToken,
+} from "../auth/oidc/login/exchange.js";
 import type { PendingLoginStore } from "../auth/oidc/login/pending.js";
 import {
 	challengeFor,
@@ -61,6 +79,10 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 				login: hasOidcLogin,
 			},
 			loginPath: hasOidcLogin ? "/auth/login" : null,
+			// Phase 3c: advertised so the UI knows to schedule silent
+			// refresh and to attempt one on a 401. Tied to login config —
+			// if browser login isn't wired up, refresh isn't either.
+			refreshPath: hasOidcLogin ? "/auth/refresh" : null,
 		});
 	});
 
@@ -69,7 +91,7 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 	// gets a clean answer instead of silently wrong behavior.
 	const clientCfg = opts.config.oidc?.client;
 	if (!clientCfg || !opts.endpoints || !opts.cookie || !opts.pending) {
-		for (const p of ["/login", "/callback", "/me", "/logout"]) {
+		for (const p of ["/login", "/callback", "/me", "/refresh", "/logout"]) {
 			app.all(p, (c) => c.json({ error: { code: "not_configured" } }, 404));
 		}
 		return app;
@@ -168,23 +190,7 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 			return c.json({ error: { code: "token_validation_failed" } }, 502);
 		}
 
-		const value = cookie.sign({
-			accessToken: tokens.access_token,
-			issuedAt: Math.floor(Date.now() / 1000),
-			idToken: tokens.id_token,
-		});
-		const maxAge = tokens.expires_in ?? 3600;
-		c.header(
-			"Set-Cookie",
-			serializeCookie({
-				name: clientCfg.sessionCookieName,
-				value: encodeURIComponent(value),
-				maxAgeSeconds: maxAge,
-				httpOnly: true,
-				secure: isSecure(c),
-				sameSite: "Lax",
-			}),
-		);
+		setSessionCookie(c, cookie, clientCfg.sessionCookieName, tokens);
 		return c.redirect(pendingEntry.redirectAfter, 302);
 	});
 
@@ -193,12 +199,97 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 		if (!auth?.authenticated || !auth.subject) {
 			return c.json({ error: { code: "unauthorized" } }, 401);
 		}
+		// Surface the access-token expiry so the UI can schedule a
+		// silent refresh ahead of it. The verifier already validated
+		// the token; here we just decode the unsigned `exp` claim.
+		const cookieValue = parseCookie(
+			c.req.header("cookie") ?? null,
+			clientCfg.sessionCookieName,
+		);
+		const payload = cookieValue ? cookie.verify(cookieValue) : null;
+		const expiresAt = payload ? jwtExpSecondsOrNull(payload.accessToken) : null;
+		const canRefresh = Boolean(payload?.refreshToken);
 		return c.json({
 			id: auth.subject.id,
 			label: auth.subject.label,
 			type: auth.subject.type,
 			workspaceScopes: auth.subject.workspaceScopes,
+			expiresAt,
+			canRefresh,
 		});
+	});
+
+	app.post("/refresh", async (c) => {
+		const cookieValue = parseCookie(
+			c.req.header("cookie") ?? null,
+			clientCfg.sessionCookieName,
+		);
+		const payload = cookieValue ? cookie.verify(cookieValue) : null;
+		if (!payload?.refreshToken) {
+			return c.json(
+				{
+					error: {
+						code: "no_refresh_token",
+						message: "no refresh_token in session — re-login required",
+					},
+				},
+				401,
+			);
+		}
+
+		let tokens: Awaited<ReturnType<typeof refreshAccessToken>>;
+		try {
+			tokens = await refreshAccessToken({
+				tokenEndpoint: endpoints.tokenEndpoint,
+				clientId: clientCfg.clientId,
+				clientSecret: opts.clientSecret,
+				refreshToken: payload.refreshToken,
+				scopes: clientCfg.scopes,
+			});
+		} catch (err) {
+			logger.warn(
+				{ err: err instanceof Error ? err.message : String(err) },
+				"oidc refresh failed",
+			);
+			// Clear the cookie — the refresh_token is dead from the IdP's
+			// perspective; carrying it forward just produces another
+			// failed refresh on the next attempt.
+			clearSessionCookie(c, clientCfg.sessionCookieName);
+			return c.json(
+				{
+					error: {
+						code: "refresh_failed",
+						message: "refresh_token rejected by the IdP — re-login required",
+					},
+				},
+				401,
+			);
+		}
+
+		// Same self-verification gate as /callback: the new access
+		// token must pass the runtime's own verifier before we trust it.
+		try {
+			const probe = new Request("http://local/auth/refresh", {
+				headers: { authorization: `Bearer ${tokens.access_token}` },
+			});
+			await opts.auth.authenticate(probe);
+		} catch (err) {
+			logger.warn(
+				{ err: err instanceof Error ? err.message : String(err) },
+				"refreshed access token failed self-verification",
+			);
+			clearSessionCookie(c, clientCfg.sessionCookieName);
+			return c.json({ error: { code: "token_validation_failed" } }, 502);
+		}
+
+		setSessionCookie(c, cookie, clientCfg.sessionCookieName, tokens, {
+			// Some IdPs rotate refresh_tokens; some don't. If the
+			// response omits one, keep the existing token so the next
+			// refresh still works.
+			fallbackRefreshToken: payload.refreshToken,
+		});
+		const expiresAt = jwtExpSecondsOrNull(tokens.access_token);
+		return c.json({ ok: true, expiresAt });
 	});
 
 	app.post("/logout", (c) => {
@@ -261,4 +352,78 @@ function isSecure(c: Context<AppEnv>): boolean {
 	const proto = c.req.header("x-forwarded-proto");
 	if (proto) return proto.includes("https");
 	return new URL(c.req.url).protocol === "https:";
+}
+
+interface SetSessionCookieOptions {
+	readonly fallbackRefreshToken?: string;
+}
+
+/**
+ * Sign and emit the session cookie. Centralizes the Set-Cookie shape
+ * so /callback (initial login) and /refresh (silent refresh) stay in
+ * lockstep. Cookie max-age defaults to the IdP's `expires_in`; any
+ * IdP-issued refresh_token rides inside the signed payload (or the
+ * fallback when the IdP didn't rotate it).
+ */
+function setSessionCookie(
+	c: Context<AppEnv>,
+	cookie: CookieSigner,
+	cookieName: string,
+	tokens: {
+		access_token: string;
+		expires_in?: number;
+		refresh_token?: string;
+		id_token?: string;
+	},
+	opts: SetSessionCookieOptions = {},
+): void {
+	const value = cookie.sign({
+		accessToken: tokens.access_token,
+		issuedAt: Math.floor(Date.now() / 1000),
+		idToken: tokens.id_token,
+		refreshToken: tokens.refresh_token ?? opts.fallbackRefreshToken,
+	});
+	const maxAge = tokens.expires_in ?? 3600;
+	c.header(
+		"Set-Cookie",
+		serializeCookie({
+			name: cookieName,
+			value: encodeURIComponent(value),
+			maxAgeSeconds: maxAge,
+			httpOnly: true,
+			secure: isSecure(c),
+			sameSite: "Lax",
+		}),
+	);
+}
+
+function clearSessionCookie(c: Context<AppEnv>, cookieName: string): void {
+	c.header(
+		"Set-Cookie",
+		serializeCookie({
+			name: cookieName,
+			value: "",
+			maxAgeSeconds: 0,
+			httpOnly: true,
+			secure: isSecure(c),
+			sameSite: "Lax",
+		}),
+	);
+}
+
+/**
+ * Read the `exp` claim out of an already-validated JWT and return it
+ * as Unix seconds. The verifier has already passed at this point —
+ * we're not re-validating, just exposing the expiry so the UI can
+ * schedule its silent refresh. Returns null when the claim is
+ * missing or the token isn't a JWT at all (some IdPs issue opaque
+ * tokens; the runtime works with both).
+ */
+function jwtExpSecondsOrNull(token: string): number | null {
+	try {
+		const payload = decodeJwt(token);
+		return typeof payload.exp === "number" ? payload.exp : null;
+	} catch {
+		return null;
+	}
 }
