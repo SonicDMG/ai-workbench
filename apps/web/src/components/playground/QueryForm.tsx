@@ -37,6 +37,7 @@ export function QueryForm({
 	const [topK, setTopK] = useState(10);
 	const [filterStr, setFilterStr] = useState("");
 	const [hybrid, setHybrid] = useState(false);
+	const [lexicalWeight, setLexicalWeight] = useState(0.5);
 	const [rerank, setRerank] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -69,7 +70,7 @@ export function QueryForm({
 				topK,
 				filter,
 				text: text.trim(),
-				...(hybrid && { hybrid: true }),
+				...(hybrid && { hybrid: true, lexicalWeight }),
 				...(rerank && { rerank: true }),
 			});
 			return;
@@ -171,29 +172,67 @@ export function QueryForm({
 				</div>
 			</div>
 
-			<div className="flex flex-wrap items-center gap-4 border-t border-slate-100 pt-3 text-sm">
-				<LaneToggle
-					id="pg-hybrid"
-					label="Hybrid"
-					description={
-						lexicalSupported
-							? "Vector + lexical, combined by the driver."
-							: "This vector store doesn't have lexical enabled — the driver will return 501."
-					}
-					checked={hybrid}
-					onChange={setHybrid}
-				/>
-				<LaneToggle
-					id="pg-rerank"
-					label="Rerank"
-					description={
-						rerankSupported
-							? "Reorder hits through the driver's reranker service."
-							: "This vector store doesn't have reranking enabled — the driver will return 501."
-					}
-					checked={rerank}
-					onChange={setRerank}
-				/>
+			<div className="flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm">
+				<div className="flex flex-wrap items-center gap-4">
+					<LaneToggle
+						id="pg-hybrid"
+						label="Hybrid"
+						description={
+							lexicalSupported
+								? "Vector + lexical, combined by the driver."
+								: "This vector store doesn't have lexical enabled — the driver will return 501."
+						}
+						checked={hybrid}
+						onChange={setHybrid}
+					/>
+					<LaneToggle
+						id="pg-rerank"
+						label="Rerank"
+						description={
+							rerankSupported
+								? "Reorder hits through the driver's reranker service."
+								: "This vector store doesn't have reranking enabled — the driver will return 501."
+						}
+						checked={rerank}
+						onChange={setRerank}
+					/>
+				</div>
+
+				{hybrid ? (
+					<div className="flex flex-col gap-1.5 pl-6">
+						<div className="flex items-baseline justify-between">
+							<Label htmlFor="pg-lexweight">
+								Lexical weight ({lexicalWeight.toFixed(2)})
+							</Label>
+							<span className="text-xs text-slate-400">
+								{lexicalWeight === 0
+									? "vector-only"
+									: lexicalWeight === 1
+										? "lexical-only"
+										: lexicalWeight < 0.5
+											? "vector-leaning"
+											: lexicalWeight > 0.5
+												? "lexical-leaning"
+												: "balanced"}
+							</span>
+						</div>
+						<Input
+							id="pg-lexweight"
+							type="range"
+							min={0}
+							max={1}
+							step={0.05}
+							value={lexicalWeight}
+							onChange={(e) => setLexicalWeight(Number(e.target.value))}
+						/>
+						<p className="text-xs text-slate-500">
+							Mix between vector and lexical scores in the hybrid combination.
+							Mock driver respects this directly; Astra's native{" "}
+							<code className="font-mono">findAndRerank</code> ignores it (the
+							reranker owns the blend).
+						</p>
+					</div>
+				) : null}
 			</div>
 
 			{error ? (

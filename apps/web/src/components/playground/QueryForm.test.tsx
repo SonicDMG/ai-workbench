@@ -71,7 +71,7 @@ describe("QueryForm", () => {
 		expect(screen.getByText(/text is required/i)).toBeInTheDocument();
 	});
 
-	it("opts hybrid into the request when the toggle is on", async () => {
+	it("opts hybrid into the request with a default lexical weight when toggled on", async () => {
 		const onRun = vi.fn();
 		const user = userEvent.setup();
 		render(
@@ -89,8 +89,83 @@ describe("QueryForm", () => {
 		await user.click(screen.getByRole("button", { name: /Run query/ }));
 
 		expect(onRun).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "anything", hybrid: true }),
+			expect.objectContaining({
+				text: "anything",
+				hybrid: true,
+				lexicalWeight: 0.5,
+			}),
 		);
+	});
+
+	it("hides the lexical-weight slider until hybrid is on", async () => {
+		const onRun = vi.fn();
+		const user = userEvent.setup();
+		render(
+			<QueryForm
+				vectorStore={makeStore({
+					lexical: { enabled: true, analyzer: null, options: {} },
+				})}
+				onRun={onRun}
+				pending={false}
+			/>,
+		);
+
+		// Pre-toggle: slider should not be in the DOM.
+		expect(screen.queryByLabelText(/Lexical weight/i)).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("checkbox", { name: /Hybrid/ }));
+
+		// Post-toggle: slider appears with the default value rendered in
+		// the label.
+		expect(
+			screen.getByLabelText(/Lexical weight \(0\.50\)/),
+		).toBeInTheDocument();
+	});
+
+	it("forwards a custom lexical weight when the slider is dragged", async () => {
+		const onRun = vi.fn();
+		const user = userEvent.setup();
+		render(
+			<QueryForm
+				vectorStore={makeStore({
+					lexical: { enabled: true, analyzer: null, options: {} },
+				})}
+				onRun={onRun}
+				pending={false}
+			/>,
+		);
+
+		await user.type(screen.getByLabelText(/Query/), "find me");
+		await user.click(screen.getByRole("checkbox", { name: /Hybrid/ }));
+		fireEvent.change(screen.getByLabelText(/Lexical weight/), {
+			target: { value: "0.8" },
+		});
+		await user.click(screen.getByRole("button", { name: /Run query/ }));
+
+		expect(onRun).toHaveBeenCalledWith(
+			expect.objectContaining({ hybrid: true, lexicalWeight: 0.8 }),
+		);
+	});
+
+	it("omits lexicalWeight when hybrid is off", async () => {
+		const onRun = vi.fn();
+		const user = userEvent.setup();
+		render(
+			<QueryForm
+				vectorStore={makeStore({
+					lexical: { enabled: true, analyzer: null, options: {} },
+				})}
+				onRun={onRun}
+				pending={false}
+			/>,
+		);
+
+		await user.type(screen.getByLabelText(/Query/), "plain");
+		await user.click(screen.getByRole("button", { name: /Run query/ }));
+
+		const call = onRun.mock.calls[0]?.[0] as Record<string, unknown>;
+		expect(call.lexicalWeight).toBeUndefined();
+		expect(call.hybrid).toBeUndefined();
 	});
 
 	it("blocks hybrid/rerank on the Vector tab with a clear message", async () => {

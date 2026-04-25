@@ -142,8 +142,10 @@ store has the relevant capabilities enabled on its descriptor:
   driver runs a combined vector + lexical lane. On `astra` this
   routes through `findAndRerank` (one call); on `mock` it's
   vector + tokenizer-based lexical with min-max normalization.
-  Requires `text` (not vector) input. `lexicalWeight` is honored
-  on `mock`, ignored on `astra` (the reranker owns the blend).
+  Requires `text` (not vector) input. Toggling Hybrid on reveals
+  a **lexical-weight slider** (0–1, default 0.5) which is forwarded
+  as `lexicalWeight` on the search request body. Honored on
+  `mock`; ignored on `astra` (the reranker owns the blend).
 - **Rerank** — flips `rerank: true`. On `mock` this is a
   standalone post-processing phase over the retrieval hits. On
   `astra` standalone rerank is **not** exposed — pair `rerank`
