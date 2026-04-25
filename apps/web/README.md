@@ -181,6 +181,7 @@ apps/web/
 |---|---|
 | `npm test` | Unit + component tests under `src/**/*.{test,spec}.{ts,tsx}` (vitest + jsdom + RTL). Fast — no browser. |
 | `npm run test:watch` | Same in watch mode. |
+| `npm run test:coverage` | Same as `npm test` but with v8 coverage. **Gates `src/lib/**` at lines: 50, statements: 50, branches: 80, functions: 20.** Components are exercised end-to-end through Playwright; locking thresholds on them prematurely pushes toward shallow tests. |
 | `npm run test:e2e` | Playwright golden-path spec. Builds the runtime + SPA, boots the runtime against the bundled `examples/workbench.yaml` (memory backend, auth disabled), drives Chromium through the onboarding → vector-store → upsert → playground flow. Reuses an existing `:8080` server in dev; CI starts a fresh one. |
 | `npm run test:e2e:ui` | Same in Playwright's UI mode for debugging. |
 | `npm run e2e:install` | One-time: `playwright install chromium --with-deps`. |

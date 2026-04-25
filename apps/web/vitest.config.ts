@@ -22,5 +22,26 @@ export default defineConfig({
 		css: false,
 		clearMocks: true,
 		restoreMocks: true,
+		coverage: {
+			provider: "v8",
+			reporter: ["text", "html", "json-summary"],
+			// Coverage gates today only fire on `src/lib/**` — that's
+			// the application boundary (API client, schemas, session
+			// helpers, error mapping). Component coverage is exercised
+			// indirectly through Playwright (#64); locking a number on
+			// it prematurely would push us toward shallow tests.
+			//
+			// Numbers were calibrated against the suite at the time the
+			// gate landed. Bump them as new tests land; never lower
+			// without a comment explaining why.
+			thresholds: {
+				"src/lib/**": {
+					lines: 50,
+					statements: 50,
+					branches: 80,
+					functions: 20,
+				},
+			},
+		},
 	},
 });
