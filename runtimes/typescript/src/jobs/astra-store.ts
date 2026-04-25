@@ -192,6 +192,47 @@ export class AstraJobStore implements JobStore {
 		};
 	}
 
+	async findStaleRunning(cutoffIso: string): Promise<readonly JobRecord[]> {
+		// Astra Data API doesn't have a clean range filter on the
+		// `leased_at` text column from this client without a secondary
+		// index. In-flight jobs are bounded per workspace (a handful at
+		// any moment), so we filter on `status: "running"` and let the
+		// runtime cull by `leasedAt` client-side. If a deployment ever
+		// scales past tens of thousands of in-flight jobs we'll add a
+		// `leased_at` index and bound the read here.
+		const cursor = this.tables.jobs.find({ status: "running" });
+		const rows = await cursor.toArray();
+		const records = rows.map((r) => jobFromRow(r));
+		return records.filter((r) => r.leasedAt === null || r.leasedAt < cutoffIso);
+	}
+
+	async claim(
+		workspace: string,
+		jobId: string,
+		expectedHolder: string | null,
+		newHolder: string,
+	): Promise<JobRecord | null> {
+		// CAS via filter-aware updateOne: the update fires only when
+		// `leased_by === expectedHolder`. Astra's updateOne returns
+		// metadata, not the post-update row, so we re-read after and
+		// compare back to detect a lost race (no rows matched, or
+		// another replica re-claimed in the microsecond gap).
+		const now = new Date().toISOString();
+		await this.tables.jobs.updateOne(
+			{ workspace, job_id: jobId, leased_by: expectedHolder },
+			{ $set: { leased_by: newHolder, leased_at: now, updated_at: now } },
+		);
+		const after = await this.get(workspace, jobId);
+		if (!after) return null;
+		if (after.leasedBy !== newHolder || after.leasedAt !== now) {
+			// Filter didn't match (different leaseholder, or row gone)
+			// or someone re-claimed before our re-read.
+			return null;
+		}
+		this.subscriptions.fire(workspace, jobId, after);
+		return after;
+	}
+
 	/** Stop the cross-replica polling timer. Called by the runtime's
 	 * shutdown hook so the process can exit cleanly. Safe to call
 	 * multiple times; safe to call before any subscribe. */

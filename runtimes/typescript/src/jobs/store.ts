@@ -48,4 +48,31 @@ export interface JobStore {
 		jobId: string,
 		listener: JobListener,
 	): Promise<Unsubscribe>;
+
+	/**
+	 * List `running` jobs whose lease is stale — `leasedAt` is older
+	 * than `cutoffIso`, OR `leasedAt` is null (records that pre-date
+	 * the lease columns). The orphan-sweeper scans this list and
+	 * tries to claim each entry. Implementations may scan
+	 * cross-workspace; the sweeper handles per-workspace fan-out
+	 * internally.
+	 */
+	findStaleRunning(cutoffIso: string): Promise<readonly JobRecord[]>;
+
+	/**
+	 * CAS-claim a lease. Sets `leasedBy = newHolder` + `leasedAt = now`
+	 * **only if** the row's current `leasedBy === expectedHolder`.
+	 * Returns the new record on success, null on lost race (another
+	 * replica claimed first or the row's lease changed).
+	 *
+	 * Pass `expectedHolder = null` to claim an unleased record. The
+	 * sweeper passes the *previous* leaseholder it observed so two
+	 * replicas can't both fail-and-then-claim the same orphan.
+	 */
+	claim(
+		workspace: string,
+		jobId: string,
+		expectedHolder: string | null,
+		newHolder: string,
+	): Promise<JobRecord | null>;
 }

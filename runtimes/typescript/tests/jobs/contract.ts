@@ -241,5 +241,155 @@ export function runJobStoreContract(
 				await cleanup?.();
 			}
 		});
+
+		test("findStaleRunning returns running jobs whose lease is older than the cutoff", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const stale = await store.create({
+					workspace: WORKSPACE_A,
+					kind: "ingest",
+				});
+				await store.update(WORKSPACE_A, stale.jobId, {
+					status: "running",
+					leasedBy: "wb-replica-old",
+					leasedAt: "2020-01-01T00:00:00.000Z",
+				});
+				const fresh = await store.create({
+					workspace: WORKSPACE_A,
+					kind: "ingest",
+				});
+				await store.update(WORKSPACE_A, fresh.jobId, {
+					status: "running",
+					leasedBy: "wb-replica-new",
+					leasedAt: "2099-01-01T00:00:00.000Z",
+				});
+				// Pending jobs shouldn't appear regardless of leasedAt.
+				await store.create({ workspace: WORKSPACE_A, kind: "ingest" });
+
+				const result = await store.findStaleRunning("2026-04-25T00:00:00.000Z");
+				const ids = result.map((r) => r.jobId);
+				expect(ids).toContain(stale.jobId);
+				expect(ids).not.toContain(fresh.jobId);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("findStaleRunning surfaces null-leased running rows (pre-lease-columns)", async () => {
+			// Records persisted before the lease columns came in carry
+			// `leasedAt: null`. The sweeper must consider those orphaned
+			// — otherwise post-deploy they'd sit in `running` forever.
+			const { store, cleanup } = await factory();
+			try {
+				const job = await store.create({
+					workspace: WORKSPACE_A,
+					kind: "ingest",
+				});
+				await store.update(WORKSPACE_A, job.jobId, { status: "running" });
+				const result = await store.findStaleRunning("2026-04-25T00:00:00.000Z");
+				expect(result.map((r) => r.jobId)).toContain(job.jobId);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("claim succeeds when expectedHolder matches and assigns leasedBy/leasedAt", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const job = await store.create({
+					workspace: WORKSPACE_A,
+					kind: "ingest",
+				});
+				await store.update(WORKSPACE_A, job.jobId, {
+					status: "running",
+					leasedBy: "wb-replica-a",
+					leasedAt: "2020-01-01T00:00:00.000Z",
+				});
+				const claimed = await store.claim(
+					WORKSPACE_A,
+					job.jobId,
+					"wb-replica-a",
+					"wb-replica-b",
+				);
+				expect(claimed?.leasedBy).toBe("wb-replica-b");
+				expect(claimed?.leasedAt).toBeTruthy();
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("claim returns null on lost CAS race (expectedHolder mismatch)", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const job = await store.create({
+					workspace: WORKSPACE_A,
+					kind: "ingest",
+				});
+				await store.update(WORKSPACE_A, job.jobId, {
+					status: "running",
+					leasedBy: "wb-replica-a",
+					leasedAt: "2020-01-01T00:00:00.000Z",
+				});
+				// Replica B and C both observe holder = "a", but B
+				// claims first (a → b). C still passes "a" as the
+				// expected holder and loses the race.
+				const winner = await store.claim(
+					WORKSPACE_A,
+					job.jobId,
+					"wb-replica-a",
+					"wb-replica-b",
+				);
+				const loser = await store.claim(
+					WORKSPACE_A,
+					job.jobId,
+					"wb-replica-a",
+					"wb-replica-c",
+				);
+				expect(winner?.leasedBy).toBe("wb-replica-b");
+				expect(loser).toBeNull();
+				const after = await store.get(WORKSPACE_A, job.jobId);
+				expect(after?.leasedBy).toBe("wb-replica-b");
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("claim with expectedHolder=null grabs an unleased record", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const job = await store.create({
+					workspace: WORKSPACE_A,
+					kind: "ingest",
+				});
+				await store.update(WORKSPACE_A, job.jobId, { status: "running" });
+				// Currently leasedBy is null; claim with null and become the
+				// holder.
+				const claimed = await store.claim(
+					WORKSPACE_A,
+					job.jobId,
+					null,
+					"wb-replica-x",
+				);
+				expect(claimed?.leasedBy).toBe("wb-replica-x");
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("claim returns null when the job is missing", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				expect(
+					await store.claim(
+						WORKSPACE_A,
+						"00000000-0000-0000-0000-000000000000",
+						null,
+						"wb-replica-x",
+					),
+				).toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
 	});
 }

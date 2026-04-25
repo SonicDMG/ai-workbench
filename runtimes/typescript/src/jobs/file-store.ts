@@ -116,6 +116,47 @@ export class FileJobStore implements JobStore {
 		return unsub;
 	}
 
+	async findStaleRunning(cutoffIso: string): Promise<readonly JobRecord[]> {
+		const rows = await this.readAll();
+		return rows.filter(
+			(r) =>
+				r.status === "running" &&
+				(r.leasedAt === null || r.leasedAt < cutoffIso),
+		);
+	}
+
+	async claim(
+		workspace: string,
+		jobId: string,
+		expectedHolder: string | null,
+		newHolder: string,
+	): Promise<JobRecord | null> {
+		const claimed = await this.mutate(async (rows) => {
+			const idx = rows.findIndex(
+				(r) => r.workspace === workspace && r.jobId === jobId,
+			);
+			if (idx < 0) return { rows, result: null };
+			const existing = rows[idx] as JobRecord;
+			if (existing.leasedBy !== expectedHolder) {
+				return { rows, result: null };
+			}
+			const now = nowIso();
+			const next: JobRecord = {
+				...existing,
+				leasedBy: newHolder,
+				leasedAt: now,
+				updatedAt: now,
+			};
+			const nextRows = [...rows];
+			nextRows[idx] = next;
+			return { rows: nextRows, result: next };
+		});
+		if (claimed) {
+			this.subscriptions.fire(workspace, jobId, claimed);
+		}
+		return claimed;
+	}
+
 	private async readAll(): Promise<JobRecord[]> {
 		const path = join(this.root, JOBS_FILE);
 		try {

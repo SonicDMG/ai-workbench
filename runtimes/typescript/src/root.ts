@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { type AppLoginOptions, createApp } from "./app.js";
 import { buildAuthResolver } from "./auth/factory.js";
@@ -14,6 +15,7 @@ import { controlPlaneFromConfig } from "./control-plane/factory.js";
 import { buildVectorStoreDriverRegistry } from "./drivers/factory.js";
 import { makeEmbedderFactory } from "./embeddings/factory.js";
 import { buildJobStore } from "./jobs/factory.js";
+import { JobOrphanSweeper } from "./jobs/sweeper.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
 import { EnvSecretProvider } from "./secrets/env.js";
 import { FileSecretProvider } from "./secrets/file.js";
@@ -68,6 +70,11 @@ async function main(): Promise<void> {
 	}
 
 	const readiness = { draining: false };
+	const replicaId =
+		config.runtime.replicaId ??
+		`${process.env.HOSTNAME?.trim() || "wb"}-${randomUUID()
+			.replace(/-/g, "")
+			.slice(0, 8)}`;
 	const app = createApp({
 		store,
 		drivers,
@@ -79,10 +86,33 @@ async function main(): Promise<void> {
 		login,
 		readiness,
 		requestIdHeader: config.runtime.requestIdHeader,
-		// `null` triggers the auto-generated `${HOSTNAME}-<rand8>`
-		// inside createApp; an explicit string forces the value.
-		replicaId: config.runtime.replicaId ?? undefined,
+		replicaId,
 	});
+
+	// Cross-replica orphan-sweeper. Off by default — clustered
+	// deployments opt in via `controlPlane.jobsResume.enabled` so the
+	// single-replica reference deployment doesn't pay for it.
+	const sweeperCfg = config.controlPlane.jobsResume;
+	const sweeper =
+		sweeperCfg?.enabled === true
+			? new JobOrphanSweeper({
+					jobs,
+					replicaId,
+					graceMs: sweeperCfg.graceMs,
+					intervalMs: sweeperCfg.intervalMs,
+				})
+			: null;
+	if (sweeper) {
+		sweeper.start();
+		logger.info(
+			{
+				replicaId,
+				graceMs: sweeperCfg?.graceMs,
+				intervalMs: sweeperCfg?.intervalMs,
+			},
+			"job orphan sweeper enabled",
+		);
+	}
 
 	const port = config.runtime.port;
 	const server = serve({ fetch: app.fetch, port }, async (info) => {
@@ -128,6 +158,9 @@ async function main(): Promise<void> {
 		}, SHUTDOWN_TIMEOUT_MS);
 		forceKill.unref();
 
+		// Stop the orphan-sweeper before draining the server so its
+		// next tick doesn't fire mid-shutdown.
+		sweeper?.stop();
 		server.close(async (err) => {
 			if (err) {
 				logger.error({ err: err.message }, "server.close failed");

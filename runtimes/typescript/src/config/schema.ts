@@ -179,17 +179,40 @@ const AuthSchema = z
 		}
 	});
 
+/**
+ * Cross-replica orphan-sweeper configuration. Off by default — only
+ * useful for clustered deployments where the runtime can crash
+ * mid-ingest while another replica stays up. Single-replica operators
+ * don't need it (their pipelines always fail-fast on the same
+ * process). When enabled, every replica scans the durable job store
+ * once per `intervalMs` for `running` records whose lease is older
+ * than `graceMs` and CAS-claims them, marking them `failed` so
+ * clients see a terminal state.
+ */
+const JobsResumeSchema = z
+	.object({
+		enabled: z.boolean().default(false),
+		graceMs: z.number().int().min(1_000).max(600_000).default(60_000),
+		intervalMs: z.number().int().min(1_000).max(600_000).default(60_000),
+	})
+	.default({ enabled: false, graceMs: 60_000, intervalMs: 60_000 });
+
 const ControlPlaneSchema = z.discriminatedUnion("driver", [
-	z.object({ driver: z.literal("memory") }),
+	z.object({
+		driver: z.literal("memory"),
+		jobsResume: JobsResumeSchema.optional(),
+	}),
 	z.object({
 		driver: z.literal("file"),
 		root: z.string().min(1),
+		jobsResume: JobsResumeSchema.optional(),
 	}),
 	z.object({
 		driver: z.literal("astra"),
 		endpoint: z.string().url(),
 		tokenRef: SecretRef,
 		keyspace: z.string().min(1).default("workbench"),
+		jobsResume: JobsResumeSchema.optional(),
 		/**
 		 * Cross-replica job-subscriber poll interval, ms. Each Astra
 		 * job subscriber polls the underlying record at this cadence

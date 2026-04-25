@@ -87,6 +87,41 @@ export class MemoryJobStore implements JobStore {
 		}
 		return unsub;
 	}
+
+	async findStaleRunning(cutoffIso: string): Promise<readonly JobRecord[]> {
+		const out: JobRecord[] = [];
+		for (const r of this.jobs.values()) {
+			if (r.status !== "running") continue;
+			// Treat null leasedAt as stale-by-default (pre-lease-columns
+			// records or running rows whose leaseholder never wrote).
+			if (r.leasedAt === null || r.leasedAt < cutoffIso) {
+				out.push(r);
+			}
+		}
+		return out;
+	}
+
+	async claim(
+		workspace: string,
+		jobId: string,
+		expectedHolder: string | null,
+		newHolder: string,
+	): Promise<JobRecord | null> {
+		const k = key(workspace, jobId);
+		const existing = this.jobs.get(k);
+		if (!existing) return null;
+		if (existing.leasedBy !== expectedHolder) return null;
+		const now = nowIso();
+		const next: JobRecord = {
+			...existing,
+			leasedBy: newHolder,
+			leasedAt: now,
+			updatedAt: now,
+		};
+		this.jobs.set(k, next);
+		this.subscriptions.fire(workspace, jobId, next);
+		return next;
+	}
 }
 
 /** Shared patch-application helper — used by every {@link JobStore}
