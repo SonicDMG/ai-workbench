@@ -1004,22 +1004,10 @@ never escape its catalog.
 
 These do not exist yet. Shapes may shift before they land.
 
-### Phase 2 — Saved queries + job persistence + Ingest async
-
-| Method | Path | Purpose |
-|---|---|---|
-| (CRUD) | `/api/v1/workspaces/{w}/catalogs/{c}/queries[/{q}]` | Saved queries per catalog |
-| `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/ingest?async=true` | Async variant that returns a job id |
-| `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}` | Poll an ingest job |
-=======
-
-### Phase 3 — Playground
-
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/api/v1/workspaces/{w}/playground/query` | Free-form harness over catalog + vector store |
-
-Also a static `/playground` UI route served by the runtime.
+The Phase 2 routes (saved queries CRUD + `/run`, async ingest, jobs
+poll + SSE) and the Phase 3 playground dispatch (text/vector via the
+existing `POST .../search` route) shipped in #53–#60 and are
+documented above.
 
 ### Phase 4+ — Chats, MCP
 

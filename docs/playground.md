@@ -133,14 +133,60 @@ Upsert uses the same dispatch:
   across `upsertByText` + `upsert` would break transactional
   semantics on the underlying collection.)
 
+## Hybrid + rerank toggles
+
+The query form exposes two optional toggles when the bound vector
+store has the relevant capabilities enabled on its descriptor:
+
+- **Hybrid** — flips `hybrid: true` on the search request. The
+  driver runs a combined vector + lexical lane. On `astra` this
+  routes through `findAndRerank` (one call); on `mock` it's
+  vector + tokenizer-based lexical with min-max normalization.
+  Requires `text` (not vector) input. `lexicalWeight` is honored
+  on `mock`, ignored on `astra` (the reranker owns the blend).
+- **Rerank** — flips `rerank: true`. On `mock` this is a
+  standalone post-processing phase over the retrieval hits. On
+  `astra` standalone rerank is **not** exposed — pair `rerank`
+  with `hybrid: true` to get the combined Astra path; otherwise
+  the API returns 501.
+
+Both toggles default to the bound store's descriptor-level
+`lexical.enabled` / `reranking.enabled`. Drivers that lack the
+relevant method return 501 (`hybrid_not_supported` /
+`rerank_not_supported`); the UI surfaces these as a toast.
+
+## Catalog ingest from the workspace UI
+
+Ingest now has a dedicated UI surface, complementing the data-plane
+`POST .../records` upsert path:
+
+- **Workspace detail → Catalogs → Ingest** opens a dialog that
+  drops a file in (or pastes raw text), picks `async=true`/false,
+  and either returns the synchronous response or kicks off a job.
+- Async ingest jobs stream progress via the SSE
+  `GET .../jobs/{jobId}/events` endpoint until a terminal state.
+  The dialog renders the live `processed/total` counter and
+  surfaces the final `status` + `errorMessage`.
+
+The playground stays a scratchpad — no ingest in the playground
+itself. Use the workspace UI to populate a catalog, then come back
+to the playground to query it.
+
+## Saved queries
+
+Saved queries live under a **catalog**, not the playground. CRUD
++ `POST /{q}/run` ship under
+`/api/v1/workspaces/{w}/catalogs/{c}/queries`; the workspace UI
+exposes a panel to create/edit/run them. The playground itself
+intentionally stays stateless — it's the scratchpad, saved
+queries are the "I want to keep this around" bucket.
+
 ## Future extensions
 
-- **Document ingest** — a UI path for uploading text and chunking
-  it into a vector store. Until that lands, upsert via the data
-  plane (`POST .../records`) is the way.
-- **Saved queries** — currently out of scope by design (the
-  playground is a scratchpad). Easy to add as a CRUD table if the
-  usage pattern argues for it.
 - **Streaming results** — not meaningful for vector search (one
   round trip), but the shape could change when reranking /
   generation join the request path.
+- **Cross-replica job pub/sub** — the SSE worker is in-process
+  today. Multi-replica deployments will need a fan-out layer
+  before the playground can subscribe to jobs spawned on a
+  different replica.

@@ -221,12 +221,16 @@ Shipped:
   [`runtimes/typescript/Dockerfile`](../runtimes/typescript/Dockerfile)
   and [`docs/configuration.md`](configuration.md)'s `runtime.uiDir`.
 
-Not yet shipped:
+Subsequently shipped under Phase 2b (and surfaced through the
+workspace UI rather than the playground itself):
 
-- Ingest UI (upload → chunk → embed). Upsert via `POST .../records`
-  is the path today.
-- Catalog/document browsing UI.
-- Saved queries.
+- Ingest UI — file upload + paste-text dialog under
+  Workspace → Catalogs, sync and async (SSE-streamed progress).
+- Catalog/document browsing — Catalogs panel with per-catalog
+  document list on the workspace detail page.
+- Saved queries — catalog-scoped CRUD + run, with a panel under
+  the workspace UI. The playground itself remains a stateless
+  scratchpad by design.
 
 ## Phase 4+ — Chats, MCP
 
