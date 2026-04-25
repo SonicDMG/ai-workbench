@@ -1,7 +1,18 @@
-# Minimal default config. Boots cleanly with no env vars.
+# Default dev config. Boots cleanly with no env vars and persists
+# workspaces / catalogs / vector stores / documents / jobs to a
+# JSON tree under `./.workbench-data/` (gitignored), so restarting
+# `npm run dev` doesn't wipe your work.
 #
-# The default `controlPlane.driver` is `memory` — workspaces live only
-# in process memory. To switch backends, see docs/examples/workbench.yaml.
+# Other backends — see docs/examples/workbench.yaml for the
+# annotated full reference, or the matrix below:
+#
+# - `memory` (no persistence; lost on restart) — change `driver`
+#   below to `memory` and remove `root`. Useful for tests, CI,
+#   and `docker run` demos that don't need durability.
+#
+# - `astra` (Astra Data API Tables, multi-writer-safe, production)
+#   — change `driver` to `astra` and supply `endpoint`, `tokenRef`,
+#   `keyspace`. See docs/configuration.md.
 
 version: 1
 
@@ -10,10 +21,12 @@ runtime:
   logLevel: info
 
 controlPlane:
-  driver: memory
+  driver: file
+  root: .workbench-data
 
 # Optional — loaded into the memory backend at startup. Ignored by
-# `file` and `astra` backends.
+# `file` and `astra` backends. Only useful when you flip `driver`
+# back to `memory`.
 #
 # seedWorkspaces:
 #   - name: demo

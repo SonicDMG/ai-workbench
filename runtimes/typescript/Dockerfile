@@ -53,10 +53,17 @@ COPY runtimes/typescript/examples ./examples
 ARG APP_VERSION=0.0.0
 ARG APP_COMMIT=unknown
 ARG APP_BUILD_TIME=unknown
+# `examples/workbench.yaml` is the dev-host default (file-backed for
+# `npm run dev` persistence); `examples/workbench.memory.yaml` is the
+# hermetic in-memory config that makes a container restart return to
+# a clean slate. Operators who want persistence across container
+# restarts mount a writable volume and override WORKBENCH_CONFIG with
+# a yaml whose `controlPlane.driver: file root: /var/lib/workbench`
+# (or point at astra). See docs/configuration.md.
 ENV APP_VERSION=${APP_VERSION} \
     APP_COMMIT=${APP_COMMIT} \
     APP_BUILD_TIME=${APP_BUILD_TIME} \
-    WORKBENCH_CONFIG=/app/examples/workbench.yaml
+    WORKBENCH_CONFIG=/app/examples/workbench.memory.yaml
 
 EXPOSE 8080
 USER node

@@ -54,13 +54,12 @@ export default defineConfig({
 		stderr: "pipe",
 		env: {
 			NODE_ENV: "production",
-			// The bundled example yaml is `memory` + `auth.mode:
-			// disabled` — exactly what we want for a hermetic E2E run.
-			// Without this the loader walks the cwd, doesn't find a
-			// workbench.yaml at the repo root, and falls through to
-			// /etc/workbench/workbench.yaml which doesn't exist on dev
-			// laptops or CI runners.
-			WORKBENCH_CONFIG: "runtimes/typescript/examples/workbench.yaml",
+			// `workbench.memory.yaml` is the hermetic in-memory config
+			// (no `.workbench-data/` on disk, fresh state every boot).
+			// The dev default `examples/workbench.yaml` is now file-
+			// backed so `npm run dev` survives restart, but E2E wants a
+			// clean slate every run.
+			WORKBENCH_CONFIG: "runtimes/typescript/examples/workbench.memory.yaml",
 		},
 	},
 });

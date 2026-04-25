@@ -1,0 +1,18 @@
+# Hermetic in-memory config used by Playwright E2E and other harness
+# runs that want a clean slate every boot. Mirrors what
+# `examples/workbench.yaml` used to be before that file was flipped
+# to the file-backed default for `npm run dev`.
+#
+# Use this when you specifically need:
+# - Zero filesystem footprint (no `.workbench-data/` on disk)
+# - Guaranteed empty state on every restart
+# - Hermetic tests that assert against a deterministic baseline
+
+version: 1
+
+runtime:
+  port: 8080
+  logLevel: info
+
+controlPlane:
+  driver: memory
