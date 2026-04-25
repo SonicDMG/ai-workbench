@@ -1,0 +1,228 @@
+{
+	"slug": "vector-store-hybrid-and-rerank-mock",
+	"description": "Pins the wire shape of the `{ hybrid, rerank, lexicalWeight }` lanes on `POST /vector-stores/{vs}/search`. The mock driver's hybrid combines vector + lexical with min-max normalization; standalone rerank reorders by lexical-only score. A hybrid request without `text` returns 400; a hybrid request against a workspace whose driver lacks `searchHybrid` (here we negate by sending vector-only) is exercised through the validation path.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"endpoint": null,
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"lexical": {
+						"analyzer": null,
+						"enabled": true,
+						"options": {}
+					},
+					"name": "vs",
+					"reranking": {
+						"enabled": true,
+						"endpoint": null,
+						"model": "mock-rerank",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"vectorDimension": 4
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"lexical": {
+						"analyzer": null,
+						"enabled": true,
+						"options": {}
+					},
+					"name": "vs",
+					"reranking": {
+						"enabled": true,
+						"endpoint": null,
+						"model": "mock-rerank",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"uid": "{{UUID_2}}",
+					"updatedAt": "{{TS}}",
+					"vectorDimension": 4,
+					"vectorSimilarity": "cosine",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"records": [
+						{
+							"id": "a",
+							"payload": {
+								"tag": "x"
+							},
+							"text": "alpha bravo charlie"
+						},
+						{
+							"id": "b",
+							"payload": {
+								"tag": "x"
+							},
+							"text": "alpha bravo delta"
+						},
+						{
+							"id": "c",
+							"payload": {
+								"tag": "y"
+							},
+							"text": "completely unrelated text"
+						}
+					]
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_2}}/records"
+			},
+			"response": {
+				"body": {
+					"upserted": 3
+				},
+				"status": 200
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"hybrid": true,
+					"lexicalWeight": 0.5,
+					"text": "alpha bravo",
+					"topK": 3
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_2}}/search"
+			},
+			"response": {
+				"body": [
+					{
+						"id": "b",
+						"payload": {
+							"tag": "x"
+						},
+						"score": 0.6666666666666666
+					},
+					{
+						"id": "a",
+						"payload": {
+							"tag": "x"
+						},
+						"score": 0.6666666666666666
+					},
+					{
+						"id": "c",
+						"payload": {
+							"tag": "y"
+						},
+						"score": 0
+					}
+				],
+				"status": 200
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": {
+					"rerank": true,
+					"text": "alpha bravo",
+					"topK": 3
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_2}}/search"
+			},
+			"response": {
+				"body": [
+					{
+						"id": "b",
+						"payload": {
+							"tag": "x"
+						},
+						"score": 0.6666666666666666
+					},
+					{
+						"id": "a",
+						"payload": {
+							"tag": "x"
+						},
+						"score": 0.6666666666666666
+					},
+					{
+						"id": "c",
+						"payload": {
+							"tag": "y"
+						},
+						"score": 0
+					}
+				],
+				"status": 200
+			},
+			"step": 5
+		},
+		{
+			"request": {
+				"body": {
+					"hybrid": true,
+					"topK": 3,
+					"vector": [1, 0, 0, 0]
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_2}}/search"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "validation_error",
+						"message": "'hybrid: true' requires 'text' in the request — a lexical lane can't operate on vectors alone",
+						"requestId": "{{REQID_1}}"
+					}
+				},
+				"status": 400
+			},
+			"step": 6
+		}
+	]
+}

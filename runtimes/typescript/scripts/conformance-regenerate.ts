@@ -23,9 +23,9 @@ import { AuthResolver } from "../src/auth/resolver.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
-import { makeEmbedderFactory } from "../src/embeddings/factory.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
 import { SecretResolver } from "../src/secrets/provider.js";
+import { makeFakeEmbedderFactory } from "../tests/helpers/embedder.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // this file is at runtimes/typescript/scripts/... → repo root is 3 levels up
@@ -68,7 +68,13 @@ async function fetcherForFreshApp(): Promise<
 		drivers,
 		secrets,
 		auth,
-		embedders: makeEmbedderFactory({ secrets }),
+		// Match the drift test's fake embedder so fixtures are
+		// deterministic across runs and don't depend on a live OpenAI
+		// (or other provider) endpoint. The conformance contract is
+		// stated in terms of the canonical runtime + mock driver +
+		// deterministic mockEmbed; other runtimes implement the same
+		// stand-in to diff cleanly.
+		embedders: makeFakeEmbedderFactory(),
 	});
 	return async (method, path, body) => {
 		const init: RequestInit = { method };

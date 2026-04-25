@@ -164,14 +164,14 @@ An ingest against a catalog whose `vectorStore` is `null` returns
 
 Fixture: `fixtures/catalog-ingest-basic.json`.
 
-### Out of scope: async ingest + SSE
+### Async ingest + SSE — partial coverage
 
-`POST /ingest?async=true` and `GET /jobs/{jobId}/events` ship alongside the
-sync ingest route but aren't in the conformance corpus. The job's
-`status`, `processed`, and `updatedAt` fields all depend on when the
-runner happens to observe them, which makes the fixture comparison
-brittle. Runtime-specific tests (`tests/app.test.ts` on the TypeScript
-runtime) cover the wire shape + lifecycle with polling.
+The 202 wire shape for `POST /ingest?async=true` is pinned by
+[Scenario 16](#scenario-16--catalog-async-ingest-202) below. Eventual
+job completion (`status: succeeded` after polling) and the SSE event
+stream remain out of scope: their state depends on when the runner
+happens to observe the worker, so the fixture would be flaky.
+Runtime-specific tests cover the lifecycle with polling.
 ---
 
 ## Scenario 13 — `catalog-saved-queries`
@@ -184,3 +184,58 @@ over the saved filter) stay in runtime tests — they depend on
 embedding providers that aren't portable across runtimes.
 
 Fixture: `fixtures/catalog-saved-queries.json`.
+
+---
+
+## Scenario 14 — `vector-store-text-dispatch-mock`
+
+Driver-native text dispatch on `POST /vector-stores/{vs}/search`.
+With a `mock` workspace + `embedding.provider: "mock"`, the runtime
+routes `{ text }` requests through the driver's `searchByText` (which
+seeds vectors via `mockEmbed`) instead of going through an embedding
+provider. Mirrors the playground's text path. Steps cover:
+
+1. Upsert three text records (drivers without `upsertByText` would
+   fall back through the route's embedder dispatch).
+2. A topK-2 text search → ordered hits.
+3. The same query with a payload filter → only matching tags survive.
+
+The deterministic `mockEmbed` function is part of the conformance
+contract for the `mock` driver — runtimes that wire up `mock` MUST
+produce the same vectors for the same input texts.
+
+Fixture: `fixtures/vector-store-text-dispatch-mock.json`.
+
+---
+
+## Scenario 15 — `vector-store-hybrid-and-rerank-mock`
+
+Pins the `{ hybrid, rerank, lexicalWeight }` lanes on
+`POST /vector-stores/{vs}/search`. The vector store is created with
+`lexical.enabled: true` and `reranking.enabled: true` so the mock
+driver's combined-lane and standalone-rerank paths fire. Steps cover:
+
+1. `hybrid: true` with `lexicalWeight: 0.5` — vector + lexical
+   blended, min-max normalized.
+2. `rerank: true` (no hybrid) — vector retrieval then lexical-only
+   rescore on the hits.
+3. `hybrid: true` with a `vector` body (no `text`) — `400
+   validation_error`. Lexical lanes can't operate on vectors alone.
+
+Fixture: `fixtures/vector-store-hybrid-and-rerank-mock.json`.
+
+---
+
+## Scenario 16 — `catalog-async-ingest-202`
+
+Pins the 202 wire shape for `POST /catalogs/{c}/ingest?async=true`.
+The job snapshot is captured at creation time
+(`status: pending`, `processed: 0`, `total: null`,
+`document.status: writing`) so the response is deterministic across
+runs.
+
+Eventual completion (`status: succeeded` and `processed == total`)
+still depends on the worker's scheduling and remains out of scope —
+runtime-specific tests handle the lifecycle with polling.
+
+Fixture: `fixtures/catalog-async-ingest-202.json`.

@@ -1,0 +1,151 @@
+{
+	"slug": "catalog-async-ingest-202",
+	"description": "Pins the 202 wire shape for `POST /catalogs/{c}/ingest?async=true`. The job snapshot is captured at creation time (status: pending, processed: 0, total: null) so the response is deterministic — eventual completion still depends on the worker scheduling and remains out of conformance scope.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"endpoint": null,
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"name": "vs",
+					"vectorDimension": 4
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"lexical": {
+						"analyzer": null,
+						"enabled": false,
+						"options": {}
+					},
+					"name": "vs",
+					"reranking": {
+						"enabled": false,
+						"endpoint": null,
+						"model": null,
+						"provider": null,
+						"secretRef": null
+					},
+					"uid": "{{UUID_2}}",
+					"updatedAt": "{{TS}}",
+					"vectorDimension": 4,
+					"vectorSimilarity": "cosine",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"name": "c",
+					"vectorStore": "{{UUID_2}}"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"description": null,
+					"name": "c",
+					"uid": "{{UUID_3}}",
+					"updatedAt": "{{TS}}",
+					"vectorStore": "{{UUID_2}}",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"chunker": {
+						"chunkOverlap": 0,
+						"chunkSize": 16
+					},
+					"text": "alpha bravo charlie delta echo foxtrot golf hotel"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_3}}/ingest?async=true"
+			},
+			"response": {
+				"body": {
+					"document": {
+						"catalogUid": "{{UUID_3}}",
+						"chunkTotal": null,
+						"documentUid": "{{UUID_4}}",
+						"errorMessage": null,
+						"fileSize": null,
+						"fileType": null,
+						"ingestedAt": null,
+						"md5Hash": null,
+						"metadata": {},
+						"sourceDocId": null,
+						"sourceFilename": null,
+						"status": "writing",
+						"updatedAt": "{{TS}}",
+						"workspace": "{{UUID_1}}"
+					},
+					"job": {
+						"catalogUid": "{{UUID_3}}",
+						"createdAt": "{{TS}}",
+						"documentUid": "{{UUID_4}}",
+						"errorMessage": null,
+						"jobId": "{{UUID_5}}",
+						"kind": "ingest",
+						"processed": 0,
+						"result": null,
+						"status": "pending",
+						"total": null,
+						"updatedAt": "{{TS}}",
+						"workspace": "{{UUID_1}}"
+					}
+				},
+				"status": 202
+			},
+			"step": 4
+		}
+	]
+}

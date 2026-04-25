@@ -1,0 +1,180 @@
+{
+	"slug": "vector-store-text-dispatch-mock",
+	"description": "Driver-native text dispatch on the vector-store search route. With a mock-embedding descriptor, the runtime routes `{ text }` through `searchByText` (mockEmbed-derived vector) instead of calling the embedder factory. Mirrors the playground's text path.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentialsRef": {},
+					"endpoint": null,
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"uid": "{{UUID_1}}",
+					"updatedAt": "{{TS}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"name": "vs",
+					"vectorDimension": 4
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"embedding": {
+						"dimension": 4,
+						"endpoint": null,
+						"model": "mock-embedder",
+						"provider": "mock",
+						"secretRef": null
+					},
+					"lexical": {
+						"analyzer": null,
+						"enabled": false,
+						"options": {}
+					},
+					"name": "vs",
+					"reranking": {
+						"enabled": false,
+						"endpoint": null,
+						"model": null,
+						"provider": null,
+						"secretRef": null
+					},
+					"uid": "{{UUID_2}}",
+					"updatedAt": "{{TS}}",
+					"vectorDimension": 4,
+					"vectorSimilarity": "cosine",
+					"workspace": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"records": [
+						{
+							"id": "a",
+							"payload": {
+								"tag": "x"
+							},
+							"text": "alpha bravo charlie"
+						},
+						{
+							"id": "b",
+							"payload": {
+								"tag": "y"
+							},
+							"text": "delta echo foxtrot"
+						},
+						{
+							"id": "c",
+							"payload": {
+								"tag": "x"
+							},
+							"text": "alpha delta golf"
+						}
+					]
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_2}}/records"
+			},
+			"response": {
+				"body": {
+					"upserted": 3
+				},
+				"status": 200
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"text": "alpha bravo charlie",
+					"topK": 2
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_2}}/search"
+			},
+			"response": {
+				"body": [
+					{
+						"id": "a",
+						"payload": {
+							"tag": "x"
+						},
+						"score": 1.0000000000000002
+					},
+					{
+						"id": "c",
+						"payload": {
+							"tag": "x"
+						},
+						"score": 0.27201371137485564
+					}
+				],
+				"status": 200
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": {
+					"filter": {
+						"tag": "x"
+					},
+					"text": "alpha bravo charlie",
+					"topK": 2
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/vector-stores/{{UUID_2}}/search"
+			},
+			"response": {
+				"body": [
+					{
+						"id": "a",
+						"payload": {
+							"tag": "x"
+						},
+						"score": 1.0000000000000002
+					},
+					{
+						"id": "c",
+						"payload": {
+							"tag": "x"
+						},
+						"score": 0.27201371137485564
+					}
+				],
+				"status": 200
+			},
+			"step": 5
+		}
+	]
+}
