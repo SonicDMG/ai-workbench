@@ -1,35 +1,30 @@
 # AI Workbench
 
-An HTTP runtime that sits in front of **Astra DB** (via the Data API) and
-exposes a cohesive workbench surface for workspaces, document catalogs,
-vector stores, ingestion, and — in later phases — chat and MCP
-integrations.
+AI Workbench is a self-hosted product surface for building, inspecting,
+and operating retrieval-backed AI applications on **DataStax Astra**.
+It gives teams one place to manage workspaces, catalogs, vector stores,
+document ingest, saved queries, API keys, and retrieval experiments.
 
-The runtime ships as a Docker container. The default (TypeScript)
-runtime lives at [`runtimes/typescript/`](runtimes/typescript/) and is
-bundled with the UI. Alternative language runtimes ("green boxes")
-live as siblings under [`runtimes/`](runtimes/) and expose the same
-`/api/v1/*` contract.
+Under the product UI is a stable HTTP runtime. The default TypeScript
+runtime ships in the same Docker image as the UI; alternative
+language-native runtimes ("green boxes") live under
+[`runtimes/`](runtimes/) and expose the same `/api/v1/*` contract.
 
 ## At a glance
 
-- **One HTTP contract, N runtimes.** TypeScript today. Python scaffold
-  at [`runtimes/python/`](runtimes/python/). Future runtimes drop in
-  alongside and share the same fixture-enforced conformance suite.
-- **Pluggable control plane.** Workspaces, catalogs, and vector-store
-  descriptors persist in one of three backends: `memory` (default),
-  `file` (JSON on disk), or `astra` (Data API Tables). Same API
-  contract regardless of backend.
-- **Astra-native.** The `astra` control-plane backend uses
-  [`@datastax/astra-db-ts`](https://www.npmjs.com/package/@datastax/astra-db-ts)
-  directly. The data-plane Astra driver uses the same SDK. The Python
-  runtime will use `astrapy`. No wrapper libraries.
-- **Secrets by reference.** Credentials are never stored by value —
-  records hold `SecretRef` pointers (`env:FOO` / `file:/path`) that
-  the runtime resolves on demand.
-- **Declarative config.** `workbench.yaml` picks the runtime's control
-  plane and (optionally) seeds it. Everything else is runtime data,
-  mutable via the HTTP API.
+- **Workspace command center.** Workspaces isolate catalogs, vector
+  stores, documents, saved queries, jobs, credentials, and API keys.
+- **Knowledge operations.** Ingest raw text or files into catalogs,
+  track sync/async job state, and bind content to the vector store that
+  powers retrieval.
+- **Retrieval playground.** Run text, vector, hybrid, and rerank
+  searches in the browser against real workspace data.
+- **Production-friendly controls.** Start in memory, switch to file
+  storage for single-node deployments, or use Astra Data API tables for
+  a durable control plane.
+- **Technical spine intact.** One `/api/v1/*` contract, language-native
+  runtimes, direct Astra SDK usage, secrets by reference, and
+  fixture-enforced conformance.
 
 ## Architecture
 
@@ -152,6 +147,7 @@ phases.
 
 | Document | Purpose |
 |----------|---------|
+| [`docs/overview.md`](docs/overview.md) | Product overview, workflows, quickstart path |
 | [`docs/architecture.md`](docs/architecture.md) | System model, components, data flow |
 | [`docs/api-spec.md`](docs/api-spec.md) | HTTP API contract narrative |
 | [`docs/auth.md`](docs/auth.md) | `/api/v1/*` auth middleware, OIDC login, silent refresh, threat model |

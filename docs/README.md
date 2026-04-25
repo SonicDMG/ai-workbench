@@ -1,30 +1,35 @@
-# AI Workbench — Documentation
+# AI Workbench documentation
 
-Narrative docs for the AI Workbench runtime and its polyglot
-"green box" architecture. The generated OpenAPI at
-`/api/v1/openapi.json` is the canonical API reference — this
-directory explains the shape of everything around it.
+Docs for AI Workbench: the self-hosted product surface for building,
+inspecting, and operating retrieval-backed AI applications on DataStax
+Astra.
+
+The generated OpenAPI at `/api/v1/openapi.json` remains the canonical
+API reference. These docs explain the product workflows around that
+contract first, then the runtime architecture behind them.
 
 ## Start here
 
-1. [`architecture.md`](architecture.md) — what AI Workbench is and
-   how the pieces fit together.
-2. [`green-boxes.md`](green-boxes.md) — the multi-runtime model and
-   why we ship language-native implementations.
+1. [`overview.md`](overview.md) — what AI Workbench is as a product and
+   where to go next.
+2. [`playground.md`](playground.md) — browser workflow for testing text,
+   vector, hybrid, and rerank search.
 3. [`workspaces.md`](workspaces.md) — workspace semantics, scoping,
    and cascade rules.
 4. [`configuration.md`](configuration.md) — the `workbench.yaml`
-   schema.
-5. [`api-spec.md`](api-spec.md) — HTTP contract narrative (what
+   schema and deployment-oriented settings.
+5. [`architecture.md`](architecture.md) — runtime model and how the
+   pieces fit together.
+6. [`green-boxes.md`](green-boxes.md) — the multi-runtime model and
+   why we ship language-native implementations.
+7. [`api-spec.md`](api-spec.md) — HTTP contract narrative (what
    operational routes exist, what errors are possible, what's
    planned).
-6. [`auth.md`](auth.md) — the `/api/v1/*` auth middleware: config,
+8. [`auth.md`](auth.md) — the `/api/v1/*` auth middleware: config,
    contract, threat model, rollout phases.
-7. [`conformance.md`](conformance.md) — how we keep language
+9. [`conformance.md`](conformance.md) — how we keep language
    runtimes in lockstep via shared fixtures.
-8. [`playground.md`](playground.md) — browser playground UX,
-   text-vs-vector dispatch, hybrid + rerank toggles, ingest dialog.
-9. [`roadmap.md`](roadmap.md) — phased delivery plan and open
+10. [`roadmap.md`](roadmap.md) — phased delivery plan and open
    questions.
 
 ## Design notes

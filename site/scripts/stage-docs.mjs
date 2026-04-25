@@ -66,80 +66,72 @@ layout: home
 
 hero:
   name: AI Workbench
-  text: One HTTP contract. Language-native runtimes.
+  text: Build, inspect, and operate retrieval workflows.
   tagline: |
-    Self-hosted runtime + UI for building knowledge bases on top of
-    DataStax Astra. Workspaces, catalogs, vector stores, hybrid +
-    rerank search, sync/async ingest with SSE progress, browser
-    playground — all in one Docker image.
+    A self-hosted product surface for teams building knowledge-backed
+    AI applications on DataStax Astra. Manage workspaces, catalogs,
+    vector stores, ingest jobs, saved queries, API keys, and retrieval
+    experiments from one deployable runtime and UI.
   actions:
     - theme: brand
-      text: Read the architecture
-      link: /architecture
+      text: Start with the product
+      link: /overview
     - theme: alt
-      text: View on GitHub
-      link: https://github.com/datastax/ai-workbench
+      text: Explore the architecture
+      link: /architecture
 
 features:
-  - icon: 🟩
-    title: One contract, N runtimes
+  - icon: 🧭
+    title: Workspace command center
     details: |
-      The HTTP API is the contract. The default TypeScript runtime
-      ships bundled with the UI; alternative-language "green boxes"
-      (Python, Java) live as siblings under \`runtimes/\` and pass the
-      same fixture-enforced conformance suite.
-  - icon: 🔌
-    title: Pluggable control plane
+      Create isolated workspaces for projects, tenants, or
+      environments. Each workspace owns its catalogs, vector stores,
+      documents, saved queries, jobs, credentials, and API keys.
+  - icon: 🗂️
+    title: Catalogs and ingest
     details: |
-      Workspaces, catalogs, and vector-store descriptors persist in
-      one of three backends — \`memory\` (default), \`file\` (JSON on
-      disk), or \`astra\` (Data API Tables) — behind one API contract.
-  - icon: 🚀
-    title: Astra-native, no wrappers
+      Turn files or raw text into searchable catalog content through
+      sync or async ingest. Background jobs stream progress over SSE
+      so operators can see what happened and when it finished.
+  - icon: 🔎
+    title: Retrieval playground
     details: |
-      The TypeScript runtime uses \`@datastax/astra-db-ts\` directly;
-      the Python runtime will use \`astrapy\`. No middleware, no
-      shimming — each runtime speaks its language's native SDK.
-  - icon: 🧪
-    title: Browser playground + ingest
-    details: |
-      The bundled web UI runs vector / text / hybrid / rerank queries
-      against any workspace's vector store, and ingests documents
-      through a chunk → embed → upsert pipeline that streams progress
-      via SSE.
+      Run text, vector, hybrid, and rerank searches against real
+      workspace data. Expand results, compare behavior, and save
+      repeatable queries without leaving the browser.
   - icon: 🔐
-    title: Secrets by reference
+    title: Safer operations by default
     details: |
-      Credentials never live in records — fields like \`credentialsRef\`
-      hold \`provider:path\` pointers (\`env:FOO\`, \`file:/path\`) resolved
-      on demand by a pluggable \`SecretResolver\`.
-  - icon: 🔁
-    title: OIDC + silent refresh
+      Credentials stay behind \`SecretRef\` pointers such as
+      \`env:OPENAI_API_KEY\` or \`file:/path\`. The runtime resolves
+      them only when a workspace operation needs them.
+  - icon: 🧱
+    title: Production-ready foundation
     details: |
-      The auth middleware handles workspace-scoped \`wb_live_*\` API
-      keys and OIDC bearer tokens, with a browser login flow (PKCE)
-      and silent token refresh so users don't see mid-session
-      re-logins.
+      Start in memory for demos, switch to file-backed state for
+      single-node deployments, or use Astra Data API tables for a
+      durable control plane.
+  - icon: 🟩
+    title: Technical depth when you need it
+    details: |
+      The stable \`/api/v1/*\` contract, language-native runtimes, and
+      fixture-based conformance suite are still here - just behind the
+      product workflow instead of in front of it.
 ---
 
 ## Quickstart
 
 \`\`\`bash
-# Clone + install
-git clone https://github.com/datastax/ai-workbench.git
-cd ai-workbench
 npm ci && npm run install:ts
-
-# Boot with the default in-memory control plane
 npm run dev                            # http://localhost:8080
-
-# Hit it
-curl http://localhost:8080/healthz     # {"status":"ok"}
-curl http://localhost:8080/docs        # Scalar-rendered API reference
 \`\`\`
 
-Switching to an Astra-backed control plane is a YAML change — see
-[Configuration](/configuration).
+Open the UI, create a workspace, attach a vector store, ingest content
+from a catalog, and use the playground to inspect retrieval behavior.
+
+Want the implementation model? Read [Architecture](/architecture). Want
+the HTTP surface? Open [API spec](/api-spec) or the Scalar reference at
+\`/docs\` on a running runtime.
 `;
 
 await writeFile(join(STAGED, "index.md"), indexMd, "utf8");

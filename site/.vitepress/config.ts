@@ -22,7 +22,7 @@ const SITE_BASE = process.env.SITE_BASE ?? "/ai-workbench/";
 export default defineConfig({
 	title: "AI Workbench",
 	description:
-		"Self-hosted HTTP runtime and UI for building knowledge bases on top of DataStax Astra. Workspaces, catalogs, vector stores, ingest, and a browser playground.",
+		"Self-hosted workbench for building, inspecting, and operating retrieval-backed AI applications on DataStax Astra.",
 	base: SITE_BASE,
 	cleanUrls: true,
 	lastUpdated: true,
@@ -46,7 +46,7 @@ export default defineConfig({
 		// first-time readers get a sensible top-down path; slugs
 		// match the file basenames in `<repo>/docs/`.
 		nav: [
-			{ text: "Docs", link: "/architecture" },
+			{ text: "Docs", link: "/overview" },
 			{ text: "API", link: "/api-spec" },
 			{ text: "Roadmap", link: "/roadmap" },
 		],
@@ -54,6 +54,7 @@ export default defineConfig({
 			{
 				text: "Start here",
 				items: [
+					{ text: "Product overview", link: "/overview" },
 					{ text: "Architecture", link: "/architecture" },
 					{ text: "Green boxes (multi-runtime)", link: "/green-boxes" },
 					{ text: "Workspaces", link: "/workspaces" },
