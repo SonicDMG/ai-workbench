@@ -20,6 +20,7 @@
 		"typecheck": "npm --prefix runtimes/typescript run typecheck && npm --prefix apps/web run typecheck",
 		"conformance:mock": "npm --prefix runtimes/typescript run conformance:mock",
 		"conformance:regenerate": "npm --prefix runtimes/typescript run conformance:regenerate",
+		"smoke:astra": "npm --prefix runtimes/typescript run smoke:astra",
 		"install:ts": "npm --prefix runtimes/typescript ci",
 		"install:web": "npm --prefix apps/web ci"
 	},

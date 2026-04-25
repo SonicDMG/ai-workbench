@@ -16,7 +16,8 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"conformance:mock": "tsx ../../conformance/mock-astra/server.ts",
-		"conformance:regenerate": "tsx scripts/conformance-regenerate.ts"
+		"conformance:regenerate": "tsx scripts/conformance-regenerate.ts",
+		"smoke:astra": "tsx scripts/smoke-astra.ts"
 	},
 	"dependencies": {
 		"@ai-sdk/openai": "^3.0.53",

@@ -223,3 +223,34 @@ upstream.
 4. Run every language runtime's tests — any drift surfaces the
    runtimes that need updates. Update them in the same PR.
 5. Commit fixtures + scenario + every runtime update together.
+
+## Real-Astra smoke (separate harness)
+
+The conformance harness above runs against the deterministic
+`mock-astra` stand-in so it can stay in CI on every PR. A second
+harness lives at
+[`runtimes/typescript/scripts/smoke-astra.ts`](../runtimes/typescript/scripts/smoke-astra.ts)
+that boots the runtime in-process against a **real** Astra Data API
+and exercises the full workspace → vector-store → catalog →
+sync ingest → async ingest → search → cleanup pipeline. Run
+locally with:
+
+```bash
+ASTRA_DB_API_ENDPOINT=https://<db-id>-<region>.apps.astra.datastax.com \
+ASTRA_DB_APPLICATION_TOKEN=AstraCS:... \
+  npm run smoke:astra
+```
+
+The script exits 0 with a "skipping" message when the env vars
+aren't set, so:
+
+- Forks and external-contributor PRs see a green "skipped" run.
+- The dedicated [`smoke-astra.yml`](../.github/workflows/smoke-astra.yml)
+  workflow is wired to org secrets; it runs daily on `main`, on every
+  push that touches the astra driver / astra-store / smoke script,
+  and on manual dispatch.
+
+The smoke is intentionally **not** part of the per-PR `verify` job —
+Astra round-trips are too slow and burn API quota. It's a "did our
+changes break the actual product" guard, layered on top of the per-PR
+conformance contract guard.

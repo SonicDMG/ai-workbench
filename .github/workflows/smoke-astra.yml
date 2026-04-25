@@ -1,0 +1,59 @@
+name: Smoke (Astra)
+
+# Real-Astra end-to-end smoke. Runs the full workspace → vector-store
+# → catalog → ingest → search pipeline against a live Astra Data API
+# whose credentials live in repo secrets. The script skips gracefully
+# when the secrets aren't wired (exit 0 with a "skipping" message), so
+# forks and PRs from external contributors don't see this fail with
+# missing-secret errors — they just see a green "skipped" run.
+#
+# Daily on main + manual dispatch only. Not on every PR (Astra
+# round-trips burn ~30s and a couple of API calls per run; we don't
+# need to hit prod on every commit).
+
+on:
+  schedule:
+    # 13:00 UTC — quiet hour for the team. Adjust if it collides with
+    # other scheduled work.
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'runtimes/typescript/scripts/smoke-astra.ts'
+      - 'runtimes/typescript/src/drivers/astra/**'
+      - 'runtimes/typescript/src/astra-client/**'
+      - 'runtimes/typescript/src/jobs/astra-store.ts'
+      - '.github/workflows/smoke-astra.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-astra-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: smoke-astra
+    runs-on: ubuntu-latest
+    # If the org-level secrets aren't configured the script no-ops; we
+    # still spin up Node to make the no-op visible in the run output.
+    env:
+      ASTRA_DB_API_ENDPOINT: ${{ secrets.ASTRA_DB_API_ENDPOINT }}
+      ASTRA_DB_APPLICATION_TOKEN: ${{ secrets.ASTRA_DB_APPLICATION_TOKEN }}
+      ASTRA_DB_KEYSPACE: ${{ secrets.ASTRA_DB_KEYSPACE }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install TS runtime deps
+        run: npm --prefix runtimes/typescript ci --no-audit --no-fund
+
+      - name: Run smoke (skips if secrets unset)
+        run: npm run smoke:astra
