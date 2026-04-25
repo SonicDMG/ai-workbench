@@ -1,8 +1,8 @@
 # Workspaces
 
 A **workspace** is the unit of isolation in AI Workbench — a named
-tenant that owns its own catalogs, vector-store descriptors, and
-(when Phase 2 lands) documents.
+tenant that owns its own catalogs, vector-store descriptors,
+documents, saved queries, and async-ingest jobs.
 
 Workspaces are **runtime records**, not config. They're created via
 `POST /api/v1/workspaces`, fetched via `GET /api/v1/workspaces/{uid}`,
@@ -43,6 +43,9 @@ DELETE /api/v1/workspaces/{uid}        → cascade delete
 - Every vector-store descriptor under the workspace, after dropping its
   underlying collection through the workspace's driver.
 - Every document under any of those catalogs.
+- Every saved query under any of those catalogs.
+- Every async-ingest job record scoped to the workspace.
+- Every workspace API key issued from the workspace.
 
 ### Isolation
 
@@ -51,8 +54,9 @@ DELETE /api/v1/workspaces/{uid}        → cascade delete
   `ControlPlaneStore.listCatalogs(workspace)` / `…getCatalog(workspace,
   uid)` etc. and the store asserts the workspace exists before
   returning anything.
-- Logs carry `requestId`; `workspaceId` will join them in Phase 2
-  alongside structured OTel attributes.
+- Logs carry `requestId`. Structured OTel attributes (workspaceId,
+  catalogUid, jobId) are on the cross-cutting observability
+  workstream — see [`roadmap.md`](roadmap.md).
 
 ### `kind`
 

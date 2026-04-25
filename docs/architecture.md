@@ -247,9 +247,12 @@ Client ──► POST /api/v1/workspaces  body={name, kind}
    c.json(record, 201)
 ```
 
-Future ingestion (Phase 2+) will extend the same shape with calls to
-chunking and embedding services before writing to a catalog's vector
-store.
+The catalog ingest pipeline (Phase 2b — shipped) extends the same
+shape with calls to a `Chunker`, an `Embedder`, and the catalog's
+bound vector store, plus a `Document` row that tracks ingest
+status. Synchronous and async (`?async=true`) variants live at
+`POST /catalogs/{c}/ingest`; the async path returns 202 with a job
+pointer and updates progress through the `JobStore` until terminal.
 
 ## Conformance
 
@@ -267,13 +270,13 @@ See [`conformance.md`](conformance.md) for details.
 
 - Multi-tenant SaaS concerns (quotas, billing, per-tenant encryption
   keys).
-- Cluster coordination — the runtime is single-process. Horizontal
-  scale comes from running multiple containers behind a load
-  balancer, with an `astra` (or future `hcd`) control plane as the
-  shared source of truth.
+- Cluster coordination — the runtime is single-process today.
+  Horizontal scale comes from running multiple containers behind a
+  load balancer, with an `astra` (or future `hcd`) control plane as
+  the shared source of truth. The job-store subscriber fan-out is
+  in-process; cross-replica push is on the roadmap, see
+  [`cross-replica-jobs.md`](cross-replica-jobs.md).
 - Direct database migrations — Astra manages its own.
-- Workspace-scoped API keys (`wb_workspace_api_keys`). Auth arrives
-  in Phase 2+.
 
 ## Open questions
 

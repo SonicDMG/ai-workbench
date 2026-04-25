@@ -80,9 +80,14 @@ Current scenarios:
 | `workspace-credentials-must-be-secret-ref` | Raw credential values are rejected before reaching the SecretResolver |
 | `workspace-test-connection-mock` | Mock workspace connection probe response shape |
 | `workspace-api-key-lifecycle` | API-key issue, list, revoke, list lifecycle |
+| `catalog-ingest-basic` | Sync ingest — chunk + embed + upsert + Document row, plus `409 catalog_not_bound_to_vector_store` on an unbound catalog |
+| `catalog-scoped-document-search` | Search merges `catalogUid` into the filter; foreign-catalog records stay invisible; unbound catalogs return 409 |
+| `catalog-saved-queries` | Saved-query CRUD + post-delete 404 |
+| `vector-store-text-dispatch-mock` | Driver-native `searchByText` on a `mock` workspace with `embedding.provider: mock` |
+| `vector-store-hybrid-and-rerank-mock` | `hybrid: true` + `rerank: true` + `lexicalWeight` lanes; `400 validation_error` for hybrid with a vector body |
+| `catalog-async-ingest-202` | 202 wire shape for `?async=true` (job snapshot at creation time is deterministic; eventual completion stays in runtime tests) |
 
-More land as ingest, catalog-scoped search, saved queries, chat, and
-MCP routes ship.
+More land as chat and MCP routes ship.
 
 ## Fixtures
 

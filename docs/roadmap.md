@@ -14,7 +14,7 @@ runnable artifact and a stable slice of the HTTP contract.
 | 2b | Ingest + catalog-scoped search + saved queries | In progress — search, sync+async ingest, jobs/SSE shipped ingest, saved queries shipped |
 | 2c | Server-side embedding (Astra `$vectorize`) for search + upsert | ✅ Shipped |
 | 3 | Playground + UI | ✅ Shipped |
-| Auth | Middleware, API keys, OIDC verifier, browser login | ✅ Shipped (1–3b); 3c (silent refresh) + 4 (RBAC) planned |
+| Auth | Middleware, API keys, OIDC verifier, browser login, silent refresh | ✅ Shipped (1–3c); 4 (RBAC) planned |
 | 4+ | Chats, MCP | Reserved |
 
 ## Phase 0 — Bootstrap ✅

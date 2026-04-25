@@ -22,8 +22,16 @@ directory explains the shape of everything around it.
    contract, threat model, rollout phases.
 7. [`conformance.md`](conformance.md) — how we keep language
    runtimes in lockstep via shared fixtures.
-8. [`roadmap.md`](roadmap.md) — phased delivery plan and open
+8. [`playground.md`](playground.md) — browser playground UX,
+   text-vs-vector dispatch, hybrid + rerank toggles, ingest dialog.
+9. [`roadmap.md`](roadmap.md) — phased delivery plan and open
    questions.
+
+## Design notes
+
+- [`cross-replica-jobs.md`](cross-replica-jobs.md) — proposed design
+  for cross-replica job pub/sub and in-flight resume after restart.
+  No code yet; sets the seam for the follow-up PR.
 
 ## Samples
 

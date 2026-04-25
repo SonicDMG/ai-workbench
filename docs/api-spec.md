@@ -23,8 +23,8 @@ to flag what's coming.
 ### Content type
 
 - Request and response bodies are JSON (`application/json`).
-- Streaming endpoints (future: ingestion progress) will use
-  `text/event-stream`.
+- Streaming endpoints use `text/event-stream`. Today: async-ingest
+  job progress at `GET /jobs/{jobId}/events`.
 
 ### Identifiers
 
@@ -114,9 +114,13 @@ Operational routes (`/`, `/healthz`, `/readyz`, `/version`,
 `/docs`, `/api/v1/openapi.json`) bypass the middleware so
 load balancers and ops tooling can always reach them.
 
-API-key issuance, OIDC bearer verification, and browser OIDC login
-are implemented. All verifier modes flow through the same middleware —
-routes don't need to care which verifier accepted the token.
+API-key issuance, OIDC bearer verification, browser OIDC login, and
+silent token refresh are all implemented. All verifier modes flow
+through the same middleware — routes don't need to care which
+verifier accepted the token. Browser-only `/auth/*` routes
+(`/auth/config`, `/auth/login`, `/auth/callback`, `/auth/me`,
+`/auth/refresh`, `/auth/logout`) are documented in
+[`auth.md`](auth.md) rather than here.
 
 ### Request ID
 
@@ -601,10 +605,11 @@ Score semantics match the descriptor's `vectorSimilarity`:
 
 ## `/api/v1/workspaces/{workspaceId}/catalogs/{catalogId}/documents`
 
-Document **metadata** CRUD. A `Document` is a named entry in a catalog
-— the metadata row that the future ingest pipeline (chunk + embed)
-attaches vectors to. `PUT` updates metadata only; content changes go
-through `/ingest` once that lands in a later Phase 2 slice.
+Document **metadata** CRUD. A `Document` is a named entry in a
+catalog — the metadata row the in-process ingest pipeline attaches
+vectors to. `PUT` updates metadata only; content changes go through
+`POST /ingest` (sync) or `POST /ingest?async=true` (returns 202 with
+a job pointer), both documented further down.
 
 A `Document`:
 
@@ -628,10 +633,10 @@ A `Document`:
 ```
 
 `status` is one of `pending | chunking | embedding | writing | ready |
-failed`. Clients setting `status` / `errorMessage` / `chunkTotal` /
-`ingestedAt` directly via `PUT` is supported today so an external
-ingest driver can own the lifecycle; the in-process ingest pipeline
-(later Phase 2 slice) will own these fields once it lands.
+failed`. The in-process ingest pipeline (sync + async) is the
+canonical writer of `status` / `errorMessage` / `chunkTotal` /
+`ingestedAt`. Clients can also set these directly via `PUT` so an
+external ingest driver can own the lifecycle if it prefers.
 
 ### `GET`
 
