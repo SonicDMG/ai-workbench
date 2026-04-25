@@ -1,6 +1,4 @@
 node_modules/
-dist/
-.astro/
 .docs-staged/
 .DS_Store
 *.log

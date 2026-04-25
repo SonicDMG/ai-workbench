@@ -166,7 +166,7 @@ phases.
 | [`apps/web/README.md`](apps/web/README.md) | Web UI quickstart, bundle layout, test commands |
 | [`runtimes/README.md`](runtimes/README.md) | Index of language-native runtimes |
 | [`conformance/README.md`](conformance/README.md) | Conformance harness overview |
-| [`site/README.md`](site/README.md) | Landing page + docs site scaffold (Astro + Starlight; not yet wired to deploy) |
+| [`site/README.md`](site/README.md) | Landing page + docs site (VitePress, deployed to GitHub Pages on every push that touches `docs/**`) |
 
 ## Project layout
 

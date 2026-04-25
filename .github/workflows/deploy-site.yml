@@ -1,0 +1,71 @@
+name: Deploy site
+
+# Builds the VitePress docs site at `site/` and publishes it to
+# GitHub Pages. Triggers when the docs source-of-truth changes
+# (`docs/**`), the site config / scaffolding changes (`site/**`),
+# or the workflow file itself changes — staying off the critical
+# CI path for runtime PRs.
+#
+# One-time setup before the first run:
+#   Settings → Pages → Source = "GitHub Actions"
+# After that the deployment URL is
+#   https://datastax.github.io/ai-workbench/
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'site/**'
+      - '.github/workflows/deploy-site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Single-flight: a queued deploy waits for the in-flight one rather
+# than racing it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install site deps
+        run: npm --prefix site ci --no-audit --no-fund
+
+      - name: Build static site
+        run: npm --prefix site run build
+        env:
+          SITE_BASE: /ai-workbench/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/.docs-staged/.vitepress/dist
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
