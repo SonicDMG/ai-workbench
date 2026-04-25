@@ -198,6 +198,16 @@ export const JOBS_DEFINITION = {
 		error_message: "text",
 		created_at: "timestamp",
 		updated_at: "timestamp",
+		// Cross-replica lease (Phase 2b). `leased_by` is the replica
+		// id currently driving a running job; `leased_at` is the
+		// last heartbeat. Both null when the job is unclaimed
+		// (just-created, terminal, or freshly released). Existing
+		// tables created before this column landed get the columns
+		// added on next `openAstraClient` boot — Astra's
+		// CREATE TABLE IF NOT EXISTS is idempotent on the column set,
+		// missing columns get added.
+		leased_by: "text",
+		leased_at: "timestamp",
 	},
 	primaryKey: {
 		partitionBy: ["workspace"],

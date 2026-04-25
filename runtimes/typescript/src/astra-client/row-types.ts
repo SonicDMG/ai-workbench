@@ -129,4 +129,9 @@ export interface JobRow {
 	error_message: string | null;
 	created_at: Iso;
 	updated_at: Iso;
+	/** Replica id holding the lease on a `running` job, or null when
+	 * unclaimed. The orphan-sweeper treats stale leases as evidence
+	 * the owning replica went away and re-claims them. */
+	leased_by: string | null;
+	leased_at: Iso | null;
 }

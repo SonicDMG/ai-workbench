@@ -38,12 +38,20 @@ const RuntimeSchema = z
 		// auto-detects common locations (see src/ui/assets.ts). The
 		// `UI_DIR` env var also works as an override when set.
 		uiDir: z.string().nullable().default(null),
+		// Identifier this replica writes into job leases. `null`
+		// (default) makes the runtime pick one at boot — `${HOSTNAME
+		// or "wb"}-<short-uuid>` — so K8s deployments get a greppable
+		// pod name baked in. Set to a literal string to force a value
+		// (useful in tests). Used by the cross-replica orphan sweeper
+		// to tell whose lease is whose.
+		replicaId: z.string().min(1).nullable().default(null),
 	})
 	.default({
 		port: 8080,
 		logLevel: "info",
 		requestIdHeader: "X-Request-Id",
 		uiDir: null,
+		replicaId: null,
 	});
 
 /**

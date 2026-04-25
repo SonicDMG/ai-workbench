@@ -79,6 +79,9 @@ async function main(): Promise<void> {
 		login,
 		readiness,
 		requestIdHeader: config.runtime.requestIdHeader,
+		// `null` triggers the auto-generated `${HOSTNAME}-<rand8>`
+		// inside createApp; an explicit string forces the value.
+		replicaId: config.runtime.replicaId ?? undefined,
 	});
 
 	const port = config.runtime.port;

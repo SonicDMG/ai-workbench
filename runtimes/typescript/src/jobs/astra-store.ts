@@ -120,6 +120,8 @@ export class AstraJobStore implements JobStore {
 			errorMessage: null,
 			createdAt: now,
 			updatedAt: now,
+			leasedBy: null,
+			leasedAt: null,
 		};
 		await this.tables.jobs.insertOne(jobToRow(record));
 		return record;
@@ -296,6 +298,8 @@ function jobToRow(r: JobRecord): JobRow {
 		error_message: r.errorMessage,
 		created_at: r.createdAt,
 		updated_at: r.updatedAt,
+		leased_by: r.leasedBy,
+		leased_at: r.leasedAt,
 	};
 }
 
@@ -315,5 +319,9 @@ function jobFromRow(row: JobRow): JobRecord {
 		errorMessage: row.error_message,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
+		// Backfill for rows persisted before the lease columns existed
+		// (and for tests that hand-craft rows without them).
+		leasedBy: row.leased_by ?? null,
+		leasedAt: row.leased_at ?? null,
 	};
 }

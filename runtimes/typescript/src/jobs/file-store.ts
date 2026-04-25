@@ -64,6 +64,8 @@ export class FileJobStore implements JobStore {
 				errorMessage: null,
 				createdAt: now,
 				updatedAt: now,
+				leasedBy: null,
+				leasedAt: null,
 			};
 			return { rows: [...rows, record], result: record };
 		});
@@ -122,7 +124,17 @@ export class FileJobStore implements JobStore {
 			if (!Array.isArray(parsed)) {
 				throw new Error(`jobs file '${path}' is not a JSON array`);
 			}
-			return parsed as JobRecord[];
+			// Backfill lease fields on rows persisted before they were
+			// part of the schema. Old workflow: no `leasedBy`, no
+			// `leasedAt`; treat such rows as unclaimed so the sweeper
+			// picks them up the way it would any orphan.
+			return (parsed as Partial<JobRecord>[]).map(
+				(r): JobRecord => ({
+					...(r as JobRecord),
+					leasedBy: r.leasedBy ?? null,
+					leasedAt: r.leasedAt ?? null,
+				}),
+			);
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
 			throw err;

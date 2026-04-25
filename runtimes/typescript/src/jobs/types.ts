@@ -53,6 +53,26 @@ export interface JobRecord {
 	readonly errorMessage: string | null;
 	readonly createdAt: string;
 	readonly updatedAt: string;
+	/**
+	 * Identifier of the replica currently driving the pipeline, or
+	 * `null` when the job is unclaimed (just-created `pending`,
+	 * already-terminal `succeeded` / `failed`, or freshly released
+	 * after a graceful shutdown).
+	 *
+	 * The async-ingest worker stamps this on lease-claim and clears it
+	 * on terminal. Phase 2b's orphan-sweeper (next slice) treats
+	 * `status: "running"` records whose `leasedAt` is older than a
+	 * grace window as abandoned and re-claims them.
+	 */
+	readonly leasedBy: string | null;
+	/**
+	 * Last heartbeat timestamp for the lease holder. Bumped on every
+	 * progress `update()` call by the active worker. Sweeper looks at
+	 * `leasedAt` rather than `updatedAt` so unrelated patches (e.g.
+	 * an operator manually setting `errorMessage`) don't reset the
+	 * lease clock.
+	 */
+	readonly leasedAt: string | null;
 }
 
 /** Patch shape for job updates. Only progress-relevant fields appear
@@ -63,6 +83,13 @@ export interface UpdateJobInput {
 	readonly total?: number | null;
 	readonly result?: Readonly<Record<string, unknown>> | null;
 	readonly errorMessage?: string | null;
+	/** Set to a replica id to claim the lease, or `null` to release.
+	 * The store does not enforce CAS here — that comes via the
+	 * dedicated `claim()` primitive in the orphan-sweeper slice. */
+	readonly leasedBy?: string | null;
+	/** Heartbeat timestamp. Workers bump this on every progress update
+	 * to keep the lease fresh; the sweeper uses it to find orphans. */
+	readonly leasedAt?: string | null;
 }
 
 export interface CreateJobInput {

@@ -58,6 +58,12 @@ import { dispatchSearch, toMutableHits } from "./search-dispatch.js";
  * Background worker for `POST /ingest?async=true`. Runs {@link runIngest}
  * with a progress callback that updates the associated job record.
  *
+ * Lease story (Phase 2b cross-replica): on start the worker stamps
+ * `leasedBy = replicaId` + `leasedAt = now`. Every progress update
+ * bumps `leasedAt` so the orphan-sweeper can tell live jobs from
+ * abandoned ones. On terminal we clear the lease so no replica
+ * thinks it still owns the work.
+ *
  * This function **never throws**: any failure is caught, the job is
  * flipped to `failed` with `errorMessage`, and the document row's
  * status is already handled by {@link runIngest}. That lets the
@@ -71,29 +77,40 @@ async function runAsyncIngest(args: {
 	readonly input: IngestInput;
 	readonly jobId: string;
 	readonly workspaceId: string;
+	readonly replicaId: string;
 }): Promise<void> {
-	const { deps, jobsStore, ctx, input, jobId, workspaceId } = args;
+	const { deps, jobsStore, ctx, input, jobId, workspaceId, replicaId } = args;
 	try {
-		await jobsStore.update(workspaceId, jobId, { status: "running" });
+		await jobsStore.update(workspaceId, jobId, {
+			status: "running",
+			leasedBy: replicaId,
+			leasedAt: new Date().toISOString(),
+		});
 		const result = await runIngest(deps, ctx, input, (p) => {
 			// Swallow an update failure — telemetry only, shouldn't kill
-			// the pipeline.
+			// the pipeline. Heartbeat the lease on every progress tick so
+			// the sweeper sees a live worker.
 			void jobsStore
 				.update(workspaceId, jobId, {
 					processed: p.processed,
 					total: p.total,
+					leasedAt: new Date().toISOString(),
 				})
 				.catch(() => undefined);
 		});
 		await jobsStore.update(workspaceId, jobId, {
 			status: "succeeded",
 			result: { chunks: result.chunks },
+			leasedBy: null,
+			leasedAt: null,
 		});
 	} catch (err) {
 		await jobsStore
 			.update(workspaceId, jobId, {
 				status: "failed",
 				errorMessage: err instanceof Error ? err.message : String(err),
+				leasedBy: null,
+				leasedAt: null,
 			})
 			.catch(() => undefined);
 	}
@@ -105,6 +122,10 @@ export interface DocumentRouteDeps {
 	readonly embedders: EmbedderFactory;
 	/** Required — the async-ingest path persists progress through it. */
 	readonly jobs: JobStore;
+	/** Identifier this replica writes into job leases. Set by the
+	 * runtime at boot from `runtime.replicaId` (or auto-generated
+	 * `${HOSTNAME}-<short-uuid>` when null). */
+	readonly replicaId: string;
 }
 
 // `CATALOG_SCOPE_KEY`, `DOCUMENT_SCOPE_KEY`, and `CHUNK_INDEX_KEY`
@@ -118,7 +139,7 @@ export {
 } from "../../ingest/payload-keys.js";
 
 export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
-	const { store, drivers, embedders, jobs } = deps;
+	const { store, drivers, embedders, jobs, replicaId } = deps;
 	const app = makeOpenApi();
 
 	app.openapi(
@@ -315,6 +336,7 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 					input: body,
 					jobId: job.jobId,
 					workspaceId,
+					replicaId,
 				});
 				return c.json({ job, document }, 202);
 			}

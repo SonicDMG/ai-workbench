@@ -43,6 +43,8 @@ export class MemoryJobStore implements JobStore {
 			errorMessage: null,
 			createdAt: now,
 			updatedAt: now,
+			leasedBy: null,
+			leasedAt: null,
 		};
 		this.jobs.set(key(input.workspace, jobId), record);
 		return record;
@@ -104,6 +106,8 @@ export function applyUpdate(
 		...(patch.errorMessage !== undefined && {
 			errorMessage: patch.errorMessage,
 		}),
+		...(patch.leasedBy !== undefined && { leasedBy: patch.leasedBy }),
+		...(patch.leasedAt !== undefined && { leasedAt: patch.leasedAt }),
 		updatedAt: nowIso(),
 	};
 }

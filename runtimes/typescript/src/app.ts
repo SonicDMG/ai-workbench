@@ -15,6 +15,7 @@
  *   `/docs`                                       Scalar-rendered docs
  */
 
+import { randomUUID } from "node:crypto";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import { ForbiddenError, UnauthorizedError } from "./auth/errors.js";
@@ -68,11 +69,17 @@ export interface AppOptions {
 	readonly login?: AppLoginOptions | null;
 	readonly readiness?: ReadinessSignal;
 	readonly requestIdHeader?: string;
+	/** Identifier this replica writes into job leases. Defaults to a
+	 * fresh `wb-<short-uuid>` per app instance — fine for single-
+	 * replica deployments and tests; set explicitly for clustered
+	 * runs so the orphan-sweeper can tell whose lease is whose. */
+	readonly replicaId?: string;
 }
 
 export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
 	const jobsStore: JobStore = opts.jobs ?? new MemoryJobStore();
+	const replicaId = opts.replicaId ?? generateReplicaId();
 
 	app.use("*", requestId(opts.requestIdHeader));
 
@@ -141,6 +148,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			drivers: opts.drivers,
 			embedders: opts.embedders,
 			jobs: jobsStore,
+			replicaId,
 		}),
 	);
 	app.route("/api/v1/workspaces", jobRoutes({ jobs: jobsStore }));
@@ -235,4 +243,18 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	});
 
 	return app;
+}
+
+/**
+ * Build a stable, greppable replica id for the lifetime of this app
+ * instance. Format: `<host>-<rand8>` where `host` is the env's
+ * `HOSTNAME` (set by Kubernetes from the pod name) or the literal
+ * `wb` when unset, and `rand8` is the first 8 hex chars of a
+ * fresh UUID. Tests typically pass an explicit `replicaId` and skip
+ * this entirely.
+ */
+function generateReplicaId(): string {
+	const host = process.env.HOSTNAME?.trim() || "wb";
+	const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+	return `${host}-${rand}`;
 }

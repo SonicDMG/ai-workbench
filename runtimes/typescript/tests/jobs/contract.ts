@@ -173,5 +173,73 @@ export function runJobStoreContract(
 				await cleanup?.();
 			}
 		});
+
+		test("freshly created jobs are unleased", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const job = await store.create({
+					workspace: WORKSPACE_A,
+					kind: "ingest",
+				});
+				expect(job.leasedBy).toBeNull();
+				expect(job.leasedAt).toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("update can stamp and clear lease fields", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const job = await store.create({
+					workspace: WORKSPACE_A,
+					kind: "ingest",
+				});
+				const heartbeat = "2026-04-25T17:00:00.000Z";
+				const claimed = await store.update(WORKSPACE_A, job.jobId, {
+					status: "running",
+					leasedBy: "wb-replica-a",
+					leasedAt: heartbeat,
+				});
+				expect(claimed.leasedBy).toBe("wb-replica-a");
+				expect(claimed.leasedAt).toBe(heartbeat);
+
+				const released = await store.update(WORKSPACE_A, job.jobId, {
+					status: "succeeded",
+					leasedBy: null,
+					leasedAt: null,
+				});
+				expect(released.leasedBy).toBeNull();
+				expect(released.leasedAt).toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("partial updates leave lease fields untouched", async () => {
+			// Heartbeat-only updates (just bumping leasedAt) shouldn't
+			// nuke leasedBy, and progress-only updates shouldn't nuke
+			// either lease field. Same goes for unrelated fields.
+			const { store, cleanup } = await factory();
+			try {
+				const job = await store.create({
+					workspace: WORKSPACE_A,
+					kind: "ingest",
+				});
+				await store.update(WORKSPACE_A, job.jobId, {
+					status: "running",
+					leasedBy: "wb-replica-a",
+					leasedAt: "2026-04-25T17:00:00.000Z",
+				});
+				const after = await store.update(WORKSPACE_A, job.jobId, {
+					processed: 3,
+				});
+				expect(after.leasedBy).toBe("wb-replica-a");
+				expect(after.leasedAt).toBe("2026-04-25T17:00:00.000Z");
+				expect(after.processed).toBe(3);
+			} finally {
+				await cleanup?.();
+			}
+		});
 	});
 }
