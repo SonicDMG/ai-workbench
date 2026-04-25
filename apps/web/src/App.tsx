@@ -1,7 +1,14 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+	BrowserRouter,
+	Navigate,
+	Route,
+	Routes,
+	useLocation,
+} from "react-router-dom";
 import { Toaster } from "sonner";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { LoadingState } from "@/components/common/states";
 import { AppShell } from "@/components/layout/AppShell";
 import { queryClient } from "@/lib/query";
@@ -29,21 +36,35 @@ export function App() {
 		<QueryClientProvider client={queryClient}>
 			<BrowserRouter>
 				<AppShell>
-					<Suspense fallback={<LoadingState />}>
-						<Routes>
-							<Route path="/" element={<WorkspacesPage />} />
-							<Route path="/onboarding" element={<OnboardingPage />} />
-							<Route
-								path="/workspaces/:uid"
-								element={<WorkspaceDetailPage />}
-							/>
-							<Route path="/playground" element={<PlaygroundPage />} />
-							<Route path="*" element={<Navigate to="/" replace />} />
-						</Routes>
-					</Suspense>
+					<RoutedView />
 				</AppShell>
 				<Toaster position="bottom-right" richColors closeButton />
 			</BrowserRouter>
 		</QueryClientProvider>
+	);
+}
+
+/**
+ * Wraps the routed area in a render-error boundary that resets when
+ * the user navigates away. Lives below `BrowserRouter` so it can
+ * read `useLocation()` for the reset key — a route change should
+ * always clear a stale boundary state. Errors thrown inside event
+ * handlers / async work bypass the boundary by design; those should
+ * be surfaced as toasts via `formatApiError()` at the call site.
+ */
+function RoutedView() {
+	const { pathname } = useLocation();
+	return (
+		<ErrorBoundary resetKey={pathname}>
+			<Suspense fallback={<LoadingState />}>
+				<Routes>
+					<Route path="/" element={<WorkspacesPage />} />
+					<Route path="/onboarding" element={<OnboardingPage />} />
+					<Route path="/workspaces/:uid" element={<WorkspaceDetailPage />} />
+					<Route path="/playground" element={<PlaygroundPage />} />
+					<Route path="*" element={<Navigate to="/" replace />} />
+				</Routes>
+			</Suspense>
+		</ErrorBoundary>
 	);
 }

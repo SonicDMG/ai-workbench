@@ -22,7 +22,7 @@ import {
 	useRunSavedQuery,
 	useSavedQueries,
 } from "@/hooks/useSavedQueries";
-import { ApiError } from "@/lib/api";
+import { formatApiError } from "@/lib/api";
 import type { SavedQueryRecord, SearchHit } from "@/lib/schemas";
 
 /**
@@ -64,13 +64,7 @@ export function SavedQueriesSection({
 			setResultsFor(query);
 			setResults(hits);
 		} catch (err) {
-			const msg =
-				err instanceof ApiError
-					? `${err.code}: ${err.message}`
-					: err instanceof Error
-						? err.message
-						: "Unknown error";
-			toast.error("Couldn't run query", { description: msg });
+			toast.error("Couldn't run query", { description: formatApiError(err) });
 		}
 	}
 
@@ -111,13 +105,9 @@ export function SavedQueriesSection({
 										setResults(null);
 									}
 								} catch (err) {
-									const msg =
-										err instanceof ApiError
-											? `${err.code}: ${err.message}`
-											: err instanceof Error
-												? err.message
-												: "Unknown error";
-									toast.error("Couldn't delete", { description: msg });
+									toast.error("Couldn't delete", {
+										description: formatApiError(err),
+									});
 								}
 							}}
 						/>
@@ -234,13 +224,7 @@ function CreateSavedQueryDialog({
 			toast.success(`Saved query '${values.name}'`);
 			handleOpenChange(false);
 		} catch (err) {
-			const msg =
-				err instanceof ApiError
-					? `${err.code}: ${err.message}`
-					: err instanceof Error
-						? err.message
-						: "Unknown error";
-			toast.error("Couldn't save query", { description: msg });
+			toast.error("Couldn't save query", { description: formatApiError(err) });
 		}
 	}
 

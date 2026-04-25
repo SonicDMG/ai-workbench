@@ -20,7 +20,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { useCreateVectorStore } from "@/hooks/useVectorStores";
-import { ApiError } from "@/lib/api";
+import { formatApiError } from "@/lib/api";
 import {
 	type CreateVectorStoreInput,
 	CreateVectorStoreInputSchema,
@@ -94,13 +94,9 @@ export function CreateVectorStoreDialog({
 			toast.success(`Vector store '${vs.name}' created`);
 			handleOpenChange(false);
 		} catch (err) {
-			const msg =
-				err instanceof ApiError
-					? `${err.code}: ${err.message}`
-					: err instanceof Error
-						? err.message
-						: "Unknown error";
-			toast.error("Couldn't create vector store", { description: msg });
+			toast.error("Couldn't create vector store", {
+				description: formatApiError(err),
+			});
 		}
 	}
 

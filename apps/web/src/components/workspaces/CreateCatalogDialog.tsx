@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { useCreateCatalog } from "@/hooks/useCatalogs";
 import { useVectorStores } from "@/hooks/useVectorStores";
-import { ApiError } from "@/lib/api";
+import { formatApiError } from "@/lib/api";
 
 const FormSchema = z.object({
 	name: z.string().min(1, "Name is required"),
@@ -72,13 +72,9 @@ export function CreateCatalogDialog({
 			toast.success(`Catalog '${record.name}' created`);
 			handleOpenChange(false);
 		} catch (err) {
-			const msg =
-				err instanceof ApiError
-					? `${err.code}: ${err.message}`
-					: err instanceof Error
-						? err.message
-						: "Unknown error";
-			toast.error("Couldn't create catalog", { description: msg });
+			toast.error("Couldn't create catalog", {
+				description: formatApiError(err),
+			});
 		}
 	}
 

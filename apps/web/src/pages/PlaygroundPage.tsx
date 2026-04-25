@@ -22,7 +22,7 @@ import { CreateVectorStoreDialog } from "@/components/workspaces/CreateVectorSto
 import { usePlaygroundSearch } from "@/hooks/usePlaygroundSearch";
 import { useVectorStores } from "@/hooks/useVectorStores";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
-import { ApiError, type PlaygroundSearchInput } from "@/lib/api";
+import { formatApiError, type PlaygroundSearchInput } from "@/lib/api";
 import type { SearchHit, VectorStoreRecord, Workspace } from "@/lib/schemas";
 
 /**
@@ -250,13 +250,7 @@ function SearchPanel({
 				});
 			}
 		} catch (err) {
-			const msg =
-				err instanceof ApiError
-					? `${err.code}: ${err.message}`
-					: err instanceof Error
-						? err.message
-						: "Unknown error";
-			toast.error("Search failed", { description: msg });
+			toast.error("Search failed", { description: formatApiError(err) });
 		}
 	}
 

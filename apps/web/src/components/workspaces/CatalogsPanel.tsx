@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { useCatalogs, useDeleteCatalog } from "@/hooks/useCatalogs";
 import { useDocuments } from "@/hooks/useDocuments";
-import { ApiError } from "@/lib/api";
+import { formatApiError } from "@/lib/api";
 import type { CatalogRecord, DocumentRecord } from "@/lib/schemas";
 import { formatDate } from "@/lib/utils";
 import { CreateCatalogDialog } from "./CreateCatalogDialog";
@@ -132,13 +132,9 @@ export function CatalogsPanel({ workspace }: { workspace: string }) {
 						toast.success(`Catalog '${toDelete.name}' deleted`);
 						setToDelete(null);
 					} catch (err) {
-						const msg =
-							err instanceof ApiError
-								? `${err.code}: ${err.message}`
-								: err instanceof Error
-									? err.message
-									: "Unknown error";
-						toast.error("Couldn't delete", { description: msg });
+						toast.error("Couldn't delete", {
+							description: formatApiError(err),
+						});
 					}
 				}}
 			/>

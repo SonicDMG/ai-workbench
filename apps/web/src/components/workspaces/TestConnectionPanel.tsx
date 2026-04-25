@@ -1,7 +1,7 @@
 import { AlertTriangle, CheckCircle2, PlugZap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTestConnection } from "@/hooks/useWorkspaces";
-import { ApiError } from "@/lib/api";
+import { formatApiError } from "@/lib/api";
 import type { TestConnectionResult } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 
@@ -15,10 +15,7 @@ import { cn } from "@/lib/utils";
 export function TestConnectionPanel({ uid }: { uid: string }) {
 	const probe = useTestConnection(uid);
 	const result = probe.data;
-	const runtimeError =
-		probe.error instanceof ApiError
-			? `${probe.error.code}: ${probe.error.message}`
-			: (probe.error?.message ?? null);
+	const runtimeError = probe.error ? formatApiError(probe.error) : null;
 
 	return (
 		<div className="flex flex-col gap-3">

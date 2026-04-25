@@ -54,6 +54,18 @@ export class ApiError extends Error {
 	}
 }
 
+/**
+ * Render any caught value into a single human-readable line for a
+ * toast description or inline error banner. Centralizes the
+ * `ApiError ? "code: message" : Error ? message : "Unknown error"`
+ * shape that was duplicated across every dialog and mutation site.
+ */
+export function formatApiError(err: unknown): string {
+	if (err instanceof ApiError) return `${err.code}: ${err.message}`;
+	if (err instanceof Error) return err.message;
+	return "Unknown error";
+}
+
 async function request<T>(
 	path: string,
 	init: RequestInit,

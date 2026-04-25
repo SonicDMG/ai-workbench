@@ -18,7 +18,7 @@ import {
 	useUpdateWorkspace,
 	useWorkspace,
 } from "@/hooks/useWorkspaces";
-import { ApiError } from "@/lib/api";
+import { ApiError, formatApiError } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 
 function isLiteralUrl(value: string): boolean {
@@ -38,11 +38,9 @@ export function WorkspaceDetailPage() {
 	if (isLoading) return <LoadingState label="Loading workspace…" />;
 	if (isError || !data) {
 		const message =
-			error instanceof ApiError
-				? error.code === "workspace_not_found"
-					? "This workspace doesn't exist or was deleted."
-					: `${error.code}: ${error.message}`
-				: (error?.message ?? "Unknown error");
+			error instanceof ApiError && error.code === "workspace_not_found"
+				? "This workspace doesn't exist or was deleted."
+				: formatApiError(error);
 		return (
 			<ErrorState
 				title="Couldn't load workspace"
@@ -114,13 +112,9 @@ export function WorkspaceDetailPage() {
 									toast.success("Workspace updated");
 									setEditing(false);
 								} catch (err) {
-									const msg =
-										err instanceof ApiError
-											? `${err.code}: ${err.message}`
-											: err instanceof Error
-												? err.message
-												: "Unknown error";
-									toast.error("Couldn't save changes", { description: msg });
+									toast.error("Couldn't save changes", {
+										description: formatApiError(err),
+									});
 								}
 							}}
 						/>
@@ -239,13 +233,9 @@ export function WorkspaceDetailPage() {
 						toast.success(`Workspace '${data.name}' deleted`);
 						navigate("/");
 					} catch (err) {
-						const msg =
-							err instanceof ApiError
-								? `${err.code}: ${err.message}`
-								: err instanceof Error
-									? err.message
-									: "Unknown error";
-						toast.error("Couldn't delete workspace", { description: msg });
+						toast.error("Couldn't delete workspace", {
+							description: formatApiError(err),
+						});
 					}
 				}}
 			/>

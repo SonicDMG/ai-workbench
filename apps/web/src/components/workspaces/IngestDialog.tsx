@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAsyncIngest, useJobPoller } from "@/hooks/useIngest";
-import { ApiError } from "@/lib/api";
+import { formatApiError } from "@/lib/api";
 import type { CatalogRecord } from "@/lib/schemas";
 
 /**
@@ -153,6 +153,19 @@ export function IngestDialog({
 		}
 	}, [terminalStatus, poll.data?.errorMessage]);
 
+	// A poll error is the network/control-plane round trip failing —
+	// distinct from the job itself reporting `status: failed`. Surface
+	// it once per failure so the user knows the progress meter has
+	// gone stale; React Query will keep retrying in the background.
+	const pollFailed = poll.isError;
+	const pollError = poll.error;
+	useEffect(() => {
+		if (!pollFailed) return;
+		toast.warning("Lost contact with the job", {
+			description: `${formatApiError(pollError)}. Retrying in the background — the ingest may still be running.`,
+		});
+	}, [pollFailed, pollError]);
+
 	async function onSubmit(values: FormInput) {
 		try {
 			const res = await ingest.mutateAsync({
@@ -161,13 +174,9 @@ export function IngestDialog({
 			});
 			setJobId(res.job.jobId);
 		} catch (err) {
-			const msg =
-				err instanceof ApiError
-					? `${err.code}: ${err.message}`
-					: err instanceof Error
-						? err.message
-						: "Unknown error";
-			toast.error("Couldn't start ingest", { description: msg });
+			toast.error("Couldn't start ingest", {
+				description: formatApiError(err),
+			});
 		}
 	}
 

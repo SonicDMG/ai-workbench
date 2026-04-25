@@ -14,7 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCreateApiKey } from "@/hooks/useApiKeys";
-import { ApiError } from "@/lib/api";
+import { formatApiError } from "@/lib/api";
 
 /**
  * Two-phase dialog:
@@ -50,13 +50,9 @@ export function CreateApiKeyDialog({
 			setPlaintext(res.plaintext);
 			toast.success(`API key '${res.key.label}' created`);
 		} catch (err) {
-			const msg =
-				err instanceof ApiError
-					? `${err.code}: ${err.message}`
-					: err instanceof Error
-						? err.message
-						: "Unknown error";
-			toast.error("Couldn't create API key", { description: msg });
+			toast.error("Couldn't create API key", {
+				description: formatApiError(err),
+			});
 		}
 	}
 

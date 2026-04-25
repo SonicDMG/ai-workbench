@@ -14,7 +14,7 @@ import {
 import { KindPicker } from "@/components/workspaces/KindPicker";
 import { WorkspaceForm } from "@/components/workspaces/WorkspaceForm";
 import { useCreateWorkspace, useWorkspaces } from "@/hooks/useWorkspaces";
-import { ApiError } from "@/lib/api";
+import { formatApiError } from "@/lib/api";
 import type { WorkspaceKind } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 
@@ -150,14 +150,8 @@ export function OnboardingPage() {
 									toast.success(`Workspace '${ws.name}' created`);
 									navigate(`/workspaces/${ws.uid}`);
 								} catch (err) {
-									const msg =
-										err instanceof ApiError
-											? `${err.code}: ${err.message}`
-											: err instanceof Error
-												? err.message
-												: "Unknown error";
 									toast.error("Couldn't create workspace", {
-										description: msg,
+										description: formatApiError(err),
 									});
 								}
 							}}

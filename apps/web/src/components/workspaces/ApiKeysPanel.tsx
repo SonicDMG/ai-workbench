@@ -13,7 +13,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { useApiKeys, useRevokeApiKey } from "@/hooks/useApiKeys";
-import { ApiError } from "@/lib/api";
+import { formatApiError } from "@/lib/api";
 import type { ApiKeyRecord } from "@/lib/schemas";
 import { cn, formatDate } from "@/lib/utils";
 import { CreateApiKeyDialog } from "./CreateApiKeyDialog";
@@ -229,13 +229,9 @@ function RevokeDialog({
 								toast.success(`Key '${target.label}' revoked`);
 								onClose();
 							} catch (err) {
-								const msg =
-									err instanceof ApiError
-										? `${err.code}: ${err.message}`
-										: err instanceof Error
-											? err.message
-											: "Unknown error";
-								toast.error("Couldn't revoke key", { description: msg });
+								toast.error("Couldn't revoke key", {
+									description: formatApiError(err),
+								});
 							}
 						}}
 					>
