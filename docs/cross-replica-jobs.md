@@ -1,13 +1,21 @@
 # Cross-replica jobs — design note
 
-Status: **proposed**, not started. Captures the design space around
-two open items from `roadmap.md` Phase 2b:
+Status snapshot:
+
+| Slice | Status |
+|---|---|
+| Subscription fan-out via Astra-table polling | ✅ shipped |
+| Lease columns + heartbeat on running jobs | planned (next PR) |
+| Orphan-sweeper that reclaims stale leases | planned (next PR) |
+
+Captures the design space around two open items from `roadmap.md`
+Phase 2b:
 
 > Cross-replica job pub/sub + in-flight resume after restart (today
 > the record survives restart but the owning worker doesn't).
 
-The goal of this note is to land the design on paper so the
-follow-up PR is a one-mechanic change, not a discovery exercise.
+The note exists so each implementation PR is a one-mechanic change,
+not a discovery exercise.
 
 ## Today's behavior
 

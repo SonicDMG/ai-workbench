@@ -137,6 +137,21 @@ async function main(): Promise<void> {
 					"control-plane close failed",
 				);
 			}
+			// Stop the cross-replica job-subscriber poller (a no-op for
+			// memory/file backends that don't have one). Duck-typed —
+			// `stop()` is optional on JobStore so backends opt in when
+			// they have something to clean up.
+			try {
+				const maybeStop = (jobs as { stop?: () => void }).stop;
+				if (typeof maybeStop === "function") {
+					maybeStop.call(jobs);
+				}
+			} catch (stopErr) {
+				logger.error(
+					{ err: stopErr instanceof Error ? stopErr.message : "unknown" },
+					"job store stop failed",
+				);
+			}
 			clearTimeout(forceKill);
 			process.exit(err ? 1 : 0);
 		});

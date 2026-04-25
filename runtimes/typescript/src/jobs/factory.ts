@@ -53,7 +53,9 @@ export async function buildJobStore(
 					"buildJobStore: astraTables is required when controlPlane.driver is 'astra'",
 				);
 			}
-			return new AstraJobStore(opts.astraTables);
+			return new AstraJobStore(opts.astraTables, {
+				pollIntervalMs: opts.controlPlane.jobPollIntervalMs,
+			});
 		}
 	}
 }

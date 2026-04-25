@@ -5,20 +5,25 @@
  * by `job_id`. `result` round-trips through a serialized `result_json`
  * text column (same pattern as `filter_json` on saved queries).
  *
- * Pub/sub is in-process only (shared {@link JobSubscriptions} helper).
- * That's acceptable today because:
- *   - the Astra table gives us durable records that survive restart,
- *     which is the durability story we're after;
- *   - SSE subscribers are stuck to whichever replica accepts their
- *     `GET /jobs/{id}/events` until the connection drops, so they're
- *     always co-located with the `update()` caller that owns the
- *     pipeline (async ingest runs in the same process as the SSE
- *     reader).
+ * Cross-replica subscriber fan-out (Phase 2b follow-up — see
+ * [`docs/cross-replica-jobs.md`](../../../../docs/cross-replica-jobs.md)):
+ * `subscribe()` registers a local listener AND adds the
+ * `(workspace, jobId)` key to a poll set. A single timer (default
+ * 500ms) ticks while there's at least one subscriber and re-reads
+ * each subscribed record from Astra; when `updated_at` advances past
+ * the value the replica last saw, every local listener fires.
  *
- * Cross-replica fan-out (Redis / Pulsar / …) becomes necessary if
- * async pipelines ever run on a different replica than the SSE
- * subscriber. The pub/sub seam is already isolated, so adding it is
- * a swap of {@link JobSubscriptions} for a remote variant.
+ * Same-replica updates (the common case — async ingest runs in the
+ * same process as its SSE subscriber) still fire **immediately**
+ * through the in-process {@link JobSubscriptions} helper. The poller
+ * only catches updates that originated on a *different* replica, so
+ * the `update()` → listener latency for co-located callers stays
+ * sub-millisecond.
+ *
+ * The poller tolerates the cross-tick race that lets a write land
+ * locally and remotely at the same `updated_at` — `lastSeen` is
+ * bumped on local fire too, so the upcoming poll sees a no-op
+ * instead of a duplicate fire.
  */
 
 import { randomUUID } from "node:crypto";
@@ -37,10 +42,67 @@ import type {
 	UpdateJobInput,
 } from "./types.js";
 
+/** Tunable poll interval and scheduler. Tests inject a manual
+ * scheduler so they don't have to wait on real timers. */
+export interface AstraJobStoreOptions {
+	/** Cross-replica poll interval in milliseconds. Defaults to 500.
+	 * Drop to 100ms for hot-path SSE; raise to 2000ms for cost-
+	 * sensitive deployments where staleness up to two seconds is
+	 * fine. The poller is a no-op when no one is subscribed. */
+	readonly pollIntervalMs?: number;
+	/** Replace `setInterval` / `clearInterval` for tests. The default
+	 * uses `globalThis.setInterval`. */
+	readonly scheduler?: PollScheduler;
+}
+
+export type PollCallback = () => void | Promise<void>;
+export interface PollScheduler {
+	start(callback: PollCallback, intervalMs: number): PollHandle;
+}
+export interface PollHandle {
+	stop(): void;
+}
+
+const DEFAULT_POLL_MS = 500;
+
+const defaultScheduler: PollScheduler = {
+	start(cb, intervalMs) {
+		// `unref` keeps the timer from holding the process open during
+		// graceful shutdown; the runtime's own shutdown hook stops every
+		// subscription anyway, but unref is belt-and-suspenders for
+		// tooling that forgets.
+		const handle = setInterval(cb, intervalMs);
+		if (typeof handle === "object" && "unref" in handle) {
+			(handle as { unref(): void }).unref();
+		}
+		return {
+			stop() {
+				clearInterval(handle);
+			},
+		};
+	},
+};
+
+interface PollEntry {
+	readonly listeners: Set<JobListener>;
+	lastSeen: string | null;
+}
+
 export class AstraJobStore implements JobStore {
 	private readonly subscriptions = new JobSubscriptions();
+	private readonly pollEntries = new Map<string, PollEntry>();
+	private readonly pollIntervalMs: number;
+	private readonly scheduler: PollScheduler;
+	private pollHandle: PollHandle | null = null;
+	private polling = false;
 
-	constructor(private readonly tables: TablesBundle) {}
+	constructor(
+		private readonly tables: TablesBundle,
+		opts: AstraJobStoreOptions = {},
+	) {
+		this.pollIntervalMs = opts.pollIntervalMs ?? DEFAULT_POLL_MS;
+		this.scheduler = opts.scheduler ?? defaultScheduler;
+	}
 
 	async create(input: CreateJobInput): Promise<JobRecord> {
 		const jobId = input.jobId ?? randomUUID();
@@ -90,7 +152,12 @@ export class AstraJobStore implements JobStore {
 			{ workspace, job_id: jobId },
 			{ $set: fields },
 		);
+		// Same-replica fan-out: fire locally immediately, and bump
+		// `lastSeen` so the upcoming poll tick doesn't re-fire on the
+		// same `updated_at`.
 		this.subscriptions.fire(workspace, jobId, next);
+		const entry = this.pollEntries.get(keyOf(workspace, jobId));
+		if (entry) entry.lastSeen = next.updatedAt;
 		return next;
 	}
 
@@ -99,17 +166,118 @@ export class AstraJobStore implements JobStore {
 		jobId: string,
 		listener: JobListener,
 	): Promise<Unsubscribe> {
-		const unsub = this.subscriptions.add(workspace, jobId, listener);
+		const localUnsub = this.subscriptions.add(workspace, jobId, listener);
+		this.trackForPolling(workspace, jobId, listener);
+		this.ensurePolling();
+
 		const current = await this.get(workspace, jobId);
 		if (current) {
+			// Seed `lastSeen` so the first tick after subscribe doesn't
+			// emit a duplicate of what the listener just received.
+			const entry = this.pollEntries.get(keyOf(workspace, jobId));
+			if (entry) entry.lastSeen = current.updatedAt;
 			try {
 				listener(current);
 			} catch {
-				// ignore
+				// ignore — listener's problem
 			}
 		}
-		return unsub;
+
+		return () => {
+			localUnsub();
+			this.untrackForPolling(workspace, jobId, listener);
+			this.maybeStopPolling();
+		};
 	}
+
+	/** Stop the cross-replica polling timer. Called by the runtime's
+	 * shutdown hook so the process can exit cleanly. Safe to call
+	 * multiple times; safe to call before any subscribe. */
+	stop(): void {
+		this.pollHandle?.stop();
+		this.pollHandle = null;
+	}
+
+	/* ----- Polling internals ----------------------------------- */
+
+	private trackForPolling(
+		workspace: string,
+		jobId: string,
+		listener: JobListener,
+	): void {
+		const k = keyOf(workspace, jobId);
+		let entry = this.pollEntries.get(k);
+		if (!entry) {
+			entry = { listeners: new Set(), lastSeen: null };
+			this.pollEntries.set(k, entry);
+		}
+		entry.listeners.add(listener);
+	}
+
+	private untrackForPolling(
+		workspace: string,
+		jobId: string,
+		listener: JobListener,
+	): void {
+		const k = keyOf(workspace, jobId);
+		const entry = this.pollEntries.get(k);
+		if (!entry) return;
+		entry.listeners.delete(listener);
+		if (entry.listeners.size === 0) this.pollEntries.delete(k);
+	}
+
+	private ensurePolling(): void {
+		if (this.pollHandle) return;
+		this.pollHandle = this.scheduler.start(
+			() => this.tick(),
+			this.pollIntervalMs,
+		);
+	}
+
+	private maybeStopPolling(): void {
+		if (this.pollEntries.size === 0) this.stop();
+	}
+
+	private async tick(): Promise<void> {
+		// Single-flight: if a previous tick is still running (slow
+		// network, large fan-out) the next interval bump is a no-op.
+		// The runtime falls behind gracefully; subscribers see merged
+		// state on the next successful tick.
+		if (this.polling) return;
+		this.polling = true;
+		try {
+			// Snapshot keys; concurrent unsubscribes mid-tick are safe
+			// because we re-check entries before firing.
+			const keys = [...this.pollEntries.keys()];
+			await Promise.all(keys.map((k) => this.tickOne(k)));
+		} finally {
+			this.polling = false;
+		}
+	}
+
+	private async tickOne(k: string): Promise<void> {
+		const entry = this.pollEntries.get(k);
+		if (!entry) return;
+		const [workspace, jobId] = parseKey(k);
+		const row = await this.tables.jobs.findOne({
+			workspace,
+			job_id: jobId,
+		});
+		if (!row) return;
+		const updatedAt = row.updated_at;
+		if (entry.lastSeen !== null && updatedAt <= entry.lastSeen) return;
+		entry.lastSeen = updatedAt;
+		this.subscriptions.fire(workspace, jobId, jobFromRow(row));
+	}
+}
+
+function keyOf(workspace: string, jobId: string): string {
+	return `${workspace} ${jobId}`;
+}
+
+function parseKey(k: string): [string, string] {
+	const [workspace, jobId] = k.split(" ");
+	return [workspace as string, jobId as string];
 }
 
 /* ----- Row <-> Record conversion ---------------------------------- */
