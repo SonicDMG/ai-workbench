@@ -169,7 +169,9 @@ Shipped in this phase so far:
 Planned for the rest of 2b:
 
 - Cross-replica job pub/sub + in-flight resume after restart (today
-  the record survives restart but the owning worker doesn't).
+  the record survives restart but the owning worker doesn't). Design
+  in [`cross-replica-jobs.md`](cross-replica-jobs.md) — implementation
+  is a follow-up.
 
 Workspace-scoped API keys moved into their own dedicated auth
 track — see [`auth.md`](auth.md) for the phased rollout.
