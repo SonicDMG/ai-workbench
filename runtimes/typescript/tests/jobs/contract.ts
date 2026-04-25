@@ -242,6 +242,73 @@ export function runJobStoreContract(
 			}
 		});
 
+		test("create persists ingestInput snapshot when supplied", async () => {
+			// The async-ingest route stamps the original IngestInput on
+			// the job so the orphan sweeper can replay it on reclaim.
+			// Round-tripping through every backend matters because the
+			// sweeper reads from whichever store the runtime is using.
+			const { store, cleanup } = await factory();
+			try {
+				const job = await store.create({
+					workspace: WORKSPACE_A,
+					kind: "ingest",
+					ingestInput: {
+						text: "alpha bravo charlie",
+						metadata: { source: "test.md" },
+						chunker: { maxChars: 80 },
+					},
+				});
+				expect(job.ingestInput).toEqual({
+					text: "alpha bravo charlie",
+					metadata: { source: "test.md" },
+					chunker: { maxChars: 80 },
+				});
+				const fetched = await store.get(WORKSPACE_A, job.jobId);
+				expect(fetched?.ingestInput).toEqual(job.ingestInput);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("ingestInput defaults to null when omitted at create", async () => {
+			// Sync ingests and non-ingest jobs allocate without an
+			// input snapshot — null is the explicit "nothing to
+			// resume" signal the sweeper checks.
+			const { store, cleanup } = await factory();
+			try {
+				const job = await store.create({
+					workspace: WORKSPACE_A,
+					kind: "ingest",
+				});
+				expect(job.ingestInput).toBeNull();
+				const fetched = await store.get(WORKSPACE_A, job.jobId);
+				expect(fetched?.ingestInput).toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("ingestInput survives unrelated updates", async () => {
+			// Heartbeats and progress patches must not clobber the
+			// snapshot — the sweeper expects to read it back unchanged
+			// any time after create.
+			const { store, cleanup } = await factory();
+			try {
+				const job = await store.create({
+					workspace: WORKSPACE_A,
+					kind: "ingest",
+					ingestInput: { text: "snapshot stays put" },
+				});
+				await store.update(WORKSPACE_A, job.jobId, { status: "running" });
+				const after = await store.update(WORKSPACE_A, job.jobId, {
+					processed: 5,
+				});
+				expect(after.ingestInput).toEqual({ text: "snapshot stays put" });
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("findStaleRunning returns running jobs whose lease is older than the cutoff", async () => {
 			const { store, cleanup } = await factory();
 			try {

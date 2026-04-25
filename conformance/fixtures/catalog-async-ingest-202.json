@@ -133,6 +133,10 @@
 						"createdAt": "{{TS}}",
 						"documentUid": "{{UUID_4}}",
 						"errorMessage": null,
+						"ingestInput": {
+							"chunker": {},
+							"text": "alpha bravo charlie delta echo foxtrot golf hotel"
+						},
 						"jobId": "{{UUID_5}}",
 						"kind": "ingest",
 						"leasedAt": null,

@@ -21,6 +21,24 @@ export type JobStatus = "pending" | "running" | "succeeded" | "failed";
  * more async operations ship. */
 export type JobKind = "ingest";
 
+/**
+ * Persisted input snapshot for an `ingest` job — exactly what the
+ * pipeline received (text, optional metadata, optional chunker
+ * options). Stored alongside the job record so the cross-replica
+ * orphan sweeper can replay the pipeline after reclaiming an
+ * abandoned lease, instead of marking the job failed and forcing
+ * the user to retry.
+ *
+ * Mirrors `IngestInput` in `src/ingest/pipeline.ts`. Kept as a
+ * dedicated job-types declaration so the jobs layer doesn't take a
+ * compile-time dependency on the ingest pipeline.
+ */
+export interface IngestInputSnapshot {
+	readonly text: string;
+	readonly metadata?: Readonly<Record<string, string>>;
+	readonly chunker?: Readonly<Record<string, unknown>>;
+}
+
 /** Terminal-state check helper. */
 export function isTerminal(status: JobStatus): boolean {
 	return status === "succeeded" || status === "failed";
@@ -73,6 +91,14 @@ export interface JobRecord {
 	 * lease clock.
 	 */
 	readonly leasedAt: string | null;
+	/**
+	 * Persisted ingest input — present on `ingest` jobs created by
+	 * the async path so the orphan sweeper can replay them after
+	 * reclaim. `null` for jobs created before this column shipped or
+	 * for synchronous (sync-path) ingests that don't allocate a job
+	 * record at all.
+	 */
+	readonly ingestInput: IngestInputSnapshot | null;
 }
 
 /** Patch shape for job updates. Only progress-relevant fields appear
@@ -100,4 +126,8 @@ export interface CreateJobInput {
 	/** Optional job id — generated if omitted. */
 	readonly jobId?: string;
 	readonly total?: number | null;
+	/** Persisted on create for `ingest` jobs created via the async
+	 * path. The orphan sweeper reads this back on reclaim to drive a
+	 * resume; sync ingests and non-ingest jobs leave it `null`. */
+	readonly ingestInput?: IngestInputSnapshot | null;
 }

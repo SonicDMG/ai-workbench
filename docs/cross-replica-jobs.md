@@ -6,8 +6,8 @@ Status snapshot:
 |---|---|
 | Subscription fan-out via Astra-table polling | ✅ shipped |
 | Lease columns + heartbeat on running jobs | ✅ shipped |
-| Orphan-sweeper that reclaims stale leases (detect + mark failed) | ✅ shipped |
-| Pipeline resume after reclaim | planned (needs persisted ingest input) |
+| Orphan-sweeper that reclaims stale leases | ✅ shipped |
+| Pipeline resume after reclaim (via persisted `ingestInput`) | ✅ shipped |
 
 Captures the design space around two open items from `roadmap.md`
 Phase 2b:
@@ -15,16 +15,19 @@ Phase 2b:
 > Cross-replica job pub/sub + in-flight resume after restart (today
 > the record survives restart but the owning worker doesn't).
 
-The note exists so each implementation PR is a one-mechanic change,
-not a discovery exercise. Subscription fan-out shipped via the
-Astra-table polling backend; the lease + heartbeat + sweeper slices
-shipped together as the in-flight-resume foundation. Actual pipeline
-re-run from the last upserted chunk is the remaining piece — the
-sweeper currently marks orphans `failed` with an actionable error
-message instead of looping the original ingest, because the original
-`IngestRequest` (text, sourceFilename, chunker opts) isn't persisted
-alongside the job record. Adding `ingest_input_json` is a one-
-column migration; see "Open questions for the implementer" below.
+Each piece shipped as a one-mechanic change. Subscription fan-out
+landed via the Astra-table polling backend; the lease + heartbeat +
+sweeper slices shipped together as the in-flight-resume foundation;
+pipeline resume completes the loop by persisting an
+`IngestInputSnapshot` on the job row (`ingest_input_json` column on
+astra) at create time. When the sweeper claims an orphan that
+carries the snapshot, it hands off to the shared async-ingest worker
+which replays the pipeline from scratch — chunk IDs are
+deterministic so re-upserting is idempotent (wasted embedding cost,
+correct final state). Orphans without a snapshot (created before
+this column shipped, or any future non-ingest job kind) still fall
+back to the legacy mark-failed path so SSE clients always reach a
+terminal state.
 
 ## Today's behavior
 

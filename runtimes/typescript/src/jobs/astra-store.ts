@@ -36,6 +36,7 @@ import type { JobListener, JobStore, Unsubscribe } from "./store.js";
 import { JobSubscriptions } from "./subscriptions.js";
 import type {
 	CreateJobInput,
+	IngestInputSnapshot,
 	JobKind,
 	JobRecord,
 	JobStatus,
@@ -122,6 +123,7 @@ export class AstraJobStore implements JobStore {
 			updatedAt: now,
 			leasedBy: null,
 			leasedAt: null,
+			ingestInput: input.ingestInput ?? null,
 		};
 		await this.tables.jobs.insertOne(jobToRow(record));
 		return record;
@@ -341,6 +343,7 @@ function jobToRow(r: JobRecord): JobRow {
 		updated_at: r.updatedAt,
 		leased_by: r.leasedBy,
 		leased_at: r.leasedAt,
+		ingest_input_json: r.ingestInput ? JSON.stringify(r.ingestInput) : null,
 	};
 }
 
@@ -360,9 +363,13 @@ function jobFromRow(row: JobRow): JobRecord {
 		errorMessage: row.error_message,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
-		// Backfill for rows persisted before the lease columns existed
-		// (and for tests that hand-craft rows without them).
+		// Backfill for rows persisted before the lease + ingestInput
+		// columns existed (and for tests that hand-craft rows without
+		// them).
 		leasedBy: row.leased_by ?? null,
 		leasedAt: row.leased_at ?? null,
+		ingestInput: row.ingest_input_json
+			? (JSON.parse(row.ingest_input_json) as IngestInputSnapshot)
+			: null,
 	};
 }

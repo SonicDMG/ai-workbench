@@ -183,6 +183,119 @@ describe("JobOrphanSweeper", () => {
 		expect(scheduler.callbackCount).toBe(0);
 	});
 
+	test("invokes resume callback with the persisted ingestInput on reclaim", async () => {
+		// When the orphan carries a persisted IngestInputSnapshot AND a
+		// resume hook is wired, the sweeper hands off to the worker
+		// instead of marking the job failed. Verifies the (workspace,
+		// jobId, replicaId, input) handoff shape.
+		const jobs = new MemoryJobStore();
+		const job = await jobs.create({
+			workspace: WORKSPACE_A,
+			kind: "ingest",
+			ingestInput: {
+				text: "resume me",
+				metadata: { source: "abandoned.md" },
+			},
+		});
+		await jobs.update(WORKSPACE_A, job.jobId, {
+			status: "running",
+			leasedBy: "wb-replica-old",
+			leasedAt: "2020-01-01T00:00:00.000Z",
+		});
+
+		const resume = vi.fn(async () => undefined);
+		const scheduler = new ManualSweepScheduler();
+		const sweeper = new JobOrphanSweeper({
+			jobs,
+			replicaId: "wb-replica-resumer",
+			graceMs: 1_000,
+			scheduler,
+			resume,
+		});
+		sweeper.start();
+		await scheduler.tick();
+
+		expect(resume).toHaveBeenCalledTimes(1);
+		expect(resume).toHaveBeenCalledWith({
+			workspaceId: WORKSPACE_A,
+			jobId: job.jobId,
+			replicaId: "wb-replica-resumer",
+			input: { text: "resume me", metadata: { source: "abandoned.md" } },
+		});
+		// The sweeper does NOT mark the job failed when handing off —
+		// the worker drives terminal state itself.
+		const after = await jobs.get(WORKSPACE_A, job.jobId);
+		expect(after?.status).toBe("running");
+		expect(after?.leasedBy).toBe("wb-replica-resumer");
+		sweeper.stop();
+	});
+
+	test("falls back to mark-failed when no resume hook is wired", async () => {
+		// If the runtime declines to provide a resume callback,
+		// orphans-with-input still flow through the legacy "fail
+		// cleanly" path so SSE clients see a terminal state. The
+		// errorMessage hints at the missing hook.
+		const jobs = new MemoryJobStore();
+		const job = await jobs.create({
+			workspace: WORKSPACE_A,
+			kind: "ingest",
+			ingestInput: { text: "would-be resumed" },
+		});
+		await jobs.update(WORKSPACE_A, job.jobId, {
+			status: "running",
+			leasedBy: "wb-replica-old",
+			leasedAt: "2020-01-01T00:00:00.000Z",
+		});
+
+		const scheduler = new ManualSweepScheduler();
+		const sweeper = new JobOrphanSweeper({
+			jobs,
+			replicaId: "wb-replica-x",
+			graceMs: 1_000,
+			scheduler,
+		});
+		sweeper.start();
+		await scheduler.tick();
+
+		const after = await jobs.get(WORKSPACE_A, job.jobId);
+		expect(after?.status).toBe("failed");
+		expect(after?.errorMessage).toMatch(/no resume hook/);
+		sweeper.stop();
+	});
+
+	test("falls back to mark-failed when ingestInput is null even with a resume hook", async () => {
+		// Pre-snapshot rows (or non-ingest kinds in the future) have no
+		// input to replay; the sweeper must skip the resume path so the
+		// hook isn't called with `input: null`.
+		const jobs = new MemoryJobStore();
+		const job = await jobs.create({
+			workspace: WORKSPACE_A,
+			kind: "ingest",
+		});
+		await jobs.update(WORKSPACE_A, job.jobId, {
+			status: "running",
+			leasedBy: "wb-replica-old",
+			leasedAt: "2020-01-01T00:00:00.000Z",
+		});
+
+		const resume = vi.fn();
+		const scheduler = new ManualSweepScheduler();
+		const sweeper = new JobOrphanSweeper({
+			jobs,
+			replicaId: "wb-replica-x",
+			graceMs: 1_000,
+			scheduler,
+			resume,
+		});
+		sweeper.start();
+		await scheduler.tick();
+
+		expect(resume).not.toHaveBeenCalled();
+		const after = await jobs.get(WORKSPACE_A, job.jobId);
+		expect(after?.status).toBe("failed");
+		sweeper.stop();
+	});
+
 	test("a tick failure (e.g. transient store error) is logged but doesn't crash", async () => {
 		// findStaleRunning rejecting must not throw out of tick(); the
 		// sweeper logs and survives.

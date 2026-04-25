@@ -66,6 +66,7 @@ export class FileJobStore implements JobStore {
 				updatedAt: now,
 				leasedBy: null,
 				leasedAt: null,
+				ingestInput: input.ingestInput ?? null,
 			};
 			return { rows: [...rows, record], result: record };
 		});
@@ -165,15 +166,16 @@ export class FileJobStore implements JobStore {
 			if (!Array.isArray(parsed)) {
 				throw new Error(`jobs file '${path}' is not a JSON array`);
 			}
-			// Backfill lease fields on rows persisted before they were
-			// part of the schema. Old workflow: no `leasedBy`, no
-			// `leasedAt`; treat such rows as unclaimed so the sweeper
-			// picks them up the way it would any orphan.
+			// Backfill lease + ingestInput on rows persisted before they
+			// were part of the schema. Old workflow: missing fields →
+			// null. Sweeper picks them up as unclaimed, and skips
+			// resume (no input → fall back to mark-failed).
 			return (parsed as Partial<JobRecord>[]).map(
 				(r): JobRecord => ({
 					...(r as JobRecord),
 					leasedBy: r.leasedBy ?? null,
 					leasedAt: r.leasedAt ?? null,
+					ingestInput: r.ingestInput ?? null,
 				}),
 			);
 		} catch (err) {

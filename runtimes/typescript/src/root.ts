@@ -15,6 +15,7 @@ import { controlPlaneFromConfig } from "./control-plane/factory.js";
 import { buildVectorStoreDriverRegistry } from "./drivers/factory.js";
 import { makeEmbedderFactory } from "./embeddings/factory.js";
 import { buildJobStore } from "./jobs/factory.js";
+import { runIngestJob } from "./jobs/ingest-worker.js";
 import { JobOrphanSweeper } from "./jobs/sweeper.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
 import { EnvSecretProvider } from "./secrets/env.js";
@@ -91,7 +92,10 @@ async function main(): Promise<void> {
 
 	// Cross-replica orphan-sweeper. Off by default — clustered
 	// deployments opt in via `controlPlane.jobsResume.enabled` so the
-	// single-replica reference deployment doesn't pay for it.
+	// single-replica reference deployment doesn't pay for it. When
+	// on, reclaimed orphans with a persisted `ingestInput` snapshot
+	// flow through `runIngestJob` for a real resume; orphans without
+	// one fall back to mark-failed.
 	const sweeperCfg = config.controlPlane.jobsResume;
 	const sweeper =
 		sweeperCfg?.enabled === true
@@ -100,6 +104,15 @@ async function main(): Promise<void> {
 					replicaId,
 					graceMs: sweeperCfg.graceMs,
 					intervalMs: sweeperCfg.intervalMs,
+					resume: ({ workspaceId, jobId, replicaId: rid, input }) => {
+						void runIngestJob({
+							deps: { store, drivers, embedders, jobs },
+							workspaceId,
+							jobId,
+							replicaId: rid,
+							input,
+						});
+					},
 				})
 			: null;
 	if (sweeper) {

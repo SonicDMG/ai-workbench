@@ -45,6 +45,7 @@ export class MemoryJobStore implements JobStore {
 			updatedAt: now,
 			leasedBy: null,
 			leasedAt: null,
+			ingestInput: input.ingestInput ?? null,
 		};
 		this.jobs.set(key(input.workspace, jobId), record);
 		return record;

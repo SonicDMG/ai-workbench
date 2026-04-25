@@ -208,6 +208,12 @@ export const JOBS_DEFINITION = {
 		// missing columns get added.
 		leased_by: "text",
 		leased_at: "timestamp",
+		// Snapshot of the original `IngestInput` (text + metadata +
+		// chunker opts) for `ingest` jobs created via the async path.
+		// The orphan sweeper reads it back on reclaim and replays the
+		// pipeline instead of marking the job failed. `text` so
+		// arbitrary JSON survives — same pattern as `result_json`.
+		ingest_input_json: "text",
 	},
 	primaryKey: {
 		partitionBy: ["workspace"],

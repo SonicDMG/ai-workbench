@@ -134,4 +134,9 @@ export interface JobRow {
 	 * the owning replica went away and re-claims them. */
 	leased_by: string | null;
 	leased_at: Iso | null;
+	/** Serialized `IngestInputSnapshot` for `ingest` jobs created via
+	 * the async path. The orphan-sweeper reads it back on reclaim to
+	 * replay the pipeline. Same `text`-column pattern as
+	 * `result_json`; converters parse/stringify on the boundary. */
+	ingest_input_json: string | null;
 }

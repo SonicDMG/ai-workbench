@@ -28,13 +28,10 @@ import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
 import { CATALOG_SCOPE_KEY } from "../../ingest/payload-keys.js";
-import type {
-	IngestContext,
-	IngestInput,
-	IngestPipelineDeps,
-} from "../../ingest/pipeline.js";
 import { runIngest } from "../../ingest/pipeline.js";
+import { runIngestJob } from "../../jobs/ingest-worker.js";
 import type { JobStore } from "../../jobs/store.js";
+import type { IngestInputSnapshot } from "../../jobs/types.js";
 import { ApiError } from "../../lib/errors.js";
 import { makeOpenApi } from "../../lib/openapi.js";
 import type { AppEnv } from "../../lib/types.js";
@@ -53,68 +50,6 @@ import {
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
 import { dispatchSearch, toMutableHits } from "./search-dispatch.js";
-
-/**
- * Background worker for `POST /ingest?async=true`. Runs {@link runIngest}
- * with a progress callback that updates the associated job record.
- *
- * Lease story (Phase 2b cross-replica): on start the worker stamps
- * `leasedBy = replicaId` + `leasedAt = now`. Every progress update
- * bumps `leasedAt` so the orphan-sweeper can tell live jobs from
- * abandoned ones. On terminal we clear the lease so no replica
- * thinks it still owns the work.
- *
- * This function **never throws**: any failure is caught, the job is
- * flipped to `failed` with `errorMessage`, and the document row's
- * status is already handled by {@link runIngest}. That lets the
- * caller spawn it with `void` without worrying about unhandled
- * rejections.
- */
-async function runAsyncIngest(args: {
-	readonly deps: IngestPipelineDeps;
-	readonly jobsStore: JobStore;
-	readonly ctx: IngestContext;
-	readonly input: IngestInput;
-	readonly jobId: string;
-	readonly workspaceId: string;
-	readonly replicaId: string;
-}): Promise<void> {
-	const { deps, jobsStore, ctx, input, jobId, workspaceId, replicaId } = args;
-	try {
-		await jobsStore.update(workspaceId, jobId, {
-			status: "running",
-			leasedBy: replicaId,
-			leasedAt: new Date().toISOString(),
-		});
-		const result = await runIngest(deps, ctx, input, (p) => {
-			// Swallow an update failure — telemetry only, shouldn't kill
-			// the pipeline. Heartbeat the lease on every progress tick so
-			// the sweeper sees a live worker.
-			void jobsStore
-				.update(workspaceId, jobId, {
-					processed: p.processed,
-					total: p.total,
-					leasedAt: new Date().toISOString(),
-				})
-				.catch(() => undefined);
-		});
-		await jobsStore.update(workspaceId, jobId, {
-			status: "succeeded",
-			result: { chunks: result.chunks },
-			leasedBy: null,
-			leasedAt: null,
-		});
-	} catch (err) {
-		await jobsStore
-			.update(workspaceId, jobId, {
-				status: "failed",
-				errorMessage: err instanceof Error ? err.message : String(err),
-				leasedBy: null,
-				leasedAt: null,
-			})
-			.catch(() => undefined);
-	}
-}
 
 export interface DocumentRouteDeps {
 	readonly store: ControlPlaneStore;
@@ -320,23 +255,30 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 			};
 
 			if (asyncMode === "true") {
+				const ingestSnapshot: IngestInputSnapshot = {
+					text: body.text,
+					...(body.metadata !== undefined && { metadata: body.metadata }),
+					...(body.chunker !== undefined && {
+						chunker: body.chunker as Readonly<Record<string, unknown>>,
+					}),
+				};
 				const job = await jobs.create({
 					workspace: workspaceId,
 					kind: "ingest",
 					catalogUid: catalogId,
 					documentUid: document.documentUid,
+					ingestInput: ingestSnapshot,
 				});
 				// Detached execution — route returns immediately with 202.
 				// Errors are captured into the job record; no thrown
-				// promise escapes the runtime.
-				void runAsyncIngest({
-					deps: { store, drivers, embedders },
-					jobsStore: jobs,
-					ctx: ingestCtx,
-					input: body,
-					jobId: job.jobId,
+				// promise escapes the runtime. Same shared worker the
+				// orphan-sweeper uses on resume.
+				void runIngestJob({
+					deps: { store, drivers, embedders, jobs },
 					workspaceId,
+					jobId: job.jobId,
 					replicaId,
+					input: body,
 				});
 				return c.json({ job, document }, 202);
 			}
