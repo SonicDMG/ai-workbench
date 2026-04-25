@@ -38,6 +38,11 @@ controlPlane:
 #   endpoint: https://<db-id>-<region>.apps.astra.datastax.com
 #   tokenRef: env:ASTRA_DB_APPLICATION_TOKEN
 #   keyspace: workbench
+#   # jobPollIntervalMs: 500   # cross-replica subscriber poll cadence
+#   # jobsResume:              # opt in for clustered deployments only
+#   #   enabled: true
+#   #   graceMs: 60000
+#   #   intervalMs: 60000
 
 # ---------- Seed workspaces (memory driver only) ----------
 #

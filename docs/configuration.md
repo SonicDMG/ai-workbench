@@ -73,6 +73,7 @@ unknown version.
 | `logLevel` | enum | `info` | `trace \| debug \| info \| warn \| error`. The `LOG_LEVEL` env var overrides this when set. |
 | `requestIdHeader` | string | `X-Request-Id` | Name of the request-ID header |
 | `uiDir` | string \| null | `null` | Directory of pre-built UI assets to serve from `/` (with SPA fallback). `null` auto-detects `/app/public` → `${cwd}/public` → `${cwd}/apps/web/dist`. The `UI_DIR` env var also works as an override. The official Docker image sets this up automatically. |
+| `replicaId` | string \| null | `null` | Identifier this replica writes into job leases (used by the cross-replica orphan sweeper to tell whose lease is whose). `null` auto-generates `${HOSTNAME or "wb"}-<short-uuid>` at boot — fine for single-replica deployments and tests; set explicitly for clustered runs if you want the lease holder to be deterministic. |
 
 ### `controlPlane`
 
@@ -126,10 +127,47 @@ multi-writer-safe.
 | `endpoint` | URL | yes | Astra Data API endpoint |
 | `tokenRef` | SecretRef | yes | Pointer to the application token (`env:…` / `file:…`) |
 | `keyspace` | string | no (default `workbench`) | Keyspace hosting the four `wb_*` tables |
+| `jobPollIntervalMs` | int (50–60000) | `500` | Cross-replica job-subscriber poll interval in ms. Each subscribed `(workspace, jobId)` pair is re-read at this cadence so SSE clients on a different replica from the worker still see updates. Same-replica updates fan out instantly; the poller is a no-op when no one is subscribed. Raise for cost-sensitive deployments where second-scale staleness is fine; lower for hot SSE paths. Astra-only — `memory` and `file` are single-replica by definition. |
+| `jobsResume` | object | off | Cross-replica orphan-sweeper config. See below. |
 
 The runtime creates the `wb_*` tables at startup if they don't exist
 (using `createTable(..., { ifNotExists: true })`). The keyspace
 itself must already exist.
+
+#### `controlPlane.jobsResume` (memory / file / astra)
+
+Off by default — only useful for clustered deployments where one
+replica can crash mid-ingest while another stays up. Single-replica
+operators don't need it (their pipelines always fail-fast on the
+same process). When enabled, every replica scans the durable job
+store on an interval for `running` jobs whose lease is older than
+the grace window and CAS-claims them, marking each `failed` with an
+actionable error so SSE clients see a terminal state. Pipeline
+resume from the last upserted chunk is a follow-up — see
+[`cross-replica-jobs.md`](cross-replica-jobs.md).
+
+```yaml
+controlPlane:
+  driver: astra
+  endpoint: https://...
+  tokenRef: env:ASTRA_DB_APPLICATION_TOKEN
+  jobsResume:
+    enabled: true
+    graceMs: 60000     # how stale a lease must be before reclaim
+    intervalMs: 60000  # how often each replica scans
+```
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `enabled` | bool | `false` | Set to `true` to start the sweeper. Off by default; clustered deployments opt in. |
+| `graceMs` | int (1000–600000) | `60000` | Maximum age of a lease (relative to last heartbeat) before the job is considered orphaned. |
+| `intervalMs` | int (1000–600000) | `60000` | How often each replica scans for stale leases. |
+
+Heartbeats are stamped on every progress update (`processed`
+ticking, status flipping), so any active worker keeps its lease
+fresh. Each replica writes its own `replicaId` (see
+[`runtime.replicaId`](#runtime)) into `leasedBy` so the sweeper can
+tell what claim belongs to whom.
 
 ### `seedWorkspaces` *(memory only)*
 

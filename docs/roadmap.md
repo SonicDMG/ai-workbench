@@ -154,9 +154,26 @@ Shipped in this phase so far:
 - **Durable `JobStore` backends.** File (`<root>/jobs.json`) and
   Astra (`wb_jobs_by_workspace`) impls auto-matched to
   `controlPlane.driver`. Memory stays the default for ephemeral runs.
-  Shared contract suite (`tests/jobs/contract.ts`) runs the same 8
-  assertions against each backend. In-process pub/sub for SSE
-  subscribers; cross-replica fan-out remains future work.
+  Shared contract suite (`tests/jobs/contract.ts`) runs the same
+  assertions against each backend.
+- **Cross-replica subscription fan-out.** The Astra job store polls
+  subscribed records (default 500ms, tunable via
+  `controlPlane.jobPollIntervalMs`) so an SSE client connected to
+  replica B sees updates that landed on replica A. Same-replica
+  updates still fire instantly through the in-process listener
+  registry — the poller only catches the cross-replica case and
+  is a no-op when no one is subscribed.
+- **Lease + heartbeat on running jobs.** Workers stamp `leasedBy`
+  + `leasedAt` when they pick a job up and refresh on every
+  progress tick, so a stalled worker is detectable.
+- **Orphan sweeper.** Off by default; clustered deployments opt in
+  via `controlPlane.jobsResume`. When on, every replica scans for
+  `running` jobs whose lease is older than `graceMs` and CAS-claims
+  them, marking them `failed` with an actionable error. Pipeline
+  resume from the last upserted chunk is the remaining piece — the
+  sweeper currently fails the orphan instead of replaying because
+  the original `IngestRequest` (text, chunker opts) isn't persisted
+  alongside the job.
 - **Saved queries** — `/api/v1/workspaces/{w}/catalogs/{c}/queries`
   CRUD + `POST /{q}/run` that replays through the catalog-scoped
   search path. Text-only; the `/run` endpoint merges the catalog's
@@ -168,10 +185,11 @@ Shipped in this phase so far:
 
 Planned for the rest of 2b:
 
-- Cross-replica job pub/sub + in-flight resume after restart (today
-  the record survives restart but the owning worker doesn't). Design
-  in [`cross-replica-jobs.md`](cross-replica-jobs.md) — implementation
-  is a follow-up.
+- **Pipeline resume after orphan reclaim.** Persist the original
+  `IngestRequest` alongside the job (a new `ingest_input_json`
+  column) so the sweeper can replay from `processed` instead of
+  marking the job failed. Design in
+  [`cross-replica-jobs.md`](cross-replica-jobs.md).
 
 Workspace-scoped API keys moved into their own dedicated auth
 track — see [`auth.md`](auth.md) for the phased rollout.

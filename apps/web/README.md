@@ -5,11 +5,20 @@ consumes `/api/v1/workspaces` on the default TypeScript runtime.
 
 ## Status
 
-**Phase B slice 1 — workspace management.** Scope is intentionally
-narrow: list / create / detail / edit / delete workspaces, with a
-first-run onboarding flow. Catalogs, vector stores, documents, and
-the playground are not in this UI yet — they land in later slices
-alongside Phase 2b and Phase 3 on the backend.
+**Shipped.** First-run onboarding wizard, workspace list / detail /
+edit / destructive delete, full CRUD over catalogs, vector-store
+descriptors, and workspace-scoped API keys. Async ingest from the
+browser (file upload → chunk → embed → upsert) with live progress
+streamed via SSE. Saved-query CRUD per catalog, runnable from the UI.
+Playground for ad-hoc text / vector / hybrid / rerank queries against
+any vector store. OIDC login + silent refresh and paste-a-token
+fallback are both wired through the same auth layer.
+
+HCD and OpenRAG kinds are visible in the onboarding picker but
+intentionally non-selectable ("Coming soon" badge) — the runtime
+schema accepts them, but no driver is wired yet, so blocking
+selection here keeps the next step from stalling on
+`driver_unavailable`.
 
 ## Quickstart
 
@@ -85,9 +94,18 @@ navigation shows the shared loader while the chunk streams.
 | Route | Purpose |
 |---|---|
 | `/` | Workspaces list. Redirects to `/onboarding` when empty. |
-| `/onboarding` | Two-step wizard — pick a backend kind, then fill details. |
-| `/workspaces/:uid` | Detail + edit + destructive delete (with type-to-confirm). |
-| `/playground` | Ad-hoc text / vector queries against a workspace's vector stores. See [`docs/playground.md`](../../docs/playground.md). |
+| `/onboarding` | Two-step wizard — pick a backend kind, then fill details. HCD / OpenRAG tiles render but are non-selectable. |
+| `/workspaces/:uid` | Detail + edit + destructive delete (type-to-confirm). Hosts the catalogs, vector-stores, and API-keys panels for this workspace. |
+| `/playground` | Ad-hoc text / vector / hybrid / rerank queries against a workspace's vector stores. See [`docs/playground.md`](../../docs/playground.md). |
+
+The workspace detail page composes four panels (collapsible cards):
+
+| Panel | What it does |
+|---|---|
+| Catalogs | List + create + delete catalogs. Each row expands to the most recent documents, supports inline async ingest (file upload + SSE-streamed progress), and houses the saved-queries section for that catalog. |
+| Vector stores | List + create + delete vector-store descriptors. Create flow provisions the underlying collection on the bound driver. |
+| API keys | List + issue + revoke workspace-scoped `wb_live_*` keys. Fresh keys are shown once, then masked. |
+| Detail / edit | The kind-aware edit form (kind is read-only after create) and the destructive delete dialog. |
 
 ## Stack
 
@@ -99,7 +117,7 @@ navigation shows the shared loader while the chunk streams.
 - **React Hook Form + Zod** for forms; the same Zod schemas that
   describe API shapes drive form validation, so the UI and backend
   can't disagree about request shape.
-- **React Router** for three routes.
+- **React Router** for the four routes (`/`, `/onboarding`, `/workspaces/:uid`, `/playground`).
 - **Sonner** for toasts.
 - **Lucide React** for icons.
 
@@ -122,27 +140,46 @@ apps/web/
 │   │   ├── session.ts               ← /auth/* fetch helpers (cookie-aware)
 │   │   └── utils.ts                 ← cn() + formatDate()
 │   ├── hooks/
-│   │   ├── useWorkspaces.ts         ← list/get/create/update/delete hooks
+│   │   ├── useWorkspaces.ts         ← list/get/create/update/delete
+│   │   ├── useCatalogs.ts           ← catalog CRUD
+│   │   ├── useDocuments.ts          ← per-catalog document list
+│   │   ├── useVectorStores.ts       ← vector-store descriptor CRUD
+│   │   ├── useIngest.ts             ← async ingest + SSE progress
+│   │   ├── useSavedQueries.ts       ← saved-query CRUD + /run
+│   │   ├── usePlaygroundSearch.ts   ← /search dispatch + result hits
 │   │   ├── useApiKeys.ts            ← workspace API-key mutations
 │   │   ├── useAuthToken.ts          ← reactive bearer-token hook
-│   │   └── useSession.ts            ← /auth/config + /auth/me queries
+│   │   └── useSession.ts            ← /auth/config + /auth/me + silent refresh
 │   ├── components/
 │   │   ├── ui/                      ← Button, Input, Card, Dialog, Select, Label
 │   │   ├── layout/AppShell.tsx
 │   │   ├── auth/TokenMenu.tsx       ← paste-a-token fallback
 │   │   ├── auth/UserMenu.tsx        ← header: signed-in / "Log in" / TokenMenu
-│   │   ├── common/states.tsx        ← Loading / Error / Empty
+│   │   ├── common/                  ← states (Loading/Error/Empty), ErrorBoundary
+│   │   ├── playground/
+│   │   │   ├── QueryForm.tsx        ← text/vector + hybrid/rerank/topK/filter
+│   │   │   └── ResultsTable.tsx     ← scored hits with payload expansion
 │   │   └── workspaces/
 │   │       ├── KindBadge.tsx
 │   │       ├── KindPicker.tsx       ← onboarding kind-selection
 │   │       ├── CredentialsEditor.tsx
 │   │       ├── WorkspaceForm.tsx    ← shared create/edit form
 │   │       ├── WorkspaceCard.tsx
-│   │       └── DeleteDialog.tsx
+│   │       ├── DeleteDialog.tsx
+│   │       ├── TestConnectionPanel.tsx
+│   │       ├── ApiKeysPanel.tsx
+│   │       ├── CreateApiKeyDialog.tsx
+│   │       ├── CatalogsPanel.tsx    ← catalog list + per-row docs
+│   │       ├── CreateCatalogDialog.tsx
+│   │       ├── IngestDialog.tsx     ← file upload + async ingest + SSE
+│   │       ├── SavedQueriesSection.tsx
+│   │       ├── VectorStoresPanel.tsx
+│   │       └── CreateVectorStoreDialog.tsx
 │   └── pages/
 │       ├── WorkspacesPage.tsx
 │       ├── OnboardingPage.tsx
-│       └── WorkspaceDetailPage.tsx
+│       ├── WorkspaceDetailPage.tsx
+│       └── PlaygroundPage.tsx
 ```
 
 ## UX notes
