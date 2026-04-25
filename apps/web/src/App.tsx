@@ -31,6 +31,11 @@ const WorkspaceDetailPage = lazy(() =>
 		default: m.WorkspaceDetailPage,
 	})),
 );
+const CatalogExplorerPage = lazy(() =>
+	import("@/pages/CatalogExplorerPage").then((m) => ({
+		default: m.CatalogExplorerPage,
+	})),
+);
 
 export function App() {
 	return (
@@ -75,6 +80,10 @@ function RoutedView() {
 					<Route path="/" element={<WorkspacesPage />} />
 					<Route path="/onboarding" element={<OnboardingPage />} />
 					<Route path="/workspaces/:uid" element={<WorkspaceDetailPage />} />
+					<Route
+						path="/workspaces/:uid/catalogs/:catalogId"
+						element={<CatalogExplorerPage />}
+					/>
 					<Route path="/playground" element={<PlaygroundPage />} />
 					<Route path="*" element={<Navigate to="/" replace />} />
 				</Routes>

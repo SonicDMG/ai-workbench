@@ -96,16 +96,24 @@ navigation shows the shared loader while the chunk streams.
 | `/` | Workspaces list. Redirects to `/onboarding` when empty. |
 | `/onboarding` | Two-step wizard — pick a backend kind, then fill details. HCD / OpenRAG tiles render but are non-selectable. |
 | `/workspaces/:uid` | Detail + edit + destructive delete (type-to-confirm). Hosts the catalogs, vector-stores, and API-keys panels for this workspace. |
+| `/workspaces/:uid/catalogs/:catalogId` | Catalog explorer — sortable / filterable document table with file-type badges, sizes, statuses, and a click-through detail dialog. Multi-file / folder ingest queue lives here. |
 | `/playground` | Ad-hoc text / vector / hybrid / rerank queries against a workspace's vector stores. See [`docs/playground.md`](../../docs/playground.md). |
 
 The workspace detail page composes four panels (collapsible cards):
 
 | Panel | What it does |
 |---|---|
-| Catalogs | List + create + delete catalogs. Each row expands to the most recent documents, supports inline async ingest (file upload + SSE-streamed progress), and houses the saved-queries section for that catalog. |
+| Catalogs | List + create + delete catalogs. Each row expands to a quick-look document preview and houses the saved-queries section. The "Open" button on every row jumps to the catalog explorer for the full table; "Ingest" pops the multi-file / folder upload queue. |
 | Vector stores | List + create + delete vector-store descriptors. Create flow provisions the underlying collection on the bound driver. |
 | API keys | List + issue + revoke workspace-scoped `wb_live_*` keys. Fresh keys are shown once, then masked. |
 | Detail / edit | The kind-aware edit form (kind is read-only after create) and the destructive delete dialog. |
+
+The catalog explorer adds:
+
+- A document table with sortable columns (name, size, chunks, status, ingestedAt) and an inline filename/source-id filter.
+- Color-coded `FileTypeBadge` (Markdown violet, structured-data emerald, tabular amber, code blue, etc.) and pill-shaped `DocumentStatusBadge` (animated glyph for in-flight states).
+- Click-through metadata dialog showing the full Document record + the failure message verbatim when status is `failed`.
+- An ingest queue dialog accepting drag-drop, multi-file picker, or a folder picker (`webkitdirectory`). Files run sequentially through async ingest with a per-row live progress bar — sequential rather than parallel so embedding-provider rate limits stay predictable and a misbehaving file doesn't tank the others.
 
 ## Stack
 
@@ -117,7 +125,7 @@ The workspace detail page composes four panels (collapsible cards):
 - **React Hook Form + Zod** for forms; the same Zod schemas that
   describe API shapes drive form validation, so the UI and backend
   can't disagree about request shape.
-- **React Router** for the four routes (`/`, `/onboarding`, `/workspaces/:uid`, `/playground`).
+- **React Router** for the five routes (`/`, `/onboarding`, `/workspaces/:uid`, `/workspaces/:uid/catalogs/:catalogId`, `/playground`).
 - **Sonner** for toasts.
 - **Lucide React** for icons.
 
@@ -138,6 +146,7 @@ apps/web/
 │   │   ├── query.ts                 ← QueryClient + key factory
 │   │   ├── authToken.ts             ← localStorage bearer-token helpers
 │   │   ├── session.ts               ← /auth/* fetch helpers (cookie-aware)
+│   │   ├── files.ts                 ← extOf() + fileTypeMeta() + formatFileSize()
 │   │   └── utils.ts                 ← cn() + formatDate()
 │   ├── hooks/
 │   │   ├── useWorkspaces.ts         ← list/get/create/update/delete
@@ -169,9 +178,13 @@ apps/web/
 │   │       ├── TestConnectionPanel.tsx
 │   │       ├── ApiKeysPanel.tsx
 │   │       ├── CreateApiKeyDialog.tsx
-│   │       ├── CatalogsPanel.tsx    ← catalog list + per-row docs
+│   │       ├── CatalogsPanel.tsx    ← catalog list + per-row docs preview
 │   │       ├── CreateCatalogDialog.tsx
-│   │       ├── IngestDialog.tsx     ← file upload + async ingest + SSE
+│   │       ├── DocumentTable.tsx    ← sortable doc table for the explorer
+│   │       ├── DocumentDetailDialog.tsx
+│   │       ├── DocumentStatusBadge.tsx
+│   │       ├── FileTypeBadge.tsx
+│   │       ├── IngestQueueDialog.tsx ← multi-file / folder ingest queue
 │   │       ├── SavedQueriesSection.tsx
 │   │       ├── VectorStoresPanel.tsx
 │   │       └── CreateVectorStoreDialog.tsx
@@ -179,6 +192,7 @@ apps/web/
 │       ├── WorkspacesPage.tsx
 │       ├── OnboardingPage.tsx
 │       ├── WorkspaceDetailPage.tsx
+│       ├── CatalogExplorerPage.tsx
 │       └── PlaygroundPage.tsx
 ```
 

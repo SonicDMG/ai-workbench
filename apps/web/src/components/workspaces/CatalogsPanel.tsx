@@ -1,7 +1,5 @@
 import {
-	AlertTriangle,
-	CheckCircle2,
-	FileText,
+	ArrowUpRight,
 	FolderOpen,
 	Loader2,
 	Plus,
@@ -10,6 +8,7 @@ import {
 	Upload,
 } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
@@ -24,10 +23,13 @@ import {
 import { useCatalogs, useDeleteCatalog } from "@/hooks/useCatalogs";
 import { useDocuments } from "@/hooks/useDocuments";
 import { formatApiError } from "@/lib/api";
+import { formatFileSize } from "@/lib/files";
 import type { CatalogRecord, DocumentRecord } from "@/lib/schemas";
 import { formatDate } from "@/lib/utils";
 import { CreateCatalogDialog } from "./CreateCatalogDialog";
-import { IngestDialog } from "./IngestDialog";
+import { DocumentStatusBadge } from "./DocumentStatusBadge";
+import { FileTypeBadge } from "./FileTypeBadge";
+import { IngestQueueDialog } from "./IngestQueueDialog";
 import { SavedQueriesSection } from "./SavedQueriesSection";
 
 /**
@@ -113,7 +115,7 @@ export function CatalogsPanel({ workspace }: { workspace: string }) {
 			/>
 
 			{ingestFor ? (
-				<IngestDialog
+				<IngestQueueDialog
 					workspace={workspace}
 					catalog={ingestFor}
 					open={true}
@@ -205,6 +207,14 @@ function CatalogRow({
 					</span>
 				</button>
 				<div className="shrink-0 flex items-center gap-1">
+					<Button variant="ghost" size="sm" asChild>
+						<Link
+							to={`/workspaces/${workspace}/catalogs/${catalog.uid}`}
+							title="Open the catalog explorer"
+						>
+							Open <ArrowUpRight className="h-3.5 w-3.5" />
+						</Link>
+					</Button>
 					<Button
 						variant="secondary"
 						size="sm"
@@ -212,7 +222,7 @@ function CatalogRow({
 						disabled={!canIngest}
 						title={
 							canIngest
-								? "Ingest a document into this catalog"
+								? "Ingest one or more files into this catalog"
 								: "Bind this catalog to a vector store first"
 						}
 					>
@@ -277,45 +287,24 @@ function DocumentList({ rows }: { rows: readonly DocumentRecord[] }) {
 function DocumentRow({ doc }: { doc: DocumentRecord }) {
 	return (
 		<div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-white">
-			<StatusIcon status={doc.status} />
-			<FileText className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden />
+			<DocumentStatusBadge status={doc.status} />
+			<FileTypeBadge
+				sourceFilename={doc.sourceFilename}
+				fileType={doc.fileType}
+			/>
 			<span className="min-w-0 truncate text-slate-700">
 				{doc.sourceFilename ?? (
 					<span className="font-mono text-slate-500">{doc.documentUid}</span>
 				)}
 			</span>
-			<span className="ml-auto text-slate-400 shrink-0">
-				{doc.chunkTotal !== null ? `${doc.chunkTotal} chunks` : "—"}
+			<span className="ml-auto flex shrink-0 items-center gap-3 text-slate-500 tabular-nums">
+				<span>{formatFileSize(doc.fileSize)}</span>
+				<span>
+					{doc.chunkTotal !== null ? `${doc.chunkTotal} chunks` : "—"}
+				</span>
 			</span>
 		</div>
 	);
-}
-
-function StatusIcon({ status }: { status: DocumentRecord["status"] }) {
-	const cls = "h-3.5 w-3.5 shrink-0";
-	switch (status) {
-		case "ready":
-			return (
-				<CheckCircle2
-					className={`${cls} text-emerald-600`}
-					aria-label="ready"
-				/>
-			);
-		case "failed":
-			return (
-				<AlertTriangle className={`${cls} text-red-600`} aria-label="failed" />
-			);
-		case "writing":
-		case "embedding":
-		case "chunking":
-		case "pending":
-			return (
-				<Loader2
-					className={`${cls} animate-spin text-slate-500`}
-					aria-label={status}
-				/>
-			);
-	}
 }
 
 function DeleteCatalogDialog({

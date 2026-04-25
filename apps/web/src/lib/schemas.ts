@@ -246,6 +246,7 @@ export const IngestRequestSchema = z.object({
 	text: z.string().min(1, "Content is required"),
 	sourceFilename: z.string().nullable().optional(),
 	fileType: z.string().nullable().optional(),
+	fileSize: z.number().int().nonnegative().nullable().optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
 	chunker: IngestChunkerOptionsSchema.optional(),
 });
