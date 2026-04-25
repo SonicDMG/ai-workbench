@@ -122,6 +122,8 @@ All routes documented at `/docs` (Scalar UI) and
 | `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}` | Poll an async-ingest job |
 | `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}/events` | SSE stream of job updates until terminal state |
 | `GET / POST` | `/api/v1/workspaces/{w}/vector-stores` | List / create vector-store descriptors (POST provisions the collection too) |
+| `GET` | `/api/v1/workspaces/{w}/vector-stores/discoverable` | List data-plane collections not yet wrapped in a descriptor |
+| `POST` | `/api/v1/workspaces/{w}/vector-stores/adopt` | Wrap an existing collection in a descriptor without re-provisioning |
 | `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/vector-stores/{v}` | Descriptor CRUD (DELETE drops the collection) |
 | `POST` | `/api/v1/workspaces/{w}/vector-stores/{v}/records` | Upsert vector or text records (text → server-side `$vectorize` when supported, otherwise client-side embed) |
 | `DELETE` | `/api/v1/workspaces/{w}/vector-stores/{v}/records/{rid}` | Delete one |

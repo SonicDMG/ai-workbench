@@ -180,6 +180,52 @@ export interface VectorStoreDriver {
 		ctx: VectorStoreDriverContext,
 		input: RerankInput,
 	): Promise<readonly SearchHit[]>;
+
+	/**
+	 * Discover collections that already exist in the backing data plane
+	 * for this workspace but aren't yet wrapped in a workbench
+	 * descriptor — e.g. tables created by `astra-db-ts` directly, by an
+	 * older workbench install that was wiped, or by hand. Optional —
+	 * drivers without a notion of "external collections" (the mock,
+	 * for instance) should omit this method or return an empty list.
+	 *
+	 * The route layer pairs this with the descriptor table to build the
+	 * "adoptable" list (anything here that doesn't already have a
+	 * descriptor row), then offers the user a one-click adopt that
+	 * stamps a descriptor pointing at the existing collection without
+	 * re-provisioning it.
+	 */
+	listAdoptable?(
+		workspace: WorkspaceRecord,
+	): Promise<readonly AdoptableCollection[]>;
+}
+
+/**
+ * Metadata extracted from an existing data-plane collection, sufficient
+ * to populate a workbench descriptor on adoption. Vectorless
+ * collections are filtered out by the driver — they're not useful to
+ * the workbench's vector-store surface.
+ */
+export interface AdoptableCollection {
+	/** Backend-native collection name. Doubles as the workbench
+	 * descriptor name on adoption (the existing
+	 * `collectionName(descriptor)` mapping returns descriptor.name when
+	 * it satisfies the [A-Za-z][A-Za-z0-9_]{0,47} constraint Astra
+	 * already enforced on the source side). */
+	readonly name: string;
+	readonly vectorDimension: number;
+	readonly vectorSimilarity: "cosine" | "dot" | "euclidean";
+	/** Server-side embedding service (`$vectorize`) attached to the
+	 * collection, when one is configured — `null` for collections that
+	 * expect client-side embedding. */
+	readonly embedding: {
+		readonly provider: string;
+		readonly model: string;
+	} | null;
+	readonly lexicalEnabled: boolean;
+	readonly rerankEnabled: boolean;
+	readonly rerankProvider: string | null;
+	readonly rerankModel: string | null;
 }
 
 /* ------------------------------------------------------------------ */

@@ -2654,6 +2654,212 @@ describe("workspace-scoped authorization (cross-workspace)", () => {
 	});
 });
 
+describe("adopt existing collections", () => {
+	// Stub driver that pretends to be wrapping a real data plane with two
+	// pre-existing collections — one with a $vectorize service, one
+	// without — plus the standard mock surface for everything else.
+	function makeAppWithAdoptableDriver() {
+		const store = new MemoryControlPlaneStore();
+		const mock = new MockVectorStoreDriver();
+		const adoptable: import("../src/drivers/vector-store.js").AdoptableCollection[] =
+			[
+				{
+					name: "legacy_openai_coll",
+					vectorDimension: 1536,
+					vectorSimilarity: "cosine",
+					embedding: { provider: "openai", model: "text-embedding-3-small" },
+					lexicalEnabled: true,
+					rerankEnabled: false,
+					rerankProvider: null,
+					rerankModel: null,
+				},
+				{
+					name: "byo_vector_coll",
+					vectorDimension: 768,
+					vectorSimilarity: "dot",
+					embedding: null,
+					lexicalEnabled: false,
+					rerankEnabled: false,
+					rerankProvider: null,
+					rerankModel: null,
+				},
+			];
+		// Attach `listAdoptable` onto the mock instance for these tests
+		// only — production mock workspaces leave it undefined.
+		(
+			mock as unknown as {
+				listAdoptable: (
+					_w: unknown,
+				) => Promise<
+					readonly import("../src/drivers/vector-store.js").AdoptableCollection[]
+				>;
+			}
+		).listAdoptable = async () => adoptable;
+
+		const drivers = new VectorStoreDriverRegistry(new Map([["mock", mock]]));
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const auth = new AuthResolver({
+			mode: "disabled",
+			anonymousPolicy: "allow",
+			verifiers: [],
+		});
+		const embedders = makeFakeEmbedderFactory();
+		const app = createApp({ store, drivers, secrets, auth, embedders });
+		return { app, store };
+	}
+
+	test("GET /vector-stores/discoverable returns adoptable collections", async () => {
+		const { app, store } = makeAppWithAdoptableDriver();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/discoverable`,
+		);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body).toHaveLength(2);
+		expect(body[0].name).toBe("legacy_openai_coll");
+		expect(body[0].vectorSimilarity).toBe("cosine");
+		expect(body[0].embedding).toEqual({
+			provider: "openai",
+			model: "text-embedding-3-small",
+		});
+		expect(body[0].lexicalEnabled).toBe(true);
+		expect(body[1].name).toBe("byo_vector_coll");
+		expect(body[1].embedding).toBeNull();
+	});
+
+	test("discoverable filters out already-adopted collections", async () => {
+		const { app, store } = makeAppWithAdoptableDriver();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		// Pre-adopt one of them.
+		await app.request(`/api/v1/workspaces/${ws.uid}/vector-stores/adopt`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ collectionName: "legacy_openai_coll" }),
+		});
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/discoverable`,
+		);
+		const body = await json(res);
+		expect(body).toHaveLength(1);
+		expect(body[0].name).toBe("byo_vector_coll");
+	});
+
+	test("POST /vector-stores/adopt creates a descriptor over an existing collection", async () => {
+		const { app, store } = makeAppWithAdoptableDriver();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/adopt`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ collectionName: "legacy_openai_coll" }),
+			},
+		);
+		expect(res.status).toBe(201);
+		const body = await json(res);
+		expect(body.name).toBe("legacy_openai_coll");
+		expect(body.vectorDimension).toBe(1536);
+		expect(body.embedding).toMatchObject({
+			provider: "openai",
+			model: "text-embedding-3-small",
+			dimension: 1536,
+		});
+		expect(body.lexical.enabled).toBe(true);
+		// Verify it landed in the descriptor table.
+		const stored = await store.listVectorStores(ws.uid);
+		expect(stored).toHaveLength(1);
+		expect(stored[0]?.uid).toBe(body.uid);
+	});
+
+	test("adopting a vector-only collection populates a placeholder embedding", async () => {
+		// Collections without a $vectorize service still need an
+		// EmbeddingConfig on the descriptor (schema requires one). The
+		// route stamps `provider: external` so client-side embedding
+		// callers know there's no server-side path.
+		const { app, store } = makeAppWithAdoptableDriver();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/adopt`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ collectionName: "byo_vector_coll" }),
+			},
+		);
+		expect(res.status).toBe(201);
+		const body = await json(res);
+		expect(body.embedding.provider).toBe("external");
+		expect(body.embedding.model).toBe("external");
+		expect(body.vectorSimilarity).toBe("dot");
+	});
+
+	test("adopt returns 409 when the collection is already wrapped", async () => {
+		const { app, store } = makeAppWithAdoptableDriver();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		await app.request(`/api/v1/workspaces/${ws.uid}/vector-stores/adopt`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ collectionName: "legacy_openai_coll" }),
+		});
+		const second = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/adopt`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ collectionName: "legacy_openai_coll" }),
+			},
+		);
+		expect(second.status).toBe(409);
+		const body = await json(second);
+		expect(body.error.code).toBe("collection_already_adopted");
+	});
+
+	test("adopt returns 404 for a name the driver doesn't know about", async () => {
+		const { app, store } = makeAppWithAdoptableDriver();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/adopt`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ collectionName: "ghost" }),
+			},
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("collection_not_found");
+	});
+
+	test("discoverable returns [] when the driver doesn't expose listAdoptable", async () => {
+		// Vanilla mock driver — no listAdoptable. Route should return
+		// an empty list rather than throwing.
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/discoverable`,
+		);
+		expect(res.status).toBe(200);
+		expect(await json(res)).toEqual([]);
+	});
+
+	test("adopt returns 503 when the driver doesn't expose listAdoptable", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/adopt`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ collectionName: "anything" }),
+			},
+		);
+		expect(res.status).toBe(503);
+		const body = await json(res);
+		expect(body.error.code).toBe("adopt_not_supported");
+	});
+});
+
 describe("auth bypasses OpenAPI and docs", () => {
 	test("GET /api/v1/openapi.json works even when anonymousPolicy rejects", async () => {
 		const { app } = makeApp({ anonymousPolicy: "reject" });

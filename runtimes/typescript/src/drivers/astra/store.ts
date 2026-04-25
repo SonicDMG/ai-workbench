@@ -24,6 +24,7 @@ import type {
 } from "../../control-plane/types.js";
 import type { SecretResolver } from "../../secrets/provider.js";
 import {
+	type AdoptableCollection,
 	CollectionUnavailableError,
 	DimensionMismatchError,
 	NotSupportedError,
@@ -52,6 +53,21 @@ function mapMetric(
 			return "cosine";
 		case "dot":
 			return "dot_product";
+		case "euclidean":
+			return "euclidean";
+	}
+}
+
+/** Inverse of {@link mapMetric}. Used by `listAdoptable` to translate
+ * Astra's native metric back to our descriptor enum on adoption. */
+function mapAstraMetric(
+	m: "cosine" | "euclidean" | "dot_product",
+): VectorStoreRecord["vectorSimilarity"] {
+	switch (m) {
+		case "cosine":
+			return "cosine";
+		case "dot_product":
+			return "dot";
 		case "euclidean":
 			return "euclidean";
 	}
@@ -171,6 +187,41 @@ export interface AstraDbLike {
 		name: string,
 		opts?: AstraCollectionHandleOptions,
 	): AstraCollectionLike;
+	/** Lists every collection in the bound DB / keyspace with its
+	 * vector / lexical / rerank options. Used by the adopt-existing
+	 * flow; not in the create / upsert / search hot paths. */
+	listCollections?(opts?: {
+		nameOnly?: false;
+	}): Promise<readonly AstraCollectionDescriptor[]>;
+}
+
+/**
+ * Mirror of the relevant subset of `astra-db-ts`'s `CollectionDescriptor`.
+ * The runtime never sees the full `definition` shape — just the vector
+ * dimension, similarity metric, embedding service (if any), and the
+ * lexical / rerank toggles needed to populate a workbench descriptor on
+ * adoption.
+ */
+export interface AstraCollectionDescriptor {
+	readonly name: string;
+	readonly definition: {
+		readonly vector?: {
+			readonly dimension?: number;
+			readonly metric?: "cosine" | "euclidean" | "dot_product";
+			readonly service?: {
+				readonly provider?: string;
+				readonly modelName?: string;
+			};
+		};
+		readonly lexical?: { readonly enabled?: boolean };
+		readonly rerank?: {
+			readonly enabled?: boolean;
+			readonly service?: {
+				readonly provider?: string;
+				readonly modelName?: string;
+			};
+		};
+	};
 }
 
 export interface AstraCollectionLike {
@@ -299,6 +350,41 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 	async dropCollection(ctx: VectorStoreDriverContext): Promise<void> {
 		const db = await this.getDb(ctx.workspace);
 		await db.dropCollection(collectionName(ctx.descriptor));
+	}
+
+	async listAdoptable(
+		workspace: WorkspaceRecord,
+	): Promise<readonly AdoptableCollection[]> {
+		const db = await this.getDb(workspace);
+		if (typeof db.listCollections !== "function") {
+			// Older astra-db-ts or a fake test Db without the surface —
+			// treat as "no adoptable collections" rather than throwing,
+			// since callers handle the empty case naturally.
+			return [];
+		}
+		const descriptors = await db.listCollections();
+		const out: AdoptableCollection[] = [];
+		for (const c of descriptors) {
+			const v = c.definition.vector;
+			if (!v?.dimension) continue;
+			out.push({
+				name: c.name,
+				vectorDimension: v.dimension,
+				vectorSimilarity: mapAstraMetric(v.metric ?? "cosine"),
+				embedding:
+					v.service?.provider && v.service.modelName
+						? {
+								provider: v.service.provider,
+								model: v.service.modelName,
+							}
+						: null,
+				lexicalEnabled: c.definition.lexical?.enabled === true,
+				rerankEnabled: c.definition.rerank?.enabled === true,
+				rerankProvider: c.definition.rerank?.service?.provider ?? null,
+				rerankModel: c.definition.rerank?.service?.modelName ?? null,
+			});
+		}
+		return out;
 	}
 
 	async upsert(

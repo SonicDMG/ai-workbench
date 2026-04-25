@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { getAuthToken } from "./authToken";
 import {
+	type AdoptableCollection,
+	AdoptableCollectionSchema,
 	type ApiKeyRecord,
 	ApiKeyRecordSchema,
 	type AsyncIngestResponse,
@@ -263,6 +265,25 @@ export const api = {
 			`/workspaces/${workspace}/vector-stores/${uid}`,
 			{ method: "DELETE" },
 			null,
+		),
+
+	listDiscoverableCollections: (
+		workspace: string,
+	): Promise<AdoptableCollection[]> =>
+		request(
+			`/workspaces/${workspace}/vector-stores/discoverable`,
+			{ method: "GET" },
+			z.array(AdoptableCollectionSchema),
+		),
+
+	adoptCollection: (
+		workspace: string,
+		collectionName: string,
+	): Promise<VectorStoreRecord> =>
+		request(
+			`/workspaces/${workspace}/vector-stores/adopt`,
+			{ method: "POST", body: JSON.stringify({ collectionName }) },
+			VectorStoreRecordSchema,
 		),
 
 	search: (

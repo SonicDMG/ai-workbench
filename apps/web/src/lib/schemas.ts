@@ -242,6 +242,23 @@ export const IngestChunkerOptionsSchema = z.object({
 });
 export type IngestChunkerOptions = z.infer<typeof IngestChunkerOptionsSchema>;
 
+export const AdoptableCollectionSchema = z.object({
+	name: z.string(),
+	vectorDimension: z.number().int().positive(),
+	vectorSimilarity: z.enum(["cosine", "dot", "euclidean"]),
+	embedding: z
+		.object({
+			provider: z.string(),
+			model: z.string(),
+		})
+		.nullable(),
+	lexicalEnabled: z.boolean(),
+	rerankEnabled: z.boolean(),
+	rerankProvider: z.string().nullable(),
+	rerankModel: z.string().nullable(),
+});
+export type AdoptableCollection = z.infer<typeof AdoptableCollectionSchema>;
+
 export const IngestRequestSchema = z.object({
 	text: z.string().min(1, "Content is required"),
 	sourceFilename: z.string().nullable().optional(),

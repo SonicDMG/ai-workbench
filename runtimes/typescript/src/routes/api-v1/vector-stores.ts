@@ -32,9 +32,12 @@ import type {
 } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
+import { ApiError } from "../../lib/errors.js";
 import { makeOpenApi } from "../../lib/openapi.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
+	AdoptableCollectionSchema,
+	AdoptCollectionInputSchema,
 	CreateVectorStoreInputSchema,
 	DeleteRecordResponseSchema,
 	ErrorEnvelopeSchema,
@@ -110,6 +113,158 @@ export function vectorStoreRoutes(
 			assertWorkspaceAccess(c, workspaceId);
 			const rows = await store.listVectorStores(workspaceId);
 			return c.json([...rows], 200);
+		},
+	);
+
+	app.openapi(
+		createRoute({
+			method: "get",
+			path: "/{workspaceId}/vector-stores/discoverable",
+			tags: ["vector-stores"],
+			summary:
+				"List collections that exist in the data plane but aren't yet wrapped in a workbench descriptor",
+			description:
+				"Walks the workspace driver's `listAdoptable` and filters out any collection that already has a descriptor row. Returned items can be turned into descriptors via `POST .../adopt`. Returns `[]` for drivers that don't expose a list (mock workspaces never have external collections).",
+			request: {
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
+			},
+			responses: {
+				200: {
+					content: {
+						"application/json": {
+							schema: z.array(AdoptableCollectionSchema),
+						},
+					},
+					description: "Adoptable collections (i.e. not yet adopted)",
+				},
+				404: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description: "Workspace not found",
+				},
+				503: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description: "Driver for this workspace kind is not available",
+				},
+			},
+		}),
+		async (c) => {
+			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
+			const workspace = await requireWorkspace(store, workspaceId);
+			const driver = drivers.for(workspace);
+			if (typeof driver.listAdoptable !== "function") {
+				return c.json([], 200);
+			}
+			const candidates = await driver.listAdoptable(workspace);
+			const adopted = await store.listVectorStores(workspaceId);
+			const adoptedNames = new Set(adopted.map((d) => d.name));
+			return c.json(
+				candidates.filter((c) => !adoptedNames.has(c.name)),
+				200,
+			);
+		},
+	);
+
+	app.openapi(
+		createRoute({
+			method: "post",
+			path: "/{workspaceId}/vector-stores/adopt",
+			tags: ["vector-stores"],
+			summary:
+				"Wrap an existing data-plane collection in a workbench descriptor",
+			description:
+				"Reads the live collection's vector / lexical / rerank options off the data plane and stamps a descriptor pointing at it — no `createCollection` round trip, since the collection already exists. Idempotent semantics are still on the caller: a second adopt call for an already-adopted name returns `409`.",
+			request: {
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
+				body: {
+					content: {
+						"application/json": { schema: AdoptCollectionInputSchema },
+					},
+				},
+			},
+			responses: {
+				201: {
+					content: {
+						"application/json": { schema: VectorStoreRecordSchema },
+					},
+					description: "Descriptor created over the existing collection",
+				},
+				404: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description: "Workspace or named collection not found",
+				},
+				409: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description:
+						"A descriptor with that collection name is already adopted",
+				},
+				503: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description: "Driver doesn't support adoption (no listAdoptable)",
+				},
+			},
+		}),
+		async (c) => {
+			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
+			const { collectionName } = c.req.valid("json");
+			const workspace = await requireWorkspace(store, workspaceId);
+
+			const adopted = await store.listVectorStores(workspaceId);
+			if (adopted.some((d) => d.name === collectionName)) {
+				throw new ApiError(
+					"collection_already_adopted",
+					`a vector-store descriptor already wraps collection '${collectionName}' in this workspace`,
+					409,
+				);
+			}
+
+			const driver = drivers.for(workspace);
+			if (typeof driver.listAdoptable !== "function") {
+				throw new ApiError(
+					"adopt_not_supported",
+					`driver for workspace kind '${workspace.kind}' doesn't expose listAdoptable`,
+					503,
+				);
+			}
+
+			const candidates = await driver.listAdoptable(workspace);
+			const match = candidates.find((c) => c.name === collectionName);
+			if (!match) {
+				throw new ControlPlaneNotFoundError("collection", collectionName);
+			}
+
+			// Build a descriptor that mirrors the live collection's options.
+			// `embedding.provider` defaults to "external" when the collection
+			// has no $vectorize service — the workbench's descriptor
+			// schema requires an EmbeddingConfig, and "external" signals
+			// "client supplies the vector" the same way our other code paths
+			// already treat unknown providers.
+			const descriptor = await store.createVectorStore(workspaceId, {
+				name: match.name,
+				vectorDimension: match.vectorDimension,
+				vectorSimilarity: match.vectorSimilarity,
+				embedding: {
+					provider: match.embedding?.provider ?? "external",
+					model: match.embedding?.model ?? "external",
+					endpoint: null,
+					dimension: match.vectorDimension,
+					secretRef: null,
+				},
+				lexical: {
+					enabled: match.lexicalEnabled,
+					analyzer: null,
+					options: {},
+				},
+				reranking: {
+					enabled: match.rerankEnabled,
+					provider: match.rerankProvider,
+					model: match.rerankModel,
+					endpoint: null,
+					secretRef: null,
+				},
+			});
+			return c.json(descriptor, 201);
 		},
 	);
 

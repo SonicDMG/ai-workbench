@@ -474,6 +474,65 @@ default to `{ enabled: false, ... }` if omitted.
 - **422** `workspace_misconfigured` — workspace is missing `endpoint` or `credentialsRef.token` required by its driver
 - **503** `driver_unavailable` — no driver registered for the workspace's `kind`
 
+### `GET /discoverable`
+
+List collections that exist in the workspace's data plane but aren't
+yet wrapped in a workbench descriptor — useful for adopting
+collections created by another tool, by hand, or by an older
+workbench install whose control-plane state was lost. Returns `[]`
+for drivers that don't expose external collections (the mock
+driver).
+
+```json
+[
+  {
+    "name": "legacy_openai_coll",
+    "vectorDimension": 1536,
+    "vectorSimilarity": "cosine",
+    "embedding": { "provider": "openai", "model": "text-embedding-3-small" },
+    "lexicalEnabled": true,
+    "rerankEnabled": false,
+    "rerankProvider": null,
+    "rerankModel": null
+  }
+]
+```
+
+- **200** — list of `AdoptableCollection`s (already-adopted
+  collections are filtered out)
+- **404** `workspace_not_found`
+- **503** `driver_unavailable` — no driver registered for the
+  workspace's `kind`
+
+### `POST /adopt`
+
+Wrap an existing data-plane collection in a workbench descriptor
+without re-provisioning it. The route reads the live collection's
+vector / lexical / rerank options off the data plane and stamps a
+descriptor matching them; the descriptor's `name` equals the
+collection's name (which is already a valid Astra identifier by
+construction).
+
+**Request:**
+
+```json
+{ "collectionName": "legacy_openai_coll" }
+```
+
+- **201** — the created `VectorStore` descriptor
+- **404** `collection_not_found` — the named collection isn't on
+  the data plane (or the driver no longer reports it)
+- **409** `collection_already_adopted` — a descriptor with that name
+  already exists in this workspace
+- **503** `adopt_not_supported` — driver doesn't expose
+  `listAdoptable`
+
+Vectorless / vector-only collections (no `$vectorize` service
+configured) get a placeholder `embedding: { provider: "external",
+model: "external", … }` — clients still need to supply vectors at
+upsert / search time. Switch the descriptor to a real provider via
+`PUT /{vectorStoreId}` once you've decided on one.
+
 ### `GET /{vectorStoreId}` / `PUT /{vectorStoreId}` / `DELETE /{vectorStoreId}`
 
 `GET` and `PUT` operate on the descriptor only. `DELETE` drops the

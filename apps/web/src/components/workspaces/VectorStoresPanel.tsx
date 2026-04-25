@@ -1,4 +1,11 @@
-import { Database, Play, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+	Database,
+	DownloadCloud,
+	Play,
+	Plus,
+	RefreshCw,
+	Trash2,
+} from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -16,6 +23,7 @@ import { useDeleteVectorStore, useVectorStores } from "@/hooks/useVectorStores";
 import { formatApiError } from "@/lib/api";
 import type { VectorStoreRecord } from "@/lib/schemas";
 import { formatDate } from "@/lib/utils";
+import { AdoptCollectionDialog } from "./AdoptCollectionDialog";
 import { CreateVectorStoreDialog } from "./CreateVectorStoreDialog";
 
 /**
@@ -29,6 +37,7 @@ export function VectorStoresPanel({ workspace }: { workspace: string }) {
 	const list = useVectorStores(workspace);
 	const del = useDeleteVectorStore(workspace);
 	const [createOpen, setCreateOpen] = useState(false);
+	const [adoptOpen, setAdoptOpen] = useState(false);
 	const [toDelete, setToDelete] = useState<VectorStoreRecord | null>(null);
 
 	if (list.isLoading) return <LoadingState label="Loading vector stores…" />;
@@ -59,9 +68,19 @@ export function VectorStoresPanel({ workspace }: { workspace: string }) {
 							: `${rows.length} vector store${rows.length === 1 ? "" : "s"} in this workspace.`}
 					</p>
 				</div>
-				<Button variant="brand" size="sm" onClick={() => setCreateOpen(true)}>
-					<Plus className="h-4 w-4" /> New vector store
-				</Button>
+				<div className="flex items-center gap-2">
+					<Button
+						variant="secondary"
+						size="sm"
+						onClick={() => setAdoptOpen(true)}
+						title="Discover collections that already exist in this workspace's data plane and wrap them in a workbench descriptor"
+					>
+						<DownloadCloud className="h-4 w-4" /> Adopt existing
+					</Button>
+					<Button variant="brand" size="sm" onClick={() => setCreateOpen(true)}>
+						<Plus className="h-4 w-4" /> New vector store
+					</Button>
+				</div>
 			</div>
 
 			{rows.length === 0 ? (
@@ -148,6 +167,12 @@ export function VectorStoresPanel({ workspace }: { workspace: string }) {
 				workspace={workspace}
 				open={createOpen}
 				onOpenChange={setCreateOpen}
+			/>
+
+			<AdoptCollectionDialog
+				workspace={workspace}
+				open={adoptOpen}
+				onOpenChange={setAdoptOpen}
 			/>
 
 			<DeleteVectorStoreDialog

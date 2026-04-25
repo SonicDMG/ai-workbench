@@ -271,6 +271,42 @@ export const CreateVectorStoreInputSchema = z
 	})
 	.openapi("CreateVectorStoreInput");
 
+/**
+ * One row in `GET .../vector-stores/discoverable`. Mirrors the
+ * driver-layer `AdoptableCollection` minus filtering — the route
+ * already strips collections that are present in the descriptor table.
+ */
+export const AdoptableCollectionSchema = z
+	.object({
+		name: z.string(),
+		vectorDimension: z.number().int().positive(),
+		vectorSimilarity: VectorSimilarity,
+		embedding: z
+			.object({
+				provider: z.string(),
+				model: z.string(),
+			})
+			.nullable(),
+		lexicalEnabled: z.boolean(),
+		rerankEnabled: z.boolean(),
+		rerankProvider: z.string().nullable(),
+		rerankModel: z.string().nullable(),
+	})
+	.openapi("AdoptableCollection");
+
+/**
+ * Body of `POST .../vector-stores/adopt`. The descriptor's `name`
+ * must match the data-plane collection name on adoption — the
+ * existing `collectionName(descriptor)` mapping returns
+ * `descriptor.name` when it satisfies Astra's identifier rules
+ * (which it does by construction since the value came from Astra).
+ */
+export const AdoptCollectionInputSchema = z
+	.object({
+		collectionName: z.string().min(1),
+	})
+	.openapi("AdoptCollectionInput");
+
 export const UpdateVectorStoreInputSchema = z
 	.object({
 		name: z.string().min(1).optional(),
