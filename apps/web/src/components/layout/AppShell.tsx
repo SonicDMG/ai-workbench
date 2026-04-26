@@ -46,7 +46,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 	return (
 		<div className="min-h-full flex flex-col bg-[#f4f4f4] text-[#161616]">
 			<header className="sticky top-0 z-30 border-b border-[#c6c6c6] bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/88">
-				<div aria-hidden className="h-[3px] w-full bg-[var(--color-brand-500)]" />
+				<div
+					aria-hidden
+					className="h-[3px] w-full bg-[var(--color-brand-500)]"
+				/>
 				<div className="mx-auto max-w-6xl px-4 py-3 sm:px-6 flex items-center justify-between gap-3 sm:gap-6">
 					<Link
 						to="/"
