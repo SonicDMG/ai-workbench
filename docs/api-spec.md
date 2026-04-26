@@ -732,6 +732,48 @@ Fetch / patch / delete. `PUT` accepts every field from the create body
 access — requesting a document from a catalog it does not belong to —
 returns `404 document_not_found`.
 
+### `GET /{documentId}/chunks`
+
+Lists the chunks the ingest pipeline extracted from this document.
+Reads raw records out of the catalog's bound vector store filtered
+on `documentUid`, sorts by the `chunkIndex` payload key, and
+returns:
+
+```json
+[
+  {
+    "id": "<documentUid>:0",
+    "chunkIndex": 0,
+    "text": "First paragraph about apples.",
+    "payload": {
+      "catalogUid": "…",
+      "documentUid": "…",
+      "chunkIndex": 0,
+      "chunkText": "First paragraph about apples.",
+      "source": "seed"
+    }
+  }
+]
+```
+
+Query params:
+
+- `limit` (1–1000, default 1000) — caps the number of chunks
+  returned.
+
+The ingest pipeline stamps the chunk's text into the reserved
+`chunkText` payload key, so the response always carries the source
+text — even on collections with no `$vectorize` round-trip.
+Records ingested before the `chunkText` key landed return
+`text: null`.
+
+- **200** — array of chunks, sorted by `chunkIndex` ascending
+- **404** `workspace_not_found` / `catalog_not_found` /
+  `document_not_found` / `vector store_not_found`
+- **409** `catalog_not_bound_to_vector_store`
+- **501** `list_records_not_supported` — driver doesn't expose
+  `listRecords`
+
 ### `POST /search`
 
 Catalog-scoped vector / text search. Delegates to the vector store

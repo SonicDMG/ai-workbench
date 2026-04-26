@@ -145,8 +145,9 @@ export function CatalogExplorerPage() {
 				<CardHeader>
 					<CardTitle>Documents</CardTitle>
 					<CardDescription>
-						Click a row to see the full metadata, error message (if failed), and
-						any payload metadata you stamped on ingest.
+						Each row is one uploaded file. Click a row to see the chunks the
+						runtime extracted, plus full metadata and any error message if the
+						ingest failed.
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
@@ -194,6 +195,8 @@ export function CatalogExplorerPage() {
 				onOpenChange={setIngestOpen}
 			/>
 			<DocumentDetailDialog
+				workspace={workspaceId}
+				catalogId={catalog.uid}
 				doc={detail}
 				onOpenChange={(o) => !o && setDetail(null)}
 			/>

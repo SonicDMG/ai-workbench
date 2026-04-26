@@ -27,7 +27,12 @@ import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
-import { CATALOG_SCOPE_KEY } from "../../ingest/payload-keys.js";
+import {
+	CATALOG_SCOPE_KEY,
+	CHUNK_INDEX_KEY,
+	CHUNK_TEXT_KEY,
+	DOCUMENT_SCOPE_KEY,
+} from "../../ingest/payload-keys.js";
 import { runIngest } from "../../ingest/pipeline.js";
 import { runIngestJob } from "../../jobs/ingest-worker.js";
 import type { JobStore } from "../../jobs/store.js";
@@ -39,6 +44,7 @@ import {
 	AsyncIngestResponseSchema,
 	CatalogIdParamSchema,
 	CreateDocumentInputSchema,
+	DocumentChunkSchema,
 	DocumentIdParamSchema,
 	DocumentRecordSchema,
 	ErrorEnvelopeSchema,
@@ -389,6 +395,120 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 				body: { ...body, filter: scopedFilter },
 			});
 			return c.json(toMutableHits(hits), 200);
+		},
+	);
+
+	app.openapi(
+		createRoute({
+			method: "get",
+			path: "/{workspaceId}/catalogs/{catalogId}/documents/{documentId}/chunks",
+			tags: ["documents"],
+			summary: "List the chunks under a document",
+			description:
+				"Reads raw records out of the catalog's bound vector store filtered to this document, returns them sorted by `chunkIndex`. Text comes from the reserved `chunkText` payload key the ingest pipeline stamps. Drivers without `listRecords` (none today, but the contract is optional) return 501.",
+			request: {
+				params: z.object({
+					workspaceId: WorkspaceIdParamSchema,
+					catalogId: CatalogIdParamSchema,
+					documentId: DocumentIdParamSchema,
+				}),
+				query: z.object({
+					limit: z.coerce.number().int().min(1).max(1000).optional(),
+				}),
+			},
+			responses: {
+				200: {
+					content: {
+						"application/json": { schema: z.array(DocumentChunkSchema) },
+					},
+					description: "Chunks under the document",
+				},
+				404: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description:
+						"Workspace, catalog, document, or bound vector store not found",
+				},
+				409: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description: "Catalog has no vector store binding",
+				},
+				501: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description: "Driver doesn't support listRecords",
+				},
+			},
+		}),
+		async (c) => {
+			const { workspaceId, catalogId, documentId } = c.req.valid("param");
+			const { limit } = c.req.valid("query");
+			assertWorkspaceAccess(c, workspaceId);
+
+			const workspace = await store.getWorkspace(workspaceId);
+			if (!workspace) {
+				throw new ControlPlaneNotFoundError("workspace", workspaceId);
+			}
+			const catalog = await store.getCatalog(workspaceId, catalogId);
+			if (!catalog) throw new ControlPlaneNotFoundError("catalog", catalogId);
+			const doc = await store.getDocument(workspaceId, catalogId, documentId);
+			if (!doc) throw new ControlPlaneNotFoundError("document", documentId);
+			if (!catalog.vectorStore) {
+				throw new ApiError(
+					"catalog_not_bound_to_vector_store",
+					`catalog '${catalogId}' has no vectorStore binding`,
+					409,
+				);
+			}
+			const descriptor = await store.getVectorStore(
+				workspaceId,
+				catalog.vectorStore,
+			);
+			if (!descriptor) {
+				throw new ControlPlaneNotFoundError(
+					"vector store",
+					catalog.vectorStore,
+				);
+			}
+
+			const driver = drivers.for(workspace);
+			if (typeof driver.listRecords !== "function") {
+				throw new ApiError(
+					"list_records_not_supported",
+					`driver for workspace kind '${workspace.kind}' doesn't support listRecords`,
+					501,
+				);
+			}
+
+			const records = await driver.listRecords(
+				{ workspace, descriptor },
+				{
+					filter: {
+						[CATALOG_SCOPE_KEY]: catalog.uid,
+						[DOCUMENT_SCOPE_KEY]: doc.documentUid,
+					},
+					limit: limit ?? 1000,
+				},
+			);
+
+			const chunks = records
+				.map((r) => {
+					const idx = r.payload[CHUNK_INDEX_KEY];
+					const txt = r.payload[CHUNK_TEXT_KEY];
+					return {
+						id: r.id,
+						chunkIndex: typeof idx === "number" ? idx : null,
+						text: typeof txt === "string" ? txt : null,
+						payload: r.payload,
+					};
+				})
+				.sort((a, b) => {
+					// Null indexes sink to the end so they don't shuffle the
+					// known-ordered chunks. Stable across equal indexes.
+					if (a.chunkIndex === null) return 1;
+					if (b.chunkIndex === null) return -1;
+					return a.chunkIndex - b.chunkIndex;
+				});
+
+			return c.json(chunks, 200);
 		},
 	);
 

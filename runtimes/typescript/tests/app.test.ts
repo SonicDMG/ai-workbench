@@ -2654,6 +2654,126 @@ describe("workspace-scoped authorization (cross-workspace)", () => {
 	});
 });
 
+describe("document chunks listing", () => {
+	async function seedBoundCatalog() {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+		const vsRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "vs",
+					vectorDimension: 4,
+					embedding: {
+						provider: "mock",
+						model: "mock-embedder",
+						endpoint: null,
+						dimension: 4,
+						secretRef: null,
+					},
+				}),
+			},
+		);
+		const vs = await json(vsRes);
+		const catalog = await store.createCatalog(ws.uid, {
+			name: "kb",
+			vectorStore: vs.uid,
+		});
+		return { app, store, ws, catalog };
+	}
+
+	test("returns chunks under a document with chunkIndex + text + payload", async () => {
+		const { app, ws, catalog } = await seedBoundCatalog();
+		const ingestRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "Apples are red. Bananas are yellow. Cherries are red too.",
+					chunker: { maxChars: 25, minChars: 5, overlapChars: 5 },
+					metadata: { source: "seed" },
+				}),
+			},
+		);
+		const ingest = await json(ingestRes);
+		const docId = ingest.document.documentUid as string;
+
+		const chunksRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/${docId}/chunks`,
+		);
+		expect(chunksRes.status).toBe(200);
+		const chunks = await json(chunksRes);
+		expect(chunks.length).toBe(ingest.chunks);
+		// Sorted by chunkIndex ascending.
+		expect(chunks.map((c: { chunkIndex: number }) => c.chunkIndex)).toEqual([
+			...Array(ingest.chunks).keys(),
+		]);
+		// Each chunk carries its text and the catalog/document scope keys.
+		for (const c of chunks) {
+			expect(typeof c.text).toBe("string");
+			expect((c.text as string).length).toBeGreaterThan(0);
+			expect(c.payload.catalogUid).toBe(catalog.uid);
+			expect(c.payload.documentUid).toBe(docId);
+			expect(c.payload.source).toBe("seed");
+		}
+	});
+
+	test("returns 404 when the document doesn't exist", async () => {
+		const { app, ws, catalog } = await seedBoundCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/00000000-0000-0000-0000-000000000000/chunks`,
+		);
+		expect(res.status).toBe(404);
+	});
+
+	test("returns 409 when the catalog has no vector-store binding", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+		const catalog = await store.createCatalog(ws.uid, {
+			name: "unbound",
+			vectorStore: null,
+		});
+		const doc = await store.createDocument(ws.uid, catalog.uid, {
+			status: "writing",
+		});
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/${doc.documentUid}/chunks`,
+		);
+		expect(res.status).toBe(409);
+		expect((await json(res)).error.code).toBe(
+			"catalog_not_bound_to_vector_store",
+		);
+	});
+
+	test("respects the limit query param", async () => {
+		const { app, ws, catalog } = await seedBoundCatalog();
+		const ingestRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text:
+						"Alpha bravo charlie delta echo foxtrot golf hotel india juliett. " +
+						"Kilo lima mike november oscar papa quebec romeo sierra tango.",
+					chunker: { maxChars: 20, minChars: 5, overlapChars: 5 },
+				}),
+			},
+		);
+		const ingest = await json(ingestRes);
+		expect(ingest.chunks).toBeGreaterThan(2);
+		const docId = ingest.document.documentUid as string;
+		const chunksRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/${docId}/chunks?limit=2`,
+		);
+		const chunks = await json(chunksRes);
+		expect(chunks.length).toBe(2);
+	});
+});
+
 describe("adopt existing collections", () => {
 	// Stub driver that pretends to be wrapping a real data plane with two
 	// pre-existing collections — one with a $vectorize service, one

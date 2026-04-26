@@ -27,11 +27,13 @@ import {
 	type AdoptableCollection,
 	CollectionUnavailableError,
 	DimensionMismatchError,
+	type ListRecordsRequest,
 	NotSupportedError,
 	type SearchByTextRequest,
 	type SearchHit,
 	type SearchHybridRequest,
 	type SearchRequest,
+	type StoredRecord,
 	type TextRecord,
 	type VectorRecord,
 	type VectorStoreDriver,
@@ -408,6 +410,38 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 		}));
 		await coll.insertMany(docs);
 		return { upserted: records.length };
+	}
+
+	async listRecords(
+		ctx: VectorStoreDriverContext,
+		req: ListRecordsRequest,
+	): Promise<readonly StoredRecord[]> {
+		const limit = Math.max(1, Math.min(req.limit ?? 1000, 1000));
+		const coll = (await this.getDb(ctx.workspace)).collection(
+			collectionName(ctx.descriptor),
+		);
+		// Plain `find()` — no `$vector` sort, so the result order is
+		// the underlying collection's natural order. Callers that care
+		// about chunk ordering re-sort by `payload.chunkIndex`.
+		const cursor = coll.find(req.filter, { limit });
+		const docs = await cursor.toArray();
+		return docs.map((doc) => {
+			const {
+				_id,
+				$vector: _v,
+				$vectorize: _vt,
+				...payload
+			} = doc as {
+				_id: string;
+				$vector?: number[];
+				$vectorize?: string;
+				[k: string]: unknown;
+			};
+			return {
+				id: _id,
+				payload: payload as Readonly<Record<string, unknown>>,
+			};
+		});
 	}
 
 	async deleteRecord(

@@ -272,6 +272,22 @@ export const CreateVectorStoreInputSchema = z
 	.openapi("CreateVectorStoreInput");
 
 /**
+ * One chunk listed under a document by
+ * `GET .../catalogs/{c}/documents/{d}/chunks`. The route reads
+ * raw records out of the bound vector store, filters by
+ * `documentUid`, and surfaces a flat list. Text comes from the
+ * `chunkText` payload key the ingest pipeline stamps.
+ */
+export const DocumentChunkSchema = z
+	.object({
+		id: z.string(),
+		chunkIndex: z.number().int().nonnegative().nullable(),
+		text: z.string().nullable(),
+		payload: z.record(z.string(), z.unknown()),
+	})
+	.openapi("DocumentChunk");
+
+/**
  * One row in `GET .../vector-stores/discoverable`. Mirrors the
  * driver-layer `AdoptableCollection` minus filtering — the route
  * already strips collections that are present in the descriptor table.

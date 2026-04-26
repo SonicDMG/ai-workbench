@@ -198,6 +198,34 @@ export interface VectorStoreDriver {
 	listAdoptable?(
 		workspace: WorkspaceRecord,
 	): Promise<readonly AdoptableCollection[]>;
+
+	/**
+	 * Plain (non-similarity-ordered) list of records matching a
+	 * payload filter, capped at `limit`. Optional — the route layer
+	 * uses this to drive the document-chunks view, which wants
+	 * "every chunk under documentUid X" without the rank/similarity
+	 * shape of `search`. Drivers that can implement it cheaply (a
+	 * direct `find()` against the underlying collection on Astra,
+	 * an in-memory filter on mock) should; otherwise omit and the
+	 * route returns 501.
+	 */
+	listRecords?(
+		ctx: VectorStoreDriverContext,
+		req: ListRecordsRequest,
+	): Promise<readonly StoredRecord[]>;
+}
+
+export interface ListRecordsRequest {
+	/** Payload filter, shallow-equal. Identical semantics to
+	 * `SearchRequest.filter` — keys not in the doc are ignored. */
+	readonly filter: Readonly<Record<string, unknown>>;
+	/** Hard cap on returned rows. Defaults to 1000 at the route. */
+	readonly limit?: number;
+}
+
+export interface StoredRecord {
+	readonly id: string;
+	readonly payload: Readonly<Record<string, unknown>>;
 }
 
 /**

@@ -242,6 +242,14 @@ export const IngestChunkerOptionsSchema = z.object({
 });
 export type IngestChunkerOptions = z.infer<typeof IngestChunkerOptionsSchema>;
 
+export const DocumentChunkSchema = z.object({
+	id: z.string(),
+	chunkIndex: z.number().int().nonnegative().nullable(),
+	text: z.string().nullable(),
+	payload: z.record(z.string(), z.unknown()),
+});
+export type DocumentChunk = z.infer<typeof DocumentChunkSchema>;
+
 export const AdoptableCollectionSchema = z.object({
 	name: z.string(),
 	vectorDimension: z.number().int().positive(),

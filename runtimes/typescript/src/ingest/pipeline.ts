@@ -26,6 +26,7 @@ import type { ChunkerOptions } from "./chunker.js";
 import {
 	CATALOG_SCOPE_KEY,
 	CHUNK_INDEX_KEY,
+	CHUNK_TEXT_KEY,
 	DOCUMENT_SCOPE_KEY,
 } from "./payload-keys.js";
 import { RecursiveCharacterChunker } from "./recursive-chunker.js";
@@ -105,6 +106,11 @@ export async function runIngest(
 						[CATALOG_SCOPE_KEY]: catalog.uid,
 						[DOCUMENT_SCOPE_KEY]: documentUid,
 						[CHUNK_INDEX_KEY]: chunk.index,
+						// Stamp the chunk's text into the payload so the
+						// document-chunks view can show it without depending on
+						// the driver's `$vectorize` round-trip semantics. Read
+						// back through `search`/`listRecords` as `payload.chunkText`.
+						[CHUNK_TEXT_KEY]: chunk.text,
 					},
 				})),
 			});

@@ -16,6 +16,8 @@ import {
 	type CreateSavedQueryInput,
 	type CreateVectorStoreInput,
 	type CreateWorkspaceInput,
+	type DocumentChunk,
+	DocumentChunkSchema,
 	type DocumentRecord,
 	DocumentRecordSchema,
 	ErrorEnvelopeSchema,
@@ -341,6 +343,20 @@ export const api = {
 			{ method: "GET" },
 			z.array(DocumentRecordSchema),
 		),
+
+	listDocumentChunks: (
+		workspace: string,
+		catalogId: string,
+		documentId: string,
+		opts?: { limit?: number },
+	): Promise<DocumentChunk[]> => {
+		const qs = opts?.limit ? `?limit=${opts.limit}` : "";
+		return request(
+			`/workspaces/${workspace}/catalogs/${catalogId}/documents/${documentId}/chunks${qs}`,
+			{ method: "GET" },
+			z.array(DocumentChunkSchema),
+		);
+	},
 
 	/* -------- Ingest + jobs -------- */
 

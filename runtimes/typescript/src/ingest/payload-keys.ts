@@ -23,3 +23,11 @@ export const DOCUMENT_SCOPE_KEY = "documentUid";
 /** Payload key recording a chunk's 0-based position within its source
  * document. Useful for reassembling context around a hit. */
 export const CHUNK_INDEX_KEY = "chunkIndex";
+
+/** Payload key carrying the chunk's original text. Stamped during
+ * ingest so the document-chunks UI can show what each chunk
+ * actually contains without depending on the driver also persisting
+ * `$vectorize`. Adds a small storage overhead to client-side-
+ * embedded paths but keeps the chunk view consistent across
+ * drivers. Search hits round-trip this key through `payload`. */
+export const CHUNK_TEXT_KEY = "chunkText";

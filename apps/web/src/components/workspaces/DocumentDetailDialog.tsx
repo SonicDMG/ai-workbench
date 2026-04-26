@@ -1,4 +1,5 @@
-import { Hash } from "lucide-react";
+import type { UseQueryResult } from "@tanstack/react-query";
+import { Hash, Loader2 } from "lucide-react";
 import {
 	Dialog,
 	DialogContent,
@@ -6,8 +7,9 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { useDocumentChunks } from "@/hooks/useDocuments";
 import { formatFileSize } from "@/lib/files";
-import type { DocumentRecord } from "@/lib/schemas";
+import type { DocumentChunk, DocumentRecord } from "@/lib/schemas";
 import { formatDate } from "@/lib/utils";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
 import { FileTypeBadge } from "./FileTypeBadge";
@@ -22,13 +24,23 @@ import { FileTypeBadge } from "./FileTypeBadge";
  * absent — they need bulk-doc API surface that hasn't shipped yet.
  */
 export function DocumentDetailDialog({
+	workspace,
+	catalogId,
 	doc,
 	onOpenChange,
 }: {
+	workspace: string;
+	catalogId: string;
 	doc: DocumentRecord | null;
 	onOpenChange: (open: boolean) => void;
 }) {
 	const open = doc !== null;
+	// Fetch chunks lazily when the dialog opens for a document. Disabled
+	// while closed so the catalog explorer table doesn't fan out a
+	// chunks query per row visit.
+	const chunks = useDocumentChunks(workspace, catalogId, doc?.documentUid, {
+		enabled: open && doc?.status === "ready",
+	});
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-2xl">
@@ -109,6 +121,20 @@ export function DocumentDetailDialog({
 								</div>
 							</div>
 						) : null}
+
+						{doc.status === "ready" ? (
+							<div className="flex flex-col gap-1.5">
+								<p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+									Chunks
+									{chunks.data ? (
+										<span className="ml-2 text-slate-400">
+											({chunks.data.length})
+										</span>
+									) : null}
+								</p>
+								<ChunksList query={chunks} />
+							</div>
+						) : null}
 					</div>
 				) : null}
 			</DialogContent>
@@ -137,5 +163,64 @@ function KV({
 				{value}
 			</span>
 		</div>
+	);
+}
+
+function ChunksList({
+	query,
+}: {
+	query: UseQueryResult<DocumentChunk[], Error>;
+}) {
+	if (query.isLoading) {
+		return (
+			<p className="inline-flex items-center gap-2 text-xs text-slate-500">
+				<Loader2 className="h-3 w-3 animate-spin" /> Loading chunks…
+			</p>
+		);
+	}
+	if (query.isError) {
+		return (
+			<p className="text-xs text-red-700">
+				Couldn't load chunks: {query.error.message}
+			</p>
+		);
+	}
+	const chunks = query.data ?? [];
+	if (chunks.length === 0) {
+		return (
+			<p className="text-xs text-slate-500">
+				No chunks under this document. (Drivers without `listRecords` return 501
+				here — the runtime falls back to the empty list.)
+			</p>
+		);
+	}
+	return (
+		<ol className="flex flex-col gap-1.5 max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white p-2">
+			{chunks.map((c) => (
+				<li
+					key={c.id}
+					className="rounded-md border border-slate-100 bg-slate-50 p-2 text-xs"
+				>
+					<div className="flex items-baseline gap-2">
+						<span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 tabular-nums">
+							#{c.chunkIndex ?? "—"}
+						</span>
+						<span className="font-mono text-[10px] text-slate-400 truncate">
+							{c.id}
+						</span>
+					</div>
+					{c.text ? (
+						<p className="mt-1 whitespace-pre-wrap break-words text-slate-700 leading-snug">
+							{c.text}
+						</p>
+					) : (
+						<p className="mt-1 text-slate-400 italic">
+							(text not stored — older ingest, before the chunkText payload key
+							landed)
+						</p>
+					)}
+				</li>
+			))}
+		</ol>
 	);
 }

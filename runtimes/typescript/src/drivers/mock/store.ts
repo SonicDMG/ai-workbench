@@ -163,6 +163,21 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 		return { deleted };
 	}
 
+	async listRecords(
+		ctx: VectorStoreDriverContext,
+		req: import("../vector-store.js").ListRecordsRequest,
+	): Promise<readonly import("../vector-store.js").StoredRecord[]> {
+		const store = this.requireStore(ctx);
+		const limit = Math.max(1, Math.min(req.limit ?? 1000, 1000));
+		const out: import("../vector-store.js").StoredRecord[] = [];
+		for (const rec of store.values()) {
+			if (!matchesFilter(rec.payload, req.filter)) continue;
+			out.push({ id: rec.id, payload: rec.payload ?? {} });
+			if (out.length >= limit) break;
+		}
+		return out;
+	}
+
 	async search(
 		ctx: VectorStoreDriverContext,
 		req: SearchRequest,
