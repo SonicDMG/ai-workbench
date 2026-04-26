@@ -1,9 +1,9 @@
 import { cn } from "@/lib/utils";
 
 /**
- * AI Workbench brand mark — a four-point star on a gradient tile.
- * Matches the favicon; use wherever the app needs a recognizable
- * identity stamp (header, onboarding hero, empty states).
+ * AI Workbench brand mark — a square Carbon-blue tile with a simple
+ * data/workbench motif. It nods to IBM geometry without recreating
+ * IBM's trademarked striped logotype.
  */
 export function BrandMark({
 	className,
@@ -15,7 +15,6 @@ export function BrandMark({
 	/** Accessible label; defaults to "AI Workbench". */
 	title?: string;
 }) {
-	const id = `astra-mark-${size}`;
 	return (
 		<svg
 			viewBox="0 0 32 32"
@@ -26,25 +25,12 @@ export function BrandMark({
 			className={cn("shrink-0", className)}
 		>
 			<title>{title}</title>
-			<defs>
-				<linearGradient
-					id={id}
-					x1="0"
-					y1="0"
-					x2="32"
-					y2="32"
-					gradientUnits="userSpaceOnUse"
-				>
-					<stop offset="0%" stopColor="#3A36DB" />
-					<stop offset="55%" stopColor="#5B4FE9" />
-					<stop offset="100%" stopColor="#22C8BF" />
-				</linearGradient>
-			</defs>
-			<rect width="32" height="32" rx="7" fill={`url(#${id})`} />
+			<rect width="32" height="32" fill="#0F62FE" />
+			<path d="M0 24h32v8H0z" fill="#001D6C" opacity="0.9" />
+			<path d="M8 8h16v2H8zM8 13h16v2H8zM8 18h10v2H8z" fill="white" />
 			<path
-				d="M16 6L18.5 13.5L26 16L18.5 18.5L16 26L13.5 18.5L6 16L13.5 13.5Z"
-				fill="white"
-				fillOpacity="0.95"
+				d="M22 18.5h2.8v2.8H22zM18 22.5h2.8v2.8H18zM26 22.5h2.8v2.8H26z"
+				fill="#A6C8FF"
 			/>
 		</svg>
 	);

@@ -44,21 +44,21 @@ export function OnboardingPage() {
 			</div>
 
 			{isFirstRun ? (
-				<div className="brand-surface mb-8 rounded-2xl px-8 py-10 text-white shadow-lg shadow-[var(--color-brand-900)]/20">
+				<div className="brand-surface mb-8 rounded-lg px-8 py-10 text-white shadow-lg shadow-[var(--color-brand-900)]/20">
 					<div className="relative flex items-start gap-5">
 						<BrandMark size={56} />
 						<div>
-							<p className="text-xs font-medium uppercase tracking-[0.14em] text-white/70">
-								Welcome to AI Workbench
+							<p className="text-xs font-medium tracking-[0.08em] text-white/70">
+								DataStax, an IBM company
 							</p>
 							<h1 className="mt-2 text-3xl font-semibold tracking-tight">
-								Let's create your first workspace
+								Manage AI-ready data at scale
 							</h1>
 							<p className="mt-3 text-sm leading-relaxed text-white/85 max-w-lg">
 								A <strong className="font-semibold">workspace</strong> is the
-								top-level tenant in AI Workbench — it owns its own catalogs,
-								vector stores, and documents. You can create as many as you need
-								(one per environment, customer, or team).
+								top-level tenant for catalogs, vector stores, and documents.
+								Use it to organize ingestion, retrieval, and governed AI app
+								data across Astra DB, HCD, and local mock environments.
 							</p>
 						</div>
 					</div>

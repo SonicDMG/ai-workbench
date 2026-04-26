@@ -1,12 +1,10 @@
 @import "tailwindcss";
 
 /**
- * Design tokens — IBM Plex typography + Astra-inspired palette.
+ * Design tokens — IBM Plex typography + Carbon-inspired palette.
  *
- * The brand ramp is an indigo close to the Astra DB mark (~#3A36DB).
- * The accent ramp is a teal that pairs with the brand on gradients
- * and hero callouts. Neutrals are Tailwind's `slate` — cool and
- * paired with the indigo without fighting it.
+ * The IBM/DataStax product page leans on restrained Carbon surfaces:
+ * white, cool grays, IBM blue, square geometry, and crisp focus states.
  */
 :root {
 	--font-sans:
@@ -16,24 +14,19 @@
 		"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
 		monospace;
 
-	--color-brand-50: oklch(0.97 0.02 275);
-	--color-brand-100: oklch(0.93 0.06 275);
-	--color-brand-200: oklch(0.86 0.12 275);
-	--color-brand-500: oklch(0.52 0.24 275);
-	--color-brand-600: oklch(0.45 0.25 275);
-	--color-brand-700: oklch(0.38 0.22 275);
-	--color-brand-900: oklch(0.22 0.12 275);
+	--color-brand-50: #edf5ff;
+	--color-brand-100: #d0e2ff;
+	--color-brand-200: #a6c8ff;
+	--color-brand-500: #0f62fe;
+	--color-brand-600: #0f62fe;
+	--color-brand-700: #0043ce;
+	--color-brand-900: #001d6c;
 
-	--color-accent-400: oklch(0.76 0.14 195);
-	--color-accent-500: oklch(0.68 0.15 195);
-	--color-accent-600: oklch(0.6 0.15 195);
+	--color-accent-400: #42be65;
+	--color-accent-500: #24a148;
+	--color-accent-600: #198038;
 
-	--gradient-brand: linear-gradient(
-		135deg,
-		var(--color-brand-600) 0%,
-		var(--color-brand-500) 55%,
-		var(--color-accent-500) 100%
-	);
+	--gradient-brand: linear-gradient(90deg, #0f62fe 0%, #4589ff 100%);
 }
 
 html,
@@ -45,6 +38,8 @@ body,
 body {
 	font-family: var(--font-sans);
 	font-feature-settings: "ss01", "cv11";
+	background: #f4f4f4;
+	color: #161616;
 }
 
 code,
@@ -62,40 +57,32 @@ samp,
 	border-radius: 0.25rem;
 }
 
-/* Subtle page-wide grain/noise backdrop on the brand gradient to stop
-   it looking flat. Opt-in via the `.brand-surface` utility. */
+/* Carbon-style brand surface with square geometry and a light grid. */
 .brand-surface {
-	background: var(--gradient-brand);
+	background:
+		linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+		#001d6c;
+	background-size: 2rem 2rem;
 	position: relative;
+	overflow: hidden;
 }
 
 .brand-surface::before {
 	content: "";
 	position: absolute;
 	inset: 0;
-	background-image:
-		radial-gradient(
-			circle at 20% 20%,
-			rgba(255, 255, 255, 0.14),
-			transparent 55%
-		),
-		radial-gradient(
-			circle at 80% 80%,
-			rgba(255, 255, 255, 0.08),
-			transparent 50%
-		);
+	background: linear-gradient(
+		90deg,
+		rgba(15, 98, 254, 0.28),
+		transparent 52%
+	);
 	pointer-events: none;
 }
 
 /*
- * App-shell backdrop — very subtle coloured glow anchored to the
- * top of the viewport so the slate-heavy workspace pages feel less
- * flat without making the content harder to read.
- *
- * Two radial blobs in the brand + accent hues, feathered so at
- * normal reading positions the backdrop reads as "warm white". Not
- * fixed — it scrolls with the content so the top of each page gets
- * the hero treatment and the list further down stays neutral.
+ * App-shell backdrop — a quiet IBM.com-style gray surface with a
+ * thin blue rule and a subtle grid near the page header.
  */
 .app-backdrop {
 	position: relative;
@@ -106,34 +93,28 @@ samp,
 	position: absolute;
 	inset: 0;
 	z-index: -1;
-	background-image:
-		radial-gradient(
-			ellipse 60% 40% at 15% 0%,
-			color-mix(in oklch, var(--color-brand-500) 18%, transparent),
-			transparent 70%
-		),
-		radial-gradient(
-			ellipse 55% 35% at 85% 5%,
-			color-mix(in oklch, var(--color-accent-500) 14%, transparent),
-			transparent 70%
-		);
+	background:
+		linear-gradient(90deg, var(--color-brand-500) 0 5rem, transparent 5rem)
+			top left / 100% 2px no-repeat,
+		linear-gradient(#e0e0e0 1px, transparent 1px) top left / 2rem 2rem,
+		linear-gradient(90deg, #e0e0e0 1px, transparent 1px) top left / 2rem 2rem;
+	opacity: 0.58;
 	pointer-events: none;
 }
 
-/* Page-header chip — small brand-coloured tile that anchors a
- * page title alongside a lucide icon. */
+/* Page-header chip — square IBM blue tile anchoring the page title. */
 .brand-tile {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	height: 2.5rem;
 	width: 2.5rem;
-	border-radius: 0.75rem;
-	background: var(--gradient-brand);
+	border-radius: 0;
+	background: var(--color-brand-600);
 	color: white;
 	box-shadow:
-		0 1px 0 0 rgba(255, 255, 255, 0.3) inset,
-		0 6px 14px -6px color-mix(in oklch, var(--color-brand-600) 55%, transparent);
+		inset 0 -2px 0 rgba(0, 29, 108, 0.45),
+		0 8px 18px -14px rgba(15, 98, 254, 0.85);
 }
 
 /* Softly-elevated card that picks up a tinted border on hover.
@@ -146,11 +127,8 @@ samp,
 }
 .card-lift:hover {
 	transform: translateY(-1px);
-	box-shadow:
-		0 1px 2px 0 rgba(15, 23, 42, 0.04),
-		0 10px 24px -12px
-		color-mix(in oklch, var(--color-brand-500) 35%, transparent);
-	border-color: color-mix(in oklch, var(--color-brand-500) 35%, #e2e8f0);
+	box-shadow: 0 12px 24px -18px rgba(22, 22, 22, 0.4);
+	border-color: var(--color-brand-200);
 }
 
 /* ---------- Motion ---------- */

@@ -1,15 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-	<defs>
-		<linearGradient id="astra" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-			<stop offset="0%" stop-color="#3A36DB" />
-			<stop offset="55%" stop-color="#5B4FE9" />
-			<stop offset="100%" stop-color="#22C8BF" />
-		</linearGradient>
-	</defs>
-	<rect width="32" height="32" rx="7" fill="url(#astra)" />
-	<path
-		d="M16 6L18.5 13.5L26 16L18.5 18.5L16 26L13.5 18.5L6 16L13.5 13.5Z"
-		fill="white"
-		fill-opacity="0.95"
-	/>
+	<rect width="32" height="32" fill="#0F62FE" />
+	<path d="M0 24h32v8H0z" fill="#001D6C" fill-opacity="0.9" />
+	<path d="M8 8h16v2H8zM8 13h16v2H8zM8 18h10v2H8z" fill="white" />
+	<path d="M22 18.5h2.8v2.8H22zM18 22.5h2.8v2.8H18zM26 22.5h2.8v2.8H26z" fill="#A6C8FF" />
 </svg>

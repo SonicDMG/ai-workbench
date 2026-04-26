@@ -7,10 +7,10 @@ import { KindBadge } from "./KindBadge";
 
 export function WorkspaceCard({ workspace }: { workspace: Workspace }) {
 	return (
-		<Card className="group card-lift relative border-slate-200/80 bg-white/90">
+		<Card className="group card-lift relative border-[#e0e0e0] bg-white">
 			<Link
 				to={`/workspaces/${workspace.uid}`}
-				className="absolute inset-0 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+				className="absolute inset-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
 				aria-label={`Open workspace ${workspace.name}`}
 			/>
 			<CardHeader className="flex-row items-start justify-between gap-3">
