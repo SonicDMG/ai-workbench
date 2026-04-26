@@ -1,6 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import type { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -26,6 +27,8 @@ import {
 	CreateVectorStoreInputSchema,
 } from "@/lib/schemas";
 
+type CreateVectorStoreFormInput = z.input<typeof CreateVectorStoreInputSchema>;
+
 /**
  * Create-vector-store dialog.
  *
@@ -49,7 +52,7 @@ export function CreateVectorStoreDialog({
 	onOpenChange: (v: boolean) => void;
 }) {
 	const create = useCreateVectorStore(workspace);
-	const form = useForm<CreateVectorStoreInput>({
+	const form = useForm<CreateVectorStoreFormInput>({
 		resolver: zodResolver(CreateVectorStoreInputSchema),
 		defaultValues: {
 			name: "",
@@ -81,12 +84,13 @@ export function CreateVectorStoreDialog({
 		onOpenChange(next);
 	}
 
-	async function onSubmit(values: CreateVectorStoreInput) {
+	async function onSubmit(values: CreateVectorStoreFormInput) {
 		// Keep the outer + embedding dimension in lock-step at submit
 		// time so the backend doesn't 400 on mismatch when the user
 		// only edited the top-level field.
 		const normalized: CreateVectorStoreInput = {
 			...values,
+			vectorSimilarity: values.vectorSimilarity ?? "cosine",
 			embedding: { ...values.embedding, dimension: values.vectorDimension },
 		};
 		try {

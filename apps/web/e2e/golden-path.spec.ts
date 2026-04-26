@@ -82,9 +82,9 @@ test("golden path: onboard → vector store → upsert → run query", async ({
 	const storesPage = await request
 		.get(`/api/v1/workspaces/${workspaceUid}/vector-stores`)
 		.then((r) => r.json());
-	expect(
-		Array.isArray(storesPage.items) && storesPage.items.length === 1,
-	).toBe(true);
+	expect(Array.isArray(storesPage.items) && storesPage.items.length === 1).toBe(
+		true,
+	);
 	const vectorStoreUid = storesPage.items[0].uid as string;
 
 	const upsert = await request.post(
