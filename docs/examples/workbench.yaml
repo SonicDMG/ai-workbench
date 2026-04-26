@@ -8,6 +8,7 @@
 version: 1
 
 runtime:
+  # environment: development   # development | production
   port: 8080
   logLevel: info
   # requestIdHeader: X-Request-Id
@@ -15,6 +16,8 @@ runtime:
   #                        # auto-detects /app/public (Docker image),
   #                        # ${cwd}/public, or ${cwd}/apps/web/dist.
   #                        # UI_DIR env also overrides.
+  # publicOrigin: https://workbench.example.com
+  # trustProxyHeaders: false
 
 # ---------- Control plane ----------
 #

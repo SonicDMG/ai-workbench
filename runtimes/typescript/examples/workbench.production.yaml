@@ -1,0 +1,50 @@
+# Production template. Copy this to a deployment-specific config and
+# set WORKBENCH_CONFIG to that path.
+#
+# This file intentionally uses `runtime.environment: production`,
+# which makes the config parser enforce the hardening checklist:
+# durable control plane, auth enabled, anonymous access rejected,
+# HTTPS public origin for browser login, and persistent session-key
+# material when OIDC browser login is configured.
+
+version: 1
+
+runtime:
+  environment: production
+  port: 8080
+  logLevel: info
+  # The externally visible HTTPS origin for this runtime. Used to
+  # build OIDC redirect URIs and to decide whether cookies must be
+  # emitted with Secure.
+  publicOrigin: https://workbench.example.com
+  # Leave false unless a trusted reverse proxy overwrites incoming
+  # X-Forwarded-* headers. publicOrigin is preferred for browser auth.
+  trustProxyHeaders: false
+
+controlPlane:
+  driver: astra
+  endpoint: https://<database-id>-<region>.apps.astra.datastax.com
+  tokenRef: env:ASTRA_DB_APPLICATION_TOKEN
+  keyspace: workbench
+  jobsResume:
+    enabled: true
+
+auth:
+  mode: any
+  anonymousPolicy: reject
+  # Remove after the first operator workspace/API key is created.
+  bootstrapTokenRef: env:WB_BOOTSTRAP_TOKEN
+  oidc:
+    issuer: https://idp.example.com
+    audience: ai-workbench
+    claims:
+      subject: sub
+      label: email
+      workspaceScopes: wb_workspace_scopes
+    client:
+      clientId: ai-workbench
+      clientSecretRef: env:OIDC_CLIENT_SECRET
+      redirectPath: /auth/callback
+      postLogoutPath: /
+      scopes: [openid, profile, email, offline_access]
+      sessionSecretRef: env:WB_SESSION_SECRET

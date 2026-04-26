@@ -82,11 +82,14 @@ async function main(): Promise<void> {
 	const config = {
 		version: 1 as const,
 		runtime: {
+			environment: "development" as const,
 			port: 0,
 			logLevel: "warn" as const,
 			requestIdHeader: "X-Request-Id",
 			uiDir: null,
 			replicaId: `smoke-${RUN_ID}`,
+			publicOrigin: null,
+			trustProxyHeaders: false,
 		},
 		controlPlane: {
 			driver: "astra" as const,

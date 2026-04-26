@@ -126,4 +126,7 @@ describe("parseCookie", () => {
 			"hello world",
 		);
 	});
+	test("returns null for malformed percent-encoding instead of throwing", () => {
+		expect(parseCookie("wb_session=%E0%A4%A", "wb_session")).toBe(null);
+	});
 });

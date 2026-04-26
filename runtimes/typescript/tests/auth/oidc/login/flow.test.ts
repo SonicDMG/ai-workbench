@@ -102,7 +102,14 @@ function authConfig(): AuthConfig {
 	};
 }
 
-async function buildAppWithLogin(privateKey: CryptoKey, imported: unknown) {
+async function buildAppWithLogin(
+	privateKey: CryptoKey,
+	imported: unknown,
+	loginRuntime: {
+		readonly publicOrigin: string | null;
+		readonly trustProxyHeaders: boolean;
+	} = { publicOrigin: null, trustProxyHeaders: false },
+) {
 	const store = new MemoryControlPlaneStore();
 	const ws = await store.createWorkspace({ name: "w", kind: "mock" });
 	const drivers = new VectorStoreDriverRegistry(
@@ -211,6 +218,8 @@ async function buildAppWithLogin(privateKey: CryptoKey, imported: unknown) {
 			clientSecret: null,
 			cookie,
 			pending,
+			publicOrigin: loginRuntime.publicOrigin,
+			trustProxyHeaders: loginRuntime.trustProxyHeaders,
 		},
 	});
 
@@ -533,6 +542,74 @@ describe("/auth/* flow", () => {
 			fx.restoreFetch();
 		}
 	});
+
+	test("login redirect URI ignores forwarded host unless explicitly trusted", async () => {
+		const fx = await buildAppWithLogin(privateKey, imported);
+		try {
+			const res = await fx.app.request("/auth/login", {
+				headers: {
+					host: "internal.local",
+					"x-forwarded-host": "attacker.example",
+					"x-forwarded-proto": "https",
+				},
+			});
+			expect(res.status).toBe(302);
+			const authorizeUrl = new URL(res.headers.get("location") ?? "");
+			expect(authorizeUrl.searchParams.get("redirect_uri")).toBe(
+				"http://internal.local/auth/callback",
+			);
+		} finally {
+			fx.restoreFetch();
+		}
+	});
+
+	test("publicOrigin pins redirect URI and Secure cookie decisions", async () => {
+		const fx = await buildAppWithLogin(privateKey, imported, {
+			publicOrigin: "https://workbench.example.com",
+			trustProxyHeaders: false,
+		});
+		try {
+			const loginRes = await fx.app.request("/auth/login", {
+				headers: { host: "internal.local" },
+			});
+			const authorizeUrl = new URL(loginRes.headers.get("location") ?? "");
+			expect(authorizeUrl.searchParams.get("redirect_uri")).toBe(
+				"https://workbench.example.com/auth/callback",
+			);
+
+			const state = authorizeUrl.searchParams.get("state");
+			if (!state) throw new Error("expected state");
+			const code = "origin-code";
+			fx.mintedByCode.set(
+				code,
+				await mintJwt(privateKey, {
+					sub: "user-1",
+					scopes: [fx.workspace.uid],
+				}),
+			);
+			const cbRes = await fx.app.request(
+				`/auth/callback?state=${state}&code=${code}`,
+				{ headers: { host: "internal.local" } },
+			);
+			expect(cbRes.headers.get("set-cookie")).toMatch(/; Secure/);
+		} finally {
+			fx.restoreFetch();
+		}
+	});
+
+	test("malformed percent-encoded session cookies are rejected as unauthorized", async () => {
+		const fx = await buildAppWithLogin(privateKey, imported);
+		try {
+			const res = await fx.app.request("/auth/me", {
+				headers: { cookie: "wb_session=%E0%A4%A" },
+			});
+			expect(res.status).toBe(401);
+			const body = (await res.json()) as { error: { code: string } };
+			expect(body.error.code).toBe("unauthorized");
+		} finally {
+			fx.restoreFetch();
+		}
+	});
 });
 
 describe("/auth/* without browser-login configured", () => {
@@ -563,6 +640,8 @@ describe("/auth/* without browser-login configured", () => {
 				clientSecret: null,
 				cookie: null,
 				pending: null,
+				publicOrigin: null,
+				trustProxyHeaders: false,
 			},
 		});
 

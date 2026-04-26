@@ -59,7 +59,10 @@ async function main(): Promise<void> {
 	const auth = await buildAuthResolver(config.auth, { store, secrets });
 	warnOnOpenProductionAuth(config);
 
-	const login = await buildLoginOptions(config.auth, secrets);
+	const login = await buildLoginOptions(config.auth, secrets, {
+		publicOrigin: config.runtime.publicOrigin,
+		trustProxyHeaders: config.runtime.trustProxyHeaders,
+	});
 
 	const uiDir = resolveUiDir(config.runtime.uiDir);
 	const ui = uiDir ? buildUiAssets(uiDir) : null;
@@ -134,6 +137,7 @@ async function main(): Promise<void> {
 		logger.info(
 			{
 				port: info.port,
+				environment: config.runtime.environment,
 				controlPlane: config.controlPlane.driver,
 				authMode: config.auth.mode,
 				anonymousPolicy: config.auth.anonymousPolicy,
@@ -239,6 +243,10 @@ function warnOnOpenProductionAuth(config: {
 async function buildLoginOptions(
 	authCfg: AuthConfig,
 	secrets: SecretResolver,
+	runtime: {
+		readonly publicOrigin: string | null;
+		readonly trustProxyHeaders: boolean;
+	},
 ): Promise<AppLoginOptions | null> {
 	const clientCfg = authCfg.oidc?.client;
 	if (!authCfg.oidc || !clientCfg) {
@@ -248,6 +256,8 @@ async function buildLoginOptions(
 			clientSecret: null,
 			cookie: null,
 			pending: null,
+			publicOrigin: runtime.publicOrigin,
+			trustProxyHeaders: runtime.trustProxyHeaders,
 		};
 	}
 
@@ -285,6 +295,8 @@ async function buildLoginOptions(
 			redirectPath: clientCfg.redirectPath,
 			hasSecret: clientSecret !== null,
 			hasPersistentKey: clientCfg.sessionSecretRef !== null,
+			publicOrigin: runtime.publicOrigin,
+			trustProxyHeaders: runtime.trustProxyHeaders,
 		},
 		"oidc browser-login enabled",
 	);
@@ -295,6 +307,8 @@ async function buildLoginOptions(
 		clientSecret,
 		cookie,
 		pending,
+		publicOrigin: runtime.publicOrigin,
+		trustProxyHeaders: runtime.trustProxyHeaders,
 	};
 }
 

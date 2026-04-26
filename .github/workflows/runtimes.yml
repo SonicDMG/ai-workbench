@@ -1,0 +1,88 @@
+name: Runtime Scaffolds
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'runtimes/python/**'
+      - 'runtimes/java/**'
+      - '.github/workflows/runtimes.yml'
+  pull_request:
+    paths:
+      - 'runtimes/python/**'
+      - 'runtimes/java/**'
+      - '.github/workflows/runtimes.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtimes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python Runtime
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: runtimes/python/pyproject.toml
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: runtimes/typescript/package-lock.json
+
+      - name: Install mock-astra deps
+        run: npm --prefix runtimes/typescript ci --no-audit --no-fund
+
+      - name: Install
+        working-directory: runtimes/python
+        run: python -m pip install -e '.[dev]'
+
+      - name: Ruff
+        working-directory: runtimes/python
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Mypy
+        working-directory: runtimes/python
+        run: mypy src
+
+      - name: Pytest
+        working-directory: runtimes/python
+        run: |
+          npm --prefix ../../runtimes/typescript run conformance:mock &
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:4010/_health >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          pytest
+
+  java:
+    name: Java Runtime
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: '8.10'
+
+      - name: Test
+        working-directory: runtimes/java
+        run: gradle test

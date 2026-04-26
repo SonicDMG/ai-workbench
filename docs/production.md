@@ -6,6 +6,13 @@ runtime beyond a trusted loopback or private admin network.
 
 ## Required before exposure
 
+- **Use the production environment guard.** Set
+  `runtime.environment: production` in your deploy config. The
+  TypeScript runtime then refuses configs that leave auth disabled,
+  allow anonymous API traffic, use the in-memory control plane, or
+  enable browser OIDC login without a persistent session secret.
+  Start from
+  [`runtimes/typescript/examples/workbench.production.yaml`](../runtimes/typescript/examples/workbench.production.yaml).
 - **Turn on auth.** Use `auth.mode: apiKey`, `oidc`, or `any` with
   `anonymousPolicy: reject`. The runtime logs a warning when a
   non-memory control plane accepts anonymous API traffic.
@@ -19,8 +26,10 @@ runtime beyond a trusted loopback or private admin network.
   Without it, all sessions invalidate on restart and multi-replica
   sessions cannot decrypt consistently.
 - **Serve over HTTPS.** Put the runtime behind a TLS-terminating
-  reverse proxy or ingress and forward `X-Forwarded-Proto: https` so
-  session cookies get the `Secure` attribute.
+  reverse proxy or ingress and set `runtime.publicOrigin` to the
+  externally visible `https://...` origin. Only set
+  `runtime.trustProxyHeaders: true` when a trusted proxy overwrites
+  incoming `X-Forwarded-*` headers.
 - **Keep local files out of build contexts.** The repo ships a
   `.dockerignore` that excludes `.env*`, local state, build output,
   and dependency folders. Keep deployment-specific secrets outside the
@@ -50,8 +59,8 @@ runtime beyond a trusted loopback or private admin network.
 - **Apply rate limiting upstream.** The runtime has body and field
   limits, but IP/user/workspace rate limiting is not built in yet.
 - **Keep dependency automation on.** CI runs lint/typecheck/test/build,
-  coverage, CodeQL, secret scanning, Docker smoke, Playwright, and
-  Dependabot updates.
+  coverage, CodeQL, secret scanning, Docker smoke, Playwright,
+  Python/Java scaffold tests, and Dependabot updates.
 
 ## Browser posture
 

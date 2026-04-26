@@ -57,6 +57,8 @@ export interface AuthLoginRoutesOptions {
 	readonly clientSecret: string | null;
 	readonly cookie: CookieSigner | null;
 	readonly pending: PendingLoginStore | null;
+	readonly publicOrigin: string | null;
+	readonly trustProxyHeaders: boolean;
 }
 
 const SAFE_PATH_RE = /^\/[A-Za-z0-9\-._~!$&'()*+,;=:@%/?#]*$/;
@@ -116,7 +118,7 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 			createdAt: Date.now(),
 		});
 
-		const redirectUri = absoluteRedirectUri(c, clientCfg.redirectPath);
+		const redirectUri = absoluteRedirectUri(c, clientCfg.redirectPath, opts);
 		const authorizeUrl = new URL(endpoints.authorizationEndpoint);
 		authorizeUrl.searchParams.set("response_type", "code");
 		authorizeUrl.searchParams.set("client_id", clientCfg.clientId);
@@ -160,7 +162,7 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 				tokenEndpoint: endpoints.tokenEndpoint,
 				clientId: clientCfg.clientId,
 				clientSecret: opts.clientSecret,
-				redirectUri: absoluteRedirectUri(c, clientCfg.redirectPath),
+				redirectUri: absoluteRedirectUri(c, clientCfg.redirectPath, opts),
 				code,
 				codeVerifier: pendingEntry.verifier,
 			});
@@ -190,7 +192,7 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 			return c.json({ error: { code: "token_validation_failed" } }, 502);
 		}
 
-		setSessionCookie(c, cookie, clientCfg.sessionCookieName, tokens);
+		setSessionCookie(c, cookie, clientCfg.sessionCookieName, tokens, opts);
 		return c.redirect(pendingEntry.redirectAfter, 302);
 	});
 
@@ -254,7 +256,7 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 			// Clear the cookie — the refresh_token is dead from the IdP's
 			// perspective; carrying it forward just produces another
 			// failed refresh on the next attempt.
-			clearSessionCookie(c, clientCfg.sessionCookieName);
+			clearSessionCookie(c, clientCfg.sessionCookieName, opts);
 			return c.json(
 				{
 					error: {
@@ -278,11 +280,11 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 				{ err: err instanceof Error ? err.message : String(err) },
 				"refreshed access token failed self-verification",
 			);
-			clearSessionCookie(c, clientCfg.sessionCookieName);
+			clearSessionCookie(c, clientCfg.sessionCookieName, opts);
 			return c.json({ error: { code: "token_validation_failed" } }, 502);
 		}
 
-		setSessionCookie(c, cookie, clientCfg.sessionCookieName, tokens, {
+		setSessionCookie(c, cookie, clientCfg.sessionCookieName, tokens, opts, {
 			// Some IdPs rotate refresh_tokens; some don't. If the
 			// response omits one, keep the existing token so the next
 			// refresh still works.
@@ -300,7 +302,7 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 				value: "",
 				maxAgeSeconds: 0,
 				httpOnly: true,
-				secure: isSecure(c),
+				secure: isSecure(c, opts),
 				sameSite: "Lax",
 			}),
 		);
@@ -338,19 +340,39 @@ function sanitizeRedirect(value: string | undefined): string {
 	return value;
 }
 
-function absoluteRedirectUri(c: Context<AppEnv>, path: string): string {
+function absoluteRedirectUri(
+	c: Context<AppEnv>,
+	path: string,
+	opts: Pick<AuthLoginRoutesOptions, "publicOrigin" | "trustProxyHeaders">,
+): string {
 	if (/^https?:\/\//i.test(path)) return path;
+	if (opts.publicOrigin) {
+		return new URL(
+			path.startsWith("/") ? path : `/${path}`,
+			opts.publicOrigin,
+		).toString();
+	}
 	const proto =
-		c.req.header("x-forwarded-proto") ??
+		(opts.trustProxyHeaders ? c.req.header("x-forwarded-proto") : null) ??
 		(new URL(c.req.url).protocol === "https:" ? "https" : "http");
-	const host = c.req.header("x-forwarded-host") ?? c.req.header("host");
+	const host =
+		(opts.trustProxyHeaders ? c.req.header("x-forwarded-host") : null) ??
+		c.req.header("host");
 	if (!host) return path;
 	return `${proto}://${host}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-function isSecure(c: Context<AppEnv>): boolean {
-	const proto = c.req.header("x-forwarded-proto");
-	if (proto) return proto.includes("https");
+function isSecure(
+	c: Context<AppEnv>,
+	opts: Pick<AuthLoginRoutesOptions, "publicOrigin" | "trustProxyHeaders">,
+): boolean {
+	if (opts.publicOrigin) {
+		return new URL(opts.publicOrigin).protocol === "https:";
+	}
+	const proto = opts.trustProxyHeaders
+		? c.req.header("x-forwarded-proto")
+		: null;
+	if (proto) return proto.split(",")[0]?.trim() === "https";
 	return new URL(c.req.url).protocol === "https:";
 }
 
@@ -375,6 +397,7 @@ function setSessionCookie(
 		refresh_token?: string;
 		id_token?: string;
 	},
+	security: Pick<AuthLoginRoutesOptions, "publicOrigin" | "trustProxyHeaders">,
 	opts: SetSessionCookieOptions = {},
 ): void {
 	const value = cookie.sign({
@@ -391,13 +414,17 @@ function setSessionCookie(
 			value: encodeURIComponent(value),
 			maxAgeSeconds: maxAge,
 			httpOnly: true,
-			secure: isSecure(c),
+			secure: isSecure(c, security),
 			sameSite: "Lax",
 		}),
 	);
 }
 
-function clearSessionCookie(c: Context<AppEnv>, cookieName: string): void {
+function clearSessionCookie(
+	c: Context<AppEnv>,
+	cookieName: string,
+	security: Pick<AuthLoginRoutesOptions, "publicOrigin" | "trustProxyHeaders">,
+): void {
 	c.header(
 		"Set-Cookie",
 		serializeCookie({
@@ -405,7 +432,7 @@ function clearSessionCookie(c: Context<AppEnv>, cookieName: string): void {
 			value: "",
 			maxAgeSeconds: 0,
 			httpOnly: true,
-			secure: isSecure(c),
+			secure: isSecure(c, security),
 			sameSite: "Lax",
 		}),
 	);

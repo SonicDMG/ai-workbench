@@ -43,7 +43,7 @@ export function authMiddleware(
 		if (cookieCfg && !req.headers.get("authorization")) {
 			const raw = parseCookie(req.headers.get("cookie"), cookieCfg.name);
 			if (raw) {
-				const payload = cookieCfg.signer.verify(decodeURIComponent(raw));
+				const payload = cookieCfg.signer.verify(raw);
 				if (payload) {
 					const headers = new Headers(req.headers);
 					headers.set("authorization", `Bearer ${payload.accessToken}`);

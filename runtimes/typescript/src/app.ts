@@ -59,6 +59,8 @@ export interface AppLoginOptions {
 	readonly clientSecret: string | null;
 	readonly cookie: CookieSigner | null;
 	readonly pending: PendingLoginStore | null;
+	readonly publicOrigin: string | null;
+	readonly trustProxyHeaders: boolean;
 }
 
 export interface AppOptions {
@@ -149,6 +151,8 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 				clientSecret: opts.login.clientSecret,
 				cookie: opts.login.cookie,
 				pending: opts.login.pending,
+				publicOrigin: opts.login.publicOrigin,
+				trustProxyHeaders: opts.login.trustProxyHeaders,
 			}),
 		);
 	}

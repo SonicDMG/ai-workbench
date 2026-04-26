@@ -4,9 +4,12 @@ import { ConfigSchema } from "../src/config/schema.js";
 describe("ConfigSchema", () => {
 	test("accepts a minimal config (memory default)", () => {
 		const cfg = ConfigSchema.parse({ version: 1 });
+		expect(cfg.runtime.environment).toBe("development");
 		expect(cfg.runtime.port).toBe(8080);
 		expect(cfg.runtime.logLevel).toBe("info");
 		expect(cfg.runtime.uiDir).toBe(null);
+		expect(cfg.runtime.publicOrigin).toBe(null);
+		expect(cfg.runtime.trustProxyHeaders).toBe(false);
 		expect(cfg.controlPlane.driver).toBe("memory");
 		expect(cfg.seedWorkspaces).toEqual([]);
 	});
@@ -54,6 +57,74 @@ describe("ConfigSchema", () => {
 			},
 		});
 		expect(cfg.auth.bootstrapTokenRef).toBe("env:WB_BOOTSTRAP_TOKEN");
+	});
+
+	test("accepts a hardened production config", () => {
+		const cfg = ConfigSchema.parse({
+			version: 1,
+			runtime: {
+				environment: "production",
+				publicOrigin: "https://workbench.example.com",
+			},
+			controlPlane: { driver: "file", root: "/var/lib/workbench" },
+			auth: {
+				mode: "apiKey",
+				anonymousPolicy: "reject",
+				bootstrapTokenRef: "env:WB_BOOTSTRAP_TOKEN",
+			},
+		});
+		expect(cfg.runtime.environment).toBe("production");
+		expect(cfg.runtime.publicOrigin).toBe("https://workbench.example.com");
+	});
+
+	test("rejects production config with memory, disabled auth, or anonymous access", () => {
+		expect(() =>
+			ConfigSchema.parse({
+				version: 1,
+				runtime: { environment: "production" },
+				controlPlane: { driver: "memory" },
+				auth: { mode: "disabled", anonymousPolicy: "allow" },
+			}),
+		).toThrow(/durable control plane/);
+	});
+
+	test("rejects production OIDC browser login without persistent session key and public origin", () => {
+		expect(() =>
+			ConfigSchema.parse({
+				version: 1,
+				runtime: { environment: "production" },
+				controlPlane: { driver: "file", root: "/var/lib/workbench" },
+				auth: {
+					mode: "oidc",
+					anonymousPolicy: "reject",
+					oidc: {
+						issuer: "https://idp.example.com",
+						audience: "ai-workbench",
+						client: {
+							clientId: "client",
+						},
+					},
+				},
+			}),
+		).toThrow(/sessionSecretRef/);
+	});
+
+	test("rejects non-https public origins in production", () => {
+		expect(() =>
+			ConfigSchema.parse({
+				version: 1,
+				runtime: {
+					environment: "production",
+					publicOrigin: "http://workbench.example.com",
+				},
+				controlPlane: { driver: "file", root: "/var/lib/workbench" },
+				auth: {
+					mode: "apiKey",
+					anonymousPolicy: "reject",
+					bootstrapTokenRef: "env:WB_BOOTSTRAP_TOKEN",
+				},
+			}),
+		).toThrow(/publicOrigin to use https/);
 	});
 
 	test("rejects unknown schema version", () => {

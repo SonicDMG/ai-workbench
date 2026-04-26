@@ -29,6 +29,10 @@ const SecretRef = z
 
 const RuntimeSchema = z
 	.object({
+		// `development` preserves the local-friendly defaults. Set
+		// `production` in deploy configs to make the schema enforce the
+		// hardening checklist instead of relying on docs-only guidance.
+		environment: z.enum(["development", "production"]).default("development"),
 		port: z.number().int().min(1).max(65535).default(8080),
 		logLevel: z
 			.enum(["trace", "debug", "info", "warn", "error"])
@@ -45,13 +49,25 @@ const RuntimeSchema = z
 		// (useful in tests). Used by the cross-replica orphan sweeper
 		// to tell whose lease is whose.
 		replicaId: z.string().min(1).nullable().default(null),
+		// Public browser origin for OIDC redirects/cookie security. In
+		// production browser-login deployments this is required so the
+		// runtime doesn't derive externally visible URLs from spoofable
+		// Host / X-Forwarded-* request headers.
+		publicOrigin: z.string().url().nullable().default(null),
+		// Whether to trust X-Forwarded-Proto / X-Forwarded-Host for URL
+		// and secure-cookie decisions. Keep false unless the runtime sits
+		// behind a trusted reverse proxy that overwrites these headers.
+		trustProxyHeaders: z.boolean().default(false),
 	})
 	.default({
+		environment: "development",
 		port: 8080,
 		logLevel: "info",
 		requestIdHeader: "X-Request-Id",
 		uiDir: null,
 		replicaId: null,
+		publicOrigin: null,
+		trustProxyHeaders: false,
 	});
 
 /**
@@ -266,6 +282,60 @@ export const ConfigSchema = z
 		seedWorkspaces: z.array(SeedWorkspaceSchema).default([]),
 	})
 	.superRefine((cfg, ctx) => {
+		if (cfg.runtime.environment === "production") {
+			if (cfg.controlPlane.driver === "memory") {
+				ctx.addIssue({
+					code: "custom",
+					path: ["controlPlane", "driver"],
+					message:
+						"runtime.environment='production' requires a durable control plane (file or astra)",
+				});
+			}
+			if (cfg.auth.mode === "disabled") {
+				ctx.addIssue({
+					code: "custom",
+					path: ["auth", "mode"],
+					message:
+						"runtime.environment='production' requires auth.mode to be apiKey, oidc, or any",
+				});
+			}
+			if (cfg.auth.anonymousPolicy !== "reject") {
+				ctx.addIssue({
+					code: "custom",
+					path: ["auth", "anonymousPolicy"],
+					message:
+						"runtime.environment='production' requires auth.anonymousPolicy='reject'",
+				});
+			}
+			const publicOrigin = cfg.runtime.publicOrigin;
+			if (publicOrigin && new URL(publicOrigin).protocol !== "https:") {
+				ctx.addIssue({
+					code: "custom",
+					path: ["runtime", "publicOrigin"],
+					message:
+						"runtime.environment='production' requires runtime.publicOrigin to use https",
+				});
+			}
+			const client = cfg.auth.oidc?.client;
+			if (client) {
+				if (!client.sessionSecretRef) {
+					ctx.addIssue({
+						code: "custom",
+						path: ["auth", "oidc", "client", "sessionSecretRef"],
+						message:
+							"runtime.environment='production' with OIDC browser login requires auth.oidc.client.sessionSecretRef",
+					});
+				}
+				if (!publicOrigin) {
+					ctx.addIssue({
+						code: "custom",
+						path: ["runtime", "publicOrigin"],
+						message:
+							"runtime.environment='production' with OIDC browser login requires runtime.publicOrigin",
+					});
+				}
+			}
+		}
 		if (cfg.seedWorkspaces.length > 0 && cfg.controlPlane.driver !== "memory") {
 			ctx.addIssue({
 				code: "custom",

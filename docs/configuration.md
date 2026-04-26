@@ -69,11 +69,17 @@ unknown version.
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
+| `environment` | enum | `development` | `development \| production`. Production mode enforces durable persistence, enabled auth, rejected anonymous traffic, HTTPS `publicOrigin`, and a persistent OIDC session secret when browser login is configured. |
 | `port` | int | `8080` | HTTP listen port |
 | `logLevel` | enum | `info` | `trace \| debug \| info \| warn \| error`. The `LOG_LEVEL` env var overrides this when set. |
 | `requestIdHeader` | string | `X-Request-Id` | Name of the request-ID header |
 | `uiDir` | string \| null | `null` | Directory of pre-built UI assets to serve from `/` (with SPA fallback). `null` auto-detects `/app/public` → `${cwd}/public` → `${cwd}/apps/web/dist`. The `UI_DIR` env var also works as an override. The official Docker image sets this up automatically. |
 | `replicaId` | string \| null | `null` | Identifier this replica writes into job leases (used by the cross-replica orphan sweeper to tell whose lease is whose). `null` auto-generates `${HOSTNAME or "wb"}-<short-uuid>` at boot — fine for single-replica deployments and tests; set explicitly for clustered runs if you want the lease holder to be deterministic. |
+| `publicOrigin` | URL \| null | `null` | Externally visible browser origin, e.g. `https://workbench.example.com`. Used for OIDC redirect URI construction and secure-cookie decisions. Required for production OIDC browser login. |
+| `trustProxyHeaders` | boolean | `false` | Trust `X-Forwarded-Proto` / `X-Forwarded-Host` when `publicOrigin` is not set. Enable only behind a trusted proxy that overwrites those headers. |
+
+Production deployments should start from
+[`runtimes/typescript/examples/workbench.production.yaml`](../runtimes/typescript/examples/workbench.production.yaml).
 
 ### `controlPlane`
 

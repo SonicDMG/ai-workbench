@@ -147,7 +147,11 @@ export function parseCookie(
 		if (eq < 0) continue;
 		const k = part.slice(0, eq).trim();
 		if (k !== name) continue;
-		return decodeURIComponent(part.slice(eq + 1).trim());
+		try {
+			return decodeURIComponent(part.slice(eq + 1).trim());
+		} catch {
+			return null;
+		}
 	}
 	return null;
 }

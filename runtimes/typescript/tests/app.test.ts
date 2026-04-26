@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.js";
 import { ApiKeyVerifier } from "../src/auth/apiKey/verifier.js";
@@ -3351,5 +3353,26 @@ describe("auth bypasses OpenAPI and docs", () => {
 		const { app } = makeApp({ anonymousPolicy: "reject" });
 		const res = await app.request("/docs");
 		expect(res.status).toBe(200);
+	});
+});
+
+describe("authz source invariants", () => {
+	test("workspace route modules keep explicit authorization helpers wired", () => {
+		const routeDir = join(process.cwd(), "src", "routes", "api-v1");
+		const routeModules = [
+			"api-keys.ts",
+			"catalogs.ts",
+			"documents.ts",
+			"jobs.ts",
+			"saved-queries.ts",
+			"vector-stores.ts",
+			"workspaces.ts",
+		];
+		for (const file of routeModules) {
+			const source = readFileSync(join(routeDir, file), "utf8");
+			expect(source, `${file} should validate workspace access`).toMatch(
+				/assertWorkspaceAccess\(c,\s*workspaceUid\)|filterToAccessibleWorkspaces\(c,|assertPlatformAccess\(c\)/,
+			);
+		}
 	});
 });
