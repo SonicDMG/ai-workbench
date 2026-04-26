@@ -1,5 +1,12 @@
-import { ChevronDown, ChevronsUpDown, ChevronUp, Search } from "lucide-react";
+import {
+	ChevronDown,
+	ChevronsUpDown,
+	ChevronUp,
+	Search,
+	Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatFileSize } from "@/lib/files";
 import type { DocumentRecord, DocumentStatus } from "@/lib/schemas";
@@ -29,9 +36,17 @@ const STATUS_ORDER: Record<DocumentStatus, number> = {
 export function DocumentTable({
 	docs,
 	onSelect,
+	onDelete,
+	deletingDocumentId,
 }: {
 	docs: readonly DocumentRecord[];
 	onSelect?: (doc: DocumentRecord) => void;
+	/** When provided, a trash button renders on each row that calls
+	 * back to the parent (which usually pops a confirm dialog). */
+	onDelete?: (doc: DocumentRecord) => void;
+	/** documentUid currently being deleted — disables that row's
+	 * trash button to prevent double-clicks during the round trip. */
+	deletingDocumentId?: string | null;
 }) {
 	const [sortKey, setSortKey] = useState<SortKey>("ingestedAt");
 	const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -133,13 +148,14 @@ export function DocumentTable({
 							>
 								Ingested
 							</SortHead>
+							{onDelete ? <th className="w-12 px-3 py-2" /> : null}
 						</tr>
 					</thead>
 					<tbody>
 						{sorted.length === 0 ? (
 							<tr>
 								<td
-									colSpan={6}
+									colSpan={onDelete ? 7 : 6}
 									className="px-3 py-6 text-center text-xs text-slate-500"
 								>
 									No documents match “{filter}”.
@@ -190,6 +206,26 @@ export function DocumentTable({
 											? formatDate(d.ingestedAt)
 											: formatDate(d.updatedAt)}
 									</td>
+									{onDelete ? (
+										<td className="px-3 py-2 text-right">
+											<Button
+												variant="ghost"
+												size="sm"
+												disabled={deletingDocumentId === d.documentUid}
+												onClick={(e) => {
+													// Stop the row-level click that opens the
+													// detail dialog — destructive actions
+													// shouldn't pop a metadata view at the same
+													// time.
+													e.stopPropagation();
+													onDelete(d);
+												}}
+												aria-label={`Delete ${d.sourceFilename ?? d.documentUid}`}
+											>
+												<Trash2 className="h-4 w-4 text-red-600" />
+											</Button>
+										</td>
+									) : null}
 								</tr>
 							))
 						)}

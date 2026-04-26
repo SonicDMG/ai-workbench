@@ -1,6 +1,7 @@
 import { ArrowLeft, FolderOpen, RefreshCw, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,13 +11,24 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
 import { DocumentDetailDialog } from "@/components/workspaces/DocumentDetailDialog";
 import { DocumentTable } from "@/components/workspaces/DocumentTable";
+import { FileTypeBadge } from "@/components/workspaces/FileTypeBadge";
 import { IngestQueueDialog } from "@/components/workspaces/IngestQueueDialog";
 import { SavedQueriesSection } from "@/components/workspaces/SavedQueriesSection";
 import { useCatalogs } from "@/hooks/useCatalogs";
-import { useDocuments } from "@/hooks/useDocuments";
+import { useDeleteDocument, useDocuments } from "@/hooks/useDocuments";
 import { useWorkspace } from "@/hooks/useWorkspaces";
+import { formatApiError } from "@/lib/api";
+import { formatFileSize } from "@/lib/files";
 import type { DocumentRecord } from "@/lib/schemas";
 
 /**
@@ -44,6 +56,8 @@ export function CatalogExplorerPage() {
 
 	const [ingestOpen, setIngestOpen] = useState(false);
 	const [detail, setDetail] = useState<DocumentRecord | null>(null);
+	const [toDelete, setToDelete] = useState<DocumentRecord | null>(null);
+	const deleteDoc = useDeleteDocument(workspaceId ?? "", catalogId ?? "");
 
 	if (!workspaceId || !catalogId) {
 		return (
@@ -167,6 +181,10 @@ export function CatalogExplorerPage() {
 						<DocumentTable
 							docs={docs.data ?? []}
 							onSelect={(d) => setDetail(d)}
+							onDelete={(d) => setToDelete(d)}
+							deletingDocumentId={
+								deleteDoc.isPending ? (deleteDoc.variables ?? null) : null
+							}
 						/>
 					)}
 				</CardContent>
@@ -200,6 +218,97 @@ export function CatalogExplorerPage() {
 				doc={detail}
 				onOpenChange={(o) => !o && setDetail(null)}
 			/>
+
+			<DeleteDocumentDialog
+				doc={toDelete}
+				submitting={deleteDoc.isPending}
+				onOpenChange={(o) => !o && setToDelete(null)}
+				onConfirm={async () => {
+					if (!toDelete) return;
+					try {
+						await deleteDoc.mutateAsync(toDelete.documentUid);
+						toast.success(
+							`Deleted '${toDelete.sourceFilename ?? toDelete.documentUid}'`,
+							{
+								description:
+									"Document and its chunks were removed from the catalog.",
+							},
+						);
+						setToDelete(null);
+					} catch (err) {
+						toast.error("Couldn't delete", {
+							description: formatApiError(err),
+						});
+					}
+				}}
+			/>
 		</div>
+	);
+}
+
+function DeleteDocumentDialog({
+	doc,
+	submitting,
+	onOpenChange,
+	onConfirm,
+}: {
+	doc: DocumentRecord | null;
+	submitting: boolean;
+	onOpenChange: (open: boolean) => void;
+	onConfirm: () => void;
+}) {
+	const open = doc !== null;
+	const chunkCount = doc?.chunkTotal ?? 0;
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Delete document</DialogTitle>
+					<DialogDescription>
+						Removes the document row{" "}
+						<strong>
+							and its{" "}
+							{chunkCount === 0
+								? "chunks"
+								: `${chunkCount} chunk${chunkCount === 1 ? "" : "s"}`}
+						</strong>{" "}
+						from the bound vector store. The original file is not deleted from
+						your computer; re-uploading it will re-create the document.
+					</DialogDescription>
+				</DialogHeader>
+
+				{doc ? (
+					<div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+						<FileTypeBadge
+							sourceFilename={doc.sourceFilename}
+							fileType={doc.fileType}
+						/>
+						<span className="font-medium text-slate-900 truncate">
+							{doc.sourceFilename ?? doc.documentUid}
+						</span>
+						<span className="ml-auto text-xs text-slate-500 tabular-nums">
+							{formatFileSize(doc.fileSize)}
+						</span>
+					</div>
+				) : null}
+
+				<DialogFooter>
+					<Button
+						variant="ghost"
+						onClick={() => onOpenChange(false)}
+						disabled={submitting}
+					>
+						Cancel
+					</Button>
+					<Button
+						variant="destructive"
+						onClick={onConfirm}
+						disabled={submitting}
+					>
+						{submitting ? "Deleting…" : "Delete"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }

@@ -213,6 +213,20 @@ export interface VectorStoreDriver {
 		ctx: VectorStoreDriverContext,
 		req: ListRecordsRequest,
 	): Promise<readonly StoredRecord[]>;
+
+	/**
+	 * Bulk delete by payload filter. Used by the cascade-delete path
+	 * on `DELETE .../documents/{d}` so removing a document also wipes
+	 * its chunks from the bound collection — otherwise chunks would
+	 * orphan and still surface via catalog-scoped search. Drivers
+	 * that can't do this in one call (or don't support it) should
+	 * omit; the route layer falls back to `listRecords` +
+	 * `deleteRecord` per row.
+	 */
+	deleteRecords?(
+		ctx: VectorStoreDriverContext,
+		filter: Readonly<Record<string, unknown>>,
+	): Promise<{ deleted: number }>;
 }
 
 export interface ListRecordsRequest {

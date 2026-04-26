@@ -178,6 +178,23 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 		return out;
 	}
 
+	async deleteRecords(
+		ctx: VectorStoreDriverContext,
+		filter: Readonly<Record<string, unknown>>,
+	): Promise<{ deleted: number }> {
+		const store = this.requireStore(ctx);
+		const texts = this.texts.get(keyOf(ctx));
+		const ids: string[] = [];
+		for (const rec of store.values()) {
+			if (matchesFilter(rec.payload, filter)) ids.push(rec.id);
+		}
+		for (const id of ids) {
+			store.delete(id);
+			texts?.delete(id);
+		}
+		return { deleted: ids.length };
+	}
+
 	async search(
 		ctx: VectorStoreDriverContext,
 		req: SearchRequest,

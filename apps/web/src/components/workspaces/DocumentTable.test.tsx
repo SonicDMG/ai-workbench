@@ -105,4 +105,49 @@ describe("DocumentTable", () => {
 		expect(onSelect).toHaveBeenCalledTimes(1);
 		expect(onSelect.mock.calls[0]?.[0].documentUid).toBe(doc.documentUid);
 	});
+
+	it("renders a delete button when onDelete is provided and stops row-click propagation", async () => {
+		const onSelect = vi.fn();
+		const onDelete = vi.fn();
+		const user = userEvent.setup();
+		const doc = makeDoc({ sourceFilename: "drop-me.md" });
+		render(
+			<DocumentTable docs={[doc]} onSelect={onSelect} onDelete={onDelete} />,
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: /Delete drop-me\.md/ }),
+		);
+		expect(onDelete).toHaveBeenCalledTimes(1);
+		expect(onDelete.mock.calls[0]?.[0].documentUid).toBe(doc.documentUid);
+		// Row-click handler must NOT fire — destructive actions
+		// shouldn't pop the metadata dialog at the same time.
+		expect(onSelect).not.toHaveBeenCalled();
+	});
+
+	it("disables the delete button for the row whose deletion is in flight", () => {
+		const onDelete = vi.fn();
+		const doc = makeDoc({ sourceFilename: "wait.md" });
+		render(
+			<DocumentTable
+				docs={[doc]}
+				onDelete={onDelete}
+				deletingDocumentId={doc.documentUid}
+			/>,
+		);
+		const btn = screen.getByRole("button", { name: /Delete wait\.md/ });
+		expect(btn).toBeDisabled();
+	});
+
+	it("omits the delete column entirely when onDelete is not provided", () => {
+		render(
+			<DocumentTable
+				docs={[makeDoc({ sourceFilename: "alpha.md" })]}
+				onSelect={() => {}}
+			/>,
+		);
+		expect(
+			screen.queryByRole("button", { name: /Delete alpha\.md/ }),
+		).not.toBeInTheDocument();
+	});
 });

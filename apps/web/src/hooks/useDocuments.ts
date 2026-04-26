@@ -1,4 +1,10 @@
-import { type UseQueryResult, useQuery } from "@tanstack/react-query";
+import {
+	type UseMutationResult,
+	type UseQueryResult,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { DocumentChunk, DocumentRecord } from "@/lib/schemas";
 
@@ -62,4 +68,33 @@ export function useDocumentChunks(
 
 export function documentQueryKey(workspace: string, catalogId: string) {
 	return keys.all(workspace, catalogId);
+}
+
+/**
+ * Deletes a document from a catalog. The runtime cascades to wipe
+ * the document's chunks from the bound vector store too, so a
+ * successful delete leaves no traces in catalog-scoped search.
+ *
+ * Mutation argument is the documentUid; we close over workspace +
+ * catalogId so each call site doesn't have to thread them through
+ * the mutation surface. On success both the documents list and the
+ * deleted document's chunks query are invalidated — the explorer
+ * table updates immediately and any open detail dialog renders the
+ * empty state.
+ */
+export function useDeleteDocument(
+	workspace: string,
+	catalogId: string,
+): UseMutationResult<void, Error, string> {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (documentId) =>
+			api.deleteDocument(workspace, catalogId, documentId),
+		onSuccess: (_void, documentId) => {
+			qc.invalidateQueries({ queryKey: keys.all(workspace, catalogId) });
+			qc.invalidateQueries({
+				queryKey: keys.chunks(workspace, catalogId, documentId),
+			});
+		},
+	});
 }

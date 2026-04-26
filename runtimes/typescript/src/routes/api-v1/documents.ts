@@ -616,6 +616,57 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 		async (c) => {
 			const { workspaceId, catalogId, documentId } = c.req.valid("param");
 			assertWorkspaceAccess(c, workspaceId);
+
+			// Cascade chunks first — the bound vector store still
+			// indexes the document's chunks even after we drop the
+			// Document row, so without this they'd orphan and surface
+			// in catalog-scoped search forever. Chunk delete failures
+			// abort the document delete so the user can retry without
+			// half-state. Drivers without `deleteRecords` fall back to
+			// a `listRecords` + per-id loop. Catalogs with no
+			// vector-store binding skip the cascade entirely.
+			const workspace = await store.getWorkspace(workspaceId);
+			if (!workspace) {
+				throw new ControlPlaneNotFoundError("workspace", workspaceId);
+			}
+			const catalog = await store.getCatalog(workspaceId, catalogId);
+			if (!catalog) throw new ControlPlaneNotFoundError("catalog", catalogId);
+			const existing = await store.getDocument(
+				workspaceId,
+				catalogId,
+				documentId,
+			);
+			if (!existing) {
+				throw new ControlPlaneNotFoundError("document", documentId);
+			}
+			if (catalog.vectorStore) {
+				const descriptor = await store.getVectorStore(
+					workspaceId,
+					catalog.vectorStore,
+				);
+				if (descriptor) {
+					const driver = drivers.for(workspace);
+					const filter = {
+						[CATALOG_SCOPE_KEY]: catalog.uid,
+						[DOCUMENT_SCOPE_KEY]: existing.documentUid,
+					};
+					if (typeof driver.deleteRecords === "function") {
+						await driver.deleteRecords({ workspace, descriptor }, filter);
+					} else if (typeof driver.listRecords === "function") {
+						const rows = await driver.listRecords(
+							{ workspace, descriptor },
+							{ filter, limit: 1000 },
+						);
+						for (const r of rows) {
+							await driver.deleteRecord({ workspace, descriptor }, r.id);
+						}
+					}
+					// Drivers exposing neither leave chunks behind. The
+					// next catalog-delete cleans them up; we don't block
+					// the user on that here.
+				}
+			}
+
 			const { deleted } = await store.deleteDocument(
 				workspaceId,
 				catalogId,

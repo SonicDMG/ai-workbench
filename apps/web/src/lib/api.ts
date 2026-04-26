@@ -358,6 +358,17 @@ export const api = {
 		);
 	},
 
+	deleteDocument: (
+		workspace: string,
+		catalogId: string,
+		documentId: string,
+	): Promise<void> =>
+		request(
+			`/workspaces/${workspace}/catalogs/${catalogId}/documents/${documentId}`,
+			{ method: "DELETE" },
+			null,
+		),
+
 	/* -------- Ingest + jobs -------- */
 
 	/**

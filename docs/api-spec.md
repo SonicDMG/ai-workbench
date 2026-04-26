@@ -732,6 +732,14 @@ Fetch / patch / delete. `PUT` accepts every field from the create body
 access — requesting a document from a catalog it does not belong to —
 returns `404 document_not_found`.
 
+`DELETE` cascades into the bound vector store: the document's chunks
+(matched by `payload.documentUid`) are removed before the document
+row is dropped, so a successful delete leaves no traces in
+catalog-scoped search. Drivers exposing `deleteRecords` use a single
+bulk call; older drivers fall back to a `listRecords` + per-row
+delete loop. Catalogs with no `vectorStore` binding skip the cascade
+and only drop the row.
+
 ### `GET /{documentId}/chunks`
 
 Lists the chunks the ingest pipeline extracted from this document.

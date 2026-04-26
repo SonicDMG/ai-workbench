@@ -230,6 +230,13 @@ export interface AstraCollectionLike {
 	insertOne(doc: Record<string, unknown>): Promise<unknown>;
 	insertMany(docs: readonly Record<string, unknown>[]): Promise<unknown>;
 	deleteOne(filter: Record<string, unknown>): Promise<{ deletedCount: number }>;
+	/** Bulk delete by filter. Used by cascade-delete on documents.
+	 * Optional in the structural type — older astra-db-ts versions may
+	 * not expose it; the driver falls back to `find` + `deleteOne` per
+	 * row in that case. */
+	deleteMany?(
+		filter: Record<string, unknown>,
+	): Promise<{ deletedCount: number }>;
 	find(
 		filter: Record<string, unknown>,
 		opts?: {
@@ -442,6 +449,31 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 				payload: payload as Readonly<Record<string, unknown>>,
 			};
 		});
+	}
+
+	async deleteRecords(
+		ctx: VectorStoreDriverContext,
+		filter: Readonly<Record<string, unknown>>,
+	): Promise<{ deleted: number }> {
+		const coll = (await this.getDb(ctx.workspace)).collection(
+			collectionName(ctx.descriptor),
+		);
+		// Prefer `deleteMany` when the underlying client exposes it
+		// (one round-trip). Older `astra-db-ts` versions and fakes
+		// without the method fall back to a `find` + `deleteOne` loop.
+		if (typeof coll.deleteMany === "function") {
+			const res = await coll.deleteMany(filter);
+			return { deleted: res.deletedCount };
+		}
+		const cursor = coll.find(filter, { limit: 1000 });
+		const docs = await cursor.toArray();
+		let deleted = 0;
+		for (const d of docs) {
+			const id = (d as { _id: string })._id;
+			const r = await coll.deleteOne({ _id: id });
+			if (r.deletedCount > 0) deleted += 1;
+		}
+		return { deleted };
 	}
 
 	async deleteRecord(

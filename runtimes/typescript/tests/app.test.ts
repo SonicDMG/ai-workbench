@@ -2774,6 +2774,137 @@ describe("document chunks listing", () => {
 	});
 });
 
+describe("delete document cascade", () => {
+	async function seedBoundCatalog() {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+		const vsRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "vs",
+					vectorDimension: 4,
+					embedding: {
+						provider: "mock",
+						model: "mock-embedder",
+						endpoint: null,
+						dimension: 4,
+						secretRef: null,
+					},
+				}),
+			},
+		);
+		const vs = await json(vsRes);
+		const catalog = await store.createCatalog(ws.uid, {
+			name: "kb",
+			vectorStore: vs.uid,
+		});
+		return { app, store, ws, vs, catalog };
+	}
+
+	test("DELETE /documents/{d} also wipes the document's chunks", async () => {
+		const { app, ws, catalog } = await seedBoundCatalog();
+		// Ingest two documents into the same catalog so we can prove
+		// the cascade scopes the delete by documentUid (not catalogUid).
+		const r1 = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "alpha bravo charlie. delta echo foxtrot.",
+					chunker: { maxChars: 25, minChars: 5, overlapChars: 5 },
+				}),
+			},
+		);
+		const r2 = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "kept document content stays put.",
+					chunker: { maxChars: 25, minChars: 5, overlapChars: 5 },
+				}),
+			},
+		);
+		const doomed = (await json(r1)).document.documentUid as string;
+		const kept = (await json(r2)).document.documentUid as string;
+
+		// Sanity: chunks for both documents are reachable via the
+		// chunks-listing route before deletion.
+		const before1 = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/${doomed}/chunks`,
+		);
+		expect((await json(before1)).length).toBeGreaterThan(0);
+		const before2 = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/${kept}/chunks`,
+		);
+		const keptBefore = (await json(before2)).length;
+		expect(keptBefore).toBeGreaterThan(0);
+
+		const del = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/${doomed}`,
+			{ method: "DELETE" },
+		);
+		expect(del.status).toBe(204);
+
+		// The doomed doc is gone (404 on its chunks endpoint via
+		// document_not_found check).
+		const after1 = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/${doomed}/chunks`,
+		);
+		expect(after1.status).toBe(404);
+
+		// The kept doc's chunks are untouched.
+		const after2 = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/${kept}/chunks`,
+		);
+		expect((await json(after2)).length).toBe(keptBefore);
+
+		// Catalog-scoped search no longer surfaces the doomed doc's
+		// chunks. Without the cascade these would orphan and still
+		// match the catalog's filter.
+		const search = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "alpha", topK: 50 }),
+			},
+		);
+		const hits = (await json(search)) as Array<{
+			payload: Record<string, unknown>;
+		}>;
+		for (const h of hits) {
+			expect(h.payload.documentUid).not.toBe(doomed);
+		}
+	});
+
+	test("DELETE on a catalog with no vector-store binding still removes the document row", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+		const catalog = await store.createCatalog(ws.uid, {
+			name: "unbound",
+			vectorStore: null,
+		});
+		const doc = await store.createDocument(ws.uid, catalog.uid, {
+			status: "writing",
+		});
+		const del = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/${doc.documentUid}`,
+			{ method: "DELETE" },
+		);
+		expect(del.status).toBe(204);
+		const get = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents/${doc.documentUid}`,
+		);
+		expect(get.status).toBe(404);
+	});
+});
+
 describe("adopt existing collections", () => {
 	// Stub driver that pretends to be wrapping a real data plane with two
 	// pre-existing collections — one with a $vectorize service, one
