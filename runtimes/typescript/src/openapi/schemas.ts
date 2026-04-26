@@ -8,6 +8,12 @@
  */
 
 import { z } from "@hono/zod-openapi";
+import {
+	MAX_INGEST_TEXT_CHARS,
+	MAX_QUERY_TEXT_CHARS,
+	MAX_VECTOR_RECORD_TEXT_CHARS,
+	MAX_VECTOR_VALUES,
+} from "../lib/limits.js";
 
 /* ---------------- Operational ---------------- */
 
@@ -346,8 +352,8 @@ export const UpdateVectorStoreInputSchema = z
 export const VectorRecordSchema = z
 	.object({
 		id: z.string().min(1),
-		vector: z.array(z.number()).min(1).optional(),
-		text: z.string().min(1).optional(),
+		vector: z.array(z.number()).min(1).max(MAX_VECTOR_VALUES).optional(),
+		text: z.string().min(1).max(MAX_VECTOR_RECORD_TEXT_CHARS).optional(),
 		payload: z.record(z.string(), z.unknown()).optional(),
 	})
 	.refine((r) => (r.vector === undefined) !== (r.text === undefined), {
@@ -385,8 +391,8 @@ export const DeleteRecordResponseSchema = z
  */
 export const SearchRequestSchema = z
 	.object({
-		vector: z.array(z.number()).min(1).optional(),
-		text: z.string().min(1).optional(),
+		vector: z.array(z.number()).min(1).max(MAX_VECTOR_VALUES).optional(),
+		text: z.string().min(1).max(MAX_QUERY_TEXT_CHARS).optional(),
 		topK: z.number().int().positive().max(1000).optional(),
 		filter: z.record(z.string(), z.unknown()).optional(),
 		includeEmbeddings: z.boolean().optional(),
@@ -437,7 +443,7 @@ export const CreateSavedQueryInputSchema = z
 		uid: z.string().uuid().optional(),
 		name: z.string().min(1),
 		description: z.string().nullable().optional(),
-		text: z.string().min(1),
+		text: z.string().min(1).max(MAX_QUERY_TEXT_CHARS),
 		topK: z.number().int().positive().max(1000).nullable().optional(),
 		filter: z.record(z.string(), z.unknown()).nullable().optional(),
 	})
@@ -447,7 +453,7 @@ export const UpdateSavedQueryInputSchema = z
 	.object({
 		name: z.string().min(1).optional(),
 		description: z.string().nullable().optional(),
-		text: z.string().min(1).optional(),
+		text: z.string().min(1).max(MAX_QUERY_TEXT_CHARS).optional(),
 		topK: z.number().int().positive().max(1000).nullable().optional(),
 		filter: z.record(z.string(), z.unknown()).nullable().optional(),
 	})
@@ -473,7 +479,7 @@ export const IngestChunkerOptionsSchema = z
 export const IngestRequestSchema = z
 	.object({
 		/** Raw text to chunk. Required; empty strings are rejected. */
-		text: z.string().min(1),
+		text: z.string().min(1).max(MAX_INGEST_TEXT_CHARS),
 		/** Optional UID for the created document — generated if omitted. */
 		uid: z.string().uuid().optional(),
 		sourceDocId: z.string().nullable().optional(),

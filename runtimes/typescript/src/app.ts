@@ -18,6 +18,7 @@
 import { randomUUID } from "node:crypto";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
+import { bodyLimit } from "hono/body-limit";
 import { ForbiddenError, UnauthorizedError } from "./auth/errors.js";
 import { authMiddleware } from "./auth/middleware.js";
 import type { CookieSigner } from "./auth/oidc/login/cookie.js";
@@ -31,6 +32,8 @@ import type { EmbedderFactory } from "./embeddings/factory.js";
 import { MemoryJobStore } from "./jobs/memory-store.js";
 import type { JobStore } from "./jobs/store.js";
 import { ApiError, errorEnvelope } from "./lib/errors.js";
+import { MAX_API_JSON_BODY_BYTES } from "./lib/limits.js";
+import { logger } from "./lib/logger.js";
 import { makeOpenApi } from "./lib/openapi.js";
 import { requestId } from "./lib/request-id.js";
 import type { AppEnv } from "./lib/types.js";
@@ -82,6 +85,21 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const replicaId = opts.replicaId ?? generateReplicaId();
 
 	app.use("*", requestId(opts.requestIdHeader));
+	app.use(
+		"/api/v1/workspaces/*",
+		bodyLimit({
+			maxSize: MAX_API_JSON_BODY_BYTES,
+			onError: (c) =>
+				c.json(
+					errorEnvelope(
+						c,
+						"payload_too_large",
+						`request body must be <= ${MAX_API_JSON_BODY_BYTES} bytes`,
+					),
+					413,
+				),
+		}),
+	);
 
 	// Static UI assets, when a dist/ is present. Runs before API
 	// routes so favicons/CSS/JS resolve to disk; anything not found
@@ -232,12 +250,15 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		if (err instanceof ApiError) {
 			return c.json(errorEnvelope(c, err.code, err.message), err.status);
 		}
+		logger.error(
+			{
+				errName: err instanceof Error ? err.name : typeof err,
+				requestId: c.get("requestId"),
+			},
+			"unhandled request error",
+		);
 		return c.json(
-			errorEnvelope(
-				c,
-				"internal_error",
-				err.message || "internal server error",
-			),
+			errorEnvelope(c, "internal_error", "internal server error"),
 			500,
 		);
 	});

@@ -1,11 +1,13 @@
 /**
- * Signed session cookie.
+ * Encrypted session cookie.
  *
- * The cookie value is `<payload>.<hmac>` where both halves are
- * base64url. `payload` is UTF-8 JSON; `hmac` is HMAC-SHA256 of the
- * payload. Signing prevents a client from fabricating a cookie; the
- * cookie is sent `HttpOnly; SameSite=Lax` so JS can't read it and
- * top-level navigations still carry it through the OAuth redirect.
+ * The cookie value is `v2.<iv>.<ciphertext>.<tag>`, all base64url
+ * except the version marker. The payload is UTF-8 JSON encrypted with
+ * AES-256-GCM. GCM gives confidentiality and integrity: clients cannot
+ * read the IdP tokens inside, cannot forge a cookie, and cannot tamper
+ * with the payload without verification failing. The cookie is sent
+ * `HttpOnly; SameSite=Lax` so JS can't read it and top-level
+ * navigations still carry it through the OAuth redirect.
  *
  * The session payload carries the access token (a JWT). The existing
  * `OidcVerifier` then validates iss/aud/exp/nbf + signature exactly
@@ -14,7 +16,12 @@
  * a 401 and triggers a re-login.
  */
 
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+	createCipheriv,
+	createDecipheriv,
+	createHash,
+	randomBytes,
+} from "node:crypto";
 
 export interface SessionPayload {
 	readonly accessToken: string;
@@ -28,29 +35,55 @@ export interface CookieSigner {
 	verify(value: string): SessionPayload | null;
 }
 
+const COOKIE_VERSION = "v2";
+const IV_LEN = 12;
+const TAG_LEN = 16;
+const KEY_INFO = "ai-workbench oidc session cookie v2";
+
 export function makeCookieSigner(keyBytes: Buffer): CookieSigner {
+	const key = deriveAesKey(keyBytes);
 	return {
 		sign(payload) {
+			const iv = randomBytes(IV_LEN);
+			const cipher = createCipheriv("aes-256-gcm", key, iv, {
+				authTagLength: TAG_LEN,
+			});
+			cipher.setAAD(Buffer.from(COOKIE_VERSION, "utf8"));
 			const body = Buffer.from(JSON.stringify(payload), "utf8");
-			const mac = createHmac("sha256", keyBytes).update(body).digest();
-			return `${toBase64Url(body)}.${toBase64Url(mac)}`;
+			const ciphertext = Buffer.concat([cipher.update(body), cipher.final()]);
+			const tag = cipher.getAuthTag();
+			return [
+				COOKIE_VERSION,
+				toBase64Url(iv),
+				toBase64Url(ciphertext),
+				toBase64Url(tag),
+			].join(".");
 		},
 		verify(value) {
-			const dot = value.indexOf(".");
-			if (dot < 0) return null;
-			const bodyB64 = value.slice(0, dot);
-			const macB64 = value.slice(dot + 1);
-			let body: Buffer;
-			let mac: Buffer;
+			const parts = value.split(".");
+			if (parts.length !== 4 || parts[0] !== COOKIE_VERSION) return null;
+			let iv: Buffer;
+			let ciphertext: Buffer;
+			let tag: Buffer;
 			try {
-				body = fromBase64Url(bodyB64);
-				mac = fromBase64Url(macB64);
+				iv = fromBase64Url(parts[1] as string);
+				ciphertext = fromBase64Url(parts[2] as string);
+				tag = fromBase64Url(parts[3] as string);
 			} catch {
 				return null;
 			}
-			const expected = createHmac("sha256", keyBytes).update(body).digest();
-			if (mac.length !== expected.length) return null;
-			if (!timingSafeEqual(mac, expected)) return null;
+			if (iv.length !== IV_LEN || tag.length !== TAG_LEN) return null;
+			let body: Buffer;
+			try {
+				const decipher = createDecipheriv("aes-256-gcm", key, iv, {
+					authTagLength: TAG_LEN,
+				});
+				decipher.setAAD(Buffer.from(COOKIE_VERSION, "utf8"));
+				decipher.setAuthTag(tag);
+				body = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+			} catch {
+				return null;
+			}
 			try {
 				const obj = JSON.parse(body.toString("utf8"));
 				if (
@@ -67,6 +100,10 @@ export function makeCookieSigner(keyBytes: Buffer): CookieSigner {
 			}
 		},
 	};
+}
+
+function deriveAesKey(keyBytes: Buffer): Buffer {
+	return createHash("sha256").update(KEY_INFO).update(keyBytes).digest();
 }
 
 export function generateSessionKey(): Buffer {

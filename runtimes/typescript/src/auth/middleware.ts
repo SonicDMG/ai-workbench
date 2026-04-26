@@ -10,7 +10,7 @@
  *
  * When a browser session cookie is configured (Phase 3b OIDC login),
  * a request without an `Authorization` header but with a valid
- * signed session cookie is treated as if it came in with
+ * encrypted session cookie is treated as if it came in with
  * `Authorization: Bearer <session access_token>`. Bearer header
  * always wins if both are present — that matches the API-client
  * mental model (programmatic calls are never surprised by browser

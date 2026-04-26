@@ -72,6 +72,7 @@ human-readable and may change. Currently emitted:
 | 400 | `validation_error` | Request body / params / query failed Zod validation. `message` carries the first failing field path and its reason (`name: Name is required`, `credentialsRef.token: expected '<provider>:<path>', e.g. 'env:FOO'`). |
 | 401 | `unauthorized` | Missing / malformed / invalid bearer token. `WWW-Authenticate: Bearer` set. See [`auth.md`](auth.md). |
 | 403 | `forbidden` | Token is valid but not authorized for the requested action — either the subject's `workspaceScopes` doesn't include the target workspace, or it's a scoped subject attempting a platform-level action (e.g. `POST /workspaces`). Also reserved for role-based checks in the upcoming RBAC phase. |
+| 413 | `payload_too_large` | `/api/v1/workspaces/*` request body exceeded the runtime's 1 MB JSON body limit. |
 | 404 | `not_found` | Unknown route |
 | 404 | `workspace_not_found` | Workspace UID doesn't exist |
 | 404 | `catalog_not_found` | Catalog UID doesn't exist in workspace |
@@ -883,7 +884,7 @@ All fields except `text` are optional. `chunker` overrides the
 runtime defaults for this call only. `metadata` is merged onto every
 chunk's payload; the reserved keys `catalogUid`, `documentUid`, and
 `chunkIndex` are always set by the runtime and will override any
-caller-supplied values.
+caller-supplied values. `text` is capped at 200,000 characters.
 
 **Response 201**
 

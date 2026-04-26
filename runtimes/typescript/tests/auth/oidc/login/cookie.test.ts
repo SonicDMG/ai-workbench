@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
 	makeCookieSigner,
 	parseCookie,
+	type SessionPayload,
 	serializeCookie,
 } from "../../../../src/auth/oidc/login/cookie.js";
 
@@ -18,17 +19,36 @@ describe("makeCookieSigner", () => {
 		});
 	});
 
-	test("rejects values with a tampered payload", () => {
+	test("encrypts the payload rather than exposing token JSON", () => {
+		const value = signer.sign({
+			accessToken: "super-secret-jwt",
+			issuedAt: 1234,
+			refreshToken: "super-secret-refresh",
+		});
+		expect(value).toMatch(/^v2\./);
+		expect(value).not.toContain("super-secret-jwt");
+		expect(value).not.toContain("super-secret-refresh");
+		expect(value).not.toContain("accessToken");
+	});
+
+	test("uses a fresh nonce for each cookie", () => {
+		const payload = { accessToken: "xyz", issuedAt: 1234 };
+		expect(signer.sign(payload)).not.toBe(signer.sign(payload));
+	});
+
+	test("rejects values with a tampered ciphertext", () => {
 		const value = signer.sign({ accessToken: "xyz", issuedAt: 1234 });
-		// flip a character in the first half
-		const [head, tail] = value.split(".");
-		const tampered = `${head?.replace(/./, "A")}.${tail}`;
+		const parts = value.split(".");
+		parts[2] = flipFirstChar(parts[2] ?? "");
+		const tampered = parts.join(".");
 		expect(signer.verify(tampered)).toBe(null);
 	});
 
-	test("rejects values with a tampered signature", () => {
+	test("rejects values with a tampered auth tag", () => {
 		const value = signer.sign({ accessToken: "xyz", issuedAt: 1234 });
-		const tampered = `${value.slice(0, -4)}AAAA`;
+		const parts = value.split(".");
+		parts[3] = flipFirstChar(parts[3] ?? "");
+		const tampered = parts.join(".");
 		expect(signer.verify(tampered)).toBe(null);
 	});
 
@@ -42,17 +62,22 @@ describe("makeCookieSigner", () => {
 		expect(signer.verify("")).toBe(null);
 		expect(signer.verify("nodotsihere")).toBe(null);
 		expect(signer.verify("abc.!!!")).toBe(null);
+		expect(signer.verify("v1.abc.def.ghi")).toBe(null);
 	});
 
 	test("rejects JSON without required fields", () => {
-		// Synthesize a valid MAC of a payload that lacks accessToken.
 		const payload = signer.sign({
-			accessToken: "x",
 			issuedAt: 1,
-		} as unknown as { accessToken: string; issuedAt: number });
-		expect(signer.verify(payload.replace(/./, "."))).toBe(null);
+		} as unknown as SessionPayload);
+		expect(signer.verify(payload)).toBe(null);
 	});
 });
+
+function flipFirstChar(value: string): string {
+	if (value.length === 0) return "A";
+	const replacement = value.startsWith("A") ? "B" : "A";
+	return `${replacement}${value.slice(1)}`;
+}
 
 describe("serializeCookie", () => {
 	test("emits HttpOnly + SameSite=Lax by default; Path=/", () => {

@@ -10,7 +10,7 @@
  *   refresh_token decoded out of the existing session cookie.
  *
  * The session cookie now carries the refresh_token alongside the
- * access_token. Both ride inside the HMAC-signed payload — same trust
+ * access_token. Both ride inside the encrypted payload — same trust
  * boundary as the access_token, which has always been there. See
  * {@link ../../../routes/auth.ts} and `docs/auth.md` for the threat-
  * model discussion (mainly: cookie theft was already game-over for

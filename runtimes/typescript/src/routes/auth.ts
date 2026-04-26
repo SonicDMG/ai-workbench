@@ -18,8 +18,8 @@
  *
  * Phase 3c — silent refresh:
  * - `/auth/callback` now persists `tokens.refresh_token` (when the
- *   IdP returns one) into the signed session cookie alongside the
- *   access token. Same trust boundary; same HttpOnly + signed
+ *   IdP returns one) into the encrypted session cookie alongside the
+ *   access token. Same trust boundary; same HttpOnly + authenticated
  *   envelope.
  * - `/auth/refresh` reads the cookie, calls the IdP's token endpoint
  *   with `grant_type=refresh_token`, and re-issues the cookie
@@ -311,7 +311,7 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 }
 
 /**
- * Read the session cookie off a request and return the signed access
+ * Read the session cookie off a request and return the encrypted access
  * token. Used by the AuthResolver when no Authorization header was
  * sent. Kept out of resolver.ts so resolver.ts stays mode-agnostic.
  */
@@ -359,10 +359,10 @@ interface SetSessionCookieOptions {
 }
 
 /**
- * Sign and emit the session cookie. Centralizes the Set-Cookie shape
+ * Encrypt and emit the session cookie. Centralizes the Set-Cookie shape
  * so /callback (initial login) and /refresh (silent refresh) stay in
  * lockstep. Cookie max-age defaults to the IdP's `expires_in`; any
- * IdP-issued refresh_token rides inside the signed payload (or the
+ * IdP-issued refresh_token rides inside the encrypted payload (or the
  * fallback when the IdP didn't rotate it).
  */
 function setSessionCookie(

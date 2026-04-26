@@ -244,8 +244,8 @@ middleware is mounted.
 | `redirectPath` | string | `/auth/callback` | Path the IdP redirects to after authorization. Must be in the IdP's allow-list. |
 | `postLogoutPath` | string | `/` | Where `/auth/logout` sends the user. |
 | `scopes` | string[] | `[openid, profile, email]` | OAuth scopes requested at login. |
-| `sessionCookieName` | string | `wb_session` | Cookie that carries the signed session. |
-| `sessionSecretRef` | SecretRef \| null | `null` | HMAC key for signing session cookies. Must resolve to ≥32 bytes. When null, runtime auto-generates an ephemeral key at boot (dev only). |
+| `sessionCookieName` | string | `wb_session` | Cookie that carries the encrypted session. |
+| `sessionSecretRef` | SecretRef \| null | `null` | Key material for encrypting session cookies. Must resolve to ≥32 bytes. When null, runtime auto-generates an ephemeral key at boot (dev only). |
 
 ## Secrets
 

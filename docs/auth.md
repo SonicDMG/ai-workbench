@@ -174,11 +174,11 @@ After a successful `/auth/callback` the runtime sets a cookie
   `X-Forwarded-Proto` when the runtime is behind a TLS proxy)
 - `Max-Age` matches the upstream `expires_in` (typically 1 hour)
 
-The cookie value is `<base64url json>.<base64url hmac>`; HMAC uses
-a 32-byte key from `auth.oidc.client.sessionSecretRef` (a
-`SecretRef`). When unset the runtime generates an ephemeral key at
-boot and logs a warning — fine for dev + single-replica, wrong for
-anything clustered.
+The cookie value is `v2.<iv>.<ciphertext>.<tag>`; the payload is
+encrypted and authenticated with AES-256-GCM using key material from
+`auth.oidc.client.sessionSecretRef` (a `SecretRef`). When unset the
+runtime generates an ephemeral key at boot and logs a warning — fine
+for dev + single-replica, wrong for anything clustered.
 
 The payload carries the upstream access token verbatim. Auth
 middleware promotes a valid cookie into a synthetic
@@ -228,11 +228,16 @@ OIDC login (Phase 3b) avoids this because the session cookie is
   constant time — the API-key path stores a salted scrypt digest
   (`scrypt$<salt>$<digest>`) and uses `timingSafeEqual`; OIDC
   uses signature verification.
+- **Basic resource ceilings.** The TypeScript runtime rejects
+  `/api/v1/workspaces/*` request bodies over 1 MB and caps the
+  highest-risk text/vector fields before chunking, embedding, or
+  search dispatch.
 
 Out of scope for now:
 
-- **Denial-of-service from high-volume anonymous traffic.** Rate
-  limiting is a later concern.
+- **Denial-of-service from high-volume anonymous traffic.** The
+  runtime has basic size limits, but IP/user/workspace rate limiting
+  remains a later concern.
 - **Per-operation audit log.** Every auth decision will emit a
   structured log line in a later phase (RBAC PR); today only
   request-level logging exists.
@@ -244,7 +249,7 @@ Out of scope for now:
 | 1 | Middleware, config, `disabled` mode | ✅ shipped |
 | 2 | `mode: apiKey` — workspace-scoped `wb_live_*` keys, issue/revoke routes, UI | ✅ shipped |
 | 3a | `mode: oidc` — JWT verification via JWKS; `any` mode enables both | ✅ shipped |
-| 3b | Browser OIDC login flow (PKCE) — replaces paste-a-token with `/auth/{login,callback,me,logout}` + signed session cookie | ✅ shipped |
+| 3b | Browser OIDC login flow (PKCE) — replaces paste-a-token with `/auth/{login,callback,me,logout}` + encrypted session cookie | ✅ shipped |
 | 3c | Silent refresh via `refresh_token` grant, so users don't see mid-session re-logins | ✅ shipped |
 | 4 | Roles + per-route enforcement; audit logging | later |
 
@@ -377,7 +382,7 @@ auth:
       # postLogoutPath: /
       # scopes: [openid, profile, email]
       # sessionCookieName: wb_session
-      sessionSecretRef: env:WB_SESSION_SECRET    # 32+ bytes; HMAC key
+      sessionSecretRef: env:WB_SESSION_SECRET    # 32+ bytes; cookie encryption key
 ```
 
 `redirectPath` must be registered in the IdP's allowed redirect
@@ -394,12 +399,12 @@ configured path.
   `MemoryPendingLoginStore` with something shared — the seam is
   the `PendingLoginStore` interface.
 - **Session key rotation.** Rotate by updating
-  `sessionSecretRef` and restarting. Sessions signed with the old
-  key stop validating and users re-login. There's no dual-key
+  `sessionSecretRef` and restarting. Sessions encrypted with the old
+  key stop decrypting and users re-login. There's no dual-key
   validation period yet.
 - **Silent refresh keeps the cookie ahead of the curve (Phase 3c).**
   When the IdP returns a `refresh_token` on the initial code
-  exchange, the runtime stores it in the same signed session
+  exchange, the runtime stores it in the same encrypted session
   cookie as the access token. The UI calls `POST /auth/refresh`
   (a) on a timer at ~80% of the access-token lifetime, and (b) as
   a fallback when an API call comes back `401`. The runtime
@@ -419,16 +424,16 @@ configured path.
 ## Silent refresh (Phase 3c)
 
 The session cookie carries the IdP's `refresh_token` alongside the
-access token, both inside the same HMAC-signed payload. That changes
+access token, both inside the same encrypted payload. That changes
 exactly one threat-model line item from before: cookie theft used
 to give an attacker the active session until access-token expiry
 (typically an hour). With the refresh token in the cookie, theft
 gives the attacker a session as long as the IdP's refresh-token
 lifetime allows. Two mitigations:
 
-1. **The cookie remains `HttpOnly` + signed**, so JS still can't
-   read or forge it. The threat is exfiltration via a network MITM
-   or browser compromise, not XSS.
+1. **The cookie remains `HttpOnly` + encrypted/authenticated**, so JS
+   still can't read or forge it. The threat is exfiltration via a
+   network MITM or browser compromise, not XSS.
 2. **Operators with sensitive deployments can disable refresh**
    simply by setting their IdP's app to *not* issue
    `refresh_token` for browser flows. The runtime degrades

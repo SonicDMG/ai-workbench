@@ -353,7 +353,7 @@ describe("/auth/* flow", () => {
 		}
 	});
 
-	test("tampered cookie fails signature check — treated as anonymous", async () => {
+	test("tampered cookie fails decryption - treated as anonymous", async () => {
 		const fx = await buildAppWithLogin(privateKey, imported);
 		try {
 			// Forge the shape but with a random payload that won't match.

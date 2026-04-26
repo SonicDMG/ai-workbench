@@ -7,6 +7,11 @@ import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import type { ControlPlaneStore } from "../src/control-plane/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
+import {
+	MAX_API_JSON_BODY_BYTES,
+	MAX_INGEST_TEXT_CHARS,
+	MAX_QUERY_TEXT_CHARS,
+} from "../src/lib/limits.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
 import { SecretResolver } from "../src/secrets/provider.js";
 import { makeFakeEmbedderFactory } from "./helpers/embedder.js";
@@ -89,6 +94,34 @@ describe("operational routes", () => {
 		expect(res.status).toBe(200);
 		const body = await json(res);
 		expect(body.node).toBe(process.version);
+	});
+
+	test("unhandled errors return a generic envelope", async () => {
+		const { app } = makeApp();
+		app.get("/boom", () => {
+			throw new Error("database password leaked in exception text");
+		});
+		const res = await app.request("/boom");
+		expect(res.status).toBe(500);
+		const body = await json(res);
+		expect(body.error.code).toBe("internal_error");
+		expect(body.error.message).toBe("internal server error");
+	});
+
+	test("oversized API bodies are rejected before route handling", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/api/v1/workspaces", {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"content-length": String(MAX_API_JSON_BODY_BYTES + 1),
+			},
+			body: "{}",
+		});
+		expect(res.status).toBe(413);
+		const body = await json(res);
+		expect(body.error.code).toBe("payload_too_large");
+		expect(body.error.requestId).toBeTruthy();
 	});
 
 	test("responses carry X-Request-Id", async () => {
@@ -802,6 +835,22 @@ describe("catalog ingest", () => {
 		);
 		expect(res.status).toBe(400);
 		expect((await json(res)).error.code).toBe("validation_error");
+	});
+
+	test("rejects oversized ingest text via Zod validation", async () => {
+		const { app, ws, catalog } = await seedBoundCatalog();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "x".repeat(MAX_INGEST_TEXT_CHARS + 1) }),
+			},
+		);
+		expect(res.status).toBe(400);
+		const body = await json(res);
+		expect(body.error.code).toBe("validation_error");
+		expect(body.error.message).toContain("text");
 	});
 
 	test("marks document failed when upsert throws, then re-raises", async () => {
@@ -2103,6 +2152,20 @@ describe("vector-store data plane", () => {
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({ topK: 1 }),
+			},
+		);
+		expect(res.status).toBe(400);
+		expect((await json(res)).error.code).toBe("validation_error");
+	});
+
+	test("search rejects oversized text queries", async () => {
+		const { app, ws, vs } = await setupStore();
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}/search`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "x".repeat(MAX_QUERY_TEXT_CHARS + 1) }),
 			},
 		);
 		expect(res.status).toBe(400);

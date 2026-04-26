@@ -133,8 +133,8 @@ const OidcClientSchema = z.object({
 	// Cookie name for the session. Change if something else on the
 	// same origin already owns `wb_session`.
 	sessionCookieName: z.string().min(1).default("wb_session"),
-	// SecretRef for the HMAC key that signs session cookies. When
-	// null, an ephemeral 32-byte key is generated at boot.
+	// SecretRef for the key that encrypts session cookies. When null,
+	// an ephemeral 32-byte key is generated at boot.
 	sessionSecretRef: z
 		.string()
 		.regex(/^[a-z]+:[^\s]+$/i, "expected '<provider>:<path>'")
