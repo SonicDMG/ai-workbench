@@ -144,6 +144,9 @@ describe("operational routes", () => {
 		expect(res.headers.get("Content-Security-Policy")).toContain(
 			"frame-ancestors 'none'",
 		);
+		expect(res.headers.get("Content-Security-Policy")).toContain(
+			"https://cdn.jsdelivr.net",
+		);
 		expect(res.headers.get("Permissions-Policy")).toContain("camera=()");
 	});
 
