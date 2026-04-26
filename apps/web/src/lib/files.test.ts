@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { extOf, fileTypeMeta, formatFileSize } from "./files";
+import {
+	extOf,
+	fileTypeMeta,
+	formatFileSize,
+	isReadableTextFile,
+	READABLE_TEXT_EXTENSIONS,
+} from "./files";
 
 describe("extOf", () => {
 	it("returns the lowercase extension without the leading dot", () => {
@@ -28,6 +34,8 @@ describe("fileTypeMeta", () => {
 		expect(fileTypeMeta("yml").badgeClass).toBe(
 			fileTypeMeta("yaml").badgeClass,
 		);
+		expect(fileTypeMeta("ini").label).toBe("INI");
+		expect(fileTypeMeta("sql").label).toBe("SQL");
 	});
 
 	it("falls back to a neutral badge with the upper-cased ext for unknowns", () => {
@@ -39,6 +47,45 @@ describe("fileTypeMeta", () => {
 
 	it("uses a generic FILE label when there is no extension", () => {
 		expect(fileTypeMeta("").label).toBe("FILE");
+	});
+});
+
+describe("isReadableTextFile", () => {
+	it("accepts common plain-text document and config extensions without MIME hints", () => {
+		expect(isReadableTextFile({ name: "guide.md", type: "" })).toBe(true);
+		expect(isReadableTextFile({ name: "config.yaml", type: "" })).toBe(true);
+		expect(isReadableTextFile({ name: "service.toml", type: "" })).toBe(true);
+		expect(isReadableTextFile({ name: "settings.ini", type: "" })).toBe(true);
+	});
+
+	it("accepts source files and well-known extensionless text filenames", () => {
+		expect(isReadableTextFile({ name: "main.ts", type: "" })).toBe(true);
+		expect(isReadableTextFile({ name: "query.sql", type: "" })).toBe(true);
+		expect(isReadableTextFile({ name: "Dockerfile", type: "" })).toBe(true);
+		expect(isReadableTextFile({ name: "Makefile", type: "" })).toBe(true);
+		expect(isReadableTextFile({ name: "README", type: "" })).toBe(true);
+		expect(isReadableTextFile({ name: ".env.local", type: "" })).toBe(true);
+	});
+
+	it("accepts unknown extensions when the browser reports text MIME", () => {
+		expect(
+			isReadableTextFile({ name: "notes.custom", type: "text/plain" }),
+		).toBe(true);
+	});
+
+	it("rejects likely binary files", () => {
+		expect(isReadableTextFile({ name: "photo.png", type: "image/png" })).toBe(
+			false,
+		);
+		expect(isReadableTextFile({ name: "archive.zip", type: "" })).toBe(false);
+	});
+});
+
+describe("READABLE_TEXT_EXTENSIONS", () => {
+	it("includes document, config, data, and source extensions for the file picker", () => {
+		expect(READABLE_TEXT_EXTENSIONS).toEqual(
+			expect.arrayContaining([".md", ".yaml", ".toml", ".ini", ".sql", ".ts"]),
+		);
 	});
 });
 

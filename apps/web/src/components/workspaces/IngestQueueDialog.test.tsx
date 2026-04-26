@@ -42,8 +42,8 @@ const CATALOG: CatalogRecord = {
 	updatedAt: "2026-04-25T00:00:00.000Z",
 };
 
-function makeFile(name: string, content: string): File {
-	const file = new File([content], name, { type: "text/markdown" });
+function makeFile(name: string, content: string, type = "text/markdown"): File {
+	const file = new File([content], name, { type });
 	// jsdom 25's File does not implement Blob.prototype.text(); the
 	// queue dialog calls it when it dequeues each file. Stub it per
 	// instance so the test exercises the real flow.
@@ -112,6 +112,36 @@ function jobRecord(
 }
 
 describe("IngestQueueDialog", () => {
+	it("queues Markdown, YAML, config, and source files even when MIME is empty", async () => {
+		const user = userEvent.setup();
+		render(
+			<IngestQueueDialog
+				workspace="ws-1"
+				catalog={CATALOG}
+				open
+				onOpenChange={() => {}}
+			/>,
+			{ wrapper },
+		);
+
+		const fileInput = document.querySelector(
+			'input[type="file"]:not([webkitdirectory])',
+		) as HTMLInputElement;
+		await user.upload(fileInput, [
+			makeFile("notes.md", "hello", ""),
+			makeFile("config.yaml", "name: workbench", ""),
+			makeFile("settings.ini", "[main]", ""),
+			makeFile("main.ts", "export {}", ""),
+		]);
+
+		await waitFor(() => {
+			expect(screen.getByText("notes.md")).toBeInTheDocument();
+			expect(screen.getByText("config.yaml")).toBeInTheDocument();
+			expect(screen.getByText("settings.ini")).toBeInTheDocument();
+			expect(screen.getByText("main.ts")).toBeInTheDocument();
+		});
+	});
+
 	it("processes a queue of three files end-to-end without re-render storms", async () => {
 		// Each ingest returns its own jobId; each subsequent getJob
 		// resolves to a `succeeded` snapshot so the queue advances.

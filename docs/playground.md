@@ -186,9 +186,11 @@ Ingest now has a dedicated UI surface, complementing the data-plane
 - **Workspace detail → Catalogs → Ingest** (or **Open** → catalog
   explorer → **Ingest**) opens a multi-file / folder queue. Drop
   files (or pick a folder via the directory picker) and they
-  ingest sequentially through the bound vector store. Each row
-  shows live progress for the active file and terminal status for
-  everything before it.
+  ingest sequentially through the bound vector store. The queue
+  accepts plain-text documents, data, config, and source files such
+  as Markdown, YAML, TOML, JSON, CSV, logs, SQL, and TypeScript.
+  Each row shows live progress for the active file and terminal
+  status for everything before it.
 - Async ingest jobs stream progress via the SSE
   `GET .../jobs/{jobId}/events` endpoint until a terminal state.
   The dialog renders the live `processed/total` counter and

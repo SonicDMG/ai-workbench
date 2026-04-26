@@ -20,7 +20,12 @@ import {
 } from "@/components/ui/dialog";
 import { useAsyncIngest, useJobPoller } from "@/hooks/useIngest";
 import { formatApiError } from "@/lib/api";
-import { extOf, formatFileSize } from "@/lib/files";
+import {
+	extOf,
+	formatFileSize,
+	isReadableTextFile,
+	READABLE_TEXT_EXTENSIONS,
+} from "@/lib/files";
 import type { CatalogRecord, JobRecord } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 import { FileTypeBadge } from "./FileTypeBadge";
@@ -37,31 +42,11 @@ import { FileTypeBadge } from "./FileTypeBadge";
  * don't tend to need parallelism, and a misbehaving file shouldn't
  * tank the others.
  *
- * Same readability and size guards as the single-file `IngestDialog`:
- * text-ish extensions only, 5 MB per file. Binaries get rejected
- * inline rather than silently dropped from the queue so the user
- * can fix the source set.
+ * Text-ish extensions only, 5 MB per file. Binaries get rejected inline
+ * rather than silently dropped from the queue so the user can fix the
+ * source set.
  */
 
-const READABLE_EXTENSIONS = [
-	".txt",
-	".md",
-	".markdown",
-	".mdx",
-	".rst",
-	".json",
-	".jsonl",
-	".ndjson",
-	".csv",
-	".tsv",
-	".log",
-	".xml",
-	".html",
-	".htm",
-	".yaml",
-	".yml",
-	".toml",
-];
 const MAX_BYTES = 5 * 1024 * 1024;
 
 type QueueStatus = "queued" | "running" | "succeeded" | "failed";
@@ -76,16 +61,6 @@ interface QueueItem {
 	total: number | null;
 	errorMessage: string | null;
 	chunkCount: number | null;
-}
-
-function isReadable(file: File): boolean {
-	const name = file.name.toLowerCase();
-	if (READABLE_EXTENSIONS.some((ext) => name.endsWith(ext))) return true;
-	return (
-		file.type.startsWith("text/") ||
-		file.type === "application/json" ||
-		file.type === "application/xml"
-	);
 }
 
 export function IngestQueueDialog({
@@ -158,7 +133,7 @@ export function IngestQueueDialog({
 			// `webkitRelativePath` is empty for plain file picks; non-empty
 			// only for the directory picker (and drag-drop'd folders).
 			const relative = file.webkitRelativePath || file.name;
-			if (!isReadable(file)) {
+			if (!isReadableTextFile(file)) {
 				rejected.push({ name: relative, reason: "unsupported file type" });
 				continue;
 			}
@@ -392,7 +367,7 @@ export function IngestQueueDialog({
 						ref={fileInputRef}
 						type="file"
 						multiple
-						accept={READABLE_EXTENSIONS.join(",")}
+						accept={READABLE_TEXT_EXTENSIONS.join(",")}
 						className="hidden"
 						onChange={(e) => {
 							if (e.target.files) enqueue(e.target.files);
@@ -441,8 +416,8 @@ export function IngestQueueDialog({
 						</Button>
 					</div>
 					<p className="text-xs text-slate-500">
-						Text, Markdown, JSON, CSV, YAML, … up to {MAX_BYTES / 1024 / 1024}{" "}
-						MB each.
+						Text, Markdown, YAML, JSON, CSV, config, and source files up to{" "}
+						{MAX_BYTES / 1024 / 1024} MB each.
 					</p>
 				</div>
 
