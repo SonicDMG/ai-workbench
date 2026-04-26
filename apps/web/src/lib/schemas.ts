@@ -30,6 +30,7 @@ export const WorkspaceRecordSchema = z.object({
 	updatedAt: z.string(),
 });
 export type Workspace = z.infer<typeof WorkspaceRecordSchema>;
+export const WorkspacePageSchema = paginatedSchema(WorkspaceRecordSchema);
 
 export const CreateWorkspaceSchema = z.object({
 	name: z.string().min(1, "Name is required"),
@@ -57,6 +58,13 @@ export const ErrorEnvelopeSchema = z.object({
 });
 export type ErrorEnvelope = z.infer<typeof ErrorEnvelopeSchema>;
 
+function paginatedSchema<T extends z.ZodTypeAny>(item: T) {
+	return z.object({
+		items: z.array(item),
+		nextCursor: z.string().nullable(),
+	});
+}
+
 export const TestConnectionResultSchema = z.object({
 	ok: z.boolean(),
 	kind: WorkspaceKindSchema,
@@ -75,6 +83,7 @@ export const ApiKeyRecordSchema = z.object({
 	expiresAt: z.string().nullable(),
 });
 export type ApiKeyRecord = z.infer<typeof ApiKeyRecordSchema>;
+export const ApiKeyPageSchema = paginatedSchema(ApiKeyRecordSchema);
 
 export const CreateApiKeyInputSchema = z.object({
 	label: z
@@ -148,6 +157,7 @@ export const VectorStoreRecordSchema = z.object({
 	updatedAt: z.string(),
 });
 export type VectorStoreRecord = z.infer<typeof VectorStoreRecordSchema>;
+export const VectorStorePageSchema = paginatedSchema(VectorStoreRecordSchema);
 
 export const SearchHitSchema = z.object({
 	id: z.string(),
@@ -169,6 +179,7 @@ export const CatalogRecordSchema = z.object({
 	updatedAt: z.string(),
 });
 export type CatalogRecord = z.infer<typeof CatalogRecordSchema>;
+export const CatalogPageSchema = paginatedSchema(CatalogRecordSchema);
 
 export const CreateCatalogInputSchema = z.object({
 	name: z.string().min(1, "Name is required"),
@@ -206,6 +217,7 @@ export const DocumentRecordSchema = z.object({
 	metadata: z.record(z.string(), z.string()),
 });
 export type DocumentRecord = z.infer<typeof DocumentRecordSchema>;
+export const DocumentPageSchema = paginatedSchema(DocumentRecordSchema);
 
 /* ---------------- Jobs ---------------- */
 
@@ -302,6 +314,7 @@ export const SavedQueryRecordSchema = z.object({
 	updatedAt: z.string(),
 });
 export type SavedQueryRecord = z.infer<typeof SavedQueryRecordSchema>;
+export const SavedQueryPageSchema = paginatedSchema(SavedQueryRecordSchema);
 
 export const CreateSavedQueryInputSchema = z.object({
 	name: z.string().min(1, "Name is required"),

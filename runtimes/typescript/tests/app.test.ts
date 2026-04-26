@@ -196,7 +196,38 @@ describe("workspace routes", () => {
 		await store.createWorkspace({ name: "w2", kind: "mock" });
 		const res = await app.request("/api/v1/workspaces");
 		const body = await json(res);
-		expect(body).toHaveLength(2);
+		expect(body.items).toHaveLength(2);
+		expect(body.nextCursor).toBeNull();
+	});
+
+	test("GET supports limit/cursor pagination", async () => {
+		const { app, store } = makeApp();
+		const a = await store.createWorkspace(BASE_WORKSPACE);
+		const b = await store.createWorkspace({ name: "w2", kind: "mock" });
+		const first = await json(await app.request("/api/v1/workspaces?limit=1"));
+		expect(first.items).toHaveLength(1);
+		expect(first.nextCursor).toBeTruthy();
+
+		const second = await json(
+			await app.request(
+				`/api/v1/workspaces?limit=1&cursor=${first.nextCursor}`,
+			),
+		);
+		const uids = [
+			...first.items.map((w: { uid: string }) => w.uid),
+			...second.items.map((w: { uid: string }) => w.uid),
+		];
+		expect(uids.sort()).toEqual([a.uid, b.uid].sort());
+		expect(second.nextCursor).toBeNull();
+	});
+
+	test("GET rejects malformed cursors", async () => {
+		const { app, store } = makeApp();
+		await store.createWorkspace(BASE_WORKSPACE);
+		const res = await app.request("/api/v1/workspaces?cursor=not-a-cursor");
+		expect(res.status).toBe(400);
+		const body = await json(res);
+		expect(body.error.code).toBe("invalid_cursor");
 	});
 
 	test("GET /:id returns the record", async () => {
@@ -360,7 +391,7 @@ describe("workspace routes", () => {
 		const c = await store.createWorkspace({ name: "c", kind: "astra" });
 		const res = await app.request("/api/v1/workspaces");
 		const body = await json(res);
-		expect(body.map((w: { uid: string }) => w.uid)).toEqual([
+		expect(body.items.map((w: { uid: string }) => w.uid)).toEqual([
 			a.uid,
 			b.uid,
 			c.uid,
@@ -534,7 +565,19 @@ describe("catalog routes", () => {
 		await store.createCatalog(ws.uid, { name: "c2" });
 		const res = await app.request(`/api/v1/workspaces/${ws.uid}/catalogs`);
 		const body = await json(res);
-		expect(body).toHaveLength(2);
+		expect(body.items).toHaveLength(2);
+	});
+
+	test("GET catalogs supports pagination", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		await store.createCatalog(ws.uid, { name: "c1" });
+		await store.createCatalog(ws.uid, { name: "c2" });
+		const first = await json(
+			await app.request(`/api/v1/workspaces/${ws.uid}/catalogs?limit=1`),
+		);
+		expect(first.items).toHaveLength(1);
+		expect(first.nextCursor).toBeTruthy();
 	});
 
 	test("PUT with unknown vectorStore returns 404", async () => {
@@ -624,7 +667,20 @@ describe("document routes", () => {
 		);
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		expect(body).toHaveLength(2);
+		expect(body.items).toHaveLength(2);
+	});
+
+	test("GET documents supports pagination", async () => {
+		const { app, store, ws, cat } = await seed();
+		await store.createDocument(ws.uid, cat.uid, { sourceFilename: "a" });
+		await store.createDocument(ws.uid, cat.uid, { sourceFilename: "b" });
+		const first = await json(
+			await app.request(
+				`/api/v1/workspaces/${ws.uid}/catalogs/${cat.uid}/documents?limit=1`,
+			),
+		);
+		expect(first.items).toHaveLength(1);
+		expect(first.nextCursor).toBeTruthy();
 	});
 
 	test("GET on missing document returns 404 document_not_found", async () => {
@@ -772,8 +828,8 @@ describe("catalog ingest", () => {
 			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents`,
 		);
 		const list = await json(listRes);
-		expect(list).toHaveLength(1);
-		expect(list[0].documentUid).toBe(body.document.documentUid);
+		expect(list.items).toHaveLength(1);
+		expect(list.items[0].documentUid).toBe(body.document.documentUid);
 
 		void store;
 	});
@@ -909,9 +965,9 @@ describe("catalog ingest", () => {
 			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/documents`,
 		);
 		const list = await json(docs);
-		expect(list).toHaveLength(1);
-		expect(list[0].status).toBe("failed");
-		expect(list[0].errorMessage).toBeTruthy();
+		expect(list.items).toHaveLength(1);
+		expect(list.items[0].status).toBe("failed");
+		expect(list.items[0].errorMessage).toBeTruthy();
 	});
 });
 
@@ -937,12 +993,12 @@ describe("catalog async ingest + jobs", () => {
 
 	async function waitForJob(
 		app: ReturnType<typeof makeApp>["app"],
-		workspaceId: string,
+		workspaceUid: string,
 		jobId: string,
 	): Promise<Record<string, unknown>> {
 		for (let i = 0; i < 50; i++) {
 			const res = await app.request(
-				`/api/v1/workspaces/${workspaceId}/jobs/${jobId}`,
+				`/api/v1/workspaces/${workspaceUid}/jobs/${jobId}`,
 			);
 			const body = await json(res);
 			if (body.status === "succeeded" || body.status === "failed") return body;
@@ -1653,7 +1709,7 @@ describe("saved queries", () => {
 		);
 		expect(list.status).toBe(200);
 		const listBody = await json(list);
-		expect(listBody).toHaveLength(1);
+		expect(listBody.items).toHaveLength(1);
 
 		const got = await app.request(
 			`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries/${rec.queryUid}`,
@@ -1683,6 +1739,27 @@ describe("saved queries", () => {
 			{ method: "DELETE" },
 		);
 		expect(delAgain.status).toBe(404);
+	});
+
+	test("GET saved queries supports pagination", async () => {
+		const { app, ws, catalog } = await seedCatalog();
+		for (const name of ["apples", "oranges"]) {
+			await app.request(
+				`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries`,
+				{
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ name, text: name }),
+				},
+			);
+		}
+		const first = await json(
+			await app.request(
+				`/api/v1/workspaces/${ws.uid}/catalogs/${catalog.uid}/queries?limit=1`,
+			),
+		);
+		expect(first.items).toHaveLength(1);
+		expect(first.nextCursor).toBeTruthy();
 	});
 
 	test("POST /run replays the saved query through catalog-scoped search", async () => {
@@ -2331,14 +2408,14 @@ describe("openapi", () => {
 		const body = await json(res);
 		const paths = Object.keys(body.paths);
 		expect(paths).toContain("/api/v1/workspaces");
-		expect(paths).toContain("/api/v1/workspaces/{workspaceId}");
-		expect(paths).toContain("/api/v1/workspaces/{workspaceId}/catalogs");
-		expect(paths).toContain("/api/v1/workspaces/{workspaceId}/vector-stores");
+		expect(paths).toContain("/api/v1/workspaces/{workspaceUid}");
+		expect(paths).toContain("/api/v1/workspaces/{workspaceUid}/catalogs");
+		expect(paths).toContain("/api/v1/workspaces/{workspaceUid}/vector-stores");
 		expect(paths).toContain(
-			"/api/v1/workspaces/{workspaceId}/catalogs/{catalogId}/documents",
+			"/api/v1/workspaces/{workspaceUid}/catalogs/{catalogUid}/documents",
 		);
 		expect(paths).toContain(
-			"/api/v1/workspaces/{workspaceId}/catalogs/{catalogId}/documents/{documentId}",
+			"/api/v1/workspaces/{workspaceUid}/catalogs/{catalogUid}/documents/{documentUid}",
 		);
 	});
 
@@ -2424,8 +2501,8 @@ describe("api-key routes + apiKey mode end-to-end", () => {
 		const res = await app.request(`/api/v1/workspaces/${ws.uid}/api-keys`);
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		expect(body).toHaveLength(2);
-		for (const row of body) {
+		expect(body.items).toHaveLength(2);
+		for (const row of body.items) {
 			expect(row.hash).toBeUndefined();
 			expect(row.prefix).toMatch(/^[a-z0-9]{12}$/);
 		}
@@ -2452,8 +2529,8 @@ describe("api-key routes + apiKey mode end-to-end", () => {
 		const list = await json(
 			await app.request(`/api/v1/workspaces/${ws.uid}/api-keys`),
 		);
-		expect(list).toHaveLength(1);
-		expect(list[0].revokedAt).not.toBeNull();
+		expect(list.items).toHaveLength(1);
+		expect(list.items[0].revokedAt).not.toBeNull();
 
 		// Re-revoke is a no-op but still 204.
 		const again = await app.request(
@@ -2632,7 +2709,7 @@ describe("workspace-scoped authorization (cross-workspace)", () => {
 		});
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		const uids = body.map((w: { uid: string }) => w.uid);
+		const uids = body.items.map((w: { uid: string }) => w.uid);
 		expect(uids).toContain(a.uid);
 		expect(uids).not.toContain(b.uid);
 	});
@@ -2642,7 +2719,7 @@ describe("workspace-scoped authorization (cross-workspace)", () => {
 		const res = await app.request("/api/v1/workspaces");
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		const uids = body.map((w: { uid: string }) => w.uid);
+		const uids = body.items.map((w: { uid: string }) => w.uid);
 		expect(uids).toContain(a.uid);
 		expect(uids).toContain(b.uid);
 	});

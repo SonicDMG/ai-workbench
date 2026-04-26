@@ -14,6 +14,7 @@ import {
 	MAX_VECTOR_RECORD_TEXT_CHARS,
 	MAX_VECTOR_VALUES,
 } from "../lib/limits.js";
+import { MAX_PAGE_LIMIT } from "../lib/pagination.js";
 
 /* ---------------- Operational ---------------- */
 
@@ -58,6 +59,42 @@ export const ErrorEnvelopeSchema = z
 	})
 	.openapi("ErrorEnvelope");
 
+/* ---------------- Pagination ---------------- */
+
+export const PaginationQuerySchema = z
+	.object({
+		limit: z.coerce
+			.number()
+			.int()
+			.min(1)
+			.max(MAX_PAGE_LIMIT)
+			.optional()
+			.openapi({
+				param: { name: "limit", in: "query" },
+				example: 50,
+				description: `Maximum number of items to return (max ${MAX_PAGE_LIMIT}).`,
+			}),
+		cursor: z
+			.string()
+			.min(1)
+			.optional()
+			.openapi({
+				param: { name: "cursor", in: "query" },
+				description:
+					"Opaque cursor returned as `nextCursor` from the previous page.",
+			}),
+	})
+	.openapi("PaginationQuery");
+
+function pageSchema<T extends z.ZodTypeAny>(name: string, item: T) {
+	return z
+		.object({
+			items: z.array(item),
+			nextCursor: z.string().nullable(),
+		})
+		.openapi(name);
+}
+
 /* ---------------- Enums ---------------- */
 
 const WorkspaceKind = z.enum(["astra", "hcd", "openrag", "mock"]);
@@ -99,6 +136,11 @@ export const WorkspaceRecordSchema = z
 	})
 	.openapi("Workspace");
 
+export const WorkspacePageSchema = pageSchema(
+	"WorkspacePage",
+	WorkspaceRecordSchema,
+);
+
 export const CreateWorkspaceInputSchema = z
 	.object({
 		uid: z.string().uuid().optional(),
@@ -137,6 +179,8 @@ export const CatalogRecordSchema = z
 		updatedAt: z.string(),
 	})
 	.openapi("Catalog");
+
+export const CatalogPageSchema = pageSchema("CatalogPage", CatalogRecordSchema);
 
 export const CreateCatalogInputSchema = z
 	.object({
@@ -188,6 +232,11 @@ export const DocumentRecordSchema = z
 		metadata: z.record(z.string(), z.string()),
 	})
 	.openapi("Document");
+
+export const DocumentPageSchema = pageSchema(
+	"DocumentPage",
+	DocumentRecordSchema,
+);
 
 export const CreateDocumentInputSchema = z
 	.object({
@@ -264,6 +313,11 @@ export const VectorStoreRecordSchema = z
 		updatedAt: z.string(),
 	})
 	.openapi("VectorStore");
+
+export const VectorStorePageSchema = pageSchema(
+	"VectorStorePage",
+	VectorStoreRecordSchema,
+);
 
 export const CreateVectorStoreInputSchema = z
 	.object({
@@ -438,6 +492,11 @@ export const SavedQueryRecordSchema = z
 	})
 	.openapi("SavedQuery");
 
+export const SavedQueryPageSchema = pageSchema(
+	"SavedQueryPage",
+	SavedQueryRecordSchema,
+);
+
 export const CreateSavedQueryInputSchema = z
 	.object({
 		uid: z.string().uuid().optional(),
@@ -548,35 +607,35 @@ export const JobIdParamSchema = z
 
 /* ---------------- Params ---------------- */
 
-export const WorkspaceIdParamSchema = z
+export const WorkspaceUidParamSchema = z
 	.string()
 	.uuid()
 	.openapi({
-		param: { name: "workspaceId", in: "path" },
+		param: { name: "workspaceUid", in: "path" },
 		example: "00000000-0000-0000-0000-000000000000",
 	});
 
-export const CatalogIdParamSchema = z
+export const CatalogUidParamSchema = z
 	.string()
 	.uuid()
 	.openapi({
-		param: { name: "catalogId", in: "path" },
+		param: { name: "catalogUid", in: "path" },
 		example: "00000000-0000-0000-0000-000000000000",
 	});
 
-export const DocumentIdParamSchema = z
+export const DocumentUidParamSchema = z
 	.string()
 	.uuid()
 	.openapi({
-		param: { name: "documentId", in: "path" },
+		param: { name: "documentUid", in: "path" },
 		example: "00000000-0000-0000-0000-000000000000",
 	});
 
-export const VectorStoreIdParamSchema = z
+export const VectorStoreUidParamSchema = z
 	.string()
 	.uuid()
 	.openapi({
-		param: { name: "vectorStoreId", in: "path" },
+		param: { name: "vectorStoreUid", in: "path" },
 		example: "00000000-0000-0000-0000-000000000000",
 	});
 
@@ -596,11 +655,11 @@ export const ApiKeyIdParamSchema = z
 		example: "00000000-0000-0000-0000-000000000000",
 	});
 
-export const SavedQueryIdParamSchema = z
+export const SavedQueryUidParamSchema = z
 	.string()
 	.uuid()
 	.openapi({
-		param: { name: "queryId", in: "path" },
+		param: { name: "queryUid", in: "path" },
 		example: "00000000-0000-0000-0000-000000000000",
 	});
 
@@ -620,6 +679,8 @@ export const ApiKeyRecordSchema = z
 		expiresAt: z.string().nullable(),
 	})
 	.openapi("ApiKey");
+
+export const ApiKeyPageSchema = pageSchema("ApiKeyPage", ApiKeyRecordSchema);
 
 export const CreateApiKeyInputSchema = z
 	.object({

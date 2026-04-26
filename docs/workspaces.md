@@ -54,7 +54,7 @@ DELETE /api/v1/workspaces/{uid}        → cascade delete
   `ControlPlaneStore.listCatalogs(workspace)` / `…getCatalog(workspace,
   uid)` etc. and the store asserts the workspace exists before
   returning anything.
-- Logs carry `requestId`. Structured OTel attributes (workspaceId,
+- Logs carry `requestId`. Structured OTel attributes (workspaceUid,
   catalogUid, jobId) are on the cross-cutting observability
   workstream — see [`roadmap.md`](roadmap.md).
 

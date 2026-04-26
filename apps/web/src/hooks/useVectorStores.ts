@@ -13,44 +13,44 @@ import type {
 } from "@/lib/schemas";
 
 const keys = {
-	all: (workspace: string) =>
-		["workspaces", workspace, "vector-stores"] as const,
-	discoverable: (workspace: string) =>
-		["workspaces", workspace, "vector-stores", "discoverable"] as const,
+	all: (workspaceUid: string) =>
+		["workspaces", workspaceUid, "vector-stores"] as const,
+	discoverable: (workspaceUid: string) =>
+		["workspaces", workspaceUid, "vector-stores", "discoverable"] as const,
 };
 
 export function useVectorStores(
-	workspace: string | undefined,
+	workspaceUid: string | undefined,
 ): UseQueryResult<VectorStoreRecord[], Error> {
 	return useQuery({
-		queryKey: workspace
-			? keys.all(workspace)
+		queryKey: workspaceUid
+			? keys.all(workspaceUid)
 			: ["workspaces", "_", "vector-stores"],
-		queryFn: () => (workspace ? api.listVectorStores(workspace) : []),
-		enabled: Boolean(workspace),
+		queryFn: () => (workspaceUid ? api.listVectorStores(workspaceUid) : []),
+		enabled: Boolean(workspaceUid),
 	});
 }
 
 export function useCreateVectorStore(
-	workspace: string,
+	workspaceUid: string,
 ): UseMutationResult<VectorStoreRecord, Error, CreateVectorStoreInput> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (input) => api.createVectorStore(workspace, input),
+		mutationFn: (input) => api.createVectorStore(workspaceUid, input),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys.all(workspace) });
+			qc.invalidateQueries({ queryKey: keys.all(workspaceUid) });
 		},
 	});
 }
 
 export function useDeleteVectorStore(
-	workspace: string,
+	workspaceUid: string,
 ): UseMutationResult<void, Error, string> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (uid) => api.deleteVectorStore(workspace, uid),
+		mutationFn: (uid) => api.deleteVectorStore(workspaceUid, uid),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys.all(workspace) });
+			qc.invalidateQueries({ queryKey: keys.all(workspaceUid) });
 		},
 	});
 }
@@ -62,16 +62,16 @@ export function useDeleteVectorStore(
  * flow on the workspace detail page.
  */
 export function useDiscoverableCollections(
-	workspace: string | undefined,
+	workspaceUid: string | undefined,
 	opts?: { enabled?: boolean },
 ): UseQueryResult<AdoptableCollection[], Error> {
-	const enabled = Boolean(workspace) && (opts?.enabled ?? true);
+	const enabled = Boolean(workspaceUid) && (opts?.enabled ?? true);
 	return useQuery({
-		queryKey: workspace
-			? keys.discoverable(workspace)
+		queryKey: workspaceUid
+			? keys.discoverable(workspaceUid)
 			: ["workspaces", "_", "vector-stores", "discoverable"],
 		queryFn: () =>
-			workspace ? api.listDiscoverableCollections(workspace) : [],
+			workspaceUid ? api.listDiscoverableCollections(workspaceUid) : [],
 		enabled,
 	});
 }
@@ -82,15 +82,15 @@ export function useDiscoverableCollections(
  * (the collection is no longer adoptable).
  */
 export function useAdoptCollection(
-	workspace: string,
+	workspaceUid: string,
 ): UseMutationResult<VectorStoreRecord, Error, string> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (collectionName) =>
-			api.adoptCollection(workspace, collectionName),
+			api.adoptCollection(workspaceUid, collectionName),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys.all(workspace) });
-			qc.invalidateQueries({ queryKey: keys.discoverable(workspace) });
+			qc.invalidateQueries({ queryKey: keys.all(workspaceUid) });
+			qc.invalidateQueries({ queryKey: keys.discoverable(workspaceUid) });
 		},
 	});
 }

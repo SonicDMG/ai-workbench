@@ -13,48 +13,51 @@ import type {
 } from "@/lib/schemas";
 
 const keys = {
-	all: (workspace: string, catalogId: string) =>
-		["workspaces", workspace, "catalogs", catalogId, "queries"] as const,
+	all: (workspaceUid: string, catalogUid: string) =>
+		["workspaces", workspaceUid, "catalogs", catalogUid, "queries"] as const,
 };
 
 export function useSavedQueries(
-	workspace: string | undefined,
-	catalogId: string | undefined,
+	workspaceUid: string | undefined,
+	catalogUid: string | undefined,
 ): UseQueryResult<SavedQueryRecord[], Error> {
 	return useQuery({
 		queryKey:
-			workspace && catalogId
-				? keys.all(workspace, catalogId)
+			workspaceUid && catalogUid
+				? keys.all(workspaceUid, catalogUid)
 				: ["workspaces", "_", "catalogs", "_", "queries"],
 		queryFn: () =>
-			workspace && catalogId ? api.listSavedQueries(workspace, catalogId) : [],
-		enabled: Boolean(workspace && catalogId),
+			workspaceUid && catalogUid
+				? api.listSavedQueries(workspaceUid, catalogUid)
+				: [],
+		enabled: Boolean(workspaceUid && catalogUid),
 	});
 }
 
 export function useCreateSavedQuery(
-	workspace: string,
-	catalogId: string,
+	workspaceUid: string,
+	catalogUid: string,
 ): UseMutationResult<SavedQueryRecord, Error, CreateSavedQueryInput> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (input) => api.createSavedQuery(workspace, catalogId, input),
+		mutationFn: (input) =>
+			api.createSavedQuery(workspaceUid, catalogUid, input),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys.all(workspace, catalogId) });
+			qc.invalidateQueries({ queryKey: keys.all(workspaceUid, catalogUid) });
 		},
 	});
 }
 
 export function useDeleteSavedQuery(
-	workspace: string,
-	catalogId: string,
+	workspaceUid: string,
+	catalogUid: string,
 ): UseMutationResult<void, Error, string> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (queryId) =>
-			api.deleteSavedQuery(workspace, catalogId, queryId),
+		mutationFn: (queryUid) =>
+			api.deleteSavedQuery(workspaceUid, catalogUid, queryUid),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys.all(workspace, catalogId) });
+			qc.invalidateQueries({ queryKey: keys.all(workspaceUid, catalogUid) });
 		},
 	});
 }
@@ -65,10 +68,11 @@ export function useDeleteSavedQuery(
  * through that path with `catalogUid` merged into the filter.
  */
 export function useRunSavedQuery(
-	workspace: string,
-	catalogId: string,
+	workspaceUid: string,
+	catalogUid: string,
 ): UseMutationResult<SearchHit[], Error, string> {
 	return useMutation({
-		mutationFn: (queryId) => api.runSavedQuery(workspace, catalogId, queryId),
+		mutationFn: (queryUid) =>
+			api.runSavedQuery(workspaceUid, catalogUid, queryUid),
 	});
 }

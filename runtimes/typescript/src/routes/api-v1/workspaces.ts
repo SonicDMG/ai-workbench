@@ -21,14 +21,17 @@ import type {
 } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import { makeOpenApi } from "../../lib/openapi.js";
+import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	CreateWorkspaceInputSchema,
 	ErrorEnvelopeSchema,
+	PaginationQuerySchema,
 	TestConnectionResponseSchema,
 	UpdateWorkspaceInputSchema,
-	WorkspaceIdParamSchema,
+	WorkspacePageSchema,
 	WorkspaceRecordSchema,
+	WorkspaceUidParamSchema,
 } from "../../openapi/schemas.js";
 import type { SecretResolver } from "../../secrets/provider.js";
 
@@ -48,20 +51,25 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			path: "/",
 			tags: ["workspaces"],
 			summary: "List workspaces",
+			request: { query: PaginationQuerySchema },
 			responses: {
 				200: {
 					content: {
-						"application/json": { schema: z.array(WorkspaceRecordSchema) },
+						"application/json": { schema: WorkspacePageSchema },
 					},
 					description: "All workspaces",
 				},
 			},
 		}),
 		async (c) => {
+			const query = c.req.valid("query");
 			const rows = await store.listWorkspaces();
 			// Scoped callers only see workspaces their subject can touch;
 			// anonymous / unscoped callers see everything.
-			return c.json([...filterToAccessibleWorkspaces(c, rows)], 200);
+			return c.json(
+				paginate([...filterToAccessibleWorkspaces(c, rows)], query),
+				200,
+			);
 		},
 	);
 
@@ -105,10 +113,10 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceId}",
+			path: "/{workspaceUid}",
 			tags: ["workspaces"],
 			summary: "Get a workspace",
-			request: { params: z.object({ workspaceId: WorkspaceIdParamSchema }) },
+			request: { params: z.object({ workspaceUid: WorkspaceUidParamSchema }) },
 			responses: {
 				200: {
 					content: { "application/json": { schema: WorkspaceRecordSchema } },
@@ -126,11 +134,11 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
-			const record = await store.getWorkspace(workspaceId);
+			const { workspaceUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
+			const record = await store.getWorkspace(workspaceUid);
 			if (!record)
-				throw new ControlPlaneNotFoundError("workspace", workspaceId);
+				throw new ControlPlaneNotFoundError("workspace", workspaceUid);
 			return c.json(record, 200);
 		},
 	);
@@ -138,11 +146,11 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "put",
-			path: "/{workspaceId}",
+			path: "/{workspaceUid}",
 			tags: ["workspaces"],
 			summary: "Update a workspace",
 			request: {
-				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
+				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
 				body: {
 					content: {
 						"application/json": { schema: UpdateWorkspaceInputSchema },
@@ -161,10 +169,10 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 			const body = c.req.valid("json");
-			const record = await store.updateWorkspace(workspaceId, body);
+			const record = await store.updateWorkspace(workspaceUid, body);
 			return c.json(record, 200);
 		},
 	);
@@ -172,11 +180,11 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceId}",
+			path: "/{workspaceUid}",
 			tags: ["workspaces"],
 			summary:
 				"Delete a workspace (cascades to catalogs/vector stores/documents)",
-			request: { params: z.object({ workspaceId: WorkspaceIdParamSchema }) },
+			request: { params: z.object({ workspaceUid: WorkspaceUidParamSchema }) },
 			responses: {
 				204: { description: "Deleted" },
 				404: {
@@ -186,16 +194,16 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
-			const workspace = await store.getWorkspace(workspaceId);
+			const { workspaceUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
+			const workspace = await store.getWorkspace(workspaceUid);
 			if (!workspace)
-				throw new ControlPlaneNotFoundError("workspace", workspaceId);
-			const descriptors = await store.listVectorStores(workspaceId);
+				throw new ControlPlaneNotFoundError("workspace", workspaceUid);
+			const descriptors = await store.listVectorStores(workspaceUid);
 			await dropWorkspaceCollections({ workspace, descriptors, drivers });
-			const { deleted } = await store.deleteWorkspace(workspaceId);
+			const { deleted } = await store.deleteWorkspace(workspaceUid);
 			if (!deleted)
-				throw new ControlPlaneNotFoundError("workspace", workspaceId);
+				throw new ControlPlaneNotFoundError("workspace", workspaceUid);
 			return c.body(null, 204);
 		},
 	);
@@ -203,12 +211,12 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceId}/test-connection",
+			path: "/{workspaceUid}/test-connection",
 			tags: ["workspaces"],
 			summary: "Verify the workspace's credential refs can be resolved",
 			description:
 				"For `mock` workspaces, always returns `{ok: true}` (no credentials). For other kinds, resolves every value in `credentialsRef` via the runtime's SecretResolver and reports the first failure. This verifies refs only — it does NOT dial the backend or validate the resolved token against the remote service.",
-			request: { params: z.object({ workspaceId: WorkspaceIdParamSchema }) },
+			request: { params: z.object({ workspaceUid: WorkspaceUidParamSchema }) },
 			responses: {
 				200: {
 					content: {
@@ -224,10 +232,10 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
-			const ws = await store.getWorkspace(workspaceId);
-			if (!ws) throw new ControlPlaneNotFoundError("workspace", workspaceId);
+			const { workspaceUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
+			const ws = await store.getWorkspace(workspaceUid);
+			if (!ws) throw new ControlPlaneNotFoundError("workspace", workspaceUid);
 
 			if (ws.kind === "mock") {
 				return c.json(

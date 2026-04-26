@@ -10,13 +10,13 @@
  *   unscoped   → pass through. A subject with `workspaceScopes: null`
  *                is a platform-level identity (reserved for operator
  *                keys; no runtime path issues these yet).
- *   scoped     → must list the target `workspaceId` in its scopes, or
+ *   scoped     → must list the target `workspaceUid` in its scopes, or
  *                the request is refused with 403 `forbidden`.
  *
  * That's authz, not authn — the middleware already produced the
  * {@link AuthContext}. Route handlers should call
  * {@link assertWorkspaceAccess} at the top of every
- * `/api/v1/workspaces/{workspaceId}/...` route.
+ * `/api/v1/workspaces/{workspaceUid}/...` route.
  *
  * {@link filterToAccessibleWorkspaces} is the corresponding "list"
  * helper: returns the subset of workspaces the subject can see.
@@ -29,7 +29,7 @@ import { ForbiddenError } from "./errors.js";
 
 export function assertWorkspaceAccess(
 	c: Context<AppEnv>,
-	workspaceId: string,
+	workspaceUid: string,
 ): void {
 	const auth = c.get("auth");
 	// Missing context means the middleware didn't run for this route —
@@ -39,9 +39,9 @@ export function assertWorkspaceAccess(
 	if (!auth || auth.anonymous) return;
 	const scopes = auth.subject?.workspaceScopes;
 	if (scopes === null || scopes === undefined) return;
-	if (scopes.includes(workspaceId)) return;
+	if (scopes.includes(workspaceUid)) return;
 	throw new ForbiddenError(
-		`authenticated subject is not authorized for workspace '${workspaceId}'`,
+		`authenticated subject is not authorized for workspace '${workspaceUid}'`,
 	);
 }
 

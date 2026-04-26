@@ -1,11 +1,11 @@
 /**
- * `/api/v1/workspaces/{workspaceId}/catalogs/{catalogId}/documents`
+ * `/api/v1/workspaces/{workspaceUid}/catalogs/{catalogUid}/documents`
  * and `.../ingest` — document metadata CRUD, catalog-scoped search,
  * and end-to-end ingest.
  *
  * Content changes flow through `POST .../ingest`: chunk the input,
  * embed each chunk, upsert into the catalog's bound vector store, and
- * create a Document row with `status: ready`. `PUT .../documents/{id}`
+ * create a Document row with `status: ready`. `PUT .../documents/{documentUid}`
  * continues to update metadata only.
  *
  * Both parent UIDs are enforced in every path; the store raises
@@ -39,21 +39,24 @@ import type { JobStore } from "../../jobs/store.js";
 import type { IngestInputSnapshot } from "../../jobs/types.js";
 import { ApiError } from "../../lib/errors.js";
 import { makeOpenApi } from "../../lib/openapi.js";
+import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	AsyncIngestResponseSchema,
-	CatalogIdParamSchema,
+	CatalogUidParamSchema,
 	CreateDocumentInputSchema,
 	DocumentChunkSchema,
-	DocumentIdParamSchema,
+	DocumentPageSchema,
 	DocumentRecordSchema,
+	DocumentUidParamSchema,
 	ErrorEnvelopeSchema,
 	IngestRequestSchema,
 	IngestResponseSchema,
+	PaginationQuerySchema,
 	SearchHitSchema,
 	SearchRequestSchema,
 	UpdateDocumentInputSchema,
-	WorkspaceIdParamSchema,
+	WorkspaceUidParamSchema,
 } from "../../openapi/schemas.js";
 import { dispatchSearch, toMutableHits } from "./search-dispatch.js";
 
@@ -86,19 +89,20 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceId}/catalogs/{catalogId}/documents",
+			path: "/{workspaceUid}/catalogs/{catalogUid}/documents",
 			tags: ["documents"],
 			summary: "List documents in a catalog",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					catalogId: CatalogIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					catalogUid: CatalogUidParamSchema,
 				}),
+				query: PaginationQuerySchema,
 			},
 			responses: {
 				200: {
 					content: {
-						"application/json": { schema: z.array(DocumentRecordSchema) },
+						"application/json": { schema: DocumentPageSchema },
 					},
 					description: "All documents in the catalog",
 				},
@@ -109,23 +113,24 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId, catalogId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
-			const rows = await store.listDocuments(workspaceId, catalogId);
-			return c.json([...rows], 200);
+			const { workspaceUid, catalogUid } = c.req.valid("param");
+			const query = c.req.valid("query");
+			assertWorkspaceAccess(c, workspaceUid);
+			const rows = await store.listDocuments(workspaceUid, catalogUid);
+			return c.json(paginate(rows, query), 200);
 		},
 	);
 
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceId}/catalogs/{catalogId}/documents",
+			path: "/{workspaceUid}/catalogs/{catalogUid}/documents",
 			tags: ["documents"],
 			summary: "Register a document in a catalog",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					catalogId: CatalogIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					catalogUid: CatalogUidParamSchema,
 				}),
 				body: {
 					content: {
@@ -149,10 +154,10 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId, catalogId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid, catalogUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 			const body = c.req.valid("json");
-			const record = await store.createDocument(workspaceId, catalogId, body);
+			const record = await store.createDocument(workspaceUid, catalogUid, body);
 			return c.json(record, 201);
 		},
 	);
@@ -160,15 +165,15 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceId}/catalogs/{catalogId}/ingest",
+			path: "/{workspaceUid}/catalogs/{catalogUid}/ingest",
 			tags: ["documents"],
 			summary: "Ingest a document: chunk, embed, upsert",
 			description:
 				"Chunks `text`, embeds each chunk (server-side via `$vectorize` when the bound store supports it, otherwise client-side), and upserts into the catalog's bound vector store. Creates a Document metadata row; failures mark it `status: failed` with `errorMessage`. With `?async=true` the request returns 202 with a `job` pointer instead — the pipeline runs in the background and the document status plus the job's `processed`/`total`/`status` fields track progress. Clients poll `GET /jobs/{jobId}` or stream `GET /jobs/{jobId}/events`.",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					catalogId: CatalogIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					catalogUid: CatalogUidParamSchema,
 				}),
 				query: z.object({
 					async: z
@@ -211,26 +216,26 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId, catalogId } = c.req.valid("param");
+			const { workspaceUid, catalogUid } = c.req.valid("param");
 			const { async: asyncMode } = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceId);
+			assertWorkspaceAccess(c, workspaceUid);
 			const body = c.req.valid("json");
 
-			const workspace = await store.getWorkspace(workspaceId);
+			const workspace = await store.getWorkspace(workspaceUid);
 			if (!workspace) {
-				throw new ControlPlaneNotFoundError("workspace", workspaceId);
+				throw new ControlPlaneNotFoundError("workspace", workspaceUid);
 			}
-			const catalog = await store.getCatalog(workspaceId, catalogId);
-			if (!catalog) throw new ControlPlaneNotFoundError("catalog", catalogId);
+			const catalog = await store.getCatalog(workspaceUid, catalogUid);
+			if (!catalog) throw new ControlPlaneNotFoundError("catalog", catalogUid);
 			if (!catalog.vectorStore) {
 				throw new ApiError(
 					"catalog_not_bound_to_vector_store",
-					`catalog '${catalogId}' has no vectorStore binding; bind one with PUT /catalogs/{id} before ingesting`,
+					`catalog '${catalogUid}' has no vectorStore binding; bind one with PUT /catalogs/{catalogUid} before ingesting`,
 					409,
 				);
 			}
 			const descriptor = await store.getVectorStore(
-				workspaceId,
+				workspaceUid,
 				catalog.vectorStore,
 			);
 			if (!descriptor) {
@@ -242,7 +247,7 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 
 			// Document row goes in first regardless of async mode — both
 			// paths need a durable anchor for status tracking.
-			const document = await store.createDocument(workspaceId, catalogId, {
+			const document = await store.createDocument(workspaceUid, catalogUid, {
 				uid: body.uid,
 				sourceDocId: body.sourceDocId,
 				sourceFilename: body.sourceFilename,
@@ -269,9 +274,9 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 					}),
 				};
 				const job = await jobs.create({
-					workspace: workspaceId,
+					workspace: workspaceUid,
 					kind: "ingest",
-					catalogUid: catalogId,
+					catalogUid: catalogUid,
 					documentUid: document.documentUid,
 					ingestInput: ingestSnapshot,
 				});
@@ -281,7 +286,7 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 				// orphan-sweeper uses on resume.
 				void runIngestJob({
 					deps: { store, drivers, embedders, jobs },
-					workspaceId,
+					workspaceUid,
 					jobId: job.jobId,
 					replicaId,
 					input: body,
@@ -296,8 +301,8 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 				body,
 			);
 			const ready = await store.getDocument(
-				workspaceId,
-				catalogId,
+				workspaceUid,
+				catalogUid,
 				document.documentUid,
 			);
 			return c.json(
@@ -313,15 +318,15 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceId}/catalogs/{catalogId}/documents/search",
+			path: "/{workspaceUid}/catalogs/{catalogUid}/documents/search",
 			tags: ["documents"],
 			summary: "Search documents in a catalog",
 			description:
 				"Delegates to the catalog's bound vector store, merging the catalog UID into the search filter as `catalogUid`. Records without a matching `catalogUid` in their payload are invisible. Caller-supplied `catalogUid` in `filter` is ignored — the path's catalog always wins. `409 catalog_not_bound_to_vector_store` if the catalog has no `vectorStore` binding.",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					catalogId: CatalogIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					catalogUid: CatalogUidParamSchema,
 				}),
 				body: {
 					content: { "application/json": { schema: SearchRequestSchema } },
@@ -349,25 +354,25 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId, catalogId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid, catalogUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 			const body = c.req.valid("json");
 
-			const workspace = await store.getWorkspace(workspaceId);
+			const workspace = await store.getWorkspace(workspaceUid);
 			if (!workspace) {
-				throw new ControlPlaneNotFoundError("workspace", workspaceId);
+				throw new ControlPlaneNotFoundError("workspace", workspaceUid);
 			}
-			const catalog = await store.getCatalog(workspaceId, catalogId);
-			if (!catalog) throw new ControlPlaneNotFoundError("catalog", catalogId);
+			const catalog = await store.getCatalog(workspaceUid, catalogUid);
+			if (!catalog) throw new ControlPlaneNotFoundError("catalog", catalogUid);
 			if (!catalog.vectorStore) {
 				throw new ApiError(
 					"catalog_not_bound_to_vector_store",
-					`catalog '${catalogId}' has no vectorStore binding; bind one with PUT /catalogs/{id} before searching`,
+					`catalog '${catalogUid}' has no vectorStore binding; bind one with PUT /catalogs/{catalogUid} before searching`,
 					409,
 				);
 			}
 			const descriptor = await store.getVectorStore(
-				workspaceId,
+				workspaceUid,
 				catalog.vectorStore,
 			);
 			if (!descriptor) {
@@ -401,16 +406,16 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceId}/catalogs/{catalogId}/documents/{documentId}/chunks",
+			path: "/{workspaceUid}/catalogs/{catalogUid}/documents/{documentUid}/chunks",
 			tags: ["documents"],
 			summary: "List the chunks under a document",
 			description:
 				"Reads raw records out of the catalog's bound vector store filtered to this document, returns them sorted by `chunkIndex`. Text comes from the reserved `chunkText` payload key the ingest pipeline stamps. Drivers without `listRecords` (none today, but the contract is optional) return 501.",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					catalogId: CatalogIdParamSchema,
-					documentId: DocumentIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					catalogUid: CatalogUidParamSchema,
+					documentUid: DocumentUidParamSchema,
 				}),
 				query: z.object({
 					limit: z.coerce.number().int().min(1).max(1000).optional(),
@@ -439,27 +444,31 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId, catalogId, documentId } = c.req.valid("param");
+			const { workspaceUid, catalogUid, documentUid } = c.req.valid("param");
 			const { limit } = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceId);
+			assertWorkspaceAccess(c, workspaceUid);
 
-			const workspace = await store.getWorkspace(workspaceId);
+			const workspace = await store.getWorkspace(workspaceUid);
 			if (!workspace) {
-				throw new ControlPlaneNotFoundError("workspace", workspaceId);
+				throw new ControlPlaneNotFoundError("workspace", workspaceUid);
 			}
-			const catalog = await store.getCatalog(workspaceId, catalogId);
-			if (!catalog) throw new ControlPlaneNotFoundError("catalog", catalogId);
-			const doc = await store.getDocument(workspaceId, catalogId, documentId);
-			if (!doc) throw new ControlPlaneNotFoundError("document", documentId);
+			const catalog = await store.getCatalog(workspaceUid, catalogUid);
+			if (!catalog) throw new ControlPlaneNotFoundError("catalog", catalogUid);
+			const doc = await store.getDocument(
+				workspaceUid,
+				catalogUid,
+				documentUid,
+			);
+			if (!doc) throw new ControlPlaneNotFoundError("document", documentUid);
 			if (!catalog.vectorStore) {
 				throw new ApiError(
 					"catalog_not_bound_to_vector_store",
-					`catalog '${catalogId}' has no vectorStore binding`,
+					`catalog '${catalogUid}' has no vectorStore binding`,
 					409,
 				);
 			}
 			const descriptor = await store.getVectorStore(
-				workspaceId,
+				workspaceUid,
 				catalog.vectorStore,
 			);
 			if (!descriptor) {
@@ -515,14 +524,14 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceId}/catalogs/{catalogId}/documents/{documentId}",
+			path: "/{workspaceUid}/catalogs/{catalogUid}/documents/{documentUid}",
 			tags: ["documents"],
 			summary: "Get a document",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					catalogId: CatalogIdParamSchema,
-					documentId: DocumentIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					catalogUid: CatalogUidParamSchema,
+					documentUid: DocumentUidParamSchema,
 				}),
 			},
 			responses: {
@@ -537,14 +546,14 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId, catalogId, documentId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid, catalogUid, documentUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 			const record = await store.getDocument(
-				workspaceId,
-				catalogId,
-				documentId,
+				workspaceUid,
+				catalogUid,
+				documentUid,
 			);
-			if (!record) throw new ControlPlaneNotFoundError("document", documentId);
+			if (!record) throw new ControlPlaneNotFoundError("document", documentUid);
 			return c.json(record, 200);
 		},
 	);
@@ -552,14 +561,14 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "put",
-			path: "/{workspaceId}/catalogs/{catalogId}/documents/{documentId}",
+			path: "/{workspaceUid}/catalogs/{catalogUid}/documents/{documentUid}",
 			tags: ["documents"],
 			summary: "Update document metadata",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					catalogId: CatalogIdParamSchema,
-					documentId: DocumentIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					catalogUid: CatalogUidParamSchema,
+					documentUid: DocumentUidParamSchema,
 				}),
 				body: {
 					content: {
@@ -579,13 +588,13 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId, catalogId, documentId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid, catalogUid, documentUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 			const body = c.req.valid("json");
 			const record = await store.updateDocument(
-				workspaceId,
-				catalogId,
-				documentId,
+				workspaceUid,
+				catalogUid,
+				documentUid,
 				body,
 			);
 			return c.json(record, 200);
@@ -595,14 +604,14 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceId}/catalogs/{catalogId}/documents/{documentId}",
+			path: "/{workspaceUid}/catalogs/{catalogUid}/documents/{documentUid}",
 			tags: ["documents"],
 			summary: "Delete a document",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					catalogId: CatalogIdParamSchema,
-					documentId: DocumentIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					catalogUid: CatalogUidParamSchema,
+					documentUid: DocumentUidParamSchema,
 				}),
 			},
 			responses: {
@@ -614,8 +623,8 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId, catalogId, documentId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid, catalogUid, documentUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 
 			// Cascade chunks first — the bound vector store still
 			// indexes the document's chunks even after we drop the
@@ -625,23 +634,23 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 			// half-state. Drivers without `deleteRecords` fall back to
 			// a `listRecords` + per-id loop. Catalogs with no
 			// vector-store binding skip the cascade entirely.
-			const workspace = await store.getWorkspace(workspaceId);
+			const workspace = await store.getWorkspace(workspaceUid);
 			if (!workspace) {
-				throw new ControlPlaneNotFoundError("workspace", workspaceId);
+				throw new ControlPlaneNotFoundError("workspace", workspaceUid);
 			}
-			const catalog = await store.getCatalog(workspaceId, catalogId);
-			if (!catalog) throw new ControlPlaneNotFoundError("catalog", catalogId);
+			const catalog = await store.getCatalog(workspaceUid, catalogUid);
+			if (!catalog) throw new ControlPlaneNotFoundError("catalog", catalogUid);
 			const existing = await store.getDocument(
-				workspaceId,
-				catalogId,
-				documentId,
+				workspaceUid,
+				catalogUid,
+				documentUid,
 			);
 			if (!existing) {
-				throw new ControlPlaneNotFoundError("document", documentId);
+				throw new ControlPlaneNotFoundError("document", documentUid);
 			}
 			if (catalog.vectorStore) {
 				const descriptor = await store.getVectorStore(
-					workspaceId,
+					workspaceUid,
 					catalog.vectorStore,
 				);
 				if (descriptor) {
@@ -668,11 +677,12 @@ export function documentRoutes(deps: DocumentRouteDeps): OpenAPIHono<AppEnv> {
 			}
 
 			const { deleted } = await store.deleteDocument(
-				workspaceId,
-				catalogId,
-				documentId,
+				workspaceUid,
+				catalogUid,
+				documentUid,
 			);
-			if (!deleted) throw new ControlPlaneNotFoundError("document", documentId);
+			if (!deleted)
+				throw new ControlPlaneNotFoundError("document", documentUid);
 			return c.body(null, 204);
 		},
 	);

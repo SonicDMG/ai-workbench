@@ -212,7 +212,7 @@
 				"body": {
 					"error": {
 						"code": "catalog_not_bound_to_vector_store",
-						"message": "catalog '{{UUID_5}}' has no vectorStore binding; bind one with PUT /catalogs/{id} before searching",
+						"message": "catalog '{{UUID_5}}' has no vectorStore binding; bind one with PUT /catalogs/{catalogUid} before searching",
 						"requestId": "{{REQID_1}}"
 					}
 				},

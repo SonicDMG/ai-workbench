@@ -3,10 +3,11 @@ import { getAuthToken } from "./authToken";
 import {
 	type AdoptableCollection,
 	AdoptableCollectionSchema,
+	ApiKeyPageSchema,
 	type ApiKeyRecord,
-	ApiKeyRecordSchema,
 	type AsyncIngestResponse,
 	AsyncIngestResponseSchema,
+	CatalogPageSchema,
 	type CatalogRecord,
 	CatalogRecordSchema,
 	type CreateApiKeyInput,
@@ -18,12 +19,13 @@ import {
 	type CreateWorkspaceInput,
 	type DocumentChunk,
 	DocumentChunkSchema,
+	DocumentPageSchema,
 	type DocumentRecord,
-	DocumentRecordSchema,
 	ErrorEnvelopeSchema,
 	type IngestRequest,
 	type JobRecord,
 	JobRecordSchema,
+	SavedQueryPageSchema,
 	type SavedQueryRecord,
 	SavedQueryRecordSchema,
 	type SearchHit,
@@ -31,9 +33,11 @@ import {
 	type TestConnectionResult,
 	TestConnectionResultSchema,
 	type UpdateWorkspaceInput,
+	VectorStorePageSchema,
 	type VectorStoreRecord,
 	VectorStoreRecordSchema,
 	type Workspace,
+	WorkspacePageSchema,
 	WorkspaceRecordSchema,
 } from "./schemas";
 import { fetchAuthConfig, loginHref, refreshSession } from "./session";
@@ -158,8 +162,6 @@ async function trySilentRefresh(): Promise<boolean> {
 	}
 }
 
-const WorkspaceListSchema = z.array(WorkspaceRecordSchema);
-
 // Cache the auth config look-up so a wall of 401s doesn't fire off
 // a /auth/config request for every one. Only the first 401 in a
 // page lifetime triggers a redirect; subsequent ones just throw
@@ -183,7 +185,9 @@ async function maybeRedirectToLogin(): Promise<void> {
 
 export const api = {
 	listWorkspaces: (): Promise<Workspace[]> =>
-		request("/workspaces", { method: "GET" }, WorkspaceListSchema),
+		request("/workspaces", { method: "GET" }, WorkspacePageSchema).then(
+			(page) => page.items,
+		),
 
 	getWorkspace: (uid: string): Promise<Workspace> =>
 		request(`/workspaces/${uid}`, { method: "GET" }, WorkspaceRecordSchema),
@@ -215,19 +219,19 @@ export const api = {
 			TestConnectionResultSchema,
 		),
 
-	listApiKeys: (workspace: string): Promise<ApiKeyRecord[]> =>
+	listApiKeys: (workspaceUid: string): Promise<ApiKeyRecord[]> =>
 		request(
-			`/workspaces/${workspace}/api-keys`,
+			`/workspaces/${workspaceUid}/api-keys`,
 			{ method: "GET" },
-			z.array(ApiKeyRecordSchema),
-		),
+			ApiKeyPageSchema,
+		).then((page) => page.items),
 
 	createApiKey: (
-		workspace: string,
+		workspaceUid: string,
 		input: CreateApiKeyInput,
 	): Promise<CreatedApiKeyResponse> =>
 		request(
-			`/workspaces/${workspace}/api-keys`,
+			`/workspaces/${workspaceUid}/api-keys`,
 			{
 				method: "POST",
 				body: JSON.stringify({
@@ -238,82 +242,82 @@ export const api = {
 			CreatedApiKeyResponseSchema,
 		),
 
-	revokeApiKey: (workspace: string, keyId: string): Promise<void> =>
+	revokeApiKey: (workspaceUid: string, keyId: string): Promise<void> =>
 		request(
-			`/workspaces/${workspace}/api-keys/${keyId}`,
+			`/workspaces/${workspaceUid}/api-keys/${keyId}`,
 			{ method: "DELETE" },
 			null,
 		),
 
-	listVectorStores: (workspace: string): Promise<VectorStoreRecord[]> =>
+	listVectorStores: (workspaceUid: string): Promise<VectorStoreRecord[]> =>
 		request(
-			`/workspaces/${workspace}/vector-stores`,
+			`/workspaces/${workspaceUid}/vector-stores`,
 			{ method: "GET" },
-			z.array(VectorStoreRecordSchema),
-		),
+			VectorStorePageSchema,
+		).then((page) => page.items),
 
 	createVectorStore: (
-		workspace: string,
+		workspaceUid: string,
 		input: CreateVectorStoreInput,
 	): Promise<VectorStoreRecord> =>
 		request(
-			`/workspaces/${workspace}/vector-stores`,
+			`/workspaces/${workspaceUid}/vector-stores`,
 			{ method: "POST", body: JSON.stringify(input) },
 			VectorStoreRecordSchema,
 		),
 
-	deleteVectorStore: (workspace: string, uid: string): Promise<void> =>
+	deleteVectorStore: (workspaceUid: string, uid: string): Promise<void> =>
 		request(
-			`/workspaces/${workspace}/vector-stores/${uid}`,
+			`/workspaces/${workspaceUid}/vector-stores/${uid}`,
 			{ method: "DELETE" },
 			null,
 		),
 
 	listDiscoverableCollections: (
-		workspace: string,
+		workspaceUid: string,
 	): Promise<AdoptableCollection[]> =>
 		request(
-			`/workspaces/${workspace}/vector-stores/discoverable`,
+			`/workspaces/${workspaceUid}/vector-stores/discoverable`,
 			{ method: "GET" },
 			z.array(AdoptableCollectionSchema),
 		),
 
 	adoptCollection: (
-		workspace: string,
+		workspaceUid: string,
 		collectionName: string,
 	): Promise<VectorStoreRecord> =>
 		request(
-			`/workspaces/${workspace}/vector-stores/adopt`,
+			`/workspaces/${workspaceUid}/vector-stores/adopt`,
 			{ method: "POST", body: JSON.stringify({ collectionName }) },
 			VectorStoreRecordSchema,
 		),
 
 	search: (
-		workspace: string,
+		workspaceUid: string,
 		vectorStore: string,
 		input: PlaygroundSearchInput,
 	): Promise<SearchHit[]> =>
 		request(
-			`/workspaces/${workspace}/vector-stores/${vectorStore}/search`,
+			`/workspaces/${workspaceUid}/vector-stores/${vectorStore}/search`,
 			{ method: "POST", body: JSON.stringify(input) },
 			z.array(SearchHitSchema),
 		),
 
 	/* -------- Catalogs -------- */
 
-	listCatalogs: (workspace: string): Promise<CatalogRecord[]> =>
+	listCatalogs: (workspaceUid: string): Promise<CatalogRecord[]> =>
 		request(
-			`/workspaces/${workspace}/catalogs`,
+			`/workspaces/${workspaceUid}/catalogs`,
 			{ method: "GET" },
-			z.array(CatalogRecordSchema),
-		),
+			CatalogPageSchema,
+		).then((page) => page.items),
 
 	createCatalog: (
-		workspace: string,
+		workspaceUid: string,
 		input: CreateCatalogInput,
 	): Promise<CatalogRecord> =>
 		request(
-			`/workspaces/${workspace}/catalogs`,
+			`/workspaces/${workspaceUid}/catalogs`,
 			{
 				method: "POST",
 				body: JSON.stringify({
@@ -325,9 +329,9 @@ export const api = {
 			CatalogRecordSchema,
 		),
 
-	deleteCatalog: (workspace: string, catalogId: string): Promise<void> =>
+	deleteCatalog: (workspaceUid: string, catalogUid: string): Promise<void> =>
 		request(
-			`/workspaces/${workspace}/catalogs/${catalogId}`,
+			`/workspaces/${workspaceUid}/catalogs/${catalogUid}`,
 			{ method: "DELETE" },
 			null,
 		),
@@ -335,36 +339,36 @@ export const api = {
 	/* -------- Documents -------- */
 
 	listDocuments: (
-		workspace: string,
-		catalogId: string,
+		workspaceUid: string,
+		catalogUid: string,
 	): Promise<DocumentRecord[]> =>
 		request(
-			`/workspaces/${workspace}/catalogs/${catalogId}/documents`,
+			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/documents`,
 			{ method: "GET" },
-			z.array(DocumentRecordSchema),
-		),
+			DocumentPageSchema,
+		).then((page) => page.items),
 
 	listDocumentChunks: (
-		workspace: string,
-		catalogId: string,
-		documentId: string,
+		workspaceUid: string,
+		catalogUid: string,
+		documentUid: string,
 		opts?: { limit?: number },
 	): Promise<DocumentChunk[]> => {
 		const qs = opts?.limit ? `?limit=${opts.limit}` : "";
 		return request(
-			`/workspaces/${workspace}/catalogs/${catalogId}/documents/${documentId}/chunks${qs}`,
+			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/documents/${documentUid}/chunks${qs}`,
 			{ method: "GET" },
 			z.array(DocumentChunkSchema),
 		);
 	},
 
 	deleteDocument: (
-		workspace: string,
-		catalogId: string,
-		documentId: string,
+		workspaceUid: string,
+		catalogUid: string,
+		documentUid: string,
 	): Promise<void> =>
 		request(
-			`/workspaces/${workspace}/catalogs/${catalogId}/documents/${documentId}`,
+			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/documents/${documentUid}`,
 			{ method: "DELETE" },
 			null,
 		),
@@ -377,19 +381,19 @@ export const api = {
 	 * caller polls {@link api.getJob} for progress.
 	 */
 	ingestAsync: (
-		workspace: string,
-		catalogId: string,
+		workspaceUid: string,
+		catalogUid: string,
 		input: IngestRequest,
 	): Promise<AsyncIngestResponse> =>
 		request(
-			`/workspaces/${workspace}/catalogs/${catalogId}/ingest?async=true`,
+			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/ingest?async=true`,
 			{ method: "POST", body: JSON.stringify(input) },
 			AsyncIngestResponseSchema,
 		),
 
-	getJob: (workspace: string, jobId: string): Promise<JobRecord> =>
+	getJob: (workspaceUid: string, jobId: string): Promise<JobRecord> =>
 		request(
-			`/workspaces/${workspace}/jobs/${jobId}`,
+			`/workspaces/${workspaceUid}/jobs/${jobId}`,
 			{ method: "GET" },
 			JobRecordSchema,
 		),
@@ -397,22 +401,22 @@ export const api = {
 	/* -------- Saved queries -------- */
 
 	listSavedQueries: (
-		workspace: string,
-		catalogId: string,
+		workspaceUid: string,
+		catalogUid: string,
 	): Promise<SavedQueryRecord[]> =>
 		request(
-			`/workspaces/${workspace}/catalogs/${catalogId}/queries`,
+			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/queries`,
 			{ method: "GET" },
-			z.array(SavedQueryRecordSchema),
-		),
+			SavedQueryPageSchema,
+		).then((page) => page.items),
 
 	createSavedQuery: (
-		workspace: string,
-		catalogId: string,
+		workspaceUid: string,
+		catalogUid: string,
 		input: CreateSavedQueryInput,
 	): Promise<SavedQueryRecord> =>
 		request(
-			`/workspaces/${workspace}/catalogs/${catalogId}/queries`,
+			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/queries`,
 			{
 				method: "POST",
 				body: JSON.stringify({
@@ -427,23 +431,23 @@ export const api = {
 		),
 
 	deleteSavedQuery: (
-		workspace: string,
-		catalogId: string,
-		queryId: string,
+		workspaceUid: string,
+		catalogUid: string,
+		queryUid: string,
 	): Promise<void> =>
 		request(
-			`/workspaces/${workspace}/catalogs/${catalogId}/queries/${queryId}`,
+			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/queries/${queryUid}`,
 			{ method: "DELETE" },
 			null,
 		),
 
 	runSavedQuery: (
-		workspace: string,
-		catalogId: string,
-		queryId: string,
+		workspaceUid: string,
+		catalogUid: string,
+		queryUid: string,
 	): Promise<SearchHit[]> =>
 		request(
-			`/workspaces/${workspace}/catalogs/${catalogId}/queries/${queryId}/run`,
+			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/queries/${queryUid}/run`,
 			{ method: "POST" },
 			z.array(SearchHitSchema),
 		),

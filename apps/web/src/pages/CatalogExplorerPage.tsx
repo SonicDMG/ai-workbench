@@ -41,29 +41,29 @@ import type { DocumentRecord } from "@/lib/schemas";
  * workspace page for one-off uploads.
  */
 export function CatalogExplorerPage() {
-	const params = useParams<{ uid: string; catalogId: string }>();
-	const workspaceId = params.uid;
-	const catalogId = params.catalogId;
+	const params = useParams<{ workspaceUid: string; catalogUid: string }>();
+	const workspaceUid = params.workspaceUid;
+	const catalogUid = params.catalogUid;
 
-	const ws = useWorkspace(workspaceId);
-	const catalogs = useCatalogs(workspaceId);
-	const docs = useDocuments(workspaceId, catalogId);
+	const ws = useWorkspace(workspaceUid);
+	const catalogs = useCatalogs(workspaceUid);
+	const docs = useDocuments(workspaceUid, catalogUid);
 
 	const catalog = useMemo(
-		() => catalogs.data?.find((c) => c.uid === catalogId) ?? null,
-		[catalogs.data, catalogId],
+		() => catalogs.data?.find((c) => c.uid === catalogUid) ?? null,
+		[catalogs.data, catalogUid],
 	);
 
 	const [ingestOpen, setIngestOpen] = useState(false);
 	const [detail, setDetail] = useState<DocumentRecord | null>(null);
 	const [toDelete, setToDelete] = useState<DocumentRecord | null>(null);
-	const deleteDoc = useDeleteDocument(workspaceId ?? "", catalogId ?? "");
+	const deleteDoc = useDeleteDocument(workspaceUid ?? "", catalogUid ?? "");
 
-	if (!workspaceId || !catalogId) {
+	if (!workspaceUid || !catalogUid) {
 		return (
 			<ErrorState
 				title="Invalid URL"
-				message="Missing workspace or catalog id."
+				message="Missing workspace or catalog UID."
 			/>
 		);
 	}
@@ -89,10 +89,10 @@ export function CatalogExplorerPage() {
 			<div className="mx-auto max-w-3xl px-6 py-10">
 				<ErrorState
 					title="Catalog not found"
-					message={`No catalog ${catalogId} in this workspace.`}
+					message={`No catalog ${catalogUid} in this workspace.`}
 					actions={
 						<Button variant="secondary" asChild>
-							<Link to={`/workspaces/${workspaceId}`}>
+							<Link to={`/workspaces/${workspaceUid}`}>
 								<ArrowLeft className="h-4 w-4" /> Back to workspace
 							</Link>
 						</Button>
@@ -108,7 +108,7 @@ export function CatalogExplorerPage() {
 		<div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
 			<header className="flex flex-col gap-2">
 				<Link
-					to={`/workspaces/${workspaceId}`}
+					to={`/workspaces/${workspaceUid}`}
 					className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900 w-max"
 				>
 					<ArrowLeft className="h-4 w-4" />
@@ -200,21 +200,21 @@ export function CatalogExplorerPage() {
 				</CardHeader>
 				<CardContent>
 					<SavedQueriesSection
-						workspace={workspaceId}
-						catalogId={catalog.uid}
+						workspace={workspaceUid}
+						catalogUid={catalog.uid}
 					/>
 				</CardContent>
 			</Card>
 
 			<IngestQueueDialog
-				workspace={workspaceId}
+				workspace={workspaceUid}
 				catalog={catalog}
 				open={ingestOpen}
 				onOpenChange={setIngestOpen}
 			/>
 			<DocumentDetailDialog
-				workspace={workspaceId}
-				catalogId={catalog.uid}
+				workspace={workspaceUid}
+				catalogUid={catalog.uid}
 				doc={detail}
 				onOpenChange={(o) => !o && setDetail(null)}
 			/>

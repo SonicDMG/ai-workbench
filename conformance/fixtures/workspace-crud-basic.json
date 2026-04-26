@@ -33,18 +33,21 @@
 				"path": "/api/v1/workspaces"
 			},
 			"response": {
-				"body": [
-					{
-						"createdAt": "{{TS}}",
-						"credentialsRef": {},
-						"endpoint": null,
-						"keyspace": null,
-						"kind": "astra",
-						"name": "prod",
-						"uid": "{{UUID_1}}",
-						"updatedAt": "{{TS}}"
-					}
-				],
+				"body": {
+					"items": [
+						{
+							"createdAt": "{{TS}}",
+							"credentialsRef": {},
+							"endpoint": null,
+							"keyspace": null,
+							"kind": "astra",
+							"name": "prod",
+							"uid": "{{UUID_1}}",
+							"updatedAt": "{{TS}}"
+						}
+					],
+					"nextCursor": null
+				},
 				"status": 200
 			},
 			"step": 2

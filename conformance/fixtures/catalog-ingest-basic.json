@@ -143,24 +143,27 @@
 				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_3}}/documents"
 			},
 			"response": {
-				"body": [
-					{
-						"catalogUid": "{{UUID_3}}",
-						"chunkTotal": 3,
-						"documentUid": "{{UUID_4}}",
-						"errorMessage": null,
-						"fileSize": null,
-						"fileType": null,
-						"ingestedAt": "{{TS}}",
-						"md5Hash": null,
-						"metadata": {},
-						"sourceDocId": null,
-						"sourceFilename": "fruit.md",
-						"status": "ready",
-						"updatedAt": "{{TS}}",
-						"workspace": "{{UUID_1}}"
-					}
-				],
+				"body": {
+					"items": [
+						{
+							"catalogUid": "{{UUID_3}}",
+							"chunkTotal": 3,
+							"documentUid": "{{UUID_4}}",
+							"errorMessage": null,
+							"fileSize": null,
+							"fileType": null,
+							"ingestedAt": "{{TS}}",
+							"md5Hash": null,
+							"metadata": {},
+							"sourceDocId": null,
+							"sourceFilename": "fruit.md",
+							"status": "ready",
+							"updatedAt": "{{TS}}",
+							"workspace": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
 				"status": 200
 			},
 			"step": 5
@@ -199,7 +202,7 @@
 				"body": {
 					"error": {
 						"code": "catalog_not_bound_to_vector_store",
-						"message": "catalog '{{UUID_5}}' has no vectorStore binding; bind one with PUT /catalogs/{id} before ingesting",
+						"message": "catalog '{{UUID_5}}' has no vectorStore binding; bind one with PUT /catalogs/{catalogUid} before ingesting",
 						"requestId": "{{REQID_1}}"
 					}
 				},

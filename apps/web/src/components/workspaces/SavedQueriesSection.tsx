@@ -34,14 +34,14 @@ import type { SavedQueryRecord, SearchHit } from "@/lib/schemas";
  */
 export function SavedQueriesSection({
 	workspace,
-	catalogId,
+	catalogUid,
 }: {
 	workspace: string;
-	catalogId: string;
+	catalogUid: string;
 }) {
-	const list = useSavedQueries(workspace, catalogId);
-	const del = useDeleteSavedQuery(workspace, catalogId);
-	const run = useRunSavedQuery(workspace, catalogId);
+	const list = useSavedQueries(workspace, catalogUid);
+	const del = useDeleteSavedQuery(workspace, catalogUid);
+	const run = useRunSavedQuery(workspace, catalogUid);
 	const [createOpen, setCreateOpen] = useState(false);
 	const [resultsFor, setResultsFor] = useState<SavedQueryRecord | null>(null);
 	const [results, setResults] = useState<SearchHit[] | null>(null);
@@ -117,7 +117,7 @@ export function SavedQueriesSection({
 
 			<CreateSavedQueryDialog
 				workspace={workspace}
-				catalogId={catalogId}
+				catalogUid={catalogUid}
 				open={createOpen}
 				onOpenChange={setCreateOpen}
 			/>
@@ -190,16 +190,16 @@ type FormInput = z.infer<typeof FormSchema>;
 
 function CreateSavedQueryDialog({
 	workspace,
-	catalogId,
+	catalogUid,
 	open,
 	onOpenChange,
 }: {
 	workspace: string;
-	catalogId: string;
+	catalogUid: string;
 	open: boolean;
 	onOpenChange: (v: boolean) => void;
 }) {
-	const create = useCreateSavedQuery(workspace, catalogId);
+	const create = useCreateSavedQuery(workspace, catalogUid);
 	const form = useForm<FormInput>({
 		resolver: zodResolver(FormSchema),
 		defaultValues: { name: "", description: "", text: "", topK: 10 },

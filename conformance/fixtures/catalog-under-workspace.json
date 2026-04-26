@@ -77,26 +77,29 @@
 				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs"
 			},
 			"response": {
-				"body": [
-					{
-						"createdAt": "{{TS}}",
-						"description": null,
-						"name": "c1",
-						"uid": "{{UUID_2}}",
-						"updatedAt": "{{TS}}",
-						"vectorStore": null,
-						"workspace": "{{UUID_1}}"
-					},
-					{
-						"createdAt": "{{TS}}",
-						"description": null,
-						"name": "c2",
-						"uid": "{{UUID_3}}",
-						"updatedAt": "{{TS}}",
-						"vectorStore": null,
-						"workspace": "{{UUID_1}}"
-					}
-				],
+				"body": {
+					"items": [
+						{
+							"createdAt": "{{TS}}",
+							"description": null,
+							"name": "c1",
+							"uid": "{{UUID_2}}",
+							"updatedAt": "{{TS}}",
+							"vectorStore": null,
+							"workspace": "{{UUID_1}}"
+						},
+						{
+							"createdAt": "{{TS}}",
+							"description": null,
+							"name": "c2",
+							"uid": "{{UUID_3}}",
+							"updatedAt": "{{TS}}",
+							"vectorStore": null,
+							"workspace": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
 				"status": 200
 			},
 			"step": 4

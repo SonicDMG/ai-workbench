@@ -31,7 +31,7 @@ export interface IngestWorkerDeps {
 
 export interface IngestWorkerArgs {
 	readonly deps: IngestWorkerDeps;
-	readonly workspaceId: string;
+	readonly workspaceUid: string;
 	readonly jobId: string;
 	readonly replicaId: string;
 	/**
@@ -57,16 +57,16 @@ export interface IngestWorkerArgs {
  * resume guarantees we never flip a terminal job back to running.
  */
 export async function runIngestJob(args: IngestWorkerArgs): Promise<void> {
-	const { deps, workspaceId, jobId, replicaId, input } = args;
+	const { deps, workspaceUid, jobId, replicaId, input } = args;
 	const { store, drivers, embedders, jobs } = deps;
 
 	let job: JobRecord | null;
 	try {
-		job = await jobs.get(workspaceId, jobId);
+		job = await jobs.get(workspaceUid, jobId);
 	} catch (err) {
 		logger.warn(
 			{
-				workspace: workspaceId,
+				workspace: workspaceUid,
 				jobId,
 				err: err instanceof Error ? err.message : String(err),
 			},
@@ -76,7 +76,7 @@ export async function runIngestJob(args: IngestWorkerArgs): Promise<void> {
 	}
 	if (!job) {
 		logger.warn(
-			{ workspace: workspaceId, jobId },
+			{ workspace: workspaceUid, jobId },
 			"ingest worker: job not found; aborting",
 		);
 		return;
@@ -88,21 +88,21 @@ export async function runIngestJob(args: IngestWorkerArgs): Promise<void> {
 	if (!job.catalogUid || !job.documentUid) {
 		await failJob(
 			jobs,
-			workspaceId,
+			workspaceUid,
 			jobId,
 			"job is missing catalogUid or documentUid; cannot run ingest pipeline",
 		);
 		return;
 	}
 
-	const workspace = await store.getWorkspace(workspaceId);
+	const workspace = await store.getWorkspace(workspaceUid);
 	const catalog = workspace
-		? await store.getCatalog(workspaceId, job.catalogUid)
+		? await store.getCatalog(workspaceUid, job.catalogUid)
 		: null;
 	if (!workspace || !catalog) {
 		await failJob(
 			jobs,
-			workspaceId,
+			workspaceUid,
 			jobId,
 			"workspace or catalog no longer exists; cannot run ingest pipeline",
 		);
@@ -111,20 +111,20 @@ export async function runIngestJob(args: IngestWorkerArgs): Promise<void> {
 	if (!catalog.vectorStore) {
 		await failJob(
 			jobs,
-			workspaceId,
+			workspaceUid,
 			jobId,
 			`catalog '${catalog.uid}' has no vectorStore binding`,
 		);
 		return;
 	}
 	const descriptor = await store.getVectorStore(
-		workspaceId,
+		workspaceUid,
 		catalog.vectorStore,
 	);
 	if (!descriptor) {
 		await failJob(
 			jobs,
-			workspaceId,
+			workspaceUid,
 			jobId,
 			`bound vector store '${catalog.vectorStore}' no longer exists`,
 		);
@@ -132,7 +132,7 @@ export async function runIngestJob(args: IngestWorkerArgs): Promise<void> {
 	}
 
 	try {
-		await jobs.update(workspaceId, jobId, {
+		await jobs.update(workspaceUid, jobId, {
 			status: "running",
 			leasedBy: replicaId,
 			leasedAt: new Date().toISOString(),
@@ -143,7 +143,7 @@ export async function runIngestJob(args: IngestWorkerArgs): Promise<void> {
 			input,
 			(p) => {
 				void jobs
-					.update(workspaceId, jobId, {
+					.update(workspaceUid, jobId, {
 						processed: p.processed,
 						total: p.total,
 						leasedAt: new Date().toISOString(),
@@ -151,7 +151,7 @@ export async function runIngestJob(args: IngestWorkerArgs): Promise<void> {
 					.catch(() => undefined);
 			},
 		);
-		await jobs.update(workspaceId, jobId, {
+		await jobs.update(workspaceUid, jobId, {
 			status: "succeeded",
 			result: { chunks: result.chunks },
 			leasedBy: null,
@@ -159,7 +159,7 @@ export async function runIngestJob(args: IngestWorkerArgs): Promise<void> {
 		});
 	} catch (err) {
 		await jobs
-			.update(workspaceId, jobId, {
+			.update(workspaceUid, jobId, {
 				status: "failed",
 				errorMessage: err instanceof Error ? err.message : String(err),
 				leasedBy: null,
@@ -171,12 +171,12 @@ export async function runIngestJob(args: IngestWorkerArgs): Promise<void> {
 
 async function failJob(
 	jobs: JobStore,
-	workspaceId: string,
+	workspaceUid: string,
 	jobId: string,
 	message: string,
 ): Promise<void> {
 	await jobs
-		.update(workspaceId, jobId, {
+		.update(workspaceUid, jobId, {
 			status: "failed",
 			errorMessage: message,
 			leasedBy: null,

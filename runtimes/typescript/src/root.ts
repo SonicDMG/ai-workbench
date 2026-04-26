@@ -104,10 +104,10 @@ async function main(): Promise<void> {
 					replicaId,
 					graceMs: sweeperCfg.graceMs,
 					intervalMs: sweeperCfg.intervalMs,
-					resume: ({ workspaceId, jobId, replicaId: rid, input }) => {
+					resume: ({ workspaceUid, jobId, replicaId: rid, input }) => {
 						void runIngestJob({
 							deps: { store, drivers, embedders, jobs },
-							workspaceId,
+							workspaceUid,
 							jobId,
 							replicaId: rid,
 							input,

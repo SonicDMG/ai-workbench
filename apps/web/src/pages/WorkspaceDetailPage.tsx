@@ -26,15 +26,15 @@ function isLiteralUrl(value: string): boolean {
 }
 
 export function WorkspaceDetailPage() {
-	const { uid } = useParams<{ uid: string }>();
+	const { workspaceUid } = useParams<{ workspaceUid: string }>();
 	const navigate = useNavigate();
-	const { data, isLoading, isError, error } = useWorkspace(uid);
-	const update = useUpdateWorkspace(uid ?? "");
+	const { data, isLoading, isError, error } = useWorkspace(workspaceUid);
+	const update = useUpdateWorkspace(workspaceUid ?? "");
 	const del = useDeleteWorkspace();
 	const [editing, setEditing] = useState(false);
 	const [deleteOpen, setDeleteOpen] = useState(false);
 
-	if (!uid) return <Navigate to="/" replace />;
+	if (!workspaceUid) return <Navigate to="/" replace />;
 	if (isLoading) return <LoadingState label="Loading workspace…" />;
 	if (isError || !data) {
 		const message =

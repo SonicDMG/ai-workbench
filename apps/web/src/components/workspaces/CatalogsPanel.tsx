@@ -261,7 +261,7 @@ function CatalogRow({
 							<DocumentList rows={docs.data ?? []} />
 						)}
 					</div>
-					<SavedQueriesSection workspace={workspace} catalogId={catalog.uid} />
+					<SavedQueriesSection workspace={workspace} catalogUid={catalog.uid} />
 				</div>
 			) : null}
 		</div>

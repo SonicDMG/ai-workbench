@@ -282,7 +282,7 @@ Contracts will be defined as those phases approach.
 
 These run continuously rather than as discrete phases:
 
-- **Observability.** Structured logs with `workspaceId`, request
+- **Observability.** Structured logs with `workspaceUid`, request
   IDs, and OpenTelemetry traces. Logs today; OTel in Phase 2+.
 - **Conformance.** Every route added lands with a scenario and
   regenerated fixtures. Every language runtime updates in the same

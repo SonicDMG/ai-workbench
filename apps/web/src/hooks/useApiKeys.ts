@@ -13,38 +13,39 @@ import type {
 } from "@/lib/schemas";
 
 const keys = {
-	all: (workspace: string) => ["workspaces", workspace, "api-keys"] as const,
+	all: (workspaceUid: string) =>
+		["workspaces", workspaceUid, "api-keys"] as const,
 };
 
 export function useApiKeys(
-	workspace: string,
+	workspaceUid: string,
 ): UseQueryResult<ApiKeyRecord[], Error> {
 	return useQuery({
-		queryKey: keys.all(workspace),
-		queryFn: () => api.listApiKeys(workspace),
+		queryKey: keys.all(workspaceUid),
+		queryFn: () => api.listApiKeys(workspaceUid),
 	});
 }
 
 export function useCreateApiKey(
-	workspace: string,
+	workspaceUid: string,
 ): UseMutationResult<CreatedApiKeyResponse, Error, CreateApiKeyInput> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (input) => api.createApiKey(workspace, input),
+		mutationFn: (input) => api.createApiKey(workspaceUid, input),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys.all(workspace) });
+			qc.invalidateQueries({ queryKey: keys.all(workspaceUid) });
 		},
 	});
 }
 
 export function useRevokeApiKey(
-	workspace: string,
+	workspaceUid: string,
 ): UseMutationResult<void, Error, string> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (keyId) => api.revokeApiKey(workspace, keyId),
+		mutationFn: (keyId) => api.revokeApiKey(workspaceUid, keyId),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys.all(workspace) });
+			qc.invalidateQueries({ queryKey: keys.all(workspaceUid) });
 		},
 	});
 }

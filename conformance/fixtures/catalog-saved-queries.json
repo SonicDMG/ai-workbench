@@ -138,22 +138,25 @@
 				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_3}}/queries"
 			},
 			"response": {
-				"body": [
-					{
-						"catalogUid": "{{UUID_3}}",
-						"createdAt": "{{TS}}",
-						"description": "billing questions",
-						"filter": {
-							"section": "billing"
-						},
-						"name": "refunds",
-						"queryUid": "{{UUID_4}}",
-						"text": "how do refunds work?",
-						"topK": 3,
-						"updatedAt": "{{TS}}",
-						"workspace": "{{UUID_1}}"
-					}
-				],
+				"body": {
+					"items": [
+						{
+							"catalogUid": "{{UUID_3}}",
+							"createdAt": "{{TS}}",
+							"description": "billing questions",
+							"filter": {
+								"section": "billing"
+							},
+							"name": "refunds",
+							"queryUid": "{{UUID_4}}",
+							"text": "how do refunds work?",
+							"topK": 3,
+							"updatedAt": "{{TS}}",
+							"workspace": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
 				"status": 200
 			},
 			"step": 5

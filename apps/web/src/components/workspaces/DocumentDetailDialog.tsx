@@ -25,12 +25,12 @@ import { FileTypeBadge } from "./FileTypeBadge";
  */
 export function DocumentDetailDialog({
 	workspace,
-	catalogId,
+	catalogUid,
 	doc,
 	onOpenChange,
 }: {
 	workspace: string;
-	catalogId: string;
+	catalogUid: string;
 	doc: DocumentRecord | null;
 	onOpenChange: (open: boolean) => void;
 }) {
@@ -38,7 +38,7 @@ export function DocumentDetailDialog({
 	// Fetch chunks lazily when the dialog opens for a document. Disabled
 	// while closed so the catalog explorer table doesn't fan out a
 	// chunks query per row visit.
-	const chunks = useDocumentChunks(workspace, catalogId, doc?.documentUid, {
+	const chunks = useDocumentChunks(workspace, catalogUid, doc?.documentUid, {
 		enabled: open && doc?.status === "ready",
 	});
 	return (

@@ -1,18 +1,18 @@
 /**
- * `/api/v1/workspaces/{workspaceId}/vector-stores` — descriptor CRUD
+ * `/api/v1/workspaces/{workspaceUid}/vector-stores` — descriptor CRUD
  * plus the data-plane endpoints.
  *
  * Descriptors (control plane):
  *   GET  /                         list
  *   POST /                         create descriptor + provision collection
- *   GET  /{id}                     fetch
- *   PUT  /{id}                     update descriptor
- *   DELETE /{id}                   drop collection + delete descriptor
+ *   GET  /{vectorStoreUid}         fetch
+ *   PUT  /{vectorStoreUid}         update descriptor
+ *   DELETE /{vectorStoreUid}       drop collection + delete descriptor
  *
  * Data plane (Phase 1b):
- *   POST /{id}/records             upsert vectors
- *   DELETE /{id}/records/{rid}     delete a vector
- *   POST /{id}/search              vector search
+ *   POST /{vectorStoreUid}/records upsert vectors
+ *   DELETE /{vectorStoreUid}/records/{recordId} delete a vector
+ *   POST /{vectorStoreUid}/search  vector search
  *
  * Descriptor create/delete are **transactional** end-to-end: a failure
  * on the data-plane step rolls the descriptor change back so the
@@ -34,6 +34,7 @@ import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
 import { ApiError } from "../../lib/errors.js";
 import { makeOpenApi } from "../../lib/openapi.js";
+import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	AdoptableCollectionSchema,
@@ -41,15 +42,17 @@ import {
 	CreateVectorStoreInputSchema,
 	DeleteRecordResponseSchema,
 	ErrorEnvelopeSchema,
+	PaginationQuerySchema,
 	RecordIdParamSchema,
 	SearchHitSchema,
 	SearchRequestSchema,
 	UpdateVectorStoreInputSchema,
 	UpsertRequestSchema,
 	UpsertResponseSchema,
-	VectorStoreIdParamSchema,
+	VectorStorePageSchema,
 	VectorStoreRecordSchema,
-	WorkspaceIdParamSchema,
+	VectorStoreUidParamSchema,
+	WorkspaceUidParamSchema,
 } from "../../openapi/schemas.js";
 import { dispatchSearch, toMutableHits } from "./search-dispatch.js";
 import { dispatchUpsert } from "./upsert-dispatch.js";
@@ -91,14 +94,17 @@ export function vectorStoreRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceId}/vector-stores",
+			path: "/{workspaceUid}/vector-stores",
 			tags: ["vector-stores"],
 			summary: "List vector stores in a workspace",
-			request: { params: z.object({ workspaceId: WorkspaceIdParamSchema }) },
+			request: {
+				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
+				query: PaginationQuerySchema,
+			},
 			responses: {
 				200: {
 					content: {
-						"application/json": { schema: z.array(VectorStoreRecordSchema) },
+						"application/json": { schema: VectorStorePageSchema },
 					},
 					description: "All vector store descriptors in the workspace",
 				},
@@ -109,24 +115,25 @@ export function vectorStoreRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
-			const rows = await store.listVectorStores(workspaceId);
-			return c.json([...rows], 200);
+			const { workspaceUid } = c.req.valid("param");
+			const query = c.req.valid("query");
+			assertWorkspaceAccess(c, workspaceUid);
+			const rows = await store.listVectorStores(workspaceUid);
+			return c.json(paginate(rows, query), 200);
 		},
 	);
 
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceId}/vector-stores/discoverable",
+			path: "/{workspaceUid}/vector-stores/discoverable",
 			tags: ["vector-stores"],
 			summary:
 				"List collections that exist in the data plane but aren't yet wrapped in a workbench descriptor",
 			description:
 				"Walks the workspace driver's `listAdoptable` and filters out any collection that already has a descriptor row. Returned items can be turned into descriptors via `POST .../adopt`. Returns `[]` for drivers that don't expose a list (mock workspaces never have external collections).",
 			request: {
-				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
+				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
 			},
 			responses: {
 				200: {
@@ -148,15 +155,15 @@ export function vectorStoreRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
-			const workspace = await requireWorkspace(store, workspaceId);
+			const { workspaceUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
+			const workspace = await requireWorkspace(store, workspaceUid);
 			const driver = drivers.for(workspace);
 			if (typeof driver.listAdoptable !== "function") {
 				return c.json([], 200);
 			}
 			const candidates = await driver.listAdoptable(workspace);
-			const adopted = await store.listVectorStores(workspaceId);
+			const adopted = await store.listVectorStores(workspaceUid);
 			const adoptedNames = new Set(adopted.map((d) => d.name));
 			return c.json(
 				candidates.filter((c) => !adoptedNames.has(c.name)),
@@ -168,14 +175,14 @@ export function vectorStoreRoutes(
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceId}/vector-stores/adopt",
+			path: "/{workspaceUid}/vector-stores/adopt",
 			tags: ["vector-stores"],
 			summary:
 				"Wrap an existing data-plane collection in a workbench descriptor",
 			description:
 				"Reads the live collection's vector / lexical / rerank options off the data plane and stamps a descriptor pointing at it — no `createCollection` round trip, since the collection already exists. Idempotent semantics are still on the caller: a second adopt call for an already-adopted name returns `409`.",
 			request: {
-				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
+				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
 				body: {
 					content: {
 						"application/json": { schema: AdoptCollectionInputSchema },
@@ -205,12 +212,12 @@ export function vectorStoreRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 			const { collectionName } = c.req.valid("json");
-			const workspace = await requireWorkspace(store, workspaceId);
+			const workspace = await requireWorkspace(store, workspaceUid);
 
-			const adopted = await store.listVectorStores(workspaceId);
+			const adopted = await store.listVectorStores(workspaceUid);
 			if (adopted.some((d) => d.name === collectionName)) {
 				throw new ApiError(
 					"collection_already_adopted",
@@ -240,7 +247,7 @@ export function vectorStoreRoutes(
 			// schema requires an EmbeddingConfig, and "external" signals
 			// "client supplies the vector" the same way our other code paths
 			// already treat unknown providers.
-			const descriptor = await store.createVectorStore(workspaceId, {
+			const descriptor = await store.createVectorStore(workspaceUid, {
 				name: match.name,
 				vectorDimension: match.vectorDimension,
 				vectorSimilarity: match.vectorSimilarity,
@@ -271,13 +278,13 @@ export function vectorStoreRoutes(
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceId}/vector-stores",
+			path: "/{workspaceUid}/vector-stores",
 			tags: ["vector-stores"],
 			summary: "Create a vector store (descriptor + underlying collection)",
 			description:
 				"Writes the descriptor row AND provisions the underlying Data API collection via the workspace's driver. If collection provisioning fails, the descriptor is rolled back.",
 			request: {
-				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
+				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
 				body: {
 					content: {
 						"application/json": { schema: CreateVectorStoreInputSchema },
@@ -306,13 +313,13 @@ export function vectorStoreRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 			const body = c.req.valid("json");
-			const workspace = await requireWorkspace(store, workspaceId);
+			const workspace = await requireWorkspace(store, workspaceUid);
 
 			// 1. Descriptor insert (can throw conflict).
-			const descriptor = await store.createVectorStore(workspaceId, body);
+			const descriptor = await store.createVectorStore(workspaceUid, body);
 
 			// 2. Collection provisioning. Roll back the descriptor on failure so
 			//    the control plane and the data plane don't drift.
@@ -320,7 +327,7 @@ export function vectorStoreRoutes(
 				const driver = drivers.for(workspace);
 				await driver.createCollection({ workspace, descriptor });
 			} catch (err) {
-				await store.deleteVectorStore(workspaceId, descriptor.uid);
+				await store.deleteVectorStore(workspaceUid, descriptor.uid);
 				throw err;
 			}
 			return c.json(descriptor, 201);
@@ -330,13 +337,13 @@ export function vectorStoreRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceId}/vector-stores/{vectorStoreId}",
+			path: "/{workspaceUid}/vector-stores/{vectorStoreUid}",
 			tags: ["vector-stores"],
 			summary: "Get a vector store descriptor",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					vectorStoreId: VectorStoreIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					vectorStoreUid: VectorStoreUidParamSchema,
 				}),
 			},
 			responses: {
@@ -357,12 +364,12 @@ export function vectorStoreRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceId, vectorStoreId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid, vectorStoreUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 			const descriptor = await requireDescriptor(
 				store,
-				workspaceId,
-				vectorStoreId,
+				workspaceUid,
+				vectorStoreUid,
 			);
 			return c.json(descriptor, 200);
 		},
@@ -371,15 +378,15 @@ export function vectorStoreRoutes(
 	app.openapi(
 		createRoute({
 			method: "put",
-			path: "/{workspaceId}/vector-stores/{vectorStoreId}",
+			path: "/{workspaceUid}/vector-stores/{vectorStoreUid}",
 			tags: ["vector-stores"],
 			summary: "Update a vector store descriptor",
 			description:
 				"Descriptor-only. The underlying collection is NOT re-provisioned; changing vectorDimension on a populated store is a data-migration operation not yet supported.",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					vectorStoreId: VectorStoreIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					vectorStoreUid: VectorStoreUidParamSchema,
 				}),
 				body: {
 					content: {
@@ -401,12 +408,12 @@ export function vectorStoreRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceId, vectorStoreId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid, vectorStoreUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 			const body = c.req.valid("json");
 			const record = await store.updateVectorStore(
-				workspaceId,
-				vectorStoreId,
+				workspaceUid,
+				vectorStoreUid,
 				body,
 			);
 			return c.json(record, 200);
@@ -416,13 +423,13 @@ export function vectorStoreRoutes(
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceId}/vector-stores/{vectorStoreId}",
+			path: "/{workspaceUid}/vector-stores/{vectorStoreUid}",
 			tags: ["vector-stores"],
 			summary: "Delete a vector store (drops the collection)",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					vectorStoreId: VectorStoreIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					vectorStoreUid: VectorStoreUidParamSchema,
 				}),
 			},
 			responses: {
@@ -434,20 +441,23 @@ export function vectorStoreRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceId, vectorStoreId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
-			const workspace = await requireWorkspace(store, workspaceId);
-			const descriptor = await store.getVectorStore(workspaceId, vectorStoreId);
+			const { workspaceUid, vectorStoreUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
+			const workspace = await requireWorkspace(store, workspaceUid);
+			const descriptor = await store.getVectorStore(
+				workspaceUid,
+				vectorStoreUid,
+			);
 			if (!descriptor) {
-				throw new ControlPlaneNotFoundError("vector store", vectorStoreId);
+				throw new ControlPlaneNotFoundError("vector store", vectorStoreUid);
 			}
 			// Drop collection first; if the driver is OK with idempotent drops,
 			// a subsequent retry still works. If this fails, the descriptor
 			// survives so the operator can inspect.
-			await assertVectorStoreNotReferenced(store, workspaceId, vectorStoreId);
+			await assertVectorStoreNotReferenced(store, workspaceUid, vectorStoreUid);
 			const driver = drivers.for(workspace);
 			await driver.dropCollection({ workspace, descriptor });
-			await store.deleteVectorStore(workspaceId, vectorStoreId);
+			await store.deleteVectorStore(workspaceUid, vectorStoreUid);
 			return c.body(null, 204);
 		},
 	);
@@ -457,13 +467,13 @@ export function vectorStoreRoutes(
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceId}/vector-stores/{vectorStoreId}/records",
+			path: "/{workspaceUid}/vector-stores/{vectorStoreUid}/records",
 			tags: ["vector-stores"],
 			summary: "Upsert vector records",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					vectorStoreId: VectorStoreIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					vectorStoreUid: VectorStoreUidParamSchema,
 				}),
 				body: {
 					content: { "application/json": { schema: UpsertRequestSchema } },
@@ -485,14 +495,14 @@ export function vectorStoreRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceId, vectorStoreId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid, vectorStoreUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 			const body = c.req.valid("json");
-			const workspace = await requireWorkspace(store, workspaceId);
+			const workspace = await requireWorkspace(store, workspaceUid);
 			const descriptor = await requireDescriptor(
 				store,
-				workspaceId,
-				vectorStoreId,
+				workspaceUid,
+				vectorStoreUid,
 			);
 			const driver = drivers.for(workspace);
 			const res = await dispatchUpsert({
@@ -508,13 +518,13 @@ export function vectorStoreRoutes(
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceId}/vector-stores/{vectorStoreId}/records/{recordId}",
+			path: "/{workspaceUid}/vector-stores/{vectorStoreUid}/records/{recordId}",
 			tags: ["vector-stores"],
 			summary: "Delete a vector record",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					vectorStoreId: VectorStoreIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					vectorStoreUid: VectorStoreUidParamSchema,
 					recordId: RecordIdParamSchema,
 				}),
 			},
@@ -533,13 +543,13 @@ export function vectorStoreRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceId, vectorStoreId, recordId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
-			const workspace = await requireWorkspace(store, workspaceId);
+			const { workspaceUid, vectorStoreUid, recordId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
+			const workspace = await requireWorkspace(store, workspaceUid);
 			const descriptor = await requireDescriptor(
 				store,
-				workspaceId,
-				vectorStoreId,
+				workspaceUid,
+				vectorStoreUid,
 			);
 			const driver = drivers.for(workspace);
 			const res = await driver.deleteRecord(
@@ -553,13 +563,13 @@ export function vectorStoreRoutes(
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceId}/vector-stores/{vectorStoreId}/search",
+			path: "/{workspaceUid}/vector-stores/{vectorStoreUid}/search",
 			tags: ["vector-stores"],
 			summary: "Vector search",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					vectorStoreId: VectorStoreIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					vectorStoreUid: VectorStoreUidParamSchema,
 				}),
 				body: {
 					content: { "application/json": { schema: SearchRequestSchema } },
@@ -583,14 +593,14 @@ export function vectorStoreRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceId, vectorStoreId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid, vectorStoreUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 			const body = c.req.valid("json");
-			const workspace = await requireWorkspace(store, workspaceId);
+			const workspace = await requireWorkspace(store, workspaceUid);
 			const descriptor = await requireDescriptor(
 				store,
-				workspaceId,
-				vectorStoreId,
+				workspaceUid,
+				vectorStoreUid,
 			);
 			const driver = drivers.for(workspace);
 			const ctx = { workspace, descriptor };

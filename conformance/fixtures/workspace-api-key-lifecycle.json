@@ -59,18 +59,21 @@
 				"path": "/api/v1/workspaces/{{UUID_1}}/api-keys"
 			},
 			"response": {
-				"body": [
-					{
-						"createdAt": "{{TS}}",
-						"expiresAt": null,
-						"keyId": "{{UUID_2}}",
-						"label": "ci",
-						"lastUsedAt": null,
-						"prefix": "{{WB_PREFIX_1}}",
-						"revokedAt": null,
-						"workspace": "{{UUID_1}}"
-					}
-				],
+				"body": {
+					"items": [
+						{
+							"createdAt": "{{TS}}",
+							"expiresAt": null,
+							"keyId": "{{UUID_2}}",
+							"label": "ci",
+							"lastUsedAt": null,
+							"prefix": "{{WB_PREFIX_1}}",
+							"revokedAt": null,
+							"workspace": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
 				"status": 200
 			},
 			"step": 3
@@ -94,18 +97,21 @@
 				"path": "/api/v1/workspaces/{{UUID_1}}/api-keys"
 			},
 			"response": {
-				"body": [
-					{
-						"createdAt": "{{TS}}",
-						"expiresAt": null,
-						"keyId": "{{UUID_2}}",
-						"label": "ci",
-						"lastUsedAt": null,
-						"prefix": "{{WB_PREFIX_1}}",
-						"revokedAt": "{{TS}}",
-						"workspace": "{{UUID_1}}"
-					}
-				],
+				"body": {
+					"items": [
+						{
+							"createdAt": "{{TS}}",
+							"expiresAt": null,
+							"keyId": "{{UUID_2}}",
+							"label": "ci",
+							"lastUsedAt": null,
+							"prefix": "{{WB_PREFIX_1}}",
+							"revokedAt": "{{TS}}",
+							"workspace": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
 				"status": 200
 			},
 			"step": 5

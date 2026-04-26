@@ -205,7 +205,7 @@ when the descriptor is created.
 ## Isolation and scoping
 
 - Every request targeting a specific resource carries the workspace
-  UID in the path: `/api/v1/workspaces/{workspaceId}/...`.
+  UID in the path: `/api/v1/workspaces/{workspaceUid}/...`.
 - The control-plane store asserts the workspace exists before
   returning nested resources. Requests against a non-existent
   workspace return `404 workspace_not_found`.

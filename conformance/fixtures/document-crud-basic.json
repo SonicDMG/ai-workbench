@@ -113,26 +113,29 @@
 				"path": "/api/v1/workspaces/{{UUID_1}}/catalogs/{{UUID_2}}/documents"
 			},
 			"response": {
-				"body": [
-					{
-						"catalogUid": "{{UUID_2}}",
-						"chunkTotal": null,
-						"documentUid": "{{UUID_4}}",
-						"errorMessage": null,
-						"fileSize": 1024,
-						"fileType": "text/markdown",
-						"ingestedAt": null,
-						"md5Hash": null,
-						"metadata": {
-							"source": "upload"
-						},
-						"sourceDocId": null,
-						"sourceFilename": "readme.md",
-						"status": "pending",
-						"updatedAt": "{{TS}}",
-						"workspace": "{{UUID_1}}"
-					}
-				],
+				"body": {
+					"items": [
+						{
+							"catalogUid": "{{UUID_2}}",
+							"chunkTotal": null,
+							"documentUid": "{{UUID_4}}",
+							"errorMessage": null,
+							"fileSize": 1024,
+							"fileType": "text/markdown",
+							"ingestedAt": null,
+							"md5Hash": null,
+							"metadata": {
+								"source": "upload"
+							},
+							"sourceDocId": null,
+							"sourceFilename": "readme.md",
+							"status": "pending",
+							"updatedAt": "{{TS}}",
+							"workspace": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
 				"status": 200
 			},
 			"step": 5

@@ -20,17 +20,17 @@ import { documentQueryKey } from "./useDocuments";
  * state.
  */
 export function useAsyncIngest(
-	workspace: string,
-	catalogId: string,
+	workspaceUid: string,
+	catalogUid: string,
 ): UseMutationResult<AsyncIngestResponse, Error, IngestRequest> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (input) => api.ingestAsync(workspace, catalogId, input),
+		mutationFn: (input) => api.ingestAsync(workspaceUid, catalogUid, input),
 		onSuccess: () => {
 			// Document row materializes immediately — surface it in the
 			// list even before the job terminates.
 			qc.invalidateQueries({
-				queryKey: documentQueryKey(workspace, catalogId),
+				queryKey: documentQueryKey(workspaceUid, catalogUid),
 			});
 		},
 	});
@@ -47,20 +47,20 @@ export function useAsyncIngest(
  * the same poll loop applies.
  */
 export function useJobPoller(
-	workspace: string | undefined,
+	workspaceUid: string | undefined,
 	jobId: string | undefined,
 	opts?: { intervalMs?: number },
 ): UseQueryResult<JobRecord, Error> {
 	const intervalMs = opts?.intervalMs ?? 500;
 	return useQuery({
-		queryKey: ["workspaces", workspace ?? "_", "jobs", jobId ?? "_"],
+		queryKey: ["workspaces", workspaceUid ?? "_", "jobs", jobId ?? "_"],
 		queryFn: () => {
-			if (!workspace || !jobId) {
-				throw new Error("useJobPoller requires workspace + jobId");
+			if (!workspaceUid || !jobId) {
+				throw new Error("useJobPoller requires workspaceUid + jobId");
 			}
-			return api.getJob(workspace, jobId);
+			return api.getJob(workspaceUid, jobId);
 		},
-		enabled: Boolean(workspace && jobId),
+		enabled: Boolean(workspaceUid && jobId),
 		refetchInterval: (query) => {
 			const job = query.state.data;
 			if (!job) return intervalMs;

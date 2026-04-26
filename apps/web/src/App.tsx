@@ -79,9 +79,12 @@ function RoutedView() {
 				<Routes>
 					<Route path="/" element={<WorkspacesPage />} />
 					<Route path="/onboarding" element={<OnboardingPage />} />
-					<Route path="/workspaces/:uid" element={<WorkspaceDetailPage />} />
 					<Route
-						path="/workspaces/:uid/catalogs/:catalogId"
+						path="/workspaces/:workspaceUid"
+						element={<WorkspaceDetailPage />}
+					/>
+					<Route
+						path="/workspaces/:workspaceUid/catalogs/:catalogUid"
 						element={<CatalogExplorerPage />}
 					/>
 					<Route path="/playground" element={<PlaygroundPage />} />

@@ -41,14 +41,33 @@ to flag what's coming.
 Every nested resource carries its parent UIDs in the path:
 
 ```
-/api/v1/workspaces/{workspaceId}
-/api/v1/workspaces/{workspaceId}/catalogs/{catalogId}
-/api/v1/workspaces/{workspaceId}/vector-stores/{vectorStoreId}
+/api/v1/workspaces/{workspaceUid}
+/api/v1/workspaces/{workspaceUid}/catalogs/{catalogUid}
+/api/v1/workspaces/{workspaceUid}/vector-stores/{vectorStoreUid}
 ```
 
 A request whose path references a non-existent workspace returns
 `404 workspace_not_found` before the nested resource is ever
 consulted.
+
+### Pagination
+
+Control-plane list endpoints accept:
+
+- `limit` — number of items to return, 1–200, default 50.
+- `cursor` — opaque value from the previous page's `nextCursor`.
+
+Paginated responses use:
+
+```json
+{
+  "items": [],
+  "nextCursor": null
+}
+```
+
+When `nextCursor` is non-null, pass it back as `?cursor=...` to read
+the next page. Malformed cursors return `400 invalid_cursor`.
 
 ### Error envelope
 
@@ -78,7 +97,7 @@ human-readable and may change. Currently emitted:
 | 404 | `catalog_not_found` | Catalog UID doesn't exist in workspace |
 | 404 | `vector_store_not_found` | Vector-store UID doesn't exist in workspace |
 | 404 | `document_not_found` | Document UID doesn't exist in the catalog |
-| 404 | `job_not_found` | Job UID doesn't exist in the workspace |
+| 404 | `job_not_found` | Job ID doesn't exist in the workspace |
 | 404 | `saved_query_not_found` | Saved query UID doesn't exist in the catalog |
 | 409 | `conflict` | Create with an already-taken UID |
 | 409 | `catalog_not_bound_to_vector_store` | Catalog-scoped search against a catalog whose `vectorStore` is `null` |
@@ -205,21 +224,24 @@ List all workspaces, sorted by `createdAt` ascending with `uid` as
 tie-breaker. Every backend (memory / file / astra) produces the same
 ordering so UI renders are deterministic.
 
-**Response 200** — array of `Workspace`:
+**Response 200** — paginated `Workspace` records:
 
 ```json
-[
-  {
-    "uid": "…",
-    "name": "prod",
-    "endpoint": "env:ASTRA_DB_API_ENDPOINT",
-    "kind": "astra",
-    "credentialsRef": { "token": "env:ASTRA_DB_APPLICATION_TOKEN" },
-    "keyspace": "default_keyspace",
-    "createdAt": "2026-04-22T10:11:12.345Z",
-    "updatedAt": "2026-04-22T10:11:12.345Z"
-  }
-]
+{
+  "items": [
+    {
+      "uid": "…",
+      "name": "prod",
+      "endpoint": "env:ASTRA_DB_API_ENDPOINT",
+      "kind": "astra",
+      "credentialsRef": { "token": "env:ASTRA_DB_APPLICATION_TOKEN" },
+      "keyspace": "default_keyspace",
+      "createdAt": "2026-04-22T10:11:12.345Z",
+      "updatedAt": "2026-04-22T10:11:12.345Z"
+    }
+  ],
+  "nextCursor": null
+}
 ```
 
 ### `POST /api/v1/workspaces`
@@ -256,14 +278,14 @@ rejected with `400`.
 
 **Response 201** — the created `Workspace`.
 
-### `GET /api/v1/workspaces/{workspaceId}`
+### `GET /api/v1/workspaces/{workspaceUid}`
 
 Fetch a single workspace.
 
 - **200** — `Workspace`
 - **404** `workspace_not_found`
 
-### `PUT /api/v1/workspaces/{workspaceId}`
+### `PUT /api/v1/workspaces/{workspaceUid}`
 
 Patch one or more of `name`, `endpoint`, `credentialsRef`,
 `keyspace`. Every field is optional; omitted fields are preserved.
@@ -275,7 +297,7 @@ Patch one or more of `name`, `endpoint`, `credentialsRef`,
 - **400** — body contains `kind` or an unknown field
 - **404** `workspace_not_found`
 
-### `DELETE /api/v1/workspaces/{workspaceId}`
+### `DELETE /api/v1/workspaces/{workspaceUid}`
 
 Cascades to the workspace's catalogs, vector-store descriptors, and
 documents. Before removing the control-plane rows, the runtime drops
@@ -286,7 +308,7 @@ each underlying vector-store collection through the workspace's driver.
 - **503** `driver_unavailable` — workspace has vector stores but no
   registered driver to drop their collections
 
-### `POST /api/v1/workspaces/{workspaceId}/test-connection`
+### `POST /api/v1/workspaces/{workspaceUid}/test-connection`
 
 Probe the workspace's credentials. Resolves every value in
 `credentialsRef` via the runtime's `SecretResolver` and reports the
@@ -318,7 +340,7 @@ backend or validate a resolved token against the remote service.
 
 ---
 
-## `/api/v1/workspaces/{workspaceId}/api-keys`
+## `/api/v1/workspaces/{workspaceUid}/api-keys`
 
 Workspace-scoped bearer tokens. Documented in [`auth.md`](auth.md);
 re-capped here for the route contract.
@@ -343,7 +365,7 @@ An `ApiKey`:
 }
 ```
 
-- **200** — array of `ApiKey`
+- **200** — paginated `ApiKey` records
 - **404** `workspace_not_found`
 
 ### `POST`
@@ -382,13 +404,13 @@ no-op that still returns `204`.
 
 ---
 
-## `/api/v1/workspaces/{workspaceId}/catalogs`
+## `/api/v1/workspaces/{workspaceUid}/catalogs`
 
 ### `GET`
 
 List catalogs in the workspace.
 
-- **200** — array of `Catalog`
+- **200** — paginated `Catalog` records
 - **404** `workspace_not_found`
 
 A `Catalog`:
@@ -422,17 +444,20 @@ single vector store).
 - **404** `vector_store_not_found` — `vectorStore` points at a missing descriptor
 - **409** `conflict` — `uid` collision
 
-### `GET /{catalogId}` / `PUT /{catalogId}` / `DELETE /{catalogId}`
+### `GET /{catalogUid}` / `PUT /{catalogUid}` / `DELETE /{catalogUid}`
 
 Fetch / patch / delete. `DELETE` cascades to the catalog's documents.
 
 ---
 
-## `/api/v1/workspaces/{workspaceId}/vector-stores`
+## `/api/v1/workspaces/{workspaceUid}/vector-stores`
 
 ### `GET`
 
 List vector-store descriptors in the workspace.
+
+- **200** — paginated `VectorStore` records
+- **404** `workspace_not_found`
 
 A `VectorStore` descriptor:
 
@@ -532,9 +557,9 @@ Vectorless / vector-only collections (no `$vectorize` service
 configured) get a placeholder `embedding: { provider: "external",
 model: "external", … }` — clients still need to supply vectors at
 upsert / search time. Switch the descriptor to a real provider via
-`PUT /{vectorStoreId}` once you've decided on one.
+`PUT /{vectorStoreUid}` once you've decided on one.
 
-### `GET /{vectorStoreId}` / `PUT /{vectorStoreId}` / `DELETE /{vectorStoreId}`
+### `GET /{vectorStoreUid}` / `PUT /{vectorStoreUid}` / `DELETE /{vectorStoreUid}`
 
 `GET` and `PUT` operate on the descriptor only. `DELETE` drops the
 underlying Data API Collection **and** removes the descriptor.
@@ -545,7 +570,7 @@ If any catalog still references the vector store, `DELETE` returns
 `vectorDimension` on a populated store is a data-migration operation
 not yet supported.
 
-### `POST /{vectorStoreId}/records` — upsert records
+### `POST /{vectorStoreUid}/records` — upsert records
 
 **Request** — each record carries exactly one of `vector` or `text`:
 
@@ -584,7 +609,7 @@ not yet supported.
 - **400** `embedding_dimension_mismatch` — provider returned a vector whose length doesn't match the descriptor
 - **404** `workspace_not_found` / `vector_store_not_found`
 
-### `DELETE /{vectorStoreId}/records/{recordId}`
+### `DELETE /{vectorStoreUid}/records/{recordId}`
 
 Delete a single record. `recordId` is the application's `id` (not a
 UUID — any non-empty string).
@@ -595,7 +620,7 @@ UUID — any non-empty string).
 { "deleted": true }    // or false, if the record wasn't present
 ```
 
-### `POST /{vectorStoreId}/search` — vector or text search
+### `POST /{vectorStoreUid}/search` — vector or text search
 
 **Request** — exactly one of `vector` or `text`:
 
@@ -663,7 +688,7 @@ Score semantics match the descriptor's `vectorSimilarity`:
 
 ---
 
-## `/api/v1/workspaces/{workspaceId}/catalogs/{catalogId}/documents`
+## `/api/v1/workspaces/{workspaceUid}/catalogs/{catalogUid}/documents`
 
 Document **metadata** CRUD. A `Document` is a named entry in a
 catalog — the metadata row the in-process ingest pipeline attaches
@@ -702,7 +727,7 @@ external ingest driver can own the lifecycle if it prefers.
 
 List documents in the catalog.
 
-- **200** — array of `Document`
+- **200** — paginated `Document` records
 - **404** `workspace_not_found` / `catalog_not_found`
 
 ### `POST`
@@ -726,7 +751,7 @@ the catalog:
 - **404** `workspace_not_found` / `catalog_not_found`
 - **409** `conflict` — `uid` collision within the same catalog
 
-### `GET /{documentId}` / `PUT /{documentId}` / `DELETE /{documentId}`
+### `GET /{documentUid}` / `PUT /{documentUid}` / `DELETE /{documentUid}`
 
 Fetch / patch / delete. `PUT` accepts every field from the create body
 (all optional) and updates only the fields present. Cross-catalog
@@ -741,7 +766,7 @@ bulk call; older drivers fall back to a `listRecords` + per-row
 delete loop. Catalogs with no `vectorStore` binding skip the cascade
 and only drop the row.
 
-### `GET /{documentId}/chunks`
+### `GET /{documentUid}/chunks`
 
 Lists the chunks the ingest pipeline extracted from this document.
 Reads raw records out of the catalog's bound vector store filtered
@@ -791,7 +816,7 @@ into the effective filter so records outside the catalog are
 invisible.
 
 **Request** — identical envelope to
-`POST /vector-stores/{id}/search`. Either `vector` OR `text` is
+`POST /vector-stores/{vectorStoreUid}/search`. Either `vector` OR `text` is
 required; never both.
 
 ```json
@@ -921,7 +946,7 @@ caller-supplied values. `text` is capped at 200,000 characters.
 **Failure semantics.** When chunking or upsert throws, the
 `Document` row is marked `status: failed` with `errorMessage` before
 the error is re-raised. Operators can inspect the row via
-`GET /documents/{id}`.
+`GET /documents/{documentUid}`.
 
 ### `POST /ingest?async=true`
 
@@ -967,7 +992,7 @@ later slices can emit per-batch updates without a contract change.
 
 ---
 
-## `/api/v1/workspaces/{workspaceId}/jobs/{jobId}`
+## `/api/v1/workspaces/{workspaceUid}/jobs/{jobId}`
 
 Job poll surface for anything that runs in the background. Today
 only async ingest creates jobs; future bulk ops (reindex, export,
@@ -1034,11 +1059,11 @@ heartbeat threshold as failed and resubmit.
 
 ---
 
-## `/api/v1/workspaces/{workspaceId}/catalogs/{catalogId}/queries`
+## `/api/v1/workspaces/{workspaceUid}/catalogs/{catalogUid}/queries`
 
 Saved search recipes scoped to a catalog. Each `SavedQuery` carries a
 `text` plus optional `topK` and `filter`, and is replayed through the
-catalog-scoped search path by `POST /{queryId}/run`.
+catalog-scoped search path by `POST /{queryUid}/run`.
 
 Deleting a workspace or catalog cascades to its saved queries (every
 backend — memory, file, astra).
@@ -1068,7 +1093,7 @@ search body directly against `POST /documents/search`.
 
 List saved queries in the catalog.
 
-- **200** — array of `SavedQuery`
+- **200** — paginated `SavedQuery` records
 - **404** `workspace_not_found` / `catalog_not_found`
 
 ### `POST`
@@ -1089,13 +1114,13 @@ Create a saved query. `uid` is optional.
 - **404** `workspace_not_found` / `catalog_not_found`
 - **409** `conflict` — `uid` collision within the same catalog
 
-### `GET /{queryId}` / `PUT /{queryId}` / `DELETE /{queryId}`
+### `GET /{queryUid}` / `PUT /{queryUid}` / `DELETE /{queryUid}`
 
 Fetch / patch / delete. `PUT` accepts every field from create (all
 optional). Deleting a non-existent query returns
 `404 saved_query_not_found`.
 
-### `POST /{queryId}/run`
+### `POST /{queryUid}/run`
 
 Execute a saved query and return the hits. The catalog's UID is
 merged into the effective filter — a saved filter carrying a

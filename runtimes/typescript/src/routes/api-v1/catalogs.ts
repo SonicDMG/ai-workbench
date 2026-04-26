@@ -1,5 +1,5 @@
 /**
- * `/api/v1/workspaces/{workspaceId}/catalogs` — catalog CRUD.
+ * `/api/v1/workspaces/{workspaceUid}/catalogs` — catalog CRUD.
  *
  * Scoping is explicit in every path; the store enforces that the
  * workspace exists and raises `workspace_not_found` (404) if not.
@@ -10,14 +10,17 @@ import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import { makeOpenApi } from "../../lib/openapi.js";
+import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
-	CatalogIdParamSchema,
+	CatalogPageSchema,
 	CatalogRecordSchema,
+	CatalogUidParamSchema,
 	CreateCatalogInputSchema,
 	ErrorEnvelopeSchema,
+	PaginationQuerySchema,
 	UpdateCatalogInputSchema,
-	WorkspaceIdParamSchema,
+	WorkspaceUidParamSchema,
 } from "../../openapi/schemas.js";
 
 export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
@@ -26,14 +29,17 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceId}/catalogs",
+			path: "/{workspaceUid}/catalogs",
 			tags: ["catalogs"],
 			summary: "List catalogs in a workspace",
-			request: { params: z.object({ workspaceId: WorkspaceIdParamSchema }) },
+			request: {
+				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
+				query: PaginationQuerySchema,
+			},
 			responses: {
 				200: {
 					content: {
-						"application/json": { schema: z.array(CatalogRecordSchema) },
+						"application/json": { schema: CatalogPageSchema },
 					},
 					description: "All catalogs in the workspace",
 				},
@@ -44,21 +50,22 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
-			const rows = await store.listCatalogs(workspaceId);
-			return c.json([...rows], 200);
+			const { workspaceUid } = c.req.valid("param");
+			const query = c.req.valid("query");
+			assertWorkspaceAccess(c, workspaceUid);
+			const rows = await store.listCatalogs(workspaceUid);
+			return c.json(paginate(rows, query), 200);
 		},
 	);
 
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceId}/catalogs",
+			path: "/{workspaceUid}/catalogs",
 			tags: ["catalogs"],
 			summary: "Create a catalog in a workspace",
 			request: {
-				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
+				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
 				body: {
 					content: {
 						"application/json": { schema: CreateCatalogInputSchema },
@@ -81,10 +88,10 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 			const body = c.req.valid("json");
-			const record = await store.createCatalog(workspaceId, body);
+			const record = await store.createCatalog(workspaceUid, body);
 			return c.json(record, 201);
 		},
 	);
@@ -92,13 +99,13 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceId}/catalogs/{catalogId}",
+			path: "/{workspaceUid}/catalogs/{catalogUid}",
 			tags: ["catalogs"],
 			summary: "Get a catalog",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					catalogId: CatalogIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					catalogUid: CatalogUidParamSchema,
 				}),
 			},
 			responses: {
@@ -113,10 +120,10 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId, catalogId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
-			const record = await store.getCatalog(workspaceId, catalogId);
-			if (!record) throw new ControlPlaneNotFoundError("catalog", catalogId);
+			const { workspaceUid, catalogUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
+			const record = await store.getCatalog(workspaceUid, catalogUid);
+			if (!record) throw new ControlPlaneNotFoundError("catalog", catalogUid);
 			return c.json(record, 200);
 		},
 	);
@@ -124,13 +131,13 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "put",
-			path: "/{workspaceId}/catalogs/{catalogId}",
+			path: "/{workspaceUid}/catalogs/{catalogUid}",
 			tags: ["catalogs"],
 			summary: "Update a catalog",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					catalogId: CatalogIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					catalogUid: CatalogUidParamSchema,
 				}),
 				body: {
 					content: {
@@ -150,10 +157,10 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId, catalogId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
+			const { workspaceUid, catalogUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
 			const body = c.req.valid("json");
-			const record = await store.updateCatalog(workspaceId, catalogId, body);
+			const record = await store.updateCatalog(workspaceUid, catalogUid, body);
 			return c.json(record, 200);
 		},
 	);
@@ -161,13 +168,13 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceId}/catalogs/{catalogId}",
+			path: "/{workspaceUid}/catalogs/{catalogUid}",
 			tags: ["catalogs"],
 			summary: "Delete a catalog (cascades to its documents)",
 			request: {
 				params: z.object({
-					workspaceId: WorkspaceIdParamSchema,
-					catalogId: CatalogIdParamSchema,
+					workspaceUid: WorkspaceUidParamSchema,
+					catalogUid: CatalogUidParamSchema,
 				}),
 			},
 			responses: {
@@ -179,10 +186,10 @@ export function catalogRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceId, catalogId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
-			const { deleted } = await store.deleteCatalog(workspaceId, catalogId);
-			if (!deleted) throw new ControlPlaneNotFoundError("catalog", catalogId);
+			const { workspaceUid, catalogUid } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceUid);
+			const { deleted } = await store.deleteCatalog(workspaceUid, catalogUid);
+			if (!deleted) throw new ControlPlaneNotFoundError("catalog", catalogUid);
 			return c.body(null, 204);
 		},
 	);
