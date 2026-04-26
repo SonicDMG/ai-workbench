@@ -112,7 +112,7 @@ All routes documented at `/docs` (Scalar UI) and
 | `GET / POST` | `/api/v1/workspaces/{w}/catalogs` | List / create catalogs |
 | `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/catalogs/{c}` | Catalog CRUD (DELETE cascades to documents + saved queries) |
 | `GET / POST` | `/api/v1/workspaces/{w}/catalogs/{c}/documents` | List / create document metadata |
-| `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/catalogs/{c}/documents/{d}` | Document metadata CRUD |
+| `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/catalogs/{c}/documents/{d}` | Document metadata CRUD (DELETE cascades chunks via the bound vector store) |
 | `GET` | `/api/v1/workspaces/{w}/catalogs/{c}/documents/{d}/chunks` | List the chunks under a document (id, chunkIndex, text, payload) |
 | `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/documents/search` | Catalog-scoped search (vector / text, optional hybrid + rerank) |
 | `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/ingest` | Sync ingest (chunk → embed → upsert → register Document) |

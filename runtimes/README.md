@@ -22,7 +22,7 @@ Astra Data API (via language-native SDK: astrapy, astra-db-ts, …)
 
 | Runtime | Path | Status | Astra SDK |
 |---|---|---|---|
-| TypeScript | [`typescript/`](./typescript/) | Operational through Phase 3 + auth (UI, playground, API keys, OIDC login + silent refresh, vector/text search, hybrid + rerank, sync/async ingest, durable JobStore with cross-replica subscription polling, lease/heartbeat, orphan sweeper, saved queries) | `@datastax/astra-db-ts` |
+| TypeScript | [`typescript/`](./typescript/) | Operational through Phase 3 + auth (UI, playground, API keys, OIDC login + silent refresh, vector/text search, hybrid + rerank, sync/async ingest with pipeline resume after orphan reclaim, durable JobStore with cross-replica subscription polling + lease/heartbeat + orphan sweeper, saved queries, chunks listing, document delete cascade, adopt-existing-collection flow) | `@datastax/astra-db-ts` |
 | Python | [`python/`](./python/) | Scaffold — routes return 501 until implemented | `astrapy` (pending) |
 | Java | [`java/`](./java/) | Scaffold (Spring Boot) — routes return 501 until implemented | `astra-db-java` (pending) |
 

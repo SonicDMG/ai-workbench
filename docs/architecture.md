@@ -86,8 +86,9 @@ implementations:
 | `file` | [`file/store.ts`](../runtimes/typescript/src/control-plane/file/store.ts) | Single-node self-hosted. Per-table mutex + atomic rename. |
 | `astra` | [`astra/store.ts`](../runtimes/typescript/src/control-plane/astra/store.ts) | Production. Data API Tables via `astra-db-ts`. |
 
-All three pass the same 14-assertion shared contract suite in
-[`runtimes/typescript/tests/control-plane/contract.ts`](../runtimes/typescript/tests/control-plane/contract.ts).
+All three pass the same shared contract suite in
+[`runtimes/typescript/tests/control-plane/contract.ts`](../runtimes/typescript/tests/control-plane/contract.ts)
+(24 assertions today; grows as routes ship).
 
 ### Vector-store drivers (`runtimes/typescript/src/drivers/`)
 
@@ -97,7 +98,7 @@ owns **actual vectors** on a per-workspace backend.
 
 | File | Purpose |
 |---|---|
-| [`vector-store.ts`](../runtimes/typescript/src/drivers/vector-store.ts) | Driver interface — `createCollection`, `dropCollection`, `upsert`, `deleteRecord`, `search` |
+| [`vector-store.ts`](../runtimes/typescript/src/drivers/vector-store.ts) | Driver interface — `createCollection`, `dropCollection`, `upsert`, `deleteRecord`, `search`, plus optional `searchByText`, `upsertByText`, `searchHybrid`, `rerank`, `listAdoptable` (adopt-existing), `listRecords` (chunks under a document), `deleteRecords` (delete-document cascade) |
 | [`mock/store.ts`](../runtimes/typescript/src/drivers/mock/store.ts) | In-memory driver; used by workspaces with `kind: "mock"` and by the conformance suite |
 | [`astra/store.ts`](../runtimes/typescript/src/drivers/astra/store.ts) | Data API Collections via `astra-db-ts`; per-workspace `DataAPIClient` cache, lazy init |
 | [`registry.ts`](../runtimes/typescript/src/drivers/registry.ts) | Dispatches based on `workspace.kind`; unknown kinds surface as `503 driver_unavailable` |

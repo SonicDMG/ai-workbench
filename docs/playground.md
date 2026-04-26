@@ -143,9 +143,14 @@ store has the relevant capabilities enabled on its descriptor:
   routes through `findAndRerank` (one call); on `mock` it's
   vector + tokenizer-based lexical with min-max normalization.
   Requires `text` (not vector) input. Toggling Hybrid on reveals
-  a **lexical-weight slider** (0–1, default 0.5) which is forwarded
-  as `lexicalWeight` on the search request body. Honored on
-  `mock`; ignored on `astra` (the reranker owns the blend).
+  a **lexical-weight slider** that controls the blend:
+  - `0` → vector-only (lexical signal contributes nothing)
+  - `0.5` → balanced (default)
+  - `1` → lexical-only (vector signal contributes nothing)
+  The 0–1 value is forwarded as `lexicalWeight` on the search
+  request body. Step is `0.05`. Honored on `mock`; ignored on
+  `astra` (the reranker owns the blend, so any value the slider
+  sends is dropped server-side).
 - **Rerank** — flips `rerank: true`. On `mock` this is a
   standalone post-processing phase over the retrieval hits. On
   `astra` standalone rerank is **not** exposed — pair `rerank`
@@ -157,14 +162,33 @@ Both toggles default to the bound store's descriptor-level
 relevant method return 501 (`hybrid_not_supported` /
 `rerank_not_supported`); the UI surfaces these as a toast.
 
+## Hits are chunks, not documents
+
+The vector store indexes at the chunk level. A document ingested
+with three paragraphs becomes three chunks; a search query can
+return all three as separate hits. The results table reflects that
+shape directly: each row shows the chunk's `chunkIndex` (its
+0-based position within the source document), the parent
+`documentUid`, and a 2-line preview of the chunk's text. Click a
+row to expand the full payload and score.
+
+To browse chunks **under** a specific document — for inspection,
+not search — open the catalog explorer's document detail dialog
+(click any row in the documents table). The detail dialog lists
+the chunks under that document directly, sorted by `chunkIndex`,
+sourced from `GET /catalogs/{c}/documents/{d}/chunks`.
+
 ## Catalog ingest from the workspace UI
 
 Ingest now has a dedicated UI surface, complementing the data-plane
 `POST .../records` upsert path:
 
-- **Workspace detail → Catalogs → Ingest** opens a dialog that
-  drops a file in (or pastes raw text), picks `async=true`/false,
-  and either returns the synchronous response or kicks off a job.
+- **Workspace detail → Catalogs → Ingest** (or **Open** → catalog
+  explorer → **Ingest**) opens a multi-file / folder queue. Drop
+  files (or pick a folder via the directory picker) and they
+  ingest sequentially through the bound vector store. Each row
+  shows live progress for the active file and terminal status for
+  everything before it.
 - Async ingest jobs stream progress via the SSE
   `GET .../jobs/{jobId}/events` endpoint until a terminal state.
   The dialog renders the live `processed/total` counter and
@@ -173,6 +197,14 @@ Ingest now has a dedicated UI surface, complementing the data-plane
 The playground stays a scratchpad — no ingest in the playground
 itself. Use the workspace UI to populate a catalog, then come back
 to the playground to query it.
+
+## Document delete cascade
+
+The catalog explorer's per-row trash button removes a document
+**and** its chunks. The runtime resolves the catalog → bound
+vector store and runs `deleteRecords` on the driver before
+dropping the document row, so deleted documents stop surfacing in
+catalog-scoped search hits immediately.
 
 ## Saved queries
 

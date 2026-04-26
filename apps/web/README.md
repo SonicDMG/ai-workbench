@@ -112,8 +112,20 @@ The catalog explorer adds:
 
 - A document table with sortable columns (name, size, chunks, status, ingestedAt) and an inline filename/source-id filter.
 - Color-coded `FileTypeBadge` (Markdown violet, structured-data emerald, tabular amber, code blue, etc.) and pill-shaped `DocumentStatusBadge` (animated glyph for in-flight states).
-- Click-through metadata dialog showing the full Document record + the failure message verbatim when status is `failed`.
+- Per-row trash button that pops a confirm dialog and runs the cascade-delete: the bound vector store's chunks are wiped before the document row is dropped, so deleted documents don't surface in playground searches.
+- Click-through metadata dialog showing the full Document record, the failure message verbatim when status is `failed`, **and** the chunks the runtime extracted (chunk index, id, and snippet text — text comes from the reserved `chunkText` payload key the ingest pipeline stamps).
 - An ingest queue dialog accepting drag-drop, multi-file picker, or a folder picker (`webkitdirectory`). Files run sequentially through async ingest with a per-row live progress bar — sequential rather than parallel so embedding-provider rate limits stay predictable and a misbehaving file doesn't tank the others.
+
+The vector-stores panel on the workspace detail also exposes an
+**Adopt existing** button. It opens a dialog listing collections
+that already live in the workspace's data plane but aren't yet
+wrapped in a workbench descriptor (created by another tool, by
+hand, by an older workbench install whose state was wiped). One
+click adopts the collection — the runtime reads the live vector /
+lexical / rerank options off the data plane and stamps a matching
+descriptor without re-provisioning. Mock workspaces always see
+the empty state since the mock driver has no notion of "external"
+collections.
 
 ## Stack
 
@@ -187,7 +199,8 @@ apps/web/
 │   │       ├── IngestQueueDialog.tsx ← multi-file / folder ingest queue
 │   │       ├── SavedQueriesSection.tsx
 │   │       ├── VectorStoresPanel.tsx
-│   │       └── CreateVectorStoreDialog.tsx
+│   │       ├── CreateVectorStoreDialog.tsx
+│   │       └── AdoptCollectionDialog.tsx ← discover + adopt existing collections
 │   └── pages/
 │       ├── WorkspacesPage.tsx
 │       ├── OnboardingPage.tsx

@@ -11,7 +11,7 @@ runnable artifact and a stable slice of the HTTP contract.
 | 1a | Control-plane CRUD (`/api/v1/workspaces`, `/catalogs`, `/vector-stores`) | ✅ Shipped |
 | 1b | Vector-store data plane (provisioning, upsert, search) | ✅ Shipped |
 | 2a | Document metadata CRUD (`/catalogs/{c}/documents`) | ✅ Shipped |
-| 2b | Ingest + catalog-scoped search + saved queries | In progress — search, sync+async ingest, jobs/SSE shipped ingest, saved queries shipped |
+| 2b | Ingest + catalog-scoped search + saved queries + cross-replica jobs + adopt + document chunks/delete cascade | ✅ Shipped |
 | 2c | Server-side embedding (Astra `$vectorize`) for search + upsert | ✅ Shipped |
 | 3 | Playground + UI | ✅ Shipped |
 | Auth | Middleware, API keys, OIDC verifier, browser login, silent refresh | ✅ Shipped (1–3c); 4 (RBAC) planned |
@@ -169,11 +169,16 @@ Shipped in this phase so far:
 - **Orphan sweeper.** Off by default; clustered deployments opt in
   via `controlPlane.jobsResume`. When on, every replica scans for
   `running` jobs whose lease is older than `graceMs` and CAS-claims
-  them, marking them `failed` with an actionable error. Pipeline
-  resume from the last upserted chunk is the remaining piece — the
-  sweeper currently fails the orphan instead of replaying because
-  the original `IngestRequest` (text, chunker opts) isn't persisted
-  alongside the job.
+  them.
+- **Pipeline resume after orphan reclaim.** Async-ingest jobs
+  persist an `IngestInputSnapshot` alongside the job record (the
+  `ingest_input_json` column on `wb_jobs_by_workspace`). When the
+  sweeper claims an orphan, it replays the original ingest through
+  the shared `runIngestJob` worker — chunk IDs are deterministic
+  (`${documentUid}:${chunk.index}`) so the upsert is idempotent.
+  Wasted embedding cost on the second pass, correct final state.
+  Older jobs without a snapshot, and any future non-`ingest` kinds,
+  fall back to the original mark-failed path.
 - **Saved queries** — `/api/v1/workspaces/{w}/catalogs/{c}/queries`
   CRUD + `POST /{q}/run` that replays through the catalog-scoped
   search path. Text-only; the `/run` endpoint merges the catalog's
@@ -182,14 +187,26 @@ Shipped in this phase so far:
   (`wb_saved_queries_by_catalog` on astra); cascades on
   workspace/catalog delete. Covered by scenario
   `catalog-saved-queries`.
+- **Adopt existing collections** —
+  `GET /vector-stores/discoverable` + `POST /vector-stores/adopt`.
+  Operators with collections that already exist in their Astra DB
+  (created by another tool, by hand, or by an older workbench
+  install whose state was wiped) can wrap them in a workbench
+  descriptor without re-provisioning. The driver's
+  `listAdoptable(workspace)` reads the live collection's vector /
+  lexical / rerank options off the data plane; the adopt route
+  stamps a descriptor mirroring them.
+- **Document chunks listing + delete cascade** —
+  `GET /catalogs/{c}/documents/{d}/chunks` returns the chunks under
+  one document (id, chunkIndex, text, payload). The ingest pipeline
+  stamps a reserved `chunkText` payload key so the text is always
+  retrievable through the new endpoint, regardless of whether
+  `$vectorize` was used. `DELETE /catalogs/{c}/documents/{d}` now
+  cascades into the bound vector store via the new driver method
+  `deleteRecords(ctx, filter)` so chunks no longer orphan when a
+  document is removed.
 
-Planned for the rest of 2b:
-
-- **Pipeline resume after orphan reclaim.** Persist the original
-  `IngestRequest` alongside the job (a new `ingest_input_json`
-  column) so the sweeper can replay from `processed` instead of
-  marking the job failed. Design in
-  [`cross-replica-jobs.md`](cross-replica-jobs.md).
+Phase 2b is closed.
 
 Workspace-scoped API keys moved into their own dedicated auth
 track — see [`auth.md`](auth.md) for the phased rollout.

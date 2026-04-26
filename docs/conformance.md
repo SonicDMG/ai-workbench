@@ -87,6 +87,21 @@ Current scenarios:
 | `vector-store-hybrid-and-rerank-mock` | `hybrid: true` + `rerank: true` + `lexicalWeight` lanes; `400 validation_error` for hybrid with a vector body |
 | `catalog-async-ingest-202` | 202 wire shape for `?async=true` (job snapshot at creation time is deterministic; eventual completion stays in runtime tests) |
 
+The runtime additionally tests the following routes through its
+own Vitest suite (timing- or driver-method-dependent, so they
+don't fit the cross-runtime fixture model):
+
+- `GET /catalogs/{c}/documents/{d}/chunks` — driver-side
+  `listRecords` filtered by `documentUid`
+- `GET /vector-stores/discoverable` + `POST /vector-stores/adopt`
+  — driver-side `listAdoptable`, mocked
+- `DELETE /catalogs/{c}/documents/{d}` — chunk-cascade via
+  driver `deleteRecords`
+
+These move into conformance once a second runtime starts
+implementing them and the fixture format proves stable across
+drivers.
+
 More land as chat and MCP routes ship.
 
 ## Fixtures
