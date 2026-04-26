@@ -59,8 +59,9 @@ runtime beyond a trusted loopback or private admin network.
 - **Apply rate limiting upstream.** The runtime has body and field
   limits, but IP/user/workspace rate limiting is not built in yet.
 - **Keep dependency automation on.** CI runs lint/typecheck/test/build,
-  coverage, CodeQL, secret scanning, Docker smoke, Playwright,
-  Python/Java scaffold tests, and Dependabot updates.
+  coverage, secret scanning, Docker smoke, Playwright, Python/Java
+  scaffold tests, and Dependabot updates. GitHub CodeQL default setup
+  covers code scanning for this repo.
 
 ## Browser posture
 

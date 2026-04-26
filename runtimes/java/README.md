@@ -19,7 +19,7 @@ Swagger UI. Every `/api/v1/*` route currently throws
 ## Prerequisites
 
 - **JDK 21** (LTS). Check with `java -version`.
-- **Gradle 8.5+** — or generate the wrapper (see "Gradle wrapper" below)
+- **Gradle 8.14+** — or generate the wrapper (see "Gradle wrapper" below)
   and use `./gradlew` instead.
 
 ## Quickstart
@@ -28,7 +28,7 @@ Swagger UI. Every `/api/v1/*` route currently throws
 cd runtimes/java
 
 # If the Gradle wrapper is missing from this directory, generate it once:
-gradle wrapper --gradle-version 8.10
+gradle wrapper --gradle-version 8.14.3
 
 # From here on use the wrapper — no system Gradle needed.
 ./gradlew bootRun                                # http://localhost:8080
@@ -183,7 +183,7 @@ committed to keep the scaffold text-only. Generate them once on first
 checkout:
 
 ```bash
-gradle wrapper --gradle-version 8.10
+gradle wrapper --gradle-version 8.14.3
 ```
 
 After that, commit the generated wrapper files in your first
