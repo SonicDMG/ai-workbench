@@ -33,7 +33,7 @@ describe("CreateApiKeyDialog", () => {
 
 	it("creates a trimmed API key label and reveals plaintext exactly once", async () => {
 		mutateAsync.mockResolvedValue({
-			plaintext: "wb_live_abcdefghijkl_0123456789abcdefghijklmnopqrstuv",
+			plaintext: "wb_test_fake_key_for_ui_reveal",
 			key: {
 				label: "ci",
 			},
@@ -57,7 +57,7 @@ describe("CreateApiKeyDialog", () => {
 		);
 		expect(await screen.findByText("Copy your key now")).toBeInTheDocument();
 		expect(
-			screen.getByText("wb_live_abcdefghijkl_0123456789abcdefghijklmnopqrstuv"),
+			screen.getByText("wb_test_fake_key_for_ui_reveal"),
 		).toBeInTheDocument();
 		expect(toast.success).toHaveBeenCalledWith("API key 'ci' created");
 	});
