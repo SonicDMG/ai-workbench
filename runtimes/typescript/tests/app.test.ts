@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.js";
 import { ApiKeyVerifier } from "../src/auth/apiKey/verifier.js";
+import { BootstrapTokenVerifier } from "../src/auth/bootstrap.js";
 import { AuthResolver } from "../src/auth/resolver.js";
 import type { AnonymousPolicy, AuthMode } from "../src/auth/types.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
@@ -128,6 +129,20 @@ describe("operational routes", () => {
 		const { app } = makeApp();
 		const res = await app.request("/healthz");
 		expect(res.headers.get("X-Request-Id")).toBeTruthy();
+	});
+
+	test("responses carry browser security headers", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/healthz");
+		expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+		expect(res.headers.get("X-Frame-Options")).toBe("DENY");
+		expect(res.headers.get("Referrer-Policy")).toBe(
+			"strict-origin-when-cross-origin",
+		);
+		expect(res.headers.get("Content-Security-Policy")).toContain(
+			"frame-ancestors 'none'",
+		);
+		expect(res.headers.get("Permissions-Policy")).toContain("camera=()");
 	});
 
 	test("echoes client-provided request id", async () => {
@@ -1974,6 +1989,36 @@ describe("vector-store routes", () => {
 		expect(body.error.code).toBe("conflict");
 		expect(await store.getVectorStore(ws.uid, vs.uid)).not.toBeNull();
 	});
+
+	test("PUT rejects descriptor patches that would drift from the collection", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(MOCK_WORKSPACE);
+		const create = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(BASE_VECTOR_STORE),
+			},
+		);
+		const vs = await json(create);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws.uid}/vector-stores/${vs.uid}`,
+			{
+				method: "PUT",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ vectorDimension: 768 }),
+			},
+		);
+
+		expect(res.status).toBe(409);
+		const body = await json(res);
+		expect(body.error.code).toBe("conflict");
+		expect(body.error.message).toMatch(/immutable/);
+		expect((await store.getVectorStore(ws.uid, vs.uid))?.vectorDimension).toBe(
+			1536,
+		);
+	});
 });
 
 describe("vector-store data plane", () => {
@@ -2606,6 +2651,48 @@ describe("api-key routes + apiKey mode end-to-end", () => {
 		expect(res.status).toBe(401);
 		const body = await json(res);
 		expect(body.error.message).toMatch(/revoked/i);
+	});
+});
+
+describe("bootstrap operator token", () => {
+	test("can create the first workspace while anonymous requests are rejected", async () => {
+		const store = new MemoryControlPlaneStore();
+		const driver = new MockVectorStoreDriver();
+		const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const auth = new AuthResolver({
+			mode: "apiKey",
+			anonymousPolicy: "reject",
+			verifiers: [
+				new BootstrapTokenVerifier({
+					token: "wb_bootstrap_test_token_1234567890abcdef",
+				}),
+			],
+		});
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory(),
+		});
+
+		const anonymous = await app.request("/api/v1/workspaces", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ name: "blocked", kind: "mock" }),
+		});
+		expect(anonymous.status).toBe(401);
+
+		const authed = await app.request("/api/v1/workspaces", {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				authorization: "Bearer wb_bootstrap_test_token_1234567890abcdef",
+			},
+			body: JSON.stringify({ name: "created", kind: "mock" }),
+		});
+		expect(authed.status).toBe(201);
 	});
 });
 

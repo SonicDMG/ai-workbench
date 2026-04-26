@@ -98,6 +98,7 @@ async function main(): Promise<void> {
 		auth: {
 			mode: "disabled" as const,
 			anonymousPolicy: "allow" as const,
+			bootstrapTokenRef: null,
 		},
 		seedWorkspaces: [],
 	};
@@ -109,7 +110,7 @@ async function main(): Promise<void> {
 	});
 	const drivers = buildVectorStoreDriverRegistry({ secrets });
 	const embedders = makeEmbedderFactory({ secrets });
-	const auth = await buildAuthResolver(config.auth, { store });
+	const auth = await buildAuthResolver(config.auth, { store, secrets });
 
 	const app = createApp({
 		store,

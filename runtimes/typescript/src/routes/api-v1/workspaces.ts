@@ -22,6 +22,7 @@ import type {
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import { makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
+import { safeErrorMessage } from "../../lib/safe-error.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	CreateWorkspaceInputSchema,
@@ -254,12 +255,11 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 				try {
 					await secrets.resolve(ref);
 				} catch (err) {
-					const reason = err instanceof Error ? err.message : String(err);
 					return c.json(
 						{
 							ok: false,
 							kind: ws.kind,
-							details: `credential '${name}' could not be resolved: ${reason}`,
+							details: `credential '${name}' could not be resolved: ${safeErrorMessage(err, "secret resolution failed")}`,
 						},
 						200,
 					);

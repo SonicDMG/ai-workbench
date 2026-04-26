@@ -75,6 +75,9 @@ controlPlane:
 # auth:
 #   mode: apiKey
 #   anonymousPolicy: reject
+#   # Optional break-glass token for first-workspace/API-key setup.
+#   # Resolve from a 32+ character secret and rotate/remove after use.
+#   # bootstrapTokenRef: env:WB_BOOTSTRAP_TOKEN
 
 # OIDC bearer tokens (Phase 3). The runtime verifies JWT signatures
 # against the issuer's JWKS at request time. Set mode: any if you
@@ -82,6 +85,7 @@ controlPlane:
 # auth:
 #   mode: oidc
 #   anonymousPolicy: reject
+#   # bootstrapTokenRef: env:WB_BOOTSTRAP_TOKEN
 #   oidc:
 #     issuer: https://login.example.com/realms/workbench
 #     audience: ai-workbench

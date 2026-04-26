@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { mintToken, verifyToken } from "../../src/auth/apiKey/token.js";
 import { ApiKeyVerifier } from "../../src/auth/apiKey/verifier.js";
+import { BootstrapTokenVerifier } from "../../src/auth/bootstrap.js";
 import { UnauthorizedError } from "../../src/auth/errors.js";
 import { MemoryControlPlaneStore } from "../../src/control-plane/memory/store.js";
 
@@ -49,6 +50,29 @@ describe("mintToken / verifyToken", () => {
 	test("verifyToken returns false on malformed storage", async () => {
 		expect(await verifyToken("wb_live_xxx", "not-an-scrypt-hash")).toBe(false);
 		expect(await verifyToken("wb_live_xxx", "scrypt$xx$yy")).toBe(false);
+	});
+});
+
+describe("BootstrapTokenVerifier", () => {
+	test("returns an unscoped operator subject for the configured token", async () => {
+		const verifier = new BootstrapTokenVerifier({
+			token: "wb_bootstrap_test_token_1234567890abcdef",
+		});
+		const subject = await verifier.verify(
+			"wb_bootstrap_test_token_1234567890abcdef",
+		);
+		expect(subject).toMatchObject({
+			type: "bootstrap",
+			id: "bootstrap",
+			workspaceScopes: null,
+		});
+	});
+
+	test("returns null for any other bearer token so other schemes can try", async () => {
+		const verifier = new BootstrapTokenVerifier({
+			token: "wb_bootstrap_test_token_1234567890abcdef",
+		});
+		expect(await verifier.verify("not-the-token")).toBeNull();
 	});
 });
 

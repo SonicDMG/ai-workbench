@@ -78,6 +78,7 @@ function authConfig(): AuthConfig {
 	return {
 		mode: "oidc",
 		anonymousPolicy: "reject",
+		bootstrapTokenRef: null,
 		oidc: {
 			issuer: ISSUER,
 			audience: AUD,
@@ -556,6 +557,7 @@ describe("/auth/* without browser-login configured", () => {
 				authConfig: {
 					mode: "disabled",
 					anonymousPolicy: "allow",
+					bootstrapTokenRef: null,
 				} as AuthConfig,
 				endpoints: null,
 				clientSecret: null,

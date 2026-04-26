@@ -18,25 +18,27 @@ contract first, then the runtime architecture behind them.
    and cascade rules.
 4. [`configuration.md`](configuration.md) — the `workbench.yaml`
    schema and deployment-oriented settings.
-5. [`architecture.md`](architecture.md) — runtime model and how the
+5. [`production.md`](production.md) — deployment hardening checklist
+   for auth, persistence, secrets, and browser posture.
+6. [`architecture.md`](architecture.md) — runtime model and how the
    pieces fit together.
-6. [`green-boxes.md`](green-boxes.md) — the multi-runtime model and
+7. [`green-boxes.md`](green-boxes.md) — the multi-runtime model and
    why we ship language-native implementations.
-7. [`api-spec.md`](api-spec.md) — HTTP contract narrative (what
+8. [`api-spec.md`](api-spec.md) — HTTP contract narrative (what
    operational routes exist, what errors are possible, what's
    planned).
-8. [`auth.md`](auth.md) — the `/api/v1/*` auth middleware: config,
+9. [`auth.md`](auth.md) — the `/api/v1/*` auth middleware: config,
    contract, threat model, rollout phases.
-9. [`conformance.md`](conformance.md) — how we keep language
+10. [`conformance.md`](conformance.md) — how we keep language
    runtimes in lockstep via shared fixtures.
-10. [`roadmap.md`](roadmap.md) — phased delivery plan and open
+11. [`roadmap.md`](roadmap.md) — phased delivery plan and open
    questions.
 
 ## Design notes
 
-- [`cross-replica-jobs.md`](cross-replica-jobs.md) — proposed design
-  for cross-replica job pub/sub and in-flight resume after restart.
-  No code yet; sets the seam for the follow-up PR.
+- [`cross-replica-jobs.md`](cross-replica-jobs.md) — shipped design
+  for cross-replica job pub/sub, lease reclaim, and in-flight ingest
+  resume.
 
 ## Samples
 

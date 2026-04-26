@@ -11,7 +11,7 @@
 export interface SessionSubject {
 	readonly id: string;
 	readonly label: string | null;
-	readonly type: "apiKey" | "oidc";
+	readonly type: "apiKey" | "oidc" | "bootstrap";
 	readonly workspaceScopes: readonly string[] | null;
 	/** Unix seconds when the access token expires, or null when the
 	 * token is opaque (no JWT exp claim). Used to schedule silent

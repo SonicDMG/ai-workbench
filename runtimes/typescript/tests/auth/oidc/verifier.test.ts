@@ -99,7 +99,7 @@ describe("OidcVerifier.verify", () => {
 	test("returns null for non-JWT-shaped tokens (lets apiKey verifier try)", async () => {
 		const v = new OidcVerifier({ config: baseConfig(), getKey });
 		expect(
-			await v.verify("wb_live_abcdefghijkl_0123456789abcdef0123456789abcdef"),
+			await v.verify("wb_live_abcdefghijkl_0123456789abcdef0123456789abcdef"), // secret-scan: allow
 		).toBe(null);
 		expect(await v.verify("not-a-jwt")).toBe(null);
 		expect(await v.verify("")).toBe(null);

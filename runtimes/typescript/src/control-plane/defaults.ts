@@ -4,6 +4,8 @@
  * all produce structurally identical records for identical input.
  */
 
+import { ControlPlaneConflictError } from "./errors.js";
+import type { UpdateVectorStoreInput } from "./store.js";
 import type {
 	LexicalConfig,
 	RerankingConfig,
@@ -58,4 +60,20 @@ export function byCreatedAtThenKeyId<
 	if (a.keyId < b.keyId) return -1;
 	if (a.keyId > b.keyId) return 1;
 	return 0;
+}
+
+/**
+ * Vector-store descriptors mirror real collections. Mutating any
+ * collection-defining field in-place would make the control plane lie
+ * about the data plane, so updates are intentionally rejected until a
+ * real migration/reconcile endpoint exists.
+ */
+export function assertVectorStorePatchIsEmpty(
+	patch: UpdateVectorStoreInput,
+): void {
+	const keys = Object.keys(patch);
+	if (keys.length === 0) return;
+	throw new ControlPlaneConflictError(
+		`vector-store descriptors are immutable after creation; attempted to update ${keys.join(", ")}. Create a new vector store or use a future migration endpoint.`,
+	);
 }

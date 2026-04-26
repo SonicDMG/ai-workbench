@@ -6,7 +6,8 @@ middleware. Operators configure it via the `auth:` block in
 context.
 
 This doc covers the contract, the threat model, the config, and the
-rollout plan. Current status: **Phase 3b — OIDC browser login live**.
+rollout plan. Current status: **Phase 3c — OIDC browser login +
+silent refresh live**.
 Workspace-scoped `wb_live_*` tokens (`mode: apiKey`) and JWT
 bearer tokens from an OIDC issuer (`mode: oidc`) are both accepted;
 `mode: any` registers both so either shape authenticates. When
@@ -291,9 +292,31 @@ and constant-time-compares the stored digest. On success it bumps
 are actually in use.
 
 The runtime never auto-creates an initial bootstrap key — that's a
-Phase 4 concern. For now, issue the first key while `mode:
-disabled` (or `apiKey + anonymousPolicy: allow`), then flip to
-strict enforcement.
+Phase 4 concern. For strict deployments today, set
+`auth.bootstrapTokenRef` to a 32+ character SecretRef, call the API
+with `Authorization: Bearer <bootstrap-token>` to create the first
+workspace/API key, then remove or rotate that bootstrap secret.
+
+## Bootstrap operator token
+
+`auth.bootstrapTokenRef` is an optional SecretRef accepted when
+`auth.mode` is `apiKey`, `oidc`, or `any`. The resolved bearer token
+authenticates as an unscoped operator subject
+(`workspaceScopes: null`), so it can create the first workspace and
+issue the first workspace-scoped API key while
+`anonymousPolicy: reject` is already enforced.
+
+Example:
+
+```yaml
+auth:
+  mode: apiKey
+  anonymousPolicy: reject
+  bootstrapTokenRef: env:WB_BOOTSTRAP_TOKEN
+```
+
+Use a high-entropy value, store it outside source control, and rotate
+or remove it after normal operator access is established.
 
 ## OIDC (Phase 3a)
 

@@ -36,6 +36,7 @@ import { MAX_API_JSON_BODY_BYTES } from "./lib/limits.js";
 import { logger } from "./lib/logger.js";
 import { makeOpenApi } from "./lib/openapi.js";
 import { requestId } from "./lib/request-id.js";
+import { securityHeaders } from "./lib/security-headers.js";
 import type { AppEnv } from "./lib/types.js";
 import { apiKeyRoutes } from "./routes/api-v1/api-keys.js";
 import { catalogRoutes } from "./routes/api-v1/catalogs.js";
@@ -85,6 +86,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const replicaId = opts.replicaId ?? generateReplicaId();
 
 	app.use("*", requestId(opts.requestIdHeader));
+	app.use("*", securityHeaders());
 	app.use(
 		"/api/v1/workspaces/*",
 		bodyLimit({

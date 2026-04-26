@@ -19,6 +19,7 @@ import type { EmbedderFactory } from "../embeddings/factory.js";
 import type { IngestInput } from "../ingest/pipeline.js";
 import { runIngest } from "../ingest/pipeline.js";
 import { logger } from "../lib/logger.js";
+import { safeErrorMessage } from "../lib/safe-error.js";
 import type { JobStore } from "./store.js";
 import type { JobRecord } from "./types.js";
 
@@ -161,7 +162,7 @@ export async function runIngestJob(args: IngestWorkerArgs): Promise<void> {
 		await jobs
 			.update(workspaceUid, jobId, {
 				status: "failed",
-				errorMessage: err instanceof Error ? err.message : String(err),
+				errorMessage: safeErrorMessage(err),
 				leasedBy: null,
 				leasedAt: null,
 			})
@@ -178,7 +179,7 @@ async function failJob(
 	await jobs
 		.update(workspaceUid, jobId, {
 			status: "failed",
-			errorMessage: message,
+			errorMessage: safeErrorMessage(message),
 			leasedBy: null,
 			leasedAt: null,
 		})

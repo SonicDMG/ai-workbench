@@ -16,6 +16,7 @@
 
 import { randomUUID } from "node:crypto";
 import {
+	assertVectorStorePatchIsEmpty,
 	byCreatedAtThenKeyId,
 	byCreatedAtThenUid,
 	DEFAULT_LEXICAL,
@@ -297,22 +298,8 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		if (!existing) {
 			throw new ControlPlaneNotFoundError("vector store", uid);
 		}
-		const next: VectorStoreRecord = {
-			...existing,
-			...(patch.name !== undefined && { name: patch.name }),
-			...(patch.vectorDimension !== undefined && {
-				vectorDimension: patch.vectorDimension,
-			}),
-			...(patch.vectorSimilarity !== undefined && {
-				vectorSimilarity: patch.vectorSimilarity,
-			}),
-			...(patch.embedding !== undefined && { embedding: patch.embedding }),
-			...(patch.lexical !== undefined && { lexical: patch.lexical }),
-			...(patch.reranking !== undefined && { reranking: patch.reranking }),
-			updatedAt: nowIso(),
-		};
-		this.vectorStores.get(workspace)?.set(uid, next);
-		return next;
+		assertVectorStorePatchIsEmpty(patch);
+		return existing;
 	}
 
 	async deleteVectorStore(

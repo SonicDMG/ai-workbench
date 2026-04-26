@@ -556,19 +556,19 @@ construction).
 Vectorless / vector-only collections (no `$vectorize` service
 configured) get a placeholder `embedding: { provider: "external",
 model: "external", … }` — clients still need to supply vectors at
-upsert / search time. Switch the descriptor to a real provider via
-`PUT /{vectorStoreUid}` once you've decided on one.
+upsert / search time. Create a new vector store when you need a
+different provider or dimension; descriptors intentionally mirror the
+underlying collection and are immutable after creation.
 
 ### `GET /{vectorStoreUid}` / `PUT /{vectorStoreUid}` / `DELETE /{vectorStoreUid}`
 
-`GET` and `PUT` operate on the descriptor only. `DELETE` drops the
-underlying Data API Collection **and** removes the descriptor.
+`GET` reads the descriptor. `PUT` accepts an empty patch and returns
+the existing descriptor, but rejects any field changes with
+`409 conflict` because dimensions, similarity, embedding, lexical,
+rerank, and collection naming are physical collection properties.
+`DELETE` drops the underlying Data API Collection **and** removes the descriptor.
 If any catalog still references the vector store, `DELETE` returns
 `409 conflict`; clear or move those catalog bindings first.
-
-`PUT` does NOT re-provision the collection — changing
-`vectorDimension` on a populated store is a data-migration operation
-not yet supported.
 
 ### `POST /{vectorStoreUid}/records` — upsert records
 

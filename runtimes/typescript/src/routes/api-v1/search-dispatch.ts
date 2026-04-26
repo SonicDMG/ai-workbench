@@ -37,6 +37,7 @@ import {
 } from "../../drivers/vector-store.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
 import { ApiError } from "../../lib/errors.js";
+import { safeErrorMessage } from "../../lib/safe-error.js";
 
 export interface SearchDispatchBody {
 	readonly vector?: readonly number[];
@@ -231,9 +232,10 @@ async function buildEmbedderOr400(
 	} catch (err) {
 		throw new ApiError(
 			"embedding_unavailable",
-			err instanceof Error
-				? err.message
-				: "embedding provider is not available for this vector store",
+			safeErrorMessage(
+				err,
+				"embedding provider is not available for this vector store",
+			),
 			400,
 		);
 	}

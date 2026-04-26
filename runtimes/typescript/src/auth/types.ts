@@ -19,7 +19,7 @@ export type AnonymousPolicy = "allow" | "reject";
 /** The verified principal behind a request. */
 export interface AuthSubject {
 	/** Which verifier produced this subject. */
-	readonly type: "apiKey" | "oidc";
+	readonly type: "apiKey" | "oidc" | "bootstrap";
 	/** Stable identifier — key id for API keys, `sub` for JWTs. */
 	readonly id: string;
 	/** Optional human-readable label — API-key name, JWT `email`. */

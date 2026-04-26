@@ -56,7 +56,8 @@ async function main(): Promise<void> {
 	});
 	const drivers = buildVectorStoreDriverRegistry({ secrets });
 	const embedders = makeEmbedderFactory({ secrets });
-	const auth = await buildAuthResolver(config.auth, { store });
+	const auth = await buildAuthResolver(config.auth, { store, secrets });
+	warnOnOpenProductionAuth(config);
 
 	const login = await buildLoginOptions(config.auth, secrets);
 
@@ -207,6 +208,32 @@ async function main(): Promise<void> {
 	};
 	process.on("SIGINT", shutdown("SIGINT"));
 	process.on("SIGTERM", shutdown("SIGTERM"));
+}
+
+function warnOnOpenProductionAuth(config: {
+	readonly controlPlane: { readonly driver: string };
+	readonly auth: {
+		readonly mode: string;
+		readonly anonymousPolicy: string;
+		readonly bootstrapTokenRef?: string | null;
+	};
+}): void {
+	if (
+		config.controlPlane.driver === "memory" ||
+		(config.auth.mode !== "disabled" &&
+			config.auth.anonymousPolicy === "reject")
+	) {
+		return;
+	}
+	logger.warn(
+		{
+			controlPlane: config.controlPlane.driver,
+			authMode: config.auth.mode,
+			anonymousPolicy: config.auth.anonymousPolicy,
+			hasBootstrapToken: config.auth.bootstrapTokenRef != null,
+		},
+		"non-memory control plane is accepting anonymous API access; set auth.mode to apiKey/oidc/any with anonymousPolicy: reject before exposing this runtime",
+	);
 }
 
 async function buildLoginOptions(

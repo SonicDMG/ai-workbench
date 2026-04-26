@@ -382,7 +382,7 @@ export function vectorStoreRoutes(
 			tags: ["vector-stores"],
 			summary: "Update a vector store descriptor",
 			description:
-				"Descriptor-only. The underlying collection is NOT re-provisioned; changing vectorDimension on a populated store is a data-migration operation not yet supported.",
+				"Vector-store descriptors are immutable after creation because the fields mirror an underlying collection. Create a new vector store for changed dimensions, similarity, embedding, lexical, rerank, or collection naming. A future migration endpoint can make this explicit.",
 			request: {
 				params: z.object({
 					workspaceUid: WorkspaceUidParamSchema,
@@ -404,6 +404,10 @@ export function vectorStoreRoutes(
 				404: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
 					description: "Workspace or vector store not found",
+				},
+				409: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description: "Vector-store descriptors are immutable after creation",
 				},
 			},
 		}),

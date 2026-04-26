@@ -12,6 +12,7 @@
 		"lint:guard": "node scripts/check-api-error-helper.mjs",
 		"lint:fix": "biome check --write .",
 		"format": "biome format --write .",
+		"security:secrets": "node scripts/secret-scan.mjs",
 		"dev": "npm --prefix runtimes/typescript run dev",
 		"dev:web": "npm --prefix apps/web run dev",
 		"build": "npm --prefix runtimes/typescript run build",

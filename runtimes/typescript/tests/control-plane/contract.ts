@@ -300,6 +300,29 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
+		test("vector store descriptor updates are rejected to prevent collection drift", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({
+					name: "w",
+					kind: "mock",
+				});
+				const vs = await store.createVectorStore(ws.uid, {
+					name: "v",
+					vectorDimension: 1536,
+					embedding: VECTOR_STORE_BASE.embedding,
+				});
+				await expect(
+					store.updateVectorStore(ws.uid, vs.uid, { vectorDimension: 768 }),
+				).rejects.toBeInstanceOf(ControlPlaneConflictError);
+				expect(
+					(await store.getVectorStore(ws.uid, vs.uid))?.vectorDimension,
+				).toBe(1536);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("document status defaults to 'pending'", async () => {
 			const { store, cleanup } = await factory();
 			try {

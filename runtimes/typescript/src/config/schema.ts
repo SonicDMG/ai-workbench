@@ -166,15 +166,33 @@ const AuthSchema = z
 	.object({
 		mode: z.enum(["disabled", "apiKey", "oidc", "any"]).default("disabled"),
 		anonymousPolicy: z.enum(["allow", "reject"]).default("allow"),
+		// Optional break-glass/operator token. The runtime resolves the
+		// SecretRef at startup and accepts that bearer token as an
+		// unscoped subject (workspaceScopes: null), allowing strict
+		// deployments to create their first workspace/API key without
+		// briefly opening anonymous access.
+		bootstrapTokenRef: SecretRef.nullable().default(null),
 		oidc: OidcSchema.optional(),
 	})
-	.default({ mode: "disabled", anonymousPolicy: "allow" })
+	.default({
+		mode: "disabled",
+		anonymousPolicy: "allow",
+		bootstrapTokenRef: null,
+	})
 	.superRefine((cfg, ctx) => {
 		if ((cfg.mode === "oidc" || cfg.mode === "any") && !cfg.oidc) {
 			ctx.addIssue({
 				code: "custom",
 				path: ["oidc"],
 				message: `auth.oidc is required when auth.mode='${cfg.mode}'`,
+			});
+		}
+		if (cfg.mode === "disabled" && cfg.bootstrapTokenRef) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["bootstrapTokenRef"],
+				message:
+					"auth.bootstrapTokenRef is only valid when auth.mode is apiKey, oidc, or any",
 			});
 		}
 	});

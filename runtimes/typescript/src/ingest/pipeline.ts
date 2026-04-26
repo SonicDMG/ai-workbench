@@ -21,6 +21,7 @@ import type {
 } from "../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
+import { safeErrorMessage } from "../lib/safe-error.js";
 import { dispatchUpsert } from "../routes/api-v1/upsert-dispatch.js";
 import type { ChunkerOptions } from "./chunker.js";
 import {
@@ -125,7 +126,7 @@ export async function runIngest(
 		await store
 			.updateDocument(workspace.uid, catalog.uid, documentUid, {
 				status: "failed",
-				errorMessage: err instanceof Error ? err.message : String(err),
+				errorMessage: safeErrorMessage(err),
 			})
 			.catch(() => undefined);
 		throw err;

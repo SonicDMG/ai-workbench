@@ -155,6 +155,7 @@ phases.
 | [`docs/api-spec.md`](docs/api-spec.md) | HTTP API contract narrative |
 | [`docs/auth.md`](docs/auth.md) | `/api/v1/*` auth middleware, OIDC login, silent refresh, threat model |
 | [`docs/configuration.md`](docs/configuration.md) | `workbench.yaml` schema reference |
+| [`docs/production.md`](docs/production.md) | Production hardening checklist |
 | [`docs/workspaces.md`](docs/workspaces.md) | Workspace model, scoping, cascade semantics |
 | [`docs/green-boxes.md`](docs/green-boxes.md) | Multi-runtime "green box" architecture |
 | [`docs/playground.md`](docs/playground.md) | Playground UX, text/vector dispatch, hybrid + rerank, ingest dialog |

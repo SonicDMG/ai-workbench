@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+	assertVectorStorePatchIsEmpty,
 	byCreatedAtThenKeyId,
 	byCreatedAtThenUid,
 	DEFAULT_LEXICAL,
@@ -378,27 +379,8 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 					throw new ControlPlaneNotFoundError("vector store", uid);
 				}
 				const existing = rows[idx] as VectorStoreRecord;
-				const next: VectorStoreRecord = {
-					...existing,
-					...(patch.name !== undefined && { name: patch.name }),
-					...(patch.vectorDimension !== undefined && {
-						vectorDimension: patch.vectorDimension,
-					}),
-					...(patch.vectorSimilarity !== undefined && {
-						vectorSimilarity: patch.vectorSimilarity,
-					}),
-					...(patch.embedding !== undefined && {
-						embedding: patch.embedding,
-					}),
-					...(patch.lexical !== undefined && { lexical: patch.lexical }),
-					...(patch.reranking !== undefined && {
-						reranking: patch.reranking,
-					}),
-					updatedAt: nowIso(),
-				};
-				const nextRows = [...rows];
-				nextRows[idx] = next;
-				return { rows: nextRows, result: next };
+				assertVectorStorePatchIsEmpty(patch);
+				return { rows, result: existing };
 			},
 		);
 	}

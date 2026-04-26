@@ -17,13 +17,16 @@
 
 import type { AuthConfig, OidcConfig } from "../config/schema.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
+import type { SecretResolver } from "../secrets/provider.js";
 import { ApiKeyVerifier } from "./apiKey/verifier.js";
+import { BootstrapTokenVerifier } from "./bootstrap.js";
 import { makeJwkSet, resolveJwksUri } from "./oidc/jwks.js";
 import { OidcVerifier } from "./oidc/verifier.js";
 import { AuthResolver, type TokenVerifier } from "./resolver.js";
 
 export interface AuthResolverDeps {
 	readonly store: ControlPlaneStore;
+	readonly secrets: SecretResolver;
 }
 
 export async function buildAuthResolver(
@@ -31,6 +34,16 @@ export async function buildAuthResolver(
 	deps: AuthResolverDeps,
 ): Promise<AuthResolver> {
 	const verifiers: TokenVerifier[] = [];
+
+	if (config.bootstrapTokenRef) {
+		const token = await deps.secrets.resolve(config.bootstrapTokenRef);
+		if (token.length < 32) {
+			throw new Error(
+				"auth.bootstrapTokenRef must resolve to at least 32 characters",
+			);
+		}
+		verifiers.push(new BootstrapTokenVerifier({ token }));
+	}
 
 	if (config.mode === "apiKey" || config.mode === "any") {
 		verifiers.push(new ApiKeyVerifier({ store: deps.store }));

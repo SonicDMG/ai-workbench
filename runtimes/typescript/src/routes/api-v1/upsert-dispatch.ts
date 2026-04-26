@@ -25,6 +25,7 @@ import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import { NotSupportedError } from "../../drivers/vector-store.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
 import { ApiError } from "../../lib/errors.js";
+import { safeErrorMessage } from "../../lib/safe-error.js";
 
 export type UpsertDispatchInput = ReadonlyArray<{
 	readonly id: string;
@@ -107,9 +108,10 @@ async function buildEmbedderOr400(
 		if (err instanceof ApiError) throw err;
 		throw new ApiError(
 			"embedding_unavailable",
-			err instanceof Error
-				? err.message
-				: "embedding provider is not available for this vector store",
+			safeErrorMessage(
+				err,
+				"embedding provider is not available for this vector store",
+			),
 			400,
 		);
 	}

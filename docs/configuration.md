@@ -141,9 +141,10 @@ replica can crash mid-ingest while another stays up. Single-replica
 operators don't need it (their pipelines always fail-fast on the
 same process). When enabled, every replica scans the durable job
 store on an interval for `running` jobs whose lease is older than
-the grace window and CAS-claims them, marking each `failed` with an
-actionable error so SSE clients see a terminal state. Pipeline
-resume from the last upserted chunk is a follow-up — see
+the grace window and CAS-claims them. Jobs with a persisted ingest
+snapshot replay the pipeline idempotently; older rows without a
+snapshot still become terminal `failed` records so SSE clients do
+not hang forever. See
 [`cross-replica-jobs.md`](cross-replica-jobs.md).
 
 ```yaml
@@ -215,6 +216,7 @@ auth:
 |-------|------|---------|-------|
 | `mode` | enum | `disabled` | Which verifiers are active. |
 | `anonymousPolicy` | enum | `allow` | `allow` lets tokenless requests through as anonymous; `reject` returns `401 unauthorized`. |
+| `bootstrapTokenRef` | SecretRef \| null | `null` | Optional 32+ character break-glass bearer token. Accepted as an unscoped operator subject when `mode` is `apiKey`, `oidc`, or `any`; invalid with `mode: disabled`. |
 | `oidc` | object | — | Required when `mode` is `oidc` or `any`. See table below. |
 
 The default (`disabled` + `allow`) matches pre-auth behavior: the

@@ -40,6 +40,7 @@ import {
 } from "../../astra-client/converters.js";
 import type { TablesBundle } from "../../astra-client/tables.js";
 import {
+	assertVectorStorePatchIsEmpty,
 	byCreatedAtThenKeyId,
 	byCreatedAtThenUid,
 	DEFAULT_LEXICAL,
@@ -301,28 +302,8 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		await this.assertWorkspace(workspace);
 		const existing = await this.tables.vectorStores.findOne({ workspace, uid });
 		if (!existing) throw new ControlPlaneNotFoundError("vector store", uid);
-		const base = vectorStoreFromRow(existing);
-		const next: VectorStoreRecord = {
-			...base,
-			...(patch.name !== undefined && { name: patch.name }),
-			...(patch.vectorDimension !== undefined && {
-				vectorDimension: patch.vectorDimension,
-			}),
-			...(patch.vectorSimilarity !== undefined && {
-				vectorSimilarity: patch.vectorSimilarity,
-			}),
-			...(patch.embedding !== undefined && { embedding: patch.embedding }),
-			...(patch.lexical !== undefined && { lexical: patch.lexical }),
-			...(patch.reranking !== undefined && { reranking: patch.reranking }),
-			updatedAt: nowIso(),
-		};
-		const nextRow = vectorStoreToRow(next);
-		const { workspace: _w, uid: _u, ...fields } = nextRow;
-		await this.tables.vectorStores.updateOne(
-			{ workspace, uid },
-			{ $set: fields },
-		);
-		return next;
+		assertVectorStorePatchIsEmpty(patch);
+		return vectorStoreFromRow(existing);
 	}
 
 	async deleteVectorStore(

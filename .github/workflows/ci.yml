@@ -48,8 +48,14 @@ jobs:
       - name: Test (TS runtime, includes conformance drift guard)
         run: npm test
 
+      - name: Coverage (TS runtime)
+        run: npm --prefix runtimes/typescript run test:coverage
+
       - name: Test (web, vitest + jsdom)
         run: npm --prefix apps/web test
+
+      - name: Coverage (web lib boundary)
+        run: npm --prefix apps/web run test:coverage
 
       - name: Build (TS runtime)
         run: npm run build

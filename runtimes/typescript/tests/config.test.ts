@@ -44,6 +44,18 @@ describe("ConfigSchema", () => {
 		}
 	});
 
+	test("accepts a bootstrap token ref for strict auth modes", () => {
+		const cfg = ConfigSchema.parse({
+			version: 1,
+			auth: {
+				mode: "apiKey",
+				anonymousPolicy: "reject",
+				bootstrapTokenRef: "env:WB_BOOTSTRAP_TOKEN",
+			},
+		});
+		expect(cfg.auth.bootstrapTokenRef).toBe("env:WB_BOOTSTRAP_TOKEN");
+	});
+
 	test("rejects unknown schema version", () => {
 		expect(() => ConfigSchema.parse({ version: 2 })).toThrow();
 	});
@@ -74,6 +86,19 @@ describe("ConfigSchema", () => {
 				},
 			}),
 		).toThrow();
+	});
+
+	test("rejects bootstrap token refs when auth is disabled", () => {
+		expect(() =>
+			ConfigSchema.parse({
+				version: 1,
+				auth: {
+					mode: "disabled",
+					anonymousPolicy: "allow",
+					bootstrapTokenRef: "env:WB_BOOTSTRAP_TOKEN",
+				},
+			}),
+		).toThrow(/only valid when auth.mode/);
 	});
 
 	test("rejects seedWorkspaces when driver is not memory", () => {
