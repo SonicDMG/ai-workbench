@@ -14,11 +14,6 @@
 		"declaration": false,
 		"sourceMap": true
 	},
-	"include": [
-		"src/**/*",
-		"tests/**/*",
-		"scripts/**/*",
-		"../../conformance/**/*.ts"
-	],
+	"include": ["src/**/*", "tests/**/*", "scripts/**/*"],
 	"exclude": ["dist", "node_modules"]
 }
