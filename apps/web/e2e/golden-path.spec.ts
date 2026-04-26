@@ -31,7 +31,7 @@ test("golden path: onboard → vector store → upsert → run query", async ({
 	await page.goto("/");
 	await expect(page).toHaveURL(/\/onboarding/);
 	await expect(
-		page.getByRole("heading", { name: /Let's create your first workspace/ }),
+		page.getByRole("heading", { name: /Manage AI-ready data at scale/ }),
 	).toBeVisible();
 
 	// 2. Pick the Mock backend, then proceed to the details step.
