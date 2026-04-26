@@ -2,6 +2,29 @@ import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+const manualChunkByPackage: Record<string, string> = {
+	react: "react",
+	"react-dom": "react",
+	"react-router-dom": "react",
+	"@tanstack/react-query": "query",
+	zod: "zod",
+	"react-hook-form": "forms",
+	"@hookform/resolvers": "forms",
+	"@radix-ui/react-dialog": "radix",
+	"@radix-ui/react-label": "radix",
+	"@radix-ui/react-select": "radix",
+	"@radix-ui/react-slot": "radix",
+};
+
+function manualChunks(id: string): string | undefined {
+	const normalizedId = id.replaceAll("\\", "/");
+	for (const [packageName, chunkName] of Object.entries(manualChunkByPackage)) {
+		if (normalizedId.includes(`/node_modules/${packageName}/`)) {
+			return chunkName;
+		}
+	}
+}
+
 // Proxy the runtime's URL prefixes to :8080 in dev so the UI is
 // effectively same-origin. In the shipped Docker image the runtime
 // serves the UI and the API on the same host, so there's no proxy
@@ -60,18 +83,7 @@ export default defineConfig({
 				//    chunk stays out of the initial preload graph.
 				//  - `radix` is a cluster of primitives; grouping them avoids
 				//    dozens of tiny async chunks.
-				manualChunks: {
-					react: ["react", "react-dom", "react-router-dom"],
-					query: ["@tanstack/react-query"],
-					zod: ["zod"],
-					forms: ["react-hook-form", "@hookform/resolvers"],
-					radix: [
-						"@radix-ui/react-dialog",
-						"@radix-ui/react-label",
-						"@radix-ui/react-select",
-						"@radix-ui/react-slot",
-					],
-				},
+				manualChunks,
 			},
 		},
 	},

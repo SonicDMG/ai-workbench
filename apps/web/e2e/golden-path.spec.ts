@@ -79,11 +79,13 @@ test("golden path: onboard → vector store → upsert → run query", async ({
 	//    upsert endpoint — the UI only exposes data ingestion through
 	//    the catalog ingest flow, which would route through an
 	//    embedder. Direct upsert is the contract we're proving here.
-	const stores = await request
+	const storesPage = await request
 		.get(`/api/v1/workspaces/${workspaceUid}/vector-stores`)
 		.then((r) => r.json());
-	expect(Array.isArray(stores) && stores.length === 1).toBe(true);
-	const vectorStoreUid = stores[0].uid as string;
+	expect(
+		Array.isArray(storesPage.items) && storesPage.items.length === 1,
+	).toBe(true);
+	const vectorStoreUid = storesPage.items[0].uid as string;
 
 	const upsert = await request.post(
 		`/api/v1/workspaces/${workspaceUid}/vector-stores/${vectorStoreUid}/records`,
