@@ -177,6 +177,57 @@ describe("IngestQueueDialog", () => {
 		expect(vi.mocked(api.getJob).mock.calls.length).toBeLessThan(20);
 	});
 
+	it("kicks exactly one ingest per file even while the mutation stays pending", async () => {
+		// Regression for the "8 duplicate Document rows from one CSV"
+		// bug. `useMutation`'s return object changes ref when
+		// `isPending` flips false → true; including `ingest` in the
+		// drain effect's deps caused the effect to re-fire mid-await
+		// (before `setActiveId` had run) and kick the same file
+		// again — on every re-render until React bailed with #185.
+		// We hold the mutation pending here so the bug, if present,
+		// would surface as N>1 ingest calls.
+		const resolvers: Array<(res: AsyncIngestResponse) => void> = [];
+		vi.mocked(api.ingestAsync).mockImplementation(
+			() =>
+				new Promise<AsyncIngestResponse>((resolve) => {
+					resolvers.push(resolve);
+				}),
+		);
+		vi.mocked(api.getJob).mockImplementation(async (_ws, jobId) =>
+			jobRecord(jobId, "succeeded"),
+		);
+
+		const user = userEvent.setup();
+		render(
+			<IngestQueueDialog
+				workspace="ws-1"
+				catalog={CATALOG}
+				open
+				onOpenChange={() => {}}
+			/>,
+			{ wrapper },
+		);
+
+		const fileInput = document.querySelector(
+			'input[type="file"]:not([webkitdirectory])',
+		) as HTMLInputElement;
+		await user.upload(fileInput, [makeFile("only.csv", "row1\nrow2")]);
+		await user.click(screen.getByRole("button", { name: /Start ingest/ }));
+
+		// Let React settle a few times so any re-entry has a chance
+		// to fire. Without the fix the effect double-kicks during
+		// mutation pending.
+		await new Promise((r) => setTimeout(r, 100));
+
+		expect(api.ingestAsync).toHaveBeenCalledTimes(1);
+
+		// Resolve to reach a terminal state and clean up the test.
+		resolvers[0]?.(ingestResponse("job-1"));
+		await waitFor(() =>
+			expect(screen.getByText(/5 chunks/)).toBeInTheDocument(),
+		);
+	});
+
 	it("captures a non-Error mutation rejection as 'Unknown error' on the failed row, not as a crash", async () => {
 		// The user-reported "unknown error" symptom: ingest.mutateAsync
 		// rejects with something formatApiError can't unwrap. The queue

@@ -115,6 +115,26 @@ export function IngestQueueDialog({
 	const activeJobId = items.find((i) => i.id === activeId)?.jobId ?? null;
 	const poll = useJobPoller(workspace, activeJobId ?? undefined);
 
+	// Re-entry guard for the drain effect. `useMutation`'s return
+	// object changes ref every time `isPending` flips; if `ingest`
+	// were in the effect deps the drain effect would re-fire mid-
+	// `await ingest.mutateAsync(...)` (between mutation start and
+	// setActiveId) and double-kick the same file. The user-visible
+	// symptom: eight duplicate Document rows for one upload, plus
+	// React #185 ("Maximum update depth exceeded") once the
+	// ricochet pile-up gets dense enough. The ref is set when an
+	// async ingest is in flight and cleared when it terminates;
+	// the effect bails fast while it's set.
+	const kickInFlight = useRef(false);
+	// Stable handle to `ingest.mutateAsync`. Tracking this through a
+	// ref lets us drop `ingest` from the drain effect's deps (its
+	// identity churns on every `isPending` flip; see above) without
+	// referencing a stale closure. Per TanStack Query's contract the
+	// underlying function is stable across renders, so a single
+	// assign-on-render is enough.
+	const ingestMutateAsyncRef = useRef(ingest.mutateAsync);
+	ingestMutateAsyncRef.current = ingest.mutateAsync;
+
 	function close(): void {
 		setItems([]);
 		setActiveId(null);
@@ -196,45 +216,64 @@ export function IngestQueueDialog({
 	// Drive the queue: when no item is active and there are pending
 	// items, take the next one and kick its ingest. When the active
 	// item terminates, advance.
+	//
+	// `ingest` is intentionally **not** in the deps. `useMutation`'s
+	// return object changes ref every time `isPending` flips, which
+	// would re-fire this effect mid-`await mutateAsync(...)` —
+	// before we've reached `setActiveId(next.id)` — and cause the
+	// effect to kick a second mutation for the same file. We
+	// belt-and-suspenders that with the `kickInFlight` ref so even
+	// if `items` churn during the await window re-fires the
+	// effect, we won't re-enter the dispatch block.
+	//
+	// `mutateAsync` itself is a stable function across renders per
+	// TanStack Query's contract, so closing over the latest
+	// `ingest.mutateAsync` from any render is fine.
 	useEffect(() => {
 		if (!draining) return;
 		if (activeId !== null) return;
+		if (kickInFlight.current) return;
 		const next = items.find((i) => i.status === "queued");
 		if (!next) {
 			setDraining(false);
 			return;
 		}
+		kickInFlight.current = true;
 		(async () => {
-			let text: string;
 			try {
-				text = await next.file.text();
-			} catch (err) {
-				updateItem(next.id, {
-					status: "failed",
-					errorMessage: err instanceof Error ? err.message : "read failed",
-				});
-				return;
-			}
-			try {
-				const res = await ingest.mutateAsync({
-					text,
-					sourceFilename: next.relativePath,
-					fileType: next.file.type || extOf(next.relativePath) || null,
-					fileSize: next.file.size,
-				});
-				updateItem(next.id, {
-					status: "running",
-					jobId: res.job.jobId,
-				});
-				setActiveId(next.id);
-			} catch (err) {
-				updateItem(next.id, {
-					status: "failed",
-					errorMessage: formatApiError(err),
-				});
+				let text: string;
+				try {
+					text = await next.file.text();
+				} catch (err) {
+					updateItem(next.id, {
+						status: "failed",
+						errorMessage: err instanceof Error ? err.message : "read failed",
+					});
+					return;
+				}
+				try {
+					const res = await ingestMutateAsyncRef.current({
+						text,
+						sourceFilename: next.relativePath,
+						fileType: next.file.type || extOf(next.relativePath) || null,
+						fileSize: next.file.size,
+					});
+					updateItem(next.id, {
+						status: "running",
+						jobId: res.job.jobId,
+					});
+					setActiveId(next.id);
+				} catch (err) {
+					updateItem(next.id, {
+						status: "failed",
+						errorMessage: formatApiError(err),
+					});
+				}
+			} finally {
+				kickInFlight.current = false;
 			}
 		})();
-	}, [draining, activeId, items, ingest, updateItem]);
+	}, [draining, activeId, items, updateItem]);
 
 	// Wire the active poller's snapshot back into the queue row so the
 	// table reflects live progress.
