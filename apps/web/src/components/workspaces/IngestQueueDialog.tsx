@@ -108,9 +108,12 @@ export function IngestQueueDialog({
 
 	const ingest = useAsyncIngest(workspace, catalog.uid);
 	// Drives only the *active* row's poller. Each row shows a live
-	// snapshot from this hook while it's the head of the queue.
-	const activeItem = items.find((i) => i.id === activeId) ?? null;
-	const poll = useJobPoller(workspace, activeItem?.jobId ?? undefined);
+	// snapshot from this hook while it's the head of the queue. We
+	// derive the jobId from items+activeId synchronously each render
+	// rather than holding it on its own state — keeps the queue and
+	// the poller in lockstep without a redundant setState.
+	const activeJobId = items.find((i) => i.id === activeId)?.jobId ?? null;
+	const poll = useJobPoller(workspace, activeJobId ?? undefined);
 
 	function close(): void {
 		setItems([]);
@@ -235,33 +238,64 @@ export function IngestQueueDialog({
 
 	// Wire the active poller's snapshot back into the queue row so the
 	// table reflects live progress.
+	//
+	// Deps are deliberately limited to `[activeId, poll.data]`. We
+	// **don't** depend on `activeItem` here (the object reference
+	// churns every time `setItems` returns a new array), and we
+	// **don't** depend on `updateItem` (its identity is stable from
+	// `useCallback([])` but including it loses nothing). The body
+	// mutates `items` via `setItems` — and is idempotent: when the
+	// poll snapshot already matches the row, the updater returns the
+	// same array reference so React doesn't re-render. Without the
+	// idempotency, an active job in `running` state with non-changing
+	// `processed`/`total` would loop: setItems → new item ref →
+	// effect re-fires → setItems → loop, until React bails with
+	// "Maximum update depth exceeded".
 	useEffect(() => {
-		if (!activeItem || !poll.data) return;
+		if (!activeId || !poll.data) return;
 		const job: JobRecord = poll.data;
-		updateItem(activeItem.id, {
-			processed: job.processed,
-			total: job.total,
-		});
-		if (job.status === "succeeded") {
+		setItems((cur) => {
+			const idx = cur.findIndex((i) => i.id === activeId);
+			if (idx < 0) return cur;
+			const prev = cur[idx] as QueueItem;
 			const chunks =
 				job.result && typeof job.result.chunks === "number"
 					? job.result.chunks
 					: null;
-			updateItem(activeItem.id, {
-				status: "succeeded",
-				chunkCount: chunks,
-			});
-			setActiveId(null);
-			// Document list refresh is handled by useAsyncIngest's
-			// onSuccess invalidation — no extra fetch needed here.
-		} else if (job.status === "failed") {
-			updateItem(activeItem.id, {
-				status: "failed",
-				errorMessage: job.errorMessage,
-			});
+			const nextStatus: QueueItem["status"] =
+				job.status === "succeeded"
+					? "succeeded"
+					: job.status === "failed"
+						? "failed"
+						: prev.status;
+			const nextErr =
+				job.status === "failed" ? job.errorMessage : prev.errorMessage;
+			const nextChunks = job.status === "succeeded" ? chunks : prev.chunkCount;
+			if (
+				prev.processed === job.processed &&
+				prev.total === job.total &&
+				prev.status === nextStatus &&
+				prev.errorMessage === nextErr &&
+				prev.chunkCount === nextChunks
+			) {
+				return cur;
+			}
+			const next: QueueItem = {
+				...prev,
+				processed: job.processed,
+				total: job.total,
+				status: nextStatus,
+				errorMessage: nextErr,
+				chunkCount: nextChunks,
+			};
+			const arr = [...cur];
+			arr[idx] = next;
+			return arr;
+		});
+		if (job.status === "succeeded" || job.status === "failed") {
 			setActiveId(null);
 		}
-	}, [activeItem, poll.data, updateItem]);
+	}, [activeId, poll.data]);
 
 	function startDrain(): void {
 		setDraining(true);
