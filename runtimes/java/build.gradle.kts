@@ -29,6 +29,7 @@ dependencies {
     // implementation("com.datastax.astra:astra-db-java:2.+")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
