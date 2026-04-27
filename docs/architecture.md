@@ -40,7 +40,7 @@ under [`runtimes/`](../runtimes/README.md).
    time by a pluggable provider. No raw secrets in config, records,
    or logs.
 8. **Immutable records.** Every update returns a new object. The
-   in-memory backend holds `Map<uid, Record>`; the file backend
+   in-memory backend holds `Map<workspaceId, Record>`; the file backend
    rewrites atomically; the astra backend does `$set` updates
    through the Data API.
 9. **Contract-first for new surfaces.** The HTTP API is versioned
@@ -191,8 +191,8 @@ Data API tables backed by CQL-style schemas. The exact DDL lives in
 here's the logical shape:
 
 ```
-wb_workspaces                                 PK (uid)
-    uid, name, endpoint, kind, credentials_ref, keyspace,
+wb_workspaces                                 PK (workspaceId)
+    workspaceId, name, endpoint, kind, credentials_ref, keyspace,
     created_at, updated_at
 
 wb_config_knowledge_bases_by_workspace        PK ((workspace_id), knowledge_base_id)
@@ -259,7 +259,7 @@ lives in that Data API Collection, provisioned transactionally
 when the KB is created and dropped when it's deleted.
 
 **Reserved chunk-payload keys.** The KB-scoped ingest pipeline
-stamps `knowledgeBaseUid`, `documentUid`, `chunkIndex`, and
+stamps `knowledgeBaseId`, `documentId`, `chunkIndex`, and
 `chunkText` onto every chunk's payload so KB-scoped search and the
 chunk listing endpoint can filter / display them without a
 secondary lookup.
@@ -276,7 +276,7 @@ execution loop (roadmap Stage 2).
 ## Isolation and scoping
 
 - Every request targeting a specific resource carries the workspace
-  UID in the path: `/api/v1/workspaces/{workspaceUid}/...`.
+  UID in the path: `/api/v1/workspaces/{workspaceId}/...`.
 - The control-plane store asserts the workspace exists before
   returning nested resources. Requests against a non-existent
   workspace return `404 workspace_not_found`.
@@ -296,7 +296,7 @@ execution loop (roadmap Stage 2).
   `embeddingServiceId` and `chunkingServiceId` on a KB are pinned
   at creation time — vectors and chunks on disk are bound to the
   models that produced them. Re-embedding requires a new KB; the
-  PUT schema is `.strict()` so accidentally including those keys
+  PATCH schema is `.strict()` so accidentally including those keys
   in an update body returns 400.
 
 ## Request flow (reference)

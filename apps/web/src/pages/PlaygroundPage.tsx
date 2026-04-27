@@ -143,7 +143,7 @@ function WorkspaceKbSelect({
 						</SelectTrigger>
 						<SelectContent>
 							{workspaces.map((w) => (
-								<SelectItem key={w.uid} value={w.uid}>
+								<SelectItem key={w.workspaceId} value={w.workspaceId}>
 									{w.name}{" "}
 									<span className="text-xs text-slate-500 font-mono ml-1">
 										{w.kind}

@@ -37,6 +37,7 @@ describe("service catalog", () => {
 		expect(first?.input.provider).toBe("openai");
 		expect(first?.input.modelName).toBe("text-embedding-3-small");
 		expect(first?.input.embeddingDimension).toBe(1536);
+		expect(first?.input.credentialRef).toBe("env:OPENAI_API_KEY");
 	});
 
 	test("default chunking preset is recursive char (1000/150)", () => {

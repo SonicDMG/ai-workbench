@@ -200,6 +200,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		}),
 	);
 
+	registerCommonErrorResponses(app);
 	app.doc31("/api/v1/openapi.json", {
 		openapi: "3.1.0",
 		info: {
@@ -290,4 +291,55 @@ function generateReplicaId(): string {
 	const host = process.env.HOSTNAME?.trim() || "wb";
 	const rand = randomUUID().replace(/-/g, "").slice(0, 8);
 	return `${host}-${rand}`;
+}
+
+function errorResponse(description: string) {
+	return {
+		description,
+		content: {
+			"application/json": {
+				schema: { $ref: "#/components/schemas/ErrorEnvelope" },
+			},
+		},
+	};
+}
+
+function registerCommonErrorResponses(app: OpenAPIHono<AppEnv>): void {
+	app.openAPIRegistry.registerComponent(
+		"responses",
+		"BadRequest",
+		errorResponse("Malformed request or validation failure"),
+	);
+	app.openAPIRegistry.registerComponent(
+		"responses",
+		"Unauthorized",
+		errorResponse("Authentication required or invalid"),
+	);
+	app.openAPIRegistry.registerComponent(
+		"responses",
+		"Forbidden",
+		errorResponse("Authenticated subject is not allowed"),
+	);
+	app.openAPIRegistry.registerComponent(
+		"responses",
+		"Conflict",
+		errorResponse("Resource state conflict"),
+	);
+	app.openAPIRegistry.registerComponent(
+		"responses",
+		"UnprocessableEntity",
+		errorResponse(
+			"Request is valid but cannot be processed in the current configuration",
+		),
+	);
+	app.openAPIRegistry.registerComponent(
+		"responses",
+		"TooManyRequests",
+		errorResponse("Rate limit exceeded"),
+	);
+	app.openAPIRegistry.registerComponent(
+		"responses",
+		"InternalServerError",
+		errorResponse("Unexpected server error"),
+	);
 }

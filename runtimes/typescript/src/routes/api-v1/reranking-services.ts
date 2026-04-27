@@ -1,5 +1,5 @@
 /**
- * `/api/v1/workspaces/{workspaceUid}/reranking-services` — reranking
+ * `/api/v1/workspaces/{workspaceId}/reranking-services` — reranking
  * service CRUD (issue #98).
  *
  * Service rows describe **how** to call a reranker — endpoint, auth,
@@ -19,11 +19,11 @@ import {
 	CreateRerankingServiceInputSchema,
 	ErrorEnvelopeSchema,
 	PaginationQuerySchema,
+	RerankingServiceIdParamSchema,
 	RerankingServicePageSchema,
 	RerankingServiceRecordSchema,
-	RerankingServiceUidParamSchema,
 	UpdateRerankingServiceInputSchema,
-	WorkspaceUidParamSchema,
+	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
 import { toWirePage, toWireReranking } from "./service-serdes.js";
 
@@ -35,11 +35,11 @@ export function rerankingServiceRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/reranking-services",
+			path: "/{workspaceId}/reranking-services",
 			tags: ["reranking-services"],
 			summary: "List reranking services in a workspace",
 			request: {
-				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
 				query: PaginationQuerySchema,
 			},
 			responses: {
@@ -56,10 +56,10 @@ export function rerankingServiceRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
+			const { workspaceId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceUid);
-			const rows = await store.listRerankingServices(workspaceUid);
+			assertWorkspaceAccess(c, workspaceId);
+			const rows = await store.listRerankingServices(workspaceId);
 			return c.json(toWirePage(paginate(rows, query), toWireReranking), 200);
 		},
 	);
@@ -67,11 +67,11 @@ export function rerankingServiceRoutes(
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceUid}/reranking-services",
+			path: "/{workspaceId}/reranking-services",
 			tags: ["reranking-services"],
 			summary: "Create a reranking service",
 			request: {
-				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
 				body: {
 					content: {
 						"application/json": { schema: CreateRerankingServiceInputSchema },
@@ -91,15 +91,18 @@ export function rerankingServiceRoutes(
 				},
 				409: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate uid",
+					description: "Duplicate rerankingServiceId",
 				},
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
-			const record = await store.createRerankingService(workspaceUid, body);
+			const record = await store.createRerankingService(workspaceId, {
+				...body,
+				uid: body.rerankingServiceId,
+			});
 			return c.json(toWireReranking(record), 201);
 		},
 	);
@@ -107,13 +110,13 @@ export function rerankingServiceRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/reranking-services/{rerankingServiceUid}",
+			path: "/{workspaceId}/reranking-services/{rerankingServiceId}",
 			tags: ["reranking-services"],
 			summary: "Get a reranking service",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					rerankingServiceUid: RerankingServiceUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					rerankingServiceId: RerankingServiceIdParamSchema,
 				}),
 			},
 			responses: {
@@ -130,16 +133,16 @@ export function rerankingServiceRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, rerankingServiceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, rerankingServiceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getRerankingService(
-				workspaceUid,
-				rerankingServiceUid,
+				workspaceId,
+				rerankingServiceId,
 			);
 			if (!record)
 				throw new ControlPlaneNotFoundError(
 					"reranking service",
-					rerankingServiceUid,
+					rerankingServiceId,
 				);
 			return c.json(toWireReranking(record), 200);
 		},
@@ -147,14 +150,14 @@ export function rerankingServiceRoutes(
 
 	app.openapi(
 		createRoute({
-			method: "put",
-			path: "/{workspaceUid}/reranking-services/{rerankingServiceUid}",
+			method: "patch",
+			path: "/{workspaceId}/reranking-services/{rerankingServiceId}",
 			tags: ["reranking-services"],
 			summary: "Update a reranking service",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					rerankingServiceUid: RerankingServiceUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					rerankingServiceId: RerankingServiceIdParamSchema,
 				}),
 				body: {
 					content: {
@@ -176,12 +179,12 @@ export function rerankingServiceRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, rerankingServiceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, rerankingServiceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateRerankingService(
-				workspaceUid,
-				rerankingServiceUid,
+				workspaceId,
+				rerankingServiceId,
 				body,
 			);
 			return c.json(toWireReranking(record), 200);
@@ -191,15 +194,15 @@ export function rerankingServiceRoutes(
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceUid}/reranking-services/{rerankingServiceUid}",
+			path: "/{workspaceId}/reranking-services/{rerankingServiceId}",
 			tags: ["reranking-services"],
 			summary: "Delete a reranking service",
 			description:
 				"Refuses with 409 if any knowledge base still references this service.",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					rerankingServiceUid: RerankingServiceUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					rerankingServiceId: RerankingServiceIdParamSchema,
 				}),
 			},
 			responses: {
@@ -215,16 +218,16 @@ export function rerankingServiceRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, rerankingServiceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, rerankingServiceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const { deleted } = await store.deleteRerankingService(
-				workspaceUid,
-				rerankingServiceUid,
+				workspaceId,
+				rerankingServiceId,
 			);
 			if (!deleted)
 				throw new ControlPlaneNotFoundError(
 					"reranking service",
-					rerankingServiceUid,
+					rerankingServiceId,
 				);
 			return c.body(null, 204);
 		},

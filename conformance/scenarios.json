@@ -17,24 +17,24 @@
 			},
 			{
 				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid"
+				"path": "/api/v1/workspaces/$1.workspaceId"
 			},
 			{
-				"method": "PUT",
-				"path": "/api/v1/workspaces/$1.uid",
+				"method": "PATCH",
+				"path": "/api/v1/workspaces/$1.workspaceId",
 				"body": {
 					"name": "production"
 				}
 			},
 			{
 				"method": "DELETE",
-				"path": "/api/v1/workspaces/$1.uid"
+				"path": "/api/v1/workspaces/$1.workspaceId"
 			}
 		]
 	},
 	{
 		"slug": "workspace-kind-is-immutable",
-		"description": "`PUT /workspaces/{uid}` rejects a `kind` field with 400 validation_error. A workspace's backend is immutable after creation; the canonical error envelope must say so.",
+		"description": "`PATCH /workspaces/{workspaceId}` rejects a `kind` field with 400 validation_error. A workspace's backend is immutable after creation; the canonical error envelope must say so.",
 		"steps": [
 			{
 				"method": "POST",
@@ -45,15 +45,15 @@
 				}
 			},
 			{
-				"method": "PUT",
-				"path": "/api/v1/workspaces/$1.uid",
+				"method": "PATCH",
+				"path": "/api/v1/workspaces/$1.workspaceId",
 				"body": {
 					"kind": "mock"
 				}
 			},
 			{
 				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid"
+				"path": "/api/v1/workspaces/$1.workspaceId"
 			}
 		]
 	},
@@ -80,7 +80,7 @@
 	},
 	{
 		"slug": "workspace-test-connection-mock",
-		"description": "`POST /workspaces/{uid}/test-connection` on a mock workspace always reports ok: true. Pins the response shape (ok, kind, details) so every runtime implements the probe identically. Kinds that resolve credentials via SecretResolver are environment-dependent and aren't in the conformance corpus.",
+		"description": "`POST /workspaces/{workspaceId}/test-connection` on a mock workspace always reports ok: true. Pins the response shape (ok, kind, details) so every runtime implements the probe identically. Kinds that resolve credentials via SecretResolver are environment-dependent and aren't in the conformance corpus.",
 		"steps": [
 			{
 				"method": "POST",
@@ -92,7 +92,7 @@
 			},
 			{
 				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/test-connection"
+				"path": "/api/v1/workspaces/$1.workspaceId/test-connection"
 			}
 		]
 	},
@@ -110,22 +110,22 @@
 			},
 			{
 				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/api-keys",
+				"path": "/api/v1/workspaces/$1.workspaceId/api-keys",
 				"body": {
 					"label": "ci"
 				}
 			},
 			{
 				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid/api-keys"
+				"path": "/api/v1/workspaces/$1.workspaceId/api-keys"
 			},
 			{
 				"method": "DELETE",
-				"path": "/api/v1/workspaces/$1.uid/api-keys/$2.key.keyId"
+				"path": "/api/v1/workspaces/$1.workspaceId/api-keys/$2.key.keyId"
 			},
 			{
 				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid/api-keys"
+				"path": "/api/v1/workspaces/$1.workspaceId/api-keys"
 			}
 		]
 	}

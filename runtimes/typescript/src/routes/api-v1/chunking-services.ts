@@ -1,5 +1,5 @@
 /**
- * `/api/v1/workspaces/{workspaceUid}/chunking-services` — chunking
+ * `/api/v1/workspaces/{workspaceId}/chunking-services` — chunking
  * service CRUD (issue #98).
  *
  * Service rows describe **how** to call a chunking engine — endpoint,
@@ -15,14 +15,14 @@ import { makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
+	ChunkingServiceIdParamSchema,
 	ChunkingServicePageSchema,
 	ChunkingServiceRecordSchema,
-	ChunkingServiceUidParamSchema,
 	CreateChunkingServiceInputSchema,
 	ErrorEnvelopeSchema,
 	PaginationQuerySchema,
 	UpdateChunkingServiceInputSchema,
-	WorkspaceUidParamSchema,
+	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
 
 export function chunkingServiceRoutes(
@@ -33,11 +33,11 @@ export function chunkingServiceRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/chunking-services",
+			path: "/{workspaceId}/chunking-services",
 			tags: ["chunking-services"],
 			summary: "List chunking services in a workspace",
 			request: {
-				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
 				query: PaginationQuerySchema,
 			},
 			responses: {
@@ -54,10 +54,10 @@ export function chunkingServiceRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
+			const { workspaceId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceUid);
-			const rows = await store.listChunkingServices(workspaceUid);
+			assertWorkspaceAccess(c, workspaceId);
+			const rows = await store.listChunkingServices(workspaceId);
 			return c.json(paginate(rows, query), 200);
 		},
 	);
@@ -65,11 +65,11 @@ export function chunkingServiceRoutes(
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceUid}/chunking-services",
+			path: "/{workspaceId}/chunking-services",
 			tags: ["chunking-services"],
 			summary: "Create a chunking service",
 			request: {
-				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
 				body: {
 					content: {
 						"application/json": { schema: CreateChunkingServiceInputSchema },
@@ -89,15 +89,18 @@ export function chunkingServiceRoutes(
 				},
 				409: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate uid",
+					description: "Duplicate chunkingServiceId",
 				},
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
-			const record = await store.createChunkingService(workspaceUid, body);
+			const record = await store.createChunkingService(workspaceId, {
+				...body,
+				uid: body.chunkingServiceId,
+			});
 			return c.json(record, 201);
 		},
 	);
@@ -105,13 +108,13 @@ export function chunkingServiceRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/chunking-services/{chunkingServiceUid}",
+			path: "/{workspaceId}/chunking-services/{chunkingServiceId}",
 			tags: ["chunking-services"],
 			summary: "Get a chunking service",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					chunkingServiceUid: ChunkingServiceUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					chunkingServiceId: ChunkingServiceIdParamSchema,
 				}),
 			},
 			responses: {
@@ -128,16 +131,16 @@ export function chunkingServiceRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, chunkingServiceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, chunkingServiceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getChunkingService(
-				workspaceUid,
-				chunkingServiceUid,
+				workspaceId,
+				chunkingServiceId,
 			);
 			if (!record)
 				throw new ControlPlaneNotFoundError(
 					"chunking service",
-					chunkingServiceUid,
+					chunkingServiceId,
 				);
 			return c.json(record, 200);
 		},
@@ -145,14 +148,14 @@ export function chunkingServiceRoutes(
 
 	app.openapi(
 		createRoute({
-			method: "put",
-			path: "/{workspaceUid}/chunking-services/{chunkingServiceUid}",
+			method: "patch",
+			path: "/{workspaceId}/chunking-services/{chunkingServiceId}",
 			tags: ["chunking-services"],
 			summary: "Update a chunking service",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					chunkingServiceUid: ChunkingServiceUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					chunkingServiceId: ChunkingServiceIdParamSchema,
 				}),
 				body: {
 					content: {
@@ -174,12 +177,12 @@ export function chunkingServiceRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, chunkingServiceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, chunkingServiceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateChunkingService(
-				workspaceUid,
-				chunkingServiceUid,
+				workspaceId,
+				chunkingServiceId,
 				body,
 			);
 			return c.json(record, 200);
@@ -189,15 +192,15 @@ export function chunkingServiceRoutes(
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceUid}/chunking-services/{chunkingServiceUid}",
+			path: "/{workspaceId}/chunking-services/{chunkingServiceId}",
 			tags: ["chunking-services"],
 			summary: "Delete a chunking service",
 			description:
 				"Refuses with 409 if any knowledge base still references this service.",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					chunkingServiceUid: ChunkingServiceUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					chunkingServiceId: ChunkingServiceIdParamSchema,
 				}),
 			},
 			responses: {
@@ -213,16 +216,16 @@ export function chunkingServiceRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, chunkingServiceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, chunkingServiceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const { deleted } = await store.deleteChunkingService(
-				workspaceUid,
-				chunkingServiceUid,
+				workspaceId,
+				chunkingServiceId,
 			);
 			if (!deleted)
 				throw new ControlPlaneNotFoundError(
 					"chunking service",
-					chunkingServiceUid,
+					chunkingServiceId,
 				);
 			return c.body(null, 204);
 		},

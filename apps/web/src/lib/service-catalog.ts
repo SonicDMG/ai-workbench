@@ -122,6 +122,8 @@ export const EMBEDDING_PRESETS: readonly EmbeddingPreset[] = [
 			modelName: "text-embedding-3-small",
 			embeddingDimension: 1536,
 			distanceMetric: "cosine",
+			authType: "api_key",
+			credentialRef: "env:OPENAI_API_KEY",
 		},
 	},
 	{
@@ -136,6 +138,8 @@ export const EMBEDDING_PRESETS: readonly EmbeddingPreset[] = [
 			modelName: "text-embedding-3-large",
 			embeddingDimension: 3072,
 			distanceMetric: "cosine",
+			authType: "api_key",
+			credentialRef: "env:OPENAI_API_KEY",
 		},
 	},
 	{
@@ -150,6 +154,8 @@ export const EMBEDDING_PRESETS: readonly EmbeddingPreset[] = [
 			modelName: "embed-v4.0",
 			embeddingDimension: 1024,
 			distanceMetric: "cosine",
+			authType: "api_key",
+			credentialRef: "env:COHERE_API_KEY",
 		},
 	},
 ];

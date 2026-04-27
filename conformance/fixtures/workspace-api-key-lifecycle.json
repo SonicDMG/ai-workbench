@@ -19,7 +19,7 @@
 					"keyspace": null,
 					"kind": "mock",
 					"name": "w",
-					"uid": "{{UUID_1}}",
+					"workspaceId": "{{UUID_1}}",
 					"updatedAt": "{{TS}}"
 				},
 				"status": 201
@@ -44,7 +44,7 @@
 						"lastUsedAt": null,
 						"prefix": "{{WB_PREFIX_1}}",
 						"revokedAt": null,
-						"workspace": "{{UUID_1}}"
+						"workspaceId": "{{UUID_1}}"
 					},
 					"plaintext": "{{WB_TOKEN_1}}"
 				},
@@ -69,7 +69,7 @@
 							"lastUsedAt": null,
 							"prefix": "{{WB_PREFIX_1}}",
 							"revokedAt": null,
-							"workspace": "{{UUID_1}}"
+							"workspaceId": "{{UUID_1}}"
 						}
 					],
 					"nextCursor": null
@@ -107,7 +107,7 @@
 							"lastUsedAt": null,
 							"prefix": "{{WB_PREFIX_1}}",
 							"revokedAt": "{{TS}}",
-							"workspace": "{{UUID_1}}"
+							"workspaceId": "{{UUID_1}}"
 						}
 					],
 					"nextCursor": null

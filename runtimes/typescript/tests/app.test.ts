@@ -191,7 +191,7 @@ describe("workspace routes", () => {
 		const body = await json(res);
 		expect(body.name).toBe("w1");
 		expect(body.kind).toBe("astra");
-		expect(body.uid).toMatch(/^[0-9a-f-]{36}$/);
+		expect(body.workspaceId).toMatch(/^[0-9a-f-]{36}$/);
 	});
 
 	test("GET returns all workspaces", async () => {
@@ -218,8 +218,8 @@ describe("workspace routes", () => {
 			),
 		);
 		const uids = [
-			...first.items.map((w: { uid: string }) => w.uid),
-			...second.items.map((w: { uid: string }) => w.uid),
+			...first.items.map((w: { workspaceId: string }) => w.workspaceId),
+			...second.items.map((w: { workspaceId: string }) => w.workspaceId),
 		];
 		expect(uids.sort()).toEqual([a.uid, b.uid].sort());
 		expect(second.nextCursor).toBeNull();
@@ -240,7 +240,7 @@ describe("workspace routes", () => {
 		const res = await app.request(`/api/v1/workspaces/${created.uid}`);
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		expect(body.uid).toBe(created.uid);
+		expect(body.workspaceId).toBe(created.uid);
 	});
 
 	test("GET /:id returns 404 for unknown uid", async () => {
@@ -254,11 +254,11 @@ describe("workspace routes", () => {
 		expect(body.error.requestId).toBeTruthy();
 	});
 
-	test("PUT applies the patch", async () => {
+	test("PATCH applies the patch", async () => {
 		const { app, store } = makeApp();
 		const created = await store.createWorkspace(BASE_WORKSPACE);
 		const res = await app.request(`/api/v1/workspaces/${created.uid}`, {
-			method: "PUT",
+			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ name: "renamed" }),
 		});
@@ -268,12 +268,12 @@ describe("workspace routes", () => {
 		expect(body.kind).toBe("astra");
 	});
 
-	test("PUT returns 404 for unknown uid", async () => {
+	test("PATCH returns 404 for unknown uid", async () => {
 		const { app } = makeApp();
 		const res = await app.request(
 			"/api/v1/workspaces/00000000-0000-0000-0000-000000000000",
 			{
-				method: "PUT",
+				method: "PATCH",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({ name: "x" }),
 			},
@@ -397,11 +397,11 @@ describe("workspace routes", () => {
 		expect(body.error.message).toMatch(/credentials\.token/);
 	});
 
-	test("PUT accepts SecretRef-shaped credentials values", async () => {
+	test("PATCH accepts SecretRef-shaped credentials values", async () => {
 		const { app, store } = makeApp();
 		const ws = await store.createWorkspace(BASE_WORKSPACE);
 		const res = await app.request(`/api/v1/workspaces/${ws.uid}`, {
-			method: "PUT",
+			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				credentials: { token: "env:NEW_TOKEN" },
@@ -412,11 +412,11 @@ describe("workspace routes", () => {
 		expect(body.credentials).toEqual({ token: "env:NEW_TOKEN" });
 	});
 
-	test("PUT rejects `kind` in the body with validation_error envelope", async () => {
+	test("PATCH rejects `kind` in the body with validation_error envelope", async () => {
 		const { app, store } = makeApp();
 		const ws = await store.createWorkspace(BASE_WORKSPACE);
 		const res = await app.request(`/api/v1/workspaces/${ws.uid}`, {
-			method: "PUT",
+			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ kind: "mock" }),
 		});
@@ -438,11 +438,9 @@ describe("workspace routes", () => {
 		const c = await store.createWorkspace({ name: "c", kind: "astra" });
 		const res = await app.request("/api/v1/workspaces");
 		const body = await json(res);
-		expect(body.items.map((w: { uid: string }) => w.uid)).toEqual([
-			a.uid,
-			b.uid,
-			c.uid,
-		]);
+		expect(
+			body.items.map((w: { workspaceId: string }) => w.workspaceId),
+		).toEqual([a.uid, b.uid, c.uid]);
 	});
 });
 
@@ -585,15 +583,13 @@ describe("openapi", () => {
 		const body = await json(res);
 		const paths = Object.keys(body.paths);
 		expect(paths).toContain("/api/v1/workspaces");
-		expect(paths).toContain("/api/v1/workspaces/{workspaceUid}");
+		expect(paths).toContain("/api/v1/workspaces/{workspaceId}");
+		expect(paths).toContain("/api/v1/workspaces/{workspaceId}/knowledge-bases");
 		expect(paths).toContain(
-			"/api/v1/workspaces/{workspaceUid}/knowledge-bases",
+			"/api/v1/workspaces/{workspaceId}/knowledge-bases/{knowledgeBaseId}/documents",
 		);
 		expect(paths).toContain(
-			"/api/v1/workspaces/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/documents",
-		);
-		expect(paths).toContain(
-			"/api/v1/workspaces/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/ingest",
+			"/api/v1/workspaces/{workspaceId}/knowledge-bases/{knowledgeBaseId}/ingest",
 		);
 	});
 
@@ -928,7 +924,7 @@ describe("workspace-scoped authorization (cross-workspace)", () => {
 		});
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		const uids = body.items.map((w: { uid: string }) => w.uid);
+		const uids = body.items.map((w: { workspaceId: string }) => w.workspaceId);
 		expect(uids).toContain(a.uid);
 		expect(uids).not.toContain(b.uid);
 	});
@@ -938,7 +934,7 @@ describe("workspace-scoped authorization (cross-workspace)", () => {
 		const res = await app.request("/api/v1/workspaces");
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		const uids = body.items.map((w: { uid: string }) => w.uid);
+		const uids = body.items.map((w: { workspaceId: string }) => w.workspaceId);
 		expect(uids).toContain(a.uid);
 		expect(uids).toContain(b.uid);
 	});
@@ -1046,7 +1042,7 @@ describe("authz source invariants", () => {
 		for (const file of routeModules) {
 			const source = readFileSync(join(routeDir, file), "utf8");
 			expect(source, `${file} should validate workspace access`).toMatch(
-				/assertWorkspaceAccess\(c,\s*workspaceUid\)|filterToAccessibleWorkspaces\(c,|assertPlatformAccess\(c\)/,
+				/assertWorkspaceAccess\(c,\s*workspaceId\)|filterToAccessibleWorkspaces\(c,|assertPlatformAccess\(c\)/,
 			);
 		}
 	});

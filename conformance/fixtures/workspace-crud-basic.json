@@ -19,7 +19,7 @@
 					"keyspace": null,
 					"kind": "astra",
 					"name": "prod",
-					"uid": "{{UUID_1}}",
+					"workspaceId": "{{UUID_1}}",
 					"updatedAt": "{{TS}}"
 				},
 				"status": 201
@@ -42,7 +42,7 @@
 							"keyspace": null,
 							"kind": "astra",
 							"name": "prod",
-							"uid": "{{UUID_1}}",
+							"workspaceId": "{{UUID_1}}",
 							"updatedAt": "{{TS}}"
 						}
 					],
@@ -66,7 +66,7 @@
 					"keyspace": null,
 					"kind": "astra",
 					"name": "prod",
-					"uid": "{{UUID_1}}",
+					"workspaceId": "{{UUID_1}}",
 					"updatedAt": "{{TS}}"
 				},
 				"status": 200
@@ -78,7 +78,7 @@
 				"body": {
 					"name": "production"
 				},
-				"method": "PUT",
+				"method": "PATCH",
 				"path": "/api/v1/workspaces/{{UUID_1}}"
 			},
 			"response": {
@@ -89,7 +89,7 @@
 					"keyspace": null,
 					"kind": "astra",
 					"name": "production",
-					"uid": "{{UUID_1}}",
+					"workspaceId": "{{UUID_1}}",
 					"updatedAt": "{{TS}}"
 				},
 				"status": 200

@@ -8,7 +8,7 @@ import type { SearchHit } from "@/lib/schemas";
  * Each hit is a **chunk** under a document — the playground shows
  * chunk-level rows because that's the resolution the vector store
  * indexes at. When the ingest pipeline stamps `chunkText`,
- * `documentUid`, and `chunkIndex` into the payload (it does, by
+ * `documentId`, and `chunkIndex` into the payload (it does, by
  * default), we surface them in the row so the chunk → document
  * relationship is visible without expanding.
  *
@@ -66,8 +66,8 @@ function ResultRow({ hit }: { hit: SearchHit }) {
 		typeof payload.chunkIndex === "number" ? payload.chunkIndex : null;
 	const chunkText =
 		typeof payload.chunkText === "string" ? payload.chunkText : null;
-	const documentUid =
-		typeof payload.documentUid === "string" ? payload.documentUid : null;
+	const documentId =
+		typeof payload.documentId === "string" ? payload.documentId : null;
 	return (
 		<li>
 			<button
@@ -88,7 +88,7 @@ function ResultRow({ hit }: { hit: SearchHit }) {
 							</span>
 						) : null}
 						<span className="font-mono text-xs text-slate-500 truncate">
-							{documentUid ?? hit.id}
+							{documentId ?? hit.id}
 						</span>
 					</div>
 					{chunkText ? (

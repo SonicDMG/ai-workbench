@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { WorkspacePageSchema, WorkspaceRecordSchema } from "./schemas";
 
 const FULL = {
-	uid: "11111111-2222-4333-8444-555555555555",
+	workspaceId: "11111111-2222-4333-8444-555555555555",
 	name: "prod",
 	url: "https://prod.example",
 	kind: "astra" as const,

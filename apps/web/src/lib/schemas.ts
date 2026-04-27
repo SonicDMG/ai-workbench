@@ -24,7 +24,7 @@ const EndpointInputSchema = z
 // here — the runtime test pins what the runtime *should* send,
 // while the UI is robust to anything in the wild.
 export const WorkspaceRecordSchema = z.object({
-	uid: z.string().uuid(),
+	workspaceId: z.string().uuid(),
 	name: z.string(),
 	url: z
 		.string()
@@ -83,7 +83,7 @@ export const TestConnectionResultSchema = z.object({
 export type TestConnectionResult = z.infer<typeof TestConnectionResultSchema>;
 
 export const ApiKeyRecordSchema = z.object({
-	workspace: z.string().uuid(),
+	workspaceId: z.string().uuid(),
 	keyId: z.string().uuid(),
 	prefix: z.string(),
 	label: z.string(),
@@ -309,6 +309,9 @@ export const CreateEmbeddingServiceInputSchema = z.object({
 	modelName: z.string().min(1),
 	embeddingDimension: z.number().int().positive(),
 	distanceMetric: DistanceMetricSchema.optional(),
+	endpointBaseUrl: z.string().or(z.literal("")).nullable().optional(),
+	authType: AuthTypeSchema.optional(),
+	credentialRef: z.string().or(z.literal("")).nullable().optional(),
 });
 export type CreateEmbeddingServiceInput = z.infer<
 	typeof CreateEmbeddingServiceInputSchema
@@ -402,11 +405,11 @@ export const JobStatusSchema = z.enum([
 export type JobStatus = z.infer<typeof JobStatusSchema>;
 
 export const JobRecordSchema = z.object({
-	workspace: z.string().uuid(),
+	workspaceId: z.string().uuid(),
 	jobId: z.string().uuid(),
 	kind: z.enum(["ingest"]),
-	knowledgeBaseUid: z.string().uuid().nullable(),
-	documentUid: z.string().uuid().nullable(),
+	knowledgeBaseId: z.string().uuid().nullable(),
+	documentId: z.string().uuid().nullable(),
 	status: JobStatusSchema,
 	processed: z.number().int().nonnegative(),
 	total: z.number().int().nonnegative().nullable(),

@@ -191,7 +191,7 @@ export const api = {
 	): Promise<Workspace> =>
 		request(
 			`/workspaces/${uid}`,
-			{ method: "PUT", body: JSON.stringify(normalizeUpdate(patch)) },
+			{ method: "PATCH", body: JSON.stringify(normalizeUpdate(patch)) },
 			WorkspaceRecordSchema,
 		),
 
@@ -290,7 +290,7 @@ export const api = {
 			body.language = patch.language ? patch.language : null;
 		return request(
 			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}`,
-			{ method: "PUT", body: JSON.stringify(body) },
+			{ method: "PATCH", body: JSON.stringify(body) },
 			KnowledgeBaseRecordSchema,
 		);
 	},
@@ -354,7 +354,7 @@ export const api = {
 		if (patch.filter !== undefined) body.filter = patch.filter;
 		return request(
 			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/filters/${filterUid}`,
-			{ method: "PUT", body: JSON.stringify(body) },
+			{ method: "PATCH", body: JSON.stringify(body) },
 			KnowledgeFilterRecordSchema,
 		);
 	},

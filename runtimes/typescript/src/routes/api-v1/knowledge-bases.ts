@@ -1,5 +1,5 @@
 /**
- * `/api/v1/workspaces/{workspaceUid}/knowledge-bases` — Knowledge-Base
+ * `/api/v1/workspaces/{workspaceId}/knowledge-bases` — Knowledge-Base
  * CRUD (issue #98).
  *
  * Replaces `/catalogs/*`. Coexists with the legacy catalog routes
@@ -21,12 +21,12 @@ import type { AppEnv } from "../../lib/types.js";
 import {
 	CreateKnowledgeBaseInputSchema,
 	ErrorEnvelopeSchema,
+	KnowledgeBaseIdParamSchema,
 	KnowledgeBasePageSchema,
 	KnowledgeBaseRecordSchema,
-	KnowledgeBaseUidParamSchema,
 	PaginationQuerySchema,
 	UpdateKnowledgeBaseInputSchema,
-	WorkspaceUidParamSchema,
+	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
 import { resolveKb } from "./kb-descriptor.js";
 
@@ -44,11 +44,11 @@ export function knowledgeBaseRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/knowledge-bases",
+			path: "/{workspaceId}/knowledge-bases",
 			tags: ["knowledge-bases"],
 			summary: "List knowledge bases in a workspace",
 			request: {
-				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
 				query: PaginationQuerySchema,
 			},
 			responses: {
@@ -65,10 +65,10 @@ export function knowledgeBaseRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
+			const { workspaceId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceUid);
-			const rows = await store.listKnowledgeBases(workspaceUid);
+			assertWorkspaceAccess(c, workspaceId);
+			const rows = await store.listKnowledgeBases(workspaceId);
 			return c.json(paginate(rows, query), 200);
 		},
 	);
@@ -76,13 +76,13 @@ export function knowledgeBaseRoutes(
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceUid}/knowledge-bases",
+			path: "/{workspaceId}/knowledge-bases",
 			tags: ["knowledge-bases"],
 			summary: "Create a knowledge base in a workspace",
 			description:
 				"Creates a KB bound to existing chunking + embedding (and optional reranking) services. The vector collection is auto-provisioned from the embedding service's dimension and distance metric, named `wb_vectors_<kb_id>` unless overridden.",
 			request: {
-				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
 				body: {
 					content: {
 						"application/json": { schema: CreateKnowledgeBaseInputSchema },
@@ -103,17 +103,20 @@ export function knowledgeBaseRoutes(
 				},
 				409: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate uid",
+					description: "Duplicate knowledgeBaseId",
 				},
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 
 			// 1. Persist the KB row. Throws on conflict / missing service refs.
-			const record = await store.createKnowledgeBase(workspaceUid, body);
+			const record = await store.createKnowledgeBase(workspaceId, {
+				...body,
+				uid: body.knowledgeBaseId,
+			});
 
 			// 2. Provision the underlying vector collection. The driver
 			//    needs the descriptor shape, so we synthesise one — same
@@ -122,13 +125,13 @@ export function knowledgeBaseRoutes(
 			try {
 				const { workspace, descriptor } = await resolveKb(
 					store,
-					workspaceUid,
+					workspaceId,
 					record.knowledgeBaseId,
 				);
 				const driver = drivers.for(workspace);
 				await driver.createCollection({ workspace, descriptor });
 			} catch (err) {
-				await store.deleteKnowledgeBase(workspaceUid, record.knowledgeBaseId);
+				await store.deleteKnowledgeBase(workspaceId, record.knowledgeBaseId);
 				throw err;
 			}
 			return c.json(record, 201);
@@ -138,13 +141,13 @@ export function knowledgeBaseRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}",
 			tags: ["knowledge-bases"],
 			summary: "Get a knowledge base",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
 				}),
 			},
 			responses: {
@@ -161,30 +164,27 @@ export function knowledgeBaseRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
-			const record = await store.getKnowledgeBase(
-				workspaceUid,
-				knowledgeBaseUid,
-			);
+			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
+			const record = await store.getKnowledgeBase(workspaceId, knowledgeBaseId);
 			if (!record)
-				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseUid);
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
 			return c.json(record, 200);
 		},
 	);
 
 	app.openapi(
 		createRoute({
-			method: "put",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}",
+			method: "patch",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}",
 			tags: ["knowledge-bases"],
 			summary: "Update a knowledge base",
 			description:
 				"`embeddingServiceId` and `chunkingServiceId` are immutable after creation — vectors and chunks on disk are bound to the model that produced them. The reranker, lexical config, language, name, description, and status can all be patched.",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
 				}),
 				body: {
 					content: {
@@ -207,12 +207,12 @@ export function knowledgeBaseRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateKnowledgeBase(
-				workspaceUid,
-				knowledgeBaseUid,
+				workspaceId,
+				knowledgeBaseId,
 				body,
 			);
 			return c.json(record, 200);
@@ -222,15 +222,15 @@ export function knowledgeBaseRoutes(
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}",
 			tags: ["knowledge-bases"],
 			summary: "Delete a knowledge base",
 			description:
 				"Drops the descriptor row only. The underlying vector collection cleanup lands when the data plane is rewired in a follow-up phase.",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
 				}),
 			},
 			responses: {
@@ -242,33 +242,33 @@ export function knowledgeBaseRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 
 			// Drop the underlying collection first; if the driver call
 			// fails the KB row survives so the operator can inspect.
 			// Mirrors the legacy /vector-stores delete semantics.
 			const existing = await store.getKnowledgeBase(
-				workspaceUid,
-				knowledgeBaseUid,
+				workspaceId,
+				knowledgeBaseId,
 			);
 			if (!existing) {
-				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseUid);
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
 			}
 			const { workspace, descriptor } = await resolveKb(
 				store,
-				workspaceUid,
-				knowledgeBaseUid,
+				workspaceId,
+				knowledgeBaseId,
 			);
 			const driver = drivers.for(workspace);
 			await driver.dropCollection({ workspace, descriptor });
 
 			const { deleted } = await store.deleteKnowledgeBase(
-				workspaceUid,
-				knowledgeBaseUid,
+				workspaceId,
+				knowledgeBaseId,
 			);
 			if (!deleted)
-				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseUid);
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
 			return c.body(null, 204);
 		},
 	);

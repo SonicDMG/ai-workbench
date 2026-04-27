@@ -1,5 +1,5 @@
 /**
- * `/api/v1/workspaces/{workspaceUid}/jobs` — poll + SSE for background
+ * `/api/v1/workspaces/{workspaceId}/jobs` — poll + SSE for background
  * operations kicked off by async-capable routes (today: ingest).
  *
  * `GET /jobs/{jobId}` is a point-in-time fetch suitable for polling.
@@ -26,8 +26,9 @@ import {
 	ErrorEnvelopeSchema,
 	JobIdParamSchema,
 	JobRecordSchema,
-	WorkspaceUidParamSchema,
+	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
+import { toWireJob } from "./job-wire.js";
 
 export interface JobsRouteDeps {
 	readonly jobs: JobStore;
@@ -40,12 +41,12 @@ export function jobRoutes(deps: JobsRouteDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/jobs/{jobId}",
+			path: "/{workspaceId}/jobs/{jobId}",
 			tags: ["jobs"],
 			summary: "Get a job",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
 					jobId: JobIdParamSchema,
 				}),
 			},
@@ -61,11 +62,11 @@ export function jobRoutes(deps: JobsRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, jobId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
-			const job = await jobs.get(workspaceUid, jobId);
+			const { workspaceId, jobId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
+			const job = await jobs.get(workspaceId, jobId);
 			if (!job) throw new ControlPlaneNotFoundError("job", jobId);
-			return c.json(toWireShape(job), 200);
+			return c.json(toWireJob(job), 200);
 		},
 	);
 
@@ -73,11 +74,11 @@ export function jobRoutes(deps: JobsRouteDeps): OpenAPIHono<AppEnv> {
 	// because `text/event-stream` doesn't fit the zod-openapi JSON
 	// response model and we want the stream to be a legitimate
 	// keep-alive rather than a finite JSON blob.
-	app.get("/:workspaceUid/jobs/:jobId/events", async (c) => {
-		const workspaceUid = c.req.param("workspaceUid");
+	app.get("/:workspaceId/jobs/:jobId/events", async (c) => {
+		const workspaceId = c.req.param("workspaceId");
 		const jobId = c.req.param("jobId");
-		assertWorkspaceAccess(c, workspaceUid);
-		const initial = await jobs.get(workspaceUid, jobId);
+		assertWorkspaceAccess(c, workspaceId);
+		const initial = await jobs.get(workspaceId, jobId);
 		if (!initial) {
 			return c.json(
 				{
@@ -99,7 +100,7 @@ export function jobRoutes(deps: JobsRouteDeps): OpenAPIHono<AppEnv> {
 			let resolveNext: (() => void) | null = null;
 			let aborted = false;
 
-			const unsub = await jobs.subscribe(workspaceUid, jobId, (record) => {
+			const unsub = await jobs.subscribe(workspaceId, jobId, (record) => {
 				queue.push(record);
 				resolveNext?.();
 				resolveNext = null;
@@ -124,7 +125,7 @@ export function jobRoutes(deps: JobsRouteDeps): OpenAPIHono<AppEnv> {
 					if (!record) continue;
 					await stream.writeSSE({
 						event: "job",
-						data: JSON.stringify(toWireShape(record)),
+						data: JSON.stringify(toWireJob(record)),
 					});
 					if (isTerminal(record.status)) {
 						// One more `done` so clients have an unambiguous
@@ -143,14 +144,4 @@ export function jobRoutes(deps: JobsRouteDeps): OpenAPIHono<AppEnv> {
 	});
 
 	return app;
-}
-
-/** Convert a {@link JobRecord} to a mutable JSON-friendly object. The
- * Hono response inference prefers non-readonly maps in `result`, so a
- * shallow copy is cheaper than fighting the types. */
-function toWireShape(job: JobRecord) {
-	return {
-		...job,
-		result: job.result ? { ...job.result } : null,
-	};
 }

@@ -8,13 +8,13 @@
  * dependency between routes and the pipeline.
  */
 
-/** Payload key carrying the owning knowledge base's UID. */
-export const KB_SCOPE_KEY = "knowledgeBaseUid";
+/** Payload key carrying the owning knowledge base's ID. */
+export const KB_SCOPE_KEY = "knowledgeBaseId";
 
 /** Payload key identifying which source document a chunk belongs to.
  * Used for future document-scoped surfaces ("show all chunks of this
  * doc"). */
-export const DOCUMENT_SCOPE_KEY = "documentUid";
+export const DOCUMENT_SCOPE_KEY = "documentId";
 
 /** Payload key recording a chunk's 0-based position within its source
  * document. Useful for reassembling context around a hit. */

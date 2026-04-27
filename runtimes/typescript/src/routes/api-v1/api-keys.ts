@@ -1,5 +1,5 @@
 /**
- * `/api/v1/workspaces/{workspaceUid}/api-keys` — workspace-scoped
+ * `/api/v1/workspaces/{workspaceId}/api-keys` — workspace-scoped
  * API-key issuance, listing, and revocation.
  *
  * Invariants enforced here (and verified by conformance):
@@ -31,7 +31,7 @@ import {
 	CreatedApiKeyResponseSchema,
 	ErrorEnvelopeSchema,
 	PaginationQuerySchema,
-	WorkspaceUidParamSchema,
+	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
 
 export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
@@ -40,13 +40,13 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/api-keys",
+			path: "/{workspaceId}/api-keys",
 			tags: ["api-keys"],
 			summary: "List API keys scoped to a workspace",
 			description:
 				"Returns every key ever issued for the workspace, including revoked ones (revokedAt is non-null). The `hash` is never exposed; only `prefix`, `label`, and timestamps.",
 			request: {
-				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
 				query: PaginationQuerySchema,
 			},
 			responses: {
@@ -63,13 +63,13 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
+			const { workspaceId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceUid);
-			const rows = await store.listApiKeys(workspaceUid);
+			assertWorkspaceAccess(c, workspaceId);
+			const rows = await store.listApiKeys(workspaceId);
 			const page = paginate(rows, query);
 			return c.json(
-				{ items: page.items.map(stripHash), nextCursor: page.nextCursor },
+				{ items: page.items.map(toWireApiKey), nextCursor: page.nextCursor },
 				200,
 			);
 		},
@@ -78,13 +78,13 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceUid}/api-keys",
+			path: "/{workspaceId}/api-keys",
 			tags: ["api-keys"],
 			summary: "Issue a new API key",
 			description:
 				"Creates a new key and returns the plaintext **exactly once** on this response. The runtime stores only a scrypt digest; there is no way to recover the plaintext later. Copy it immediately.",
 			request: {
-				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
 				body: {
 					content: {
 						"application/json": { schema: CreateApiKeyInputSchema },
@@ -106,12 +106,12 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const keyId = randomUUID();
 			const minted = await mintToken();
-			const record = await store.persistApiKey(workspaceUid, {
+			const record = await store.persistApiKey(workspaceId, {
 				keyId,
 				prefix: minted.prefix,
 				hash: minted.hash,
@@ -119,7 +119,7 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 				expiresAt: body.expiresAt ?? null,
 			});
 			return c.json(
-				{ plaintext: minted.plaintext, key: stripHash(record) },
+				{ plaintext: minted.plaintext, key: toWireApiKey(record) },
 				201,
 			);
 		},
@@ -128,14 +128,14 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceUid}/api-keys/{keyId}",
+			path: "/{workspaceId}/api-keys/{keyId}",
 			tags: ["api-keys"],
 			summary: "Revoke an API key",
 			description:
 				"Soft-revoke: sets `revokedAt` and leaves the row visible in `GET /api-keys`. The key stops authenticating immediately — the next request bearing it gets `401 unauthorized`. Re-revoking an already-revoked key is a no-op (returns 204).",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
 					keyId: ApiKeyIdParamSchema,
 				}),
 			},
@@ -148,13 +148,13 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, keyId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
-			const existing = await store.getApiKey(workspaceUid, keyId);
+			const { workspaceId, keyId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
+			const existing = await store.getApiKey(workspaceId, keyId);
 			if (!existing) {
 				throw new ControlPlaneNotFoundError("api_key", keyId);
 			}
-			await store.revokeApiKey(workspaceUid, keyId);
+			await store.revokeApiKey(workspaceId, keyId);
 			return c.body(null, 204);
 		},
 	);
@@ -162,10 +162,17 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 	return app;
 }
 
-/** Remove the `hash` column before serving a record. */
+/** Remove secret material and expose the public id naming convention. */
 function stripHash<T extends { readonly hash: string }>(
 	rec: T,
 ): Omit<T, "hash"> {
 	const { hash: _hash, ...rest } = rec;
 	return rest;
+}
+
+function toWireApiKey<
+	T extends { readonly hash: string; readonly workspace: string },
+>(rec: T) {
+	const { workspace, ...rest } = stripHash(rec);
+	return { workspaceId: workspace, ...rest };
 }

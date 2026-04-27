@@ -72,8 +72,8 @@ export function WorkspaceDetailPage() {
 						<KindBadge kind={data.kind} />
 					</div>
 					<div className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-						<span className="font-mono truncate">{data.uid}</span>
-						<CopyButton value={data.uid} label="Copy workspace uid" />
+						<span className="font-mono truncate">{data.workspaceId}</span>
+						<CopyButton value={data.workspaceId} label="Copy workspace id" />
 					</div>
 				</div>
 				<div className="flex items-center gap-2 shrink-0">
@@ -201,22 +201,22 @@ export function WorkspaceDetailPage() {
 				<>
 					<Card>
 						<CardContent className="pt-5">
-							<TestConnectionPanel uid={data.uid} />
+							<TestConnectionPanel uid={data.workspaceId} />
 						</CardContent>
 					</Card>
 					<Card>
 						<CardContent className="pt-5">
-							<ServicesPanel workspace={data.uid} />
+							<ServicesPanel workspace={data.workspaceId} />
 						</CardContent>
 					</Card>
 					<Card>
 						<CardContent className="pt-5">
-							<KnowledgeBasesPanel workspace={data.uid} />
+							<KnowledgeBasesPanel workspace={data.workspaceId} />
 						</CardContent>
 					</Card>
 					<Card>
 						<CardContent className="pt-5">
-							<ApiKeysPanel workspace={data.uid} />
+							<ApiKeysPanel workspace={data.workspaceId} />
 						</CardContent>
 					</Card>
 				</>
@@ -229,7 +229,7 @@ export function WorkspaceDetailPage() {
 				submitting={del.isPending}
 				onConfirm={async () => {
 					try {
-						await del.mutateAsync(data.uid);
+						await del.mutateAsync(data.workspaceId);
 						toast.success(`Workspace '${data.name}' deleted`);
 						navigate("/");
 					} catch (err) {

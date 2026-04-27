@@ -37,24 +37,24 @@ export interface KbResolution {
  */
 export async function resolveKb(
 	store: ControlPlaneStore,
-	workspaceUid: string,
-	knowledgeBaseUid: string,
+	workspaceId: string,
+	knowledgeBaseId: string,
 ): Promise<KbResolution> {
-	const workspace = await store.getWorkspace(workspaceUid);
+	const workspace = await store.getWorkspace(workspaceId);
 	if (!workspace) {
-		throw new ControlPlaneNotFoundError("workspace", workspaceUid);
+		throw new ControlPlaneNotFoundError("workspace", workspaceId);
 	}
 
 	const knowledgeBase = await store.getKnowledgeBase(
-		workspaceUid,
-		knowledgeBaseUid,
+		workspaceId,
+		knowledgeBaseId,
 	);
 	if (!knowledgeBase) {
-		throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseUid);
+		throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
 	}
 
 	const embedding = await store.getEmbeddingService(
-		workspaceUid,
+		workspaceId,
 		knowledgeBase.embeddingServiceId,
 	);
 	if (!embedding) {
@@ -66,13 +66,13 @@ export async function resolveKb(
 
 	const reranking = knowledgeBase.rerankingServiceId
 		? await store.getRerankingService(
-				workspaceUid,
+				workspaceId,
 				knowledgeBase.rerankingServiceId,
 			)
 		: null;
 
 	const descriptor: VectorStoreRecord = {
-		workspace: workspaceUid,
+		workspace: workspaceId,
 		uid: knowledgeBase.knowledgeBaseId,
 		// The data plane addresses the underlying collection by name.
 		// `vector_collection` is the auto-provisioned name set on KB

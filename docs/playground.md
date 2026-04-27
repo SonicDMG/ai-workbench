@@ -172,7 +172,7 @@ with three paragraphs becomes three chunks; a search query can
 return all three as separate hits. The results table reflects that
 shape directly: each row shows the chunk's `chunkIndex` (its
 0-based position within the source document), the parent
-`documentUid`, and a 2-line preview of the chunk's text. Click a
+`documentId`, and a 2-line preview of the chunk's text. Click a
 row to expand the full payload and score.
 
 To browse chunks **under** a specific document — for inspection,

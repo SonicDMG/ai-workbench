@@ -28,7 +28,7 @@ to flag what's coming.
 
 ### Identifiers
 
-- All UIDs are RFC 4122 v4 UUIDs rendered as lowercase hyphenated
+- All IDs are RFC 4122 v4 UUIDs rendered as lowercase hyphenated
   strings.
 - Timestamps are ISO-8601 in UTC with millisecond precision
   (`2026-04-22T10:11:12.345Z`).
@@ -38,13 +38,13 @@ to flag what's coming.
 
 ### Resource scoping
 
-Every nested resource carries its parent UIDs in the path:
+Every nested resource carries its parent IDs in the path:
 
 ```
-/api/v1/workspaces/{workspaceUid}
-/api/v1/workspaces/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}
-/api/v1/workspaces/{workspaceUid}/knowledge-bases/{kb}/documents/{documentUid}
-/api/v1/workspaces/{workspaceUid}/{chunking,embedding,reranking}-services/{uid}
+/api/v1/workspaces/{workspaceId}
+/api/v1/workspaces/{workspaceId}/knowledge-bases/{knowledgeBaseId}
+/api/v1/workspaces/{workspaceId}/knowledge-bases/{kb}/documents/{documentId}
+/api/v1/workspaces/{workspaceId}/{chunking,embedding,reranking}-services/{serviceId}
 ```
 
 A request whose path references a non-existent workspace returns
@@ -78,7 +78,7 @@ All error responses share one envelope:
 {
   "error": {
     "code": "workspace_not_found",
-    "message": "workspace '<uid>' not found",
+    "message": "workspace '<workspaceId>' not found",
     "requestId": "b48e…"
   }
 }
@@ -94,12 +94,12 @@ human-readable and may change. Currently emitted:
 | 403 | `forbidden` | Token is valid but not authorized for the requested action — either the subject's `workspaceScopes` doesn't include the target workspace, or it's a scoped subject attempting a platform-level action (e.g. `POST /workspaces`). Also reserved for role-based checks in the upcoming RBAC phase. |
 | 413 | `payload_too_large` | `/api/v1/workspaces/*` request body exceeded the runtime's 1 MB JSON body limit. |
 | 404 | `not_found` | Unknown route |
-| 404 | `workspace_not_found` | Workspace UID doesn't exist |
-| 404 | `knowledge_base_not_found` | Knowledge-base UID doesn't exist in workspace |
-| 404 | `document_not_found` | Document UID doesn't exist in the knowledge base |
-| 404 | `chunking_service_not_found` / `embedding_service_not_found` / `reranking_service_not_found` | Service UID doesn't exist in workspace |
+| 404 | `workspace_not_found` | Workspace ID doesn't exist |
+| 404 | `knowledge_base_not_found` | Knowledge-base ID doesn't exist in workspace |
+| 404 | `document_not_found` | Document ID doesn't exist in the knowledge base |
+| 404 | `chunking_service_not_found` / `embedding_service_not_found` / `reranking_service_not_found` | Service ID doesn't exist in workspace |
 | 404 | `job_not_found` | Job ID doesn't exist in the workspace |
-| 409 | `conflict` | Create with an already-taken UID, or service deletion refused while a KB still references it |
+| 409 | `conflict` | Create with an already-taken ID, or service deletion refused while a KB still references it |
 | 501 | `hybrid_not_supported` | Caller asked for hybrid search on a workspace kind whose driver doesn't implement `searchHybrid` |
 | 501 | `rerank_not_supported` | Caller asked for rerank on a workspace kind whose driver doesn't implement `rerank` |
 | 400 | `dimension_mismatch` | Supplied vector length doesn't match the KB's bound embedding service |
@@ -218,7 +218,7 @@ definitions — always in sync with the running runtime.
 
 ### `GET /api/v1/workspaces`
 
-List all workspaces, sorted by `createdAt` ascending with `uid` as
+List all workspaces, sorted by `createdAt` ascending with `workspaceId` as
 tie-breaker. Every backend (memory / file / astra) produces the same
 ordering so UI renders are deterministic.
 
@@ -228,7 +228,7 @@ ordering so UI renders are deterministic.
 {
   "items": [
     {
-      "uid": "…",
+      "workspaceId": "…",
       "name": "prod",
       "url": "env:ASTRA_DB_API_ENDPOINT",
       "kind": "astra",
@@ -244,7 +244,7 @@ ordering so UI renders are deterministic.
 
 ### `POST /api/v1/workspaces`
 
-Create a workspace. `uid` is optional — the runtime generates one if
+Create a workspace. `workspaceId` is optional — the runtime generates one if
 omitted.
 
 **Request**
@@ -276,26 +276,26 @@ rejected with `400`.
 
 **Response 201** — the created `Workspace`.
 
-### `GET /api/v1/workspaces/{workspaceUid}`
+### `GET /api/v1/workspaces/{workspaceId}`
 
 Fetch a single workspace.
 
 - **200** — `Workspace`
 - **404** `workspace_not_found`
 
-### `PUT /api/v1/workspaces/{workspaceUid}`
+### `PATCH /api/v1/workspaces/{workspaceId}`
 
 Patch one or more of `name`, `url`, `credentials`,
 `keyspace`. Every field is optional; omitted fields are preserved.
 
-`kind` and `uid` are immutable after creation and are rejected with
+`kind` and `workspaceId` are immutable after creation and are rejected with
 `400`. Unknown fields are likewise rejected (strict body).
 
 - **200** — updated `Workspace`
 - **400** — body contains `kind` or an unknown field
 - **404** `workspace_not_found`
 
-### `DELETE /api/v1/workspaces/{workspaceUid}`
+### `DELETE /api/v1/workspaces/{workspaceId}`
 
 Cascades to the workspace's knowledge bases, execution services,
 RAG documents, and API keys. Before removing the control-plane
@@ -307,7 +307,7 @@ through the workspace's driver.
 - **503** `driver_unavailable` — workspace has knowledge bases but
   no registered driver to drop their collections
 
-### `POST /api/v1/workspaces/{workspaceUid}/test-connection`
+### `POST /api/v1/workspaces/{workspaceId}/test-connection`
 
 Probe the workspace's credentials. Resolves every value in
 `credentials` via the runtime's `SecretResolver` and reports the
@@ -339,7 +339,7 @@ backend or validate a resolved token against the remote service.
 
 ---
 
-## `/api/v1/workspaces/{workspaceUid}/api-keys`
+## `/api/v1/workspaces/{workspaceId}/api-keys`
 
 Workspace-scoped bearer tokens. Documented in [`auth.md`](auth.md);
 re-capped here for the route contract.
@@ -353,7 +353,7 @@ An `ApiKey`:
 
 ```json
 {
-  "workspace": "…",
+  "workspaceId": "…",
   "keyId": "…",
   "prefix": "abc123xyz789",
   "label": "ci",
@@ -403,7 +403,7 @@ no-op that still returns `204`.
 
 ---
 
-## `/api/v1/workspaces/{workspaceUid}/{chunking,embedding,reranking}-services`
+## `/api/v1/workspaces/{workspaceId}/{chunking,embedding,reranking}-services`
 
 Workspace-scoped execution services. Knowledge bases compose one
 chunking + one embedding + (optionally) one reranking service at
@@ -421,7 +421,7 @@ List services in the workspace.
 
 ### `POST`
 
-Create a service. The runtime generates a UID if `uid` is omitted.
+Create a service. The runtime generates the service ID if omitted.
 Required fields by kind:
 
 | Kind | Required |
@@ -456,11 +456,11 @@ them as `SET<TEXT>`; the converter normalises at the boundary.)
 - **201** — the created record (with the generated `*ServiceId`)
 - **400** `validation_error` — schema failure
 - **404** `workspace_not_found`
-- **409** `conflict` — `uid` collision
+- **409** `conflict` — `*ServiceId` collision
 
-### `GET /{serviceId}` / `PUT /{serviceId}` / `DELETE /{serviceId}`
+### `GET /{serviceId}` / `PATCH /{serviceId}` / `DELETE /{serviceId}`
 
-Fetch / patch / delete. `PUT` accepts every field from create
+Fetch / patch / delete. `PATCH` accepts every field from create
 (all optional). Strict bodies — unknown keys return `400`.
 
 `DELETE` is **refused with `409 conflict` while any KB still
@@ -470,7 +470,7 @@ straight to it.
 
 ---
 
-## `/api/v1/workspaces/{workspaceUid}/knowledge-bases`
+## `/api/v1/workspaces/{workspaceId}/knowledge-bases`
 
 ### `GET`
 
@@ -528,15 +528,15 @@ must reference services that exist in the same workspace.
 - **201** — the created `KnowledgeBase` (collection now exists)
 - **404** `workspace_not_found` / `embedding_service_not_found` /
   `chunking_service_not_found` / `reranking_service_not_found`
-- **409** `conflict` — `uid` collision
+- **409** `conflict` — `knowledgeBaseId` collision
 - **422** `workspace_misconfigured` — workspace is missing
   `url` or `credentials.token` required by its driver
 - **503** `driver_unavailable` — no driver registered for the
   workspace's `kind`
 
-### `GET /{knowledgeBaseUid}` / `PUT /{knowledgeBaseUid}` / `DELETE /{knowledgeBaseUid}`
+### `GET /{knowledgeBaseId}` / `PATCH /{knowledgeBaseId}` / `DELETE /{knowledgeBaseId}`
 
-`GET` reads the record. `PUT` accepts a partial — `name`,
+`GET` reads the record. `PATCH` accepts a partial — `name`,
 `description`, `status`, `rerankingServiceId`, `language`, `lexical`
 are mutable; **`embeddingServiceId` and `chunkingServiceId` are
 immutable post-create** and the schema is `.strict()`, so accidentally
@@ -544,7 +544,7 @@ including them in a body returns `400`. `DELETE` drops the underlying
 Astra collection first, then the KB row, then cascades RAG document
 rows.
 
-### `POST /{knowledgeBaseUid}/records` — upsert records
+### `POST /{knowledgeBaseId}/records` — upsert records
 
 **Request** — each record carries exactly one of `vector` or `text`:
 
@@ -583,7 +583,7 @@ rows.
 - **400** `embedding_unavailable` / `embedding_dimension_mismatch`
 - **404** `workspace_not_found` / `knowledge_base_not_found`
 
-### `DELETE /{knowledgeBaseUid}/records/{recordId}`
+### `DELETE /{knowledgeBaseId}/records/{recordId}`
 
 Delete a single record. `recordId` is the application's `id` (any
 non-empty string).
@@ -592,7 +592,7 @@ non-empty string).
 { "deleted": true }
 ```
 
-### `POST /{knowledgeBaseUid}/search` — vector or text search
+### `POST /{knowledgeBaseId}/search` — vector or text search
 
 **Request** — exactly one of `vector` or `text`, plus optional
 `hybrid` / `lexicalWeight` / `rerank`:
@@ -645,7 +645,7 @@ Score semantics match the bound embedding service's
 - **404** `workspace_not_found` / `knowledge_base_not_found`
 - **501** `hybrid_not_supported` / `rerank_not_supported`
 
-### `GET /{knowledgeBaseUid}/documents`
+### `GET /{knowledgeBaseId}/documents`
 
 List RAG documents in the KB.
 
@@ -676,10 +676,10 @@ A `RagDocument`:
 `status` is one of `pending | chunking | embedding | writing | ready
 | failed`. The KB ingest pipeline is the canonical writer of
 `status` / `errorMessage` / `chunkTotal` / `ingestedAt`. Clients
-can also set these directly via `PUT` if they own the lifecycle
+can also set these directly via `PATCH` if they own the lifecycle
 externally.
 
-### `POST /{knowledgeBaseUid}/documents`
+### `POST /{knowledgeBaseId}/documents`
 
 Register a document in the KB without running the ingest pipeline.
 
@@ -696,32 +696,32 @@ Register a document in the KB without running the ingest pipeline.
 - **201** — the created `RagDocument` (`status` defaults to
   `pending`, `metadata` defaults to `{}`)
 - **404** `workspace_not_found` / `knowledge_base_not_found`
-- **409** `conflict` — `uid` collision within the same KB
+- **409** `conflict` — `workspaceId` collision within the same KB
 
-### `GET /{knowledgeBaseUid}/documents/{documentUid}` / `PUT /{documentUid}` / `DELETE /{documentUid}`
+### `GET /{knowledgeBaseId}/documents/{documentId}` / `PATCH /{documentId}` / `DELETE /{documentId}`
 
-Fetch / patch / delete. `PUT` accepts every field from create (all
+Fetch / patch / delete. `PATCH` accepts every field from create (all
 optional). `DELETE` cascades into the KB's collection: chunks
-matched by `payload.documentUid` are removed before the row is
+matched by `payload.documentId` are removed before the row is
 dropped, so a successful delete leaves no traces in KB-scoped
 search. Drivers exposing `deleteRecords` use a single bulk call;
 older drivers fall back to a `listRecords` + per-row delete loop.
 
-### `GET /{knowledgeBaseUid}/documents/{documentUid}/chunks`
+### `GET /{knowledgeBaseId}/documents/{documentId}/chunks`
 
 Lists the chunks the ingest pipeline extracted from this document.
 Reads raw records out of the KB's collection filtered on
-`documentUid`, sorts by the `chunkIndex` payload key, and returns:
+`documentId`, sorts by the `chunkIndex` payload key, and returns:
 
 ```json
 [
   {
-    "id": "<documentUid>:0",
+    "id": "<documentId>:0",
     "chunkIndex": 0,
     "text": "First paragraph about apples.",
     "payload": {
-      "knowledgeBaseUid": "…",
-      "documentUid": "…",
+      "knowledgeBaseId": "…",
+      "documentId": "…",
       "chunkIndex": 0,
       "chunkText": "First paragraph about apples.",
       "source": "seed"
@@ -741,7 +741,7 @@ Query params:
 - **501** `list_records_not_supported` — driver doesn't expose
   `listRecords`
 
-### `POST /{knowledgeBaseUid}/ingest`
+### `POST /{knowledgeBaseId}/ingest`
 
 Synchronous end-to-end ingest. Chunks the input text, embeds every
 chunk through the KB's bound embedding service (server-side via
@@ -762,7 +762,7 @@ upserts the chunks into the KB's collection, and creates a
 
 `chunker` overrides the runtime defaults for this call only.
 `metadata` is merged onto every chunk's payload; the reserved keys
-`knowledgeBaseUid`, `documentUid`, `chunkIndex`, and `chunkText` are
+`knowledgeBaseId`, `documentId`, `chunkIndex`, and `chunkText` are
 always set by the runtime and override any caller-supplied values.
 `text` is capped at 200,000 characters.
 
@@ -777,8 +777,8 @@ always set by the runtime and override any caller-supplied values.
 
 **Chunk payloads.** Every chunk upserted carries:
 
-- `knowledgeBaseUid` — the KB's UID (used by `/search`)
-- `documentUid` — the UID of the `RagDocument` row this ingest created
+- `knowledgeBaseId` — the KB's ID (used by `/search`)
+- `documentId` — the ID of the `RagDocument` row this ingest created
 - `chunkIndex` — 0-based position within the source document
 - `chunkText` — the chunk's raw text (read back through `/chunks`)
 - Plus every caller-supplied `metadata` key
@@ -787,7 +787,7 @@ always set by the runtime and override any caller-supplied values.
 `RagDocument` row is marked `status: failed` with `errorMessage`
 before the error is re-raised.
 
-### `POST /{knowledgeBaseUid}/ingest?async=true`
+### `POST /{knowledgeBaseId}/ingest?async=true`
 
 Same body. The pipeline runs in the background; the response
 returns immediately with a job pointer.
@@ -797,11 +797,11 @@ returns immediately with a job pointer.
 ```json
 {
   "job": {
-    "workspace": "…",
+    "workspaceId": "…",
     "jobId": "…",
     "kind": "ingest",
-    "knowledgeBaseUid": "…",
-    "documentUid": "…",
+    "knowledgeBaseId": "…",
+    "documentId": "…",
     "status": "pending",
     "processed": 0,
     "total": null,
@@ -824,7 +824,7 @@ call so renames or service swaps mid-flight don't drift.
 
 ---
 
-## `/api/v1/workspaces/{workspaceUid}/jobs/{jobId}`
+## `/api/v1/workspaces/{workspaceId}/jobs/{jobId}`
 
 Job poll surface for anything that runs in the background. Today
 only async ingest creates jobs; future bulk ops (reindex, export,
@@ -857,17 +857,16 @@ persistent job backends.
 
 | Field | Type | Notes |
 |---|---|---|
-| `workspace` | uuid | Owning workspace |
+| `workspaceId` | uuid | Owning workspace |
 | `jobId` | uuid | |
 | `kind` | `"ingest"` | Discriminator — more kinds arrive with more async ops |
-| `knowledgeBaseUid` | uuid or null | Set for ingest jobs |
-| `documentUid` | uuid or null | Set for ingest jobs |
+| `knowledgeBaseId` | uuid or null | Set for ingest jobs |
+| `documentId` | uuid or null | Set for ingest jobs |
 | `status` | `"pending"` \| `"running"` \| `"succeeded"` \| `"failed"` | Terminal: succeeded, failed |
 | `processed` | int | Units completed |
 | `total` | int or null | Units expected (null if unknown) |
 | `result` | object or null | Kind-specific summary on success (ingest: `{ chunks: N }`) |
 | `errorMessage` | string or null | Populated on `failed` |
-| `leasedBy` | string or null | Replica id holding the lease on a `running` job (cross-replica resume) |
 | `leasedAt` | iso-8601 or null | Last heartbeat from the lease holder |
 | `createdAt` | iso-8601 | |
 | `updatedAt` | iso-8601 | |

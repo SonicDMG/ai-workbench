@@ -11,8 +11,8 @@ able to execute all scenarios and produce responses that match (after
 - Requests are written as `METHOD /path` with a JSON body where
   relevant. Every runtime's test harness issues them in order.
 - Scenarios are ordered. Later steps may reference values from earlier
-  responses via `$N.field` (1-indexed to step number) — e.g. `$1.uid`
-  means "the `uid` from step 1's response body".
+  responses via `$N.field` (1-indexed to step number) — e.g. `$1.workspaceId`
+  means "the `workspaceId` from step 1's response body".
 - Conformance runs with auth disabled. Auth-specific behavior is pinned
   by runtime tests; portable API-key lifecycle response shapes are
   still included here.
@@ -27,9 +27,9 @@ Minimum viable workspace lifecycle.
 
 1. `POST /api/v1/workspaces` — body `{"name": "prod", "kind": "astra"}`
 2. `GET  /api/v1/workspaces`
-3. `GET  /api/v1/workspaces/$1.uid`
-4. `PUT  /api/v1/workspaces/$1.uid` — body `{"name": "production"}`
-5. `DELETE /api/v1/workspaces/$1.uid`
+3. `GET  /api/v1/workspaces/$1.workspaceId`
+4. `PATCH  /api/v1/workspaces/$1.workspaceId` — body `{"name": "production"}`
+5. `DELETE /api/v1/workspaces/$1.workspaceId`
 
 Fixture: `fixtures/workspace-crud-basic.json`.
 
@@ -38,7 +38,7 @@ Fixture: `fixtures/workspace-crud-basic.json`.
 ## Scenario 2 — `workspace-kind-is-immutable`
 
 A workspace's `kind` cannot change after creation. Every runtime MUST
-reject a `PUT` body containing `kind` with `400 validation_error`.
+reject a `PATCH` body containing `kind` with `400 validation_error`.
 
 Fixture: `fixtures/workspace-kind-is-immutable.json`.
 
@@ -55,7 +55,7 @@ Fixture: `fixtures/workspace-credentials-must-be-secret-ref.json`.
 
 ## Scenario 4 — `workspace-test-connection-mock`
 
-`POST /workspaces/{uid}/test-connection` on a mock workspace always
+`POST /workspaces/{workspaceId}/test-connection` on a mock workspace always
 reports `ok: true` with the portable response shape.
 
 Fixture: `fixtures/workspace-test-connection-mock.json`.

@@ -116,12 +116,12 @@ All routes documented at `/docs` (Scalar UI) and
 | Method | Path | Purpose |
 |---|---|---|
 | `GET / POST` | `/api/v1/workspaces` | List / create workspaces |
-| `GET / PUT / DELETE` | `/api/v1/workspaces/{w}` | Workspace CRUD (DELETE cascades) |
+| `GET / PATCH / DELETE` | `/api/v1/workspaces/{w}` | Workspace CRUD (DELETE cascades) |
 | `POST` | `/api/v1/workspaces/{w}/test-connection` | Resolve configured workspace credential refs |
 | `GET / POST` | `/api/v1/workspaces/{w}/knowledge-bases` | List / create knowledge bases (POST auto-provisions the underlying vector collection) |
-| `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}` | KB CRUD (DELETE drops the collection + cascades RAG documents) |
+| `GET / PATCH / DELETE` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}` | KB CRUD (DELETE drops the collection + cascades RAG documents) |
 | `GET / POST` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents` | List / register a document in a KB |
-| `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents/{d}` | Document metadata CRUD (DELETE cascades chunks in the KB's collection) |
+| `GET / PATCH / DELETE` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents/{d}` | Document metadata CRUD (DELETE cascades chunks in the KB's collection) |
 | `GET` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents/{d}/chunks` | List the chunks under a document |
 | `POST` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest` | Sync ingest (chunk → embed → upsert → register Document) |
 | `POST` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest?async=true` | Same pipeline, returns 202 + job pointer |

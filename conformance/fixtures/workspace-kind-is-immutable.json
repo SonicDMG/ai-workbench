@@ -1,6 +1,6 @@
 {
 	"slug": "workspace-kind-is-immutable",
-	"description": "`PUT /workspaces/{uid}` rejects a `kind` field with 400 validation_error. A workspace's backend is immutable after creation; the canonical error envelope must say so.",
+	"description": "`PATCH /workspaces/{workspaceId}` rejects a `kind` field with 400 validation_error. A workspace's backend is immutable after creation; the canonical error envelope must say so.",
 	"captures": [
 		{
 			"request": {
@@ -19,7 +19,7 @@
 					"keyspace": null,
 					"kind": "astra",
 					"name": "w",
-					"uid": "{{UUID_1}}",
+					"workspaceId": "{{UUID_1}}",
 					"updatedAt": "{{TS}}"
 				},
 				"status": 201
@@ -31,7 +31,7 @@
 				"body": {
 					"kind": "mock"
 				},
-				"method": "PUT",
+				"method": "PATCH",
 				"path": "/api/v1/workspaces/{{UUID_1}}"
 			},
 			"response": {
@@ -60,7 +60,7 @@
 					"keyspace": null,
 					"kind": "astra",
 					"name": "w",
-					"uid": "{{UUID_1}}",
+					"workspaceId": "{{UUID_1}}",
 					"updatedAt": "{{TS}}"
 				},
 				"status": 200

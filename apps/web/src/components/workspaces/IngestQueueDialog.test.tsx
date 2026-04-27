@@ -57,11 +57,11 @@ function makeFile(name: string, content: string, type = "text/markdown"): File {
 function ingestResponse(jobId: string): KbAsyncIngestResponse {
 	return {
 		job: {
-			workspace: "ws-1",
+			workspaceId: "ws-1",
 			jobId,
 			kind: "ingest",
-			knowledgeBaseUid: KB.knowledgeBaseId,
-			documentUid: `doc-${jobId}`,
+			knowledgeBaseId: KB.knowledgeBaseId,
+			documentId: `doc-${jobId}`,
 			status: "pending",
 			processed: 0,
 			total: null,
@@ -95,11 +95,11 @@ function jobRecord(
 	overrides?: Partial<JobRecord>,
 ): JobRecord {
 	return {
-		workspace: "ws-1",
+		workspaceId: "ws-1",
 		jobId,
 		kind: "ingest",
-		knowledgeBaseUid: KB.knowledgeBaseId,
-		documentUid: `doc-${jobId}`,
+		knowledgeBaseId: KB.knowledgeBaseId,
+		documentId: `doc-${jobId}`,
 		status,
 		processed: status === "succeeded" ? 5 : 0,
 		total: status === "pending" ? null : 5,
