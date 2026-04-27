@@ -42,8 +42,8 @@ queries pick one of two paths:
    the runtime.
 2. **Client-side embedding** — otherwise, the runtime builds an
    `Embedder` from the KB's bound embedding-service config, embeds
-   the text locally via the Vercel AI SDK, then does a normal
-   vector search.
+   the text locally via LangChain JS (`@langchain/openai`,
+   `@langchain/cohere`), then does a normal vector search.
 
 The driver decides whether it can do server-side embedding on a
 per-collection basis, so the two paths can coexist within a single
@@ -59,8 +59,7 @@ collections without any migration.
 
 ## Embedder abstraction
 
-The runtime's `Embedder` interface is a thin wrapper over the
-Vercel AI SDK:
+The runtime's `Embedder` interface is a thin wrapper over LangChain JS:
 
 ```ts
 interface Embedder {
@@ -75,9 +74,9 @@ The factory (`EmbedderFactory.forConfig(config)`) takes an
 embedding-service `EmbeddingConfig` (resolved from the KB's
 `embeddingServiceId`) and returns an `Embedder`. It resolves
 the `secretRef` through the existing `SecretResolver`, then
-dispatches on `provider`. Today: OpenAI. Adding another provider
-(Cohere, Voyage, Bedrock, …) is one `npm install @ai-sdk/<prov>`
-+ one case in [`embeddings/vercel.ts`](../runtimes/typescript/src/embeddings/vercel.ts).
+dispatches on `provider`. Today: OpenAI and Cohere. Adding another
+provider (Voyage, Bedrock, …) is one `npm install @langchain/<prov>`
++ one case in [`embeddings/langchain.ts`](../runtimes/typescript/src/embeddings/langchain.ts).
 
 Errors surface as `EmbedderUnavailableError` (`400
 embedding_unavailable`) when the config is missing a secret or
@@ -128,8 +127,8 @@ Upsert uses the same dispatch:
 - `{id, text, payload}` → `driver.upsertByText` first (Astra
   `$vectorize` on insertMany, mock driver's pseudo-embed when
   the KB opts in). On `NotSupportedError` — unsupported provider
-  or legacy collection — the route embeds client-side via the
-  Vercel AI SDK and retries through plain `upsert`.
+  or legacy collection — the route embeds client-side via
+  LangChain JS and retries through plain `upsert`.
 - Mixed batches → client-embed the text records, combine with the
   vector records, one transactional `upsert` call. (Splitting
   across `upsertByText` + `upsert` would break transactional

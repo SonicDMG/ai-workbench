@@ -49,11 +49,11 @@ describe("EmbedderFactory.forConfig", () => {
 			secrets: resolverWith({ DOES_NOT_EXIST: "sk-test" }),
 		});
 		await expect(
-			factory.forConfig(cfg({ provider: "cohere" })),
+			factory.forConfig(cfg({ provider: "voyageai" })),
 		).rejects.toBeInstanceOf(EmbedderUnavailableError);
 	});
 
-	test("returns an Embedder with the configured id and dimension for a known provider", async () => {
+	test("returns an Embedder with the configured id and dimension for openai", async () => {
 		const factory = makeEmbedderFactory({
 			secrets: resolverWith({ DOES_NOT_EXIST: "sk-test" }),
 		});
@@ -61,7 +61,22 @@ describe("EmbedderFactory.forConfig", () => {
 		expect(e.id).toBe("openai:text-embedding-3-small");
 		expect(e.dimension).toBe(1536);
 		// We intentionally don't call e.embed() here — that would hit
-		// the real OpenAI API. The vercel.ts unit test exercises the
-		// embed() path behind a stubbed SDK.
+		// the real OpenAI API. End-to-end coverage of the embed path
+		// belongs in an integration test against a stub server.
+	});
+
+	test("returns an Embedder for cohere", async () => {
+		const factory = makeEmbedderFactory({
+			secrets: resolverWith({ DOES_NOT_EXIST: "co-test" }),
+		});
+		const e = await factory.forConfig(
+			cfg({
+				provider: "cohere",
+				model: "embed-v4.0",
+				dimension: 1024,
+			}),
+		);
+		expect(e.id).toBe("cohere:embed-v4.0");
+		expect(e.dimension).toBe(1024);
 	});
 });

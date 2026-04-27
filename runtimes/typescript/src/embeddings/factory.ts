@@ -9,8 +9,8 @@
 
 import type { EmbeddingConfig } from "../control-plane/types.js";
 import type { SecretResolver } from "../secrets/provider.js";
+import { buildLangchainEmbedder } from "./langchain.js";
 import { type Embedder, EmbedderUnavailableError } from "./types.js";
-import { buildVercelEmbedder } from "./vercel.js";
 
 export interface EmbedderFactoryDeps {
 	readonly secrets: SecretResolver;
@@ -48,7 +48,7 @@ export function makeEmbedderFactory(
 					}`,
 				);
 			}
-			return buildVercelEmbedder({ config, apiKey });
+			return buildLangchainEmbedder({ config, apiKey });
 		},
 	};
 }

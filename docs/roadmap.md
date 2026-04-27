@@ -231,7 +231,7 @@ supported provider (`openai`, `azureOpenAI`, `cohere`, `jinaAI`,
 Legacy collections without a `service` block raise
 `COLLECTION_VECTORIZE_NOT_CONFIGURED`; the driver catches and
 rethrows as `NotSupportedError`, after which the route layer falls
-back to client-side embedding via the Vercel AI SDK. No migration
+back to client-side embedding via LangChain JS. No migration
 required on existing data. See [`docs/playground.md`](playground.md)
 for the dispatch model.
 
