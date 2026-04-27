@@ -30,9 +30,9 @@ import {
 	PaginationQuerySchema,
 	TestConnectionResponseSchema,
 	UpdateWorkspaceInputSchema,
+	WorkspaceIdParamSchema,
 	WorkspacePageSchema,
 	WorkspaceRecordSchema,
-	WorkspaceUidParamSchema,
 } from "../../openapi/schemas.js";
 import type { SecretResolver } from "../../secrets/provider.js";
 import { resolveKb } from "./kb-descriptor.js";
@@ -68,8 +68,9 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			const rows = await store.listWorkspaces();
 			// Scoped callers only see workspaces their subject can touch;
 			// anonymous / unscoped callers see everything.
+			const page = paginate([...filterToAccessibleWorkspaces(c, rows)], query);
 			return c.json(
-				paginate([...filterToAccessibleWorkspaces(c, rows)], query),
+				{ items: page.items.map(toWireWorkspace), nextCursor: page.nextCursor },
 				200,
 			);
 		},
@@ -107,18 +108,21 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 		async (c) => {
 			assertPlatformAccess(c);
 			const body = c.req.valid("json");
-			const record = await store.createWorkspace(body);
-			return c.json(record, 201);
+			const record = await store.createWorkspace({
+				...body,
+				uid: body.workspaceId,
+			});
+			return c.json(toWireWorkspace(record), 201);
 		},
 	);
 
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}",
+			path: "/{workspaceId}",
 			tags: ["workspaces"],
 			summary: "Get a workspace",
-			request: { params: z.object({ workspaceUid: WorkspaceUidParamSchema }) },
+			request: { params: z.object({ workspaceId: WorkspaceIdParamSchema }) },
 			responses: {
 				200: {
 					content: { "application/json": { schema: WorkspaceRecordSchema } },
@@ -136,23 +140,23 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
-			const record = await store.getWorkspace(workspaceUid);
+			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
+			const record = await store.getWorkspace(workspaceId);
 			if (!record)
-				throw new ControlPlaneNotFoundError("workspace", workspaceUid);
-			return c.json(record, 200);
+				throw new ControlPlaneNotFoundError("workspace", workspaceId);
+			return c.json(toWireWorkspace(record), 200);
 		},
 	);
 
 	app.openapi(
 		createRoute({
-			method: "put",
-			path: "/{workspaceUid}",
+			method: "patch",
+			path: "/{workspaceId}",
 			tags: ["workspaces"],
 			summary: "Update a workspace",
 			request: {
-				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
 				body: {
 					content: {
 						"application/json": { schema: UpdateWorkspaceInputSchema },
@@ -171,22 +175,22 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
-			const record = await store.updateWorkspace(workspaceUid, body);
-			return c.json(record, 200);
+			const record = await store.updateWorkspace(workspaceId, body);
+			return c.json(toWireWorkspace(record), 200);
 		},
 	);
 
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceUid}",
+			path: "/{workspaceId}",
 			tags: ["workspaces"],
 			summary:
 				"Delete a workspace (cascades to KBs, services, documents, and their collections)",
-			request: { params: z.object({ workspaceUid: WorkspaceUidParamSchema }) },
+			request: { params: z.object({ workspaceId: WorkspaceIdParamSchema }) },
 			responses: {
 				204: { description: "Deleted" },
 				404: {
@@ -196,28 +200,28 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
-			const workspace = await store.getWorkspace(workspaceUid);
+			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
+			const workspace = await store.getWorkspace(workspaceId);
 			if (!workspace)
-				throw new ControlPlaneNotFoundError("workspace", workspaceUid);
+				throw new ControlPlaneNotFoundError("workspace", workspaceId);
 			// Resolve every KB into a driver descriptor, drop their
 			// collections, then delete the workspace row (which cascades
 			// the rest of the schema).
-			const kbs = await store.listKnowledgeBases(workspaceUid);
+			const kbs = await store.listKnowledgeBases(workspaceId);
 			const descriptors: VectorStoreRecord[] = [];
 			for (const kb of kbs) {
 				const resolved = await resolveKb(
 					store,
-					workspaceUid,
+					workspaceId,
 					kb.knowledgeBaseId,
 				);
 				descriptors.push(resolved.descriptor);
 			}
 			await dropWorkspaceCollections({ workspace, descriptors, drivers });
-			const { deleted } = await store.deleteWorkspace(workspaceUid);
+			const { deleted } = await store.deleteWorkspace(workspaceId);
 			if (!deleted)
-				throw new ControlPlaneNotFoundError("workspace", workspaceUid);
+				throw new ControlPlaneNotFoundError("workspace", workspaceId);
 			return c.body(null, 204);
 		},
 	);
@@ -225,12 +229,12 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceUid}/test-connection",
+			path: "/{workspaceId}/test-connection",
 			tags: ["workspaces"],
 			summary: "Verify the workspace's credential refs can be resolved",
 			description:
 				"For `mock` workspaces, always returns `{ok: true}` (no credentials). For other kinds, resolves every value in `credentials` via the runtime's SecretResolver and reports the first failure. This verifies refs only — it does NOT dial the backend or validate the resolved token against the remote service.",
-			request: { params: z.object({ workspaceUid: WorkspaceUidParamSchema }) },
+			request: { params: z.object({ workspaceId: WorkspaceIdParamSchema }) },
 			responses: {
 				200: {
 					content: {
@@ -246,10 +250,10 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
-			const ws = await store.getWorkspace(workspaceUid);
-			if (!ws) throw new ControlPlaneNotFoundError("workspace", workspaceUid);
+			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
+			const ws = await store.getWorkspace(workspaceId);
+			if (!ws) throw new ControlPlaneNotFoundError("workspace", workspaceId);
 
 			if (ws.kind === "mock") {
 				return c.json(
@@ -301,4 +305,9 @@ async function dropWorkspaceCollections(args: {
 	for (const descriptor of descriptors) {
 		await driver.dropCollection({ workspace, descriptor });
 	}
+}
+
+function toWireWorkspace(record: WorkspaceRecord) {
+	const { uid, ...rest } = record;
+	return { workspaceId: uid, ...rest };
 }

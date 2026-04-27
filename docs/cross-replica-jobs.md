@@ -247,7 +247,7 @@ chunk-boundary update.
 Two flavors:
 
 - **Re-do from the last checkpoint.** Cheapest. The chunker is
-  deterministic; if we persist `(documentUid, lastChunkIndex)`
+  deterministic; if we persist `(documentId, lastChunkIndex)`
   on every successful upsert, a resuming worker re-chunks from the
   start, embeds + upserts past `lastChunkIndex` (or skips them
   with a "is this id already present?" check), and continues. Cost:
@@ -255,7 +255,7 @@ Two flavors:
   `processed` field is the checkpoint.
 
 - **Idempotent upsert.** Already true today — the upsert key is
-  `(documentUid, chunkIndex)`. So even a resuming worker that
+  `(documentId, chunkIndex)`. So even a resuming worker that
   re-runs from chunk 0 won't double-write. The cost is just CPU on
   the chunker.
 

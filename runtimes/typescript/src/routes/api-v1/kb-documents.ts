@@ -1,5 +1,5 @@
 /**
- * `/api/v1/workspaces/{workspaceUid}/knowledge-bases/{kbUid}/...`
+ * `/api/v1/workspaces/{workspaceId}/knowledge-bases/{knowledgeBaseId}/...`
  * document metadata CRUD, sync + async ingest, and chunk listing
  * (issue #98).
  *
@@ -37,18 +37,19 @@ import type { AppEnv } from "../../lib/types.js";
 import {
 	CreateRagDocumentInputSchema,
 	DocumentChunkSchema,
-	DocumentUidParamSchema,
+	DocumentIdParamSchema,
 	ErrorEnvelopeSchema,
 	KbAsyncIngestResponseSchema,
 	KbIngestRequestSchema,
 	KbIngestResponseSchema,
-	KnowledgeBaseUidParamSchema,
+	KnowledgeBaseIdParamSchema,
 	PaginationQuerySchema,
 	RagDocumentPageSchema,
 	RagDocumentRecordSchema,
 	UpdateRagDocumentInputSchema,
-	WorkspaceUidParamSchema,
+	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
+import { toWireJob } from "./job-wire.js";
 import { resolveKb } from "./kb-descriptor.js";
 
 export interface KbDocumentRouteDeps {
@@ -68,13 +69,13 @@ export function kbDocumentRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/documents",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/documents",
 			tags: ["knowledge-bases"],
 			summary: "List documents in a knowledge base",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
 				}),
 				query: PaginationQuerySchema,
 			},
@@ -90,10 +91,10 @@ export function kbDocumentRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid } = c.req.valid("param");
+			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceUid);
-			const rows = await store.listRagDocuments(workspaceUid, knowledgeBaseUid);
+			assertWorkspaceAccess(c, workspaceId);
+			const rows = await store.listRagDocuments(workspaceId, knowledgeBaseId);
 			return c.json(paginate(rows, query), 200);
 		},
 	);
@@ -101,13 +102,13 @@ export function kbDocumentRoutes(
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/documents",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/documents",
 			tags: ["knowledge-bases"],
 			summary: "Register a document in a knowledge base",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
 				}),
 				body: {
 					content: {
@@ -128,18 +129,18 @@ export function kbDocumentRoutes(
 				},
 				409: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate uid within the knowledge base",
+					description: "Duplicate documentId within the knowledge base",
 				},
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.createRagDocument(
-				workspaceUid,
-				knowledgeBaseUid,
-				body,
+				workspaceId,
+				knowledgeBaseId,
+				{ ...body, uid: body.documentId },
 			);
 			return c.json(record, 201);
 		},
@@ -148,15 +149,15 @@ export function kbDocumentRoutes(
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/ingest",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/ingest",
 			tags: ["knowledge-bases"],
 			summary: "Ingest a document into a knowledge base",
 			description:
 				"Chunks `text`, embeds each chunk via the KB's bound embedding service (server-side `$vectorize` when supported, otherwise client-side), and upserts into the KB's auto-provisioned vector collection. Creates a RAG-document metadata row; failures mark it `status: failed` with `errorMessage`. With `?async=true` the request returns 202 with a job pointer instead — the pipeline runs in the background and the document status plus the job's `processed`/`total`/`status` fields track progress.",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
 				}),
 				query: z.object({
 					async: z
@@ -194,18 +195,18 @@ export function kbDocumentRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid } = c.req.valid("param");
+			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
 			const { async: asyncMode } = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceUid);
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 
-			const resolved = await resolveKb(store, workspaceUid, knowledgeBaseUid);
+			const resolved = await resolveKb(store, workspaceId, knowledgeBaseId);
 
 			const document = await store.createRagDocument(
-				workspaceUid,
-				knowledgeBaseUid,
+				workspaceId,
+				knowledgeBaseId,
 				{
-					uid: body.uid,
+					uid: body.documentId,
 					sourceDocId: body.sourceDocId,
 					sourceFilename: body.sourceFilename,
 					fileType: body.fileType,
@@ -232,20 +233,24 @@ export function kbDocumentRoutes(
 					}),
 				};
 				const job = await jobs.create({
-					workspace: workspaceUid,
+					workspace: workspaceId,
 					kind: "ingest",
-					knowledgeBaseUid,
+					knowledgeBaseUid: knowledgeBaseId,
 					documentUid: document.documentId,
 					ingestInput: ingestSnapshot,
 				});
 				void runKbIngestJob({
 					deps: { store, drivers, embedders, jobs },
-					workspaceUid,
+					workspaceUid: workspaceId,
 					jobId: job.jobId,
 					replicaId,
 					input: body,
 				});
-				return c.json({ job, document }, 202);
+				c.header(
+					"Location",
+					`/api/v1/workspaces/${workspaceId}/jobs/${job.jobId}`,
+				);
+				return c.json({ job: toWireJob(job), document }, 202);
 			}
 
 			const result = await runKbIngest(
@@ -254,8 +259,8 @@ export function kbDocumentRoutes(
 				body,
 			);
 			const ready = await store.getRagDocument(
-				workspaceUid,
-				knowledgeBaseUid,
+				workspaceId,
+				knowledgeBaseId,
 				document.documentId,
 			);
 			return c.json(
@@ -271,16 +276,16 @@ export function kbDocumentRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/documents/{documentUid}/chunks",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/documents/{documentId}/chunks",
 			tags: ["knowledge-bases"],
 			summary: "List the chunks under a KB document",
 			description:
 				"Reads raw records out of the KB's vector collection filtered to this document, sorted by `chunkIndex`. Text comes from the reserved `chunkText` payload key the ingest pipeline stamps. Drivers without `listRecords` return 501.",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
-					documentUid: DocumentUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
+					documentId: DocumentIdParamSchema,
 				}),
 				query: z.object({
 					limit: z.coerce.number().int().min(1).max(1000).optional(),
@@ -304,19 +309,18 @@ export function kbDocumentRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid, documentUid } =
-				c.req.valid("param");
+			const { workspaceId, knowledgeBaseId, documentId } = c.req.valid("param");
 			const { limit } = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceUid);
+			assertWorkspaceAccess(c, workspaceId);
 
 			const doc = await store.getRagDocument(
-				workspaceUid,
-				knowledgeBaseUid,
-				documentUid,
+				workspaceId,
+				knowledgeBaseId,
+				documentId,
 			);
-			if (!doc) throw new ControlPlaneNotFoundError("document", documentUid);
+			if (!doc) throw new ControlPlaneNotFoundError("document", documentId);
 
-			const resolved = await resolveKb(store, workspaceUid, knowledgeBaseUid);
+			const resolved = await resolveKb(store, workspaceId, knowledgeBaseId);
 			const driver = drivers.for(resolved.workspace);
 			if (typeof driver.listRecords !== "function") {
 				throw new ApiError(
@@ -330,8 +334,8 @@ export function kbDocumentRoutes(
 				{ workspace: resolved.workspace, descriptor: resolved.descriptor },
 				{
 					filter: {
-						[KB_SCOPE_KEY]: knowledgeBaseUid,
-						[DOCUMENT_SCOPE_KEY]: documentUid,
+						[KB_SCOPE_KEY]: knowledgeBaseId,
+						[DOCUMENT_SCOPE_KEY]: documentId,
 					},
 					limit: limit ?? 1000,
 				},
@@ -361,14 +365,14 @@ export function kbDocumentRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/documents/{documentUid}",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/documents/{documentId}",
 			tags: ["knowledge-bases"],
 			summary: "Get a KB document",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
-					documentUid: DocumentUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
+					documentId: DocumentIdParamSchema,
 				}),
 			},
 			responses: {
@@ -385,30 +389,29 @@ export function kbDocumentRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid, documentUid } =
-				c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, knowledgeBaseId, documentId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getRagDocument(
-				workspaceUid,
-				knowledgeBaseUid,
-				documentUid,
+				workspaceId,
+				knowledgeBaseId,
+				documentId,
 			);
-			if (!record) throw new ControlPlaneNotFoundError("document", documentUid);
+			if (!record) throw new ControlPlaneNotFoundError("document", documentId);
 			return c.json(record, 200);
 		},
 	);
 
 	app.openapi(
 		createRoute({
-			method: "put",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/documents/{documentUid}",
+			method: "patch",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/documents/{documentId}",
 			tags: ["knowledge-bases"],
 			summary: "Update KB document metadata",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
-					documentUid: DocumentUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
+					documentId: DocumentIdParamSchema,
 				}),
 				body: {
 					content: {
@@ -430,14 +433,13 @@ export function kbDocumentRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid, documentUid } =
-				c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, knowledgeBaseId, documentId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateRagDocument(
-				workspaceUid,
-				knowledgeBaseUid,
-				documentUid,
+				workspaceId,
+				knowledgeBaseId,
+				documentId,
 				body,
 			);
 			return c.json(record, 200);
@@ -447,14 +449,14 @@ export function kbDocumentRoutes(
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/documents/{documentUid}",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/documents/{documentId}",
 			tags: ["knowledge-bases"],
 			summary: "Delete a KB document (cascades chunks)",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
-					documentUid: DocumentUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
+					documentId: DocumentIdParamSchema,
 				}),
 			},
 			responses: {
@@ -466,27 +468,26 @@ export function kbDocumentRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid, documentUid } =
-				c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, knowledgeBaseId, documentId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 
 			const existing = await store.getRagDocument(
-				workspaceUid,
-				knowledgeBaseUid,
-				documentUid,
+				workspaceId,
+				knowledgeBaseId,
+				documentId,
 			);
 			if (!existing) {
-				throw new ControlPlaneNotFoundError("document", documentUid);
+				throw new ControlPlaneNotFoundError("document", documentId);
 			}
 
 			// Cascade: drop chunk records out of the KB's vector collection
 			// before the doc row goes away. Otherwise orphan chunks linger
 			// and surface in KB-scoped search.
-			const resolved = await resolveKb(store, workspaceUid, knowledgeBaseUid);
+			const resolved = await resolveKb(store, workspaceId, knowledgeBaseId);
 			const driver = drivers.for(resolved.workspace);
 			const filter = {
-				[KB_SCOPE_KEY]: knowledgeBaseUid,
-				[DOCUMENT_SCOPE_KEY]: documentUid,
+				[KB_SCOPE_KEY]: knowledgeBaseId,
+				[DOCUMENT_SCOPE_KEY]: documentId,
 			};
 			if (typeof driver.deleteRecords === "function") {
 				await driver.deleteRecords(
@@ -507,12 +508,12 @@ export function kbDocumentRoutes(
 			}
 
 			const { deleted } = await store.deleteRagDocument(
-				workspaceUid,
-				knowledgeBaseUid,
-				documentUid,
+				workspaceId,
+				knowledgeBaseId,
+				documentId,
 			);
 			if (!deleted) {
-				throw new ControlPlaneNotFoundError("document", documentUid);
+				throw new ControlPlaneNotFoundError("document", documentId);
 			}
 			return c.body(null, 204);
 		},

@@ -42,7 +42,10 @@ export const VersionSchema = z
 	.object({
 		version: z.string().openapi({ example: "0.0.0" }),
 		commit: z.string().openapi({ example: "abc1234" }),
-		buildTime: z.string().openapi({ example: "2026-04-21T10:30:00Z" }),
+		buildTime: z
+			.string()
+			.datetime()
+			.openapi({ example: "2026-04-21T10:30:00Z" }),
 		node: z.string().openapi({ example: "v22.11.0" }),
 	})
 	.openapi("Version");
@@ -104,6 +107,7 @@ const SecretRefSchema = z
 	.string()
 	.regex(/^[a-z][a-z0-9]*:.+/i, "expected '<provider>:<path>', e.g. 'env:FOO'")
 	.openapi("SecretRef", { example: "env:ASTRA_DB_APPLICATION_TOKEN" });
+const DateTimeSchema = z.string().datetime();
 const DocumentStatusSchema = z
 	.enum(["pending", "chunking", "embedding", "writing", "ready", "failed"])
 	.openapi("DocumentStatus");
@@ -124,14 +128,17 @@ const EndpointSchema = z
 
 export const WorkspaceRecordSchema = z
 	.object({
-		uid: z.string().uuid(),
+		workspaceId: z.string().uuid(),
 		name: z.string(),
 		url: z.string().nullable(),
 		kind: WorkspaceKind,
 		keyspace: z.string().nullable(),
-		credentials: z.record(z.string(), SecretRefSchema),
-		createdAt: z.string(),
-		updatedAt: z.string(),
+		credentials: z.record(z.string(), SecretRefSchema).openapi({
+			description:
+				"Secret references only. Resolved credential values are never returned.",
+		}),
+		createdAt: DateTimeSchema,
+		updatedAt: DateTimeSchema,
 	})
 	.openapi("Workspace");
 
@@ -142,7 +149,7 @@ export const WorkspacePageSchema = pageSchema(
 
 export const CreateWorkspaceInputSchema = z
 	.object({
-		uid: z.string().uuid().optional(),
+		workspaceId: z.string().uuid().optional(),
 		name: z.string().min(1),
 		url: EndpointSchema.nullable().optional(),
 		kind: WorkspaceKind,
@@ -192,7 +199,7 @@ const LexicalConfigSchema = z
  * One chunk listed under a document by
  * `GET .../knowledge-bases/{kb}/documents/{d}/chunks`. The route
  * reads raw records out of the KB's vector collection, filters by
- * `documentUid`, and surfaces a flat list. Text comes from the
+ * `documentId`, and surfaces a flat list. Text comes from the
  * `chunkText` payload key the ingest pipeline stamps.
  */
 export const DocumentChunkSchema = z
@@ -302,18 +309,18 @@ export const JobStatusSchema = z
 
 export const JobRecordSchema = z
 	.object({
-		workspace: z.string().uuid(),
+		workspaceId: z.string().uuid(),
 		jobId: z.string().uuid(),
 		kind: z.enum(["ingest"]),
-		knowledgeBaseUid: z.string().uuid().nullable(),
-		documentUid: z.string().uuid().nullable(),
+		knowledgeBaseId: z.string().uuid().nullable(),
+		documentId: z.string().uuid().nullable(),
 		status: JobStatusSchema,
 		processed: z.number().int().nonnegative(),
 		total: z.number().int().nonnegative().nullable(),
 		result: z.record(z.string(), z.unknown()).nullable(),
 		errorMessage: z.string().nullable(),
-		createdAt: z.string(),
-		updatedAt: z.string(),
+		createdAt: DateTimeSchema,
+		updatedAt: DateTimeSchema,
 	})
 	.openapi("Job");
 
@@ -327,19 +334,19 @@ export const JobIdParamSchema = z
 
 /* ---------------- Params ---------------- */
 
-export const WorkspaceUidParamSchema = z
+export const WorkspaceIdParamSchema = z
 	.string()
 	.uuid()
 	.openapi({
-		param: { name: "workspaceUid", in: "path" },
+		param: { name: "workspaceId", in: "path" },
 		example: "00000000-0000-0000-0000-000000000000",
 	});
 
-export const DocumentUidParamSchema = z
+export const DocumentIdParamSchema = z
 	.string()
 	.uuid()
 	.openapi({
-		param: { name: "documentUid", in: "path" },
+		param: { name: "documentId", in: "path" },
 		example: "00000000-0000-0000-0000-000000000000",
 	});
 
@@ -363,16 +370,16 @@ export const ApiKeyIdParamSchema = z
 
 export const ApiKeyRecordSchema = z
 	.object({
-		workspace: z.string().uuid(),
+		workspaceId: z.string().uuid(),
 		keyId: z.string().uuid(),
 		prefix: z
 			.string()
 			.openapi({ description: "Non-secret lookup prefix of the wire token" }),
 		label: z.string(),
-		createdAt: z.string(),
-		lastUsedAt: z.string().nullable(),
-		revokedAt: z.string().nullable(),
-		expiresAt: z.string().nullable(),
+		createdAt: DateTimeSchema,
+		lastUsedAt: DateTimeSchema.nullable(),
+		revokedAt: DateTimeSchema.nullable(),
+		expiresAt: DateTimeSchema.nullable(),
 	})
 	.openapi("ApiKey");
 
@@ -439,8 +446,8 @@ export const KnowledgeBaseRecordSchema = z
 		language: z.string().nullable(),
 		vectorCollection: z.string().nullable(),
 		lexical: LexicalConfigSchema,
-		createdAt: z.string(),
-		updatedAt: z.string(),
+		createdAt: DateTimeSchema,
+		updatedAt: DateTimeSchema,
 	})
 	.openapi("KnowledgeBase");
 
@@ -451,7 +458,7 @@ export const KnowledgeBasePageSchema = pageSchema(
 
 export const CreateKnowledgeBaseInputSchema = z
 	.object({
-		uid: z.string().uuid().optional(),
+		knowledgeBaseId: z.string().uuid().optional(),
 		name: z.string().min(1),
 		description: z.string().nullable().optional(),
 		status: KnowledgeBaseStatusSchema.optional(),
@@ -489,8 +496,8 @@ export const KnowledgeFilterRecordSchema = z
 		name: z.string(),
 		description: z.string().nullable(),
 		filter: z.record(z.string(), z.unknown()),
-		createdAt: z.string(),
-		updatedAt: z.string(),
+		createdAt: DateTimeSchema,
+		updatedAt: DateTimeSchema,
 	})
 	.openapi("KnowledgeFilter");
 
@@ -501,7 +508,7 @@ export const KnowledgeFilterPageSchema = pageSchema(
 
 export const CreateKnowledgeFilterInputSchema = z
 	.object({
-		uid: z.string().uuid().optional(),
+		knowledgeFilterId: z.string().uuid().optional(),
 		name: z.string().min(1),
 		description: z.string().nullable().optional(),
 		filter: z.record(z.string(), z.unknown()),
@@ -510,7 +517,7 @@ export const CreateKnowledgeFilterInputSchema = z
 
 export const UpdateKnowledgeFilterInputSchema =
 	CreateKnowledgeFilterInputSchema.partial()
-		.omit({ uid: true })
+		.omit({ knowledgeFilterId: true })
 		.openapi("UpdateKnowledgeFilterInput");
 
 /* ---------- Chunking service ---------- */
@@ -542,8 +549,8 @@ export const ChunkingServiceRecordSchema = z
 		extractTables: z.boolean().nullable(),
 		extractFigures: z.boolean().nullable(),
 		readingOrder: z.string().nullable(),
-		createdAt: z.string(),
-		updatedAt: z.string(),
+		createdAt: DateTimeSchema,
+		updatedAt: DateTimeSchema,
 	})
 	.openapi("ChunkingService");
 
@@ -554,7 +561,7 @@ export const ChunkingServicePageSchema = pageSchema(
 
 export const CreateChunkingServiceInputSchema = z
 	.object({
-		uid: z.string().uuid().optional(),
+		chunkingServiceId: z.string().uuid().optional(),
 		name: z.string().min(1),
 		description: z.string().nullable().optional(),
 		status: ServiceStatusSchema.optional(),
@@ -583,7 +590,7 @@ export const CreateChunkingServiceInputSchema = z
 
 export const UpdateChunkingServiceInputSchema =
 	CreateChunkingServiceInputSchema.partial()
-		.omit({ uid: true })
+		.omit({ chunkingServiceId: true })
 		.openapi("UpdateChunkingServiceInput");
 
 /* ---------- Embedding service ---------- */
@@ -608,8 +615,8 @@ export const EmbeddingServiceRecordSchema = z
 		credentialRef: z.string().nullable(),
 		supportedLanguages: z.array(z.string()),
 		supportedContent: z.array(z.string()),
-		createdAt: z.string(),
-		updatedAt: z.string(),
+		createdAt: DateTimeSchema,
+		updatedAt: DateTimeSchema,
 	})
 	.openapi("EmbeddingService");
 
@@ -620,7 +627,7 @@ export const EmbeddingServicePageSchema = pageSchema(
 
 export const CreateEmbeddingServiceInputSchema = z
 	.object({
-		uid: z.string().uuid().optional(),
+		embeddingServiceId: z.string().uuid().optional(),
 		name: z.string().min(1),
 		description: z.string().nullable().optional(),
 		status: ServiceStatusSchema.optional(),
@@ -642,7 +649,7 @@ export const CreateEmbeddingServiceInputSchema = z
 
 export const UpdateEmbeddingServiceInputSchema =
 	CreateEmbeddingServiceInputSchema.partial()
-		.omit({ uid: true })
+		.omit({ embeddingServiceId: true })
 		.openapi("UpdateEmbeddingServiceInput");
 
 /* ---------- Reranking service ---------- */
@@ -670,8 +677,8 @@ export const RerankingServiceRecordSchema = z
 		credentialRef: z.string().nullable(),
 		supportedLanguages: z.array(z.string()),
 		supportedContent: z.array(z.string()),
-		createdAt: z.string(),
-		updatedAt: z.string(),
+		createdAt: DateTimeSchema,
+		updatedAt: DateTimeSchema,
 	})
 	.openapi("RerankingService");
 
@@ -682,7 +689,7 @@ export const RerankingServicePageSchema = pageSchema(
 
 export const CreateRerankingServiceInputSchema = z
 	.object({
-		uid: z.string().uuid().optional(),
+		rerankingServiceId: z.string().uuid().optional(),
 		name: z.string().min(1),
 		description: z.string().nullable().optional(),
 		status: ServiceStatusSchema.optional(),
@@ -707,48 +714,48 @@ export const CreateRerankingServiceInputSchema = z
 
 export const UpdateRerankingServiceInputSchema =
 	CreateRerankingServiceInputSchema.partial()
-		.omit({ uid: true })
+		.omit({ rerankingServiceId: true })
 		.openapi("UpdateRerankingServiceInput");
 
 /* ---------- URL params ---------- */
 
-export const KnowledgeBaseUidParamSchema = z
+export const KnowledgeBaseIdParamSchema = z
 	.string()
 	.uuid()
 	.openapi({
-		param: { name: "knowledgeBaseUid", in: "path" },
+		param: { name: "knowledgeBaseId", in: "path" },
 		example: "11111111-2222-3333-4444-555555555555",
 	});
 
-export const KnowledgeFilterUidParamSchema = z
+export const KnowledgeFilterIdParamSchema = z
 	.string()
 	.uuid()
 	.openapi({
-		param: { name: "knowledgeFilterUid", in: "path" },
+		param: { name: "knowledgeFilterId", in: "path" },
 		example: "11111111-2222-3333-4444-555555555555",
 	});
 
-export const ChunkingServiceUidParamSchema = z
+export const ChunkingServiceIdParamSchema = z
 	.string()
 	.uuid()
 	.openapi({
-		param: { name: "chunkingServiceUid", in: "path" },
+		param: { name: "chunkingServiceId", in: "path" },
 		example: "11111111-2222-3333-4444-555555555555",
 	});
 
-export const EmbeddingServiceUidParamSchema = z
+export const EmbeddingServiceIdParamSchema = z
 	.string()
 	.uuid()
 	.openapi({
-		param: { name: "embeddingServiceUid", in: "path" },
+		param: { name: "embeddingServiceId", in: "path" },
 		example: "11111111-2222-3333-4444-555555555555",
 	});
 
-export const RerankingServiceUidParamSchema = z
+export const RerankingServiceIdParamSchema = z
 	.string()
 	.uuid()
 	.openapi({
-		param: { name: "rerankingServiceUid", in: "path" },
+		param: { name: "rerankingServiceId", in: "path" },
 		example: "11111111-2222-3333-4444-555555555555",
 	});
 
@@ -765,8 +772,8 @@ export const RagDocumentRecordSchema = z
 		fileSize: z.number().int().nonnegative().nullable(),
 		contentHash: z.string().nullable(),
 		chunkTotal: z.number().int().nonnegative().nullable(),
-		ingestedAt: z.string().nullable(),
-		updatedAt: z.string(),
+		ingestedAt: DateTimeSchema.nullable(),
+		updatedAt: DateTimeSchema,
 		status: DocumentStatusSchema,
 		errorMessage: z.string().nullable(),
 		metadata: z.record(z.string(), z.string()),
@@ -780,14 +787,14 @@ export const RagDocumentPageSchema = pageSchema(
 
 export const CreateRagDocumentInputSchema = z
 	.object({
-		uid: z.string().uuid().optional(),
+		documentId: z.string().uuid().optional(),
 		sourceDocId: z.string().nullable().optional(),
 		sourceFilename: z.string().nullable().optional(),
 		fileType: z.string().nullable().optional(),
 		fileSize: z.number().int().nonnegative().nullable().optional(),
 		contentHash: z.string().nullable().optional(),
 		chunkTotal: z.number().int().nonnegative().nullable().optional(),
-		ingestedAt: z.string().nullable().optional(),
+		ingestedAt: DateTimeSchema.nullable().optional(),
 		status: DocumentStatusSchema.optional(),
 		errorMessage: z.string().nullable().optional(),
 		metadata: z.record(z.string(), z.string()).optional(),
@@ -796,18 +803,18 @@ export const CreateRagDocumentInputSchema = z
 
 export const UpdateRagDocumentInputSchema =
 	CreateRagDocumentInputSchema.partial()
-		.omit({ uid: true })
+		.omit({ documentId: true })
 		.openapi("UpdateRagDocumentInput");
 
 /**
- * KB-scoped ingest request. `metadata` reserves `knowledgeBaseUid` /
- * `documentUid` (the runtime overrides any caller-supplied values
+ * KB-scoped ingest request. `metadata` reserves `knowledgeBaseId` /
+ * `documentId` (the runtime overrides any caller-supplied values
  * with the path-resolved KB and the freshly created document row).
  */
 export const KbIngestRequestSchema = z
 	.object({
 		text: z.string().min(1).max(MAX_INGEST_TEXT_CHARS),
-		uid: z.string().uuid().optional(),
+		documentId: z.string().uuid().optional(),
 		sourceDocId: z.string().nullable().optional(),
 		sourceFilename: z.string().nullable().optional(),
 		fileType: z.string().nullable().optional(),

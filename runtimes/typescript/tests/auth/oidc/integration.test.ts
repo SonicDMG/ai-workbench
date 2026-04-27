@@ -126,9 +126,9 @@ describe("app with auth.mode: oidc", () => {
 			headers: bearer,
 		});
 		const body = (await listRes.json()) as {
-			items: Array<{ uid: string }>;
+			items: Array<{ workspaceId: string }>;
 		};
-		expect(body.items.map((w) => w.uid)).toEqual([w1.uid]);
+		expect(body.items.map((w) => w.workspaceId)).toEqual([w1.uid]);
 	});
 
 	test("missing token + anonymousPolicy: reject → 401", async () => {

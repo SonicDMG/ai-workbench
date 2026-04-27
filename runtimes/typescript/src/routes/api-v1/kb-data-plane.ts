@@ -1,5 +1,5 @@
 /**
- * `/api/v1/workspaces/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/...`
+ * `/api/v1/workspaces/{workspaceId}/knowledge-bases/{knowledgeBaseId}/...`
  * data-plane endpoints (issue #98).
  *
  *   POST   .../records              upsert vectors
@@ -27,13 +27,13 @@ import type { AppEnv } from "../../lib/types.js";
 import {
 	DeleteRecordResponseSchema,
 	ErrorEnvelopeSchema,
-	KnowledgeBaseUidParamSchema,
+	KnowledgeBaseIdParamSchema,
 	RecordIdParamSchema,
 	SearchHitSchema,
 	SearchRequestSchema,
 	UpsertRequestSchema,
 	UpsertResponseSchema,
-	WorkspaceUidParamSchema,
+	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
 import { resolveKb } from "./kb-descriptor.js";
 import { dispatchSearch, toMutableHits } from "./search-dispatch.js";
@@ -52,13 +52,13 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/records",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/records",
 			tags: ["knowledge-bases"],
 			summary: "Upsert vector records into a knowledge base",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
 				}),
 				body: {
 					content: { "application/json": { schema: UpsertRequestSchema } },
@@ -81,13 +81,13 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const { workspace, descriptor } = await resolveKb(
 				store,
-				workspaceUid,
-				knowledgeBaseUid,
+				workspaceId,
+				knowledgeBaseId,
 			);
 			const driver = drivers.for(workspace);
 			const res = await dispatchUpsert({
@@ -103,13 +103,13 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/records/{recordId}",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/records/{recordId}",
 			tags: ["knowledge-bases"],
 			summary: "Delete a vector record from a knowledge base",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
 					recordId: RecordIdParamSchema,
 				}),
 			},
@@ -128,12 +128,12 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid, recordId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, knowledgeBaseId, recordId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const { workspace, descriptor } = await resolveKb(
 				store,
-				workspaceUid,
-				knowledgeBaseUid,
+				workspaceId,
+				knowledgeBaseId,
 			);
 			const driver = drivers.for(workspace);
 			const res = await driver.deleteRecord(
@@ -147,13 +147,13 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/search",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/search",
 			tags: ["knowledge-bases"],
 			summary: "Search the knowledge base (vector / hybrid / rerank)",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
 				}),
 				body: {
 					content: { "application/json": { schema: SearchRequestSchema } },
@@ -177,13 +177,13 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const { workspace, descriptor } = await resolveKb(
 				store,
-				workspaceUid,
-				knowledgeBaseUid,
+				workspaceId,
+				knowledgeBaseId,
 			);
 			const driver = drivers.for(workspace);
 			const ctx = { workspace, descriptor };

@@ -9,7 +9,7 @@ export function WorkspaceCard({ workspace }: { workspace: Workspace }) {
 	return (
 		<Card className="group card-lift relative border-[#e0e0e0] bg-white">
 			<Link
-				to={`/workspaces/${workspace.uid}`}
+				to={`/workspaces/${workspace.workspaceId}`}
 				className="absolute inset-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
 				aria-label={`Open workspace ${workspace.name}`}
 			/>
@@ -19,7 +19,7 @@ export function WorkspaceCard({ workspace }: { workspace: Workspace }) {
 						{workspace.name}
 					</CardTitle>
 					<p className="text-xs text-slate-500 mt-1 font-mono truncate">
-						{workspace.uid}
+						{workspace.workspaceId}
 					</p>
 				</div>
 				<div className="flex items-center gap-2 shrink-0">

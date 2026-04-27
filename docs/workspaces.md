@@ -6,7 +6,7 @@ tenant that owns its own knowledge bases, execution services
 and API keys.
 
 Workspaces are **runtime records**, not config. They're created via
-`POST /api/v1/workspaces`, fetched via `GET /api/v1/workspaces/{uid}`,
+`POST /api/v1/workspaces`, fetched via `GET /api/v1/workspaces/{workspaceId}`,
 and deleted via `DELETE`. Earlier drafts of this document described
 a YAML-based workspace model; that's gone — workspaces are now rows in
 the `wb_workspaces` table behind whichever control-plane backend the
@@ -17,25 +17,25 @@ runtime is using.
 A single runtime process needs to serve multiple logical tenants
 without mixing their data. Rather than one container per tenant, we
 run **one process with N workspaces** and scope every operation by
-workspace UID.
+workspace ID.
 
 ## Properties
 
 ### Identity
 
-- `uid` is an RFC 4122 v4 UUID (lowercase, hyphenated).
-- The uid is a path segment: `/api/v1/workspaces/{uid}/…`.
+- `workspaceId` is an RFC 4122 v4 UUID (lowercase, hyphenated).
+- The workspaceId is a path segment: `/api/v1/workspaces/{workspaceId}/…`.
 - `name` is a human-readable label; it's not unique and has no
   semantic weight.
 
 ### Lifecycle
 
 ```
-POST   /api/v1/workspaces              → create (returns uid)
+POST   /api/v1/workspaces              → create (returns workspaceId)
 GET    /api/v1/workspaces              → list
-GET    /api/v1/workspaces/{uid}        → fetch
-PUT    /api/v1/workspaces/{uid}        → patch
-DELETE /api/v1/workspaces/{uid}        → cascade delete
+GET    /api/v1/workspaces/{workspaceId} → fetch
+PATCH  /api/v1/workspaces/{workspaceId} → patch
+DELETE /api/v1/workspaces/{workspaceId} → cascade delete
 ```
 
 `DELETE` cascades to:
@@ -50,13 +50,13 @@ DELETE /api/v1/workspaces/{uid}        → cascade delete
 
 ### Isolation
 
-- A request carrying workspace UID `A` can never read or mutate
+- A request carrying workspace ID `A` can never read or mutate
   resources in workspace `B`. Nested routes call
   `ControlPlaneStore.listKnowledgeBases(workspace)` /
-  `…getKnowledgeBase(workspace, uid)` etc. and the store asserts the
+  `…getKnowledgeBase(workspace, knowledgeBaseId)` etc. and the store asserts the
   workspace exists before returning anything.
-- Logs carry `requestId`. Structured OTel attributes (workspaceUid,
-  knowledgeBaseUid, jobId) are on the cross-cutting observability
+- Logs carry `requestId`. Structured OTel attributes (workspaceId,
+  knowledgeBaseId, jobId) are on the cross-cutting observability
   workstream — see [`roadmap.md`](roadmap.md).
 
 ### `kind`
@@ -76,7 +76,7 @@ whichever backend the runtime's own control plane uses (configured via
 first-class option so tests and local dev don't need any external
 service.
 
-**`kind` is immutable after creation.** `PUT /api/v1/workspaces/{uid}`
+**`kind` is immutable after creation.** `PATCH /api/v1/workspaces/{workspaceId}`
 rejects a `kind` field with `400`. Changing a workspace's kind would
 orphan any KB collections already provisioned on the original backend
 — there's no safe way to transparently migrate them, so the runtime
@@ -86,8 +86,8 @@ change.
 ### `name` and `url`
 
 - `name` is a **human-readable label**. It is not unique — two
-  workspaces can share a name (the UID is the identity). UIs should
-  display the name but disambiguate by uid when needed.
+  workspaces can share a name (the ID is the identity). UIs should
+  display the name but disambiguate by workspaceId when needed.
 - `url` is the **data-plane URL** for this workspace's backend.
   For `astra` / `hcd` workspaces it's the Astra Data API endpoint
   the KB driver dials (`https://<db>-<region>.apps.astra.datastax.com`).
@@ -196,31 +196,31 @@ create a KB binding them, list:
 
 ```bash
 WS_BODY='{"name":"demo","kind":"mock"}'
-WS_UID=$(curl -s -X POST http://localhost:8080/api/v1/workspaces \
-  -H "content-type: application/json" -d "$WS_BODY" | jq -r .uid)
+WS_ID=$(curl -s -X POST http://localhost:8080/api/v1/workspaces \
+  -H "content-type: application/json" -d "$WS_BODY" | jq -r .workspaceId)
 
 CHUNK_BODY='{"name":"default-chunker","provider":"mock"}'
-CHUNK_UID=$(curl -s -X POST \
-  http://localhost:8080/api/v1/workspaces/$WS_UID/chunking-services \
-  -H "content-type: application/json" -d "$CHUNK_BODY" | jq -r .uid)
+CHUNK_ID=$(curl -s -X POST \
+  http://localhost:8080/api/v1/workspaces/$WS_ID/chunking-services \
+  -H "content-type: application/json" -d "$CHUNK_BODY" | jq -r .chunkingServiceId)
 
 EMBED_BODY='{"name":"default-embedder","provider":"mock","dimensions":1536,"similarity":"cosine"}'
-EMBED_UID=$(curl -s -X POST \
-  http://localhost:8080/api/v1/workspaces/$WS_UID/embedding-services \
-  -H "content-type: application/json" -d "$EMBED_BODY" | jq -r .uid)
+EMBED_ID=$(curl -s -X POST \
+  http://localhost:8080/api/v1/workspaces/$WS_ID/embedding-services \
+  -H "content-type: application/json" -d "$EMBED_BODY" | jq -r .embeddingServiceId)
 
-KB_BODY=$(jq -n --arg c "$CHUNK_UID" --arg e "$EMBED_UID" \
+KB_BODY=$(jq -n --arg c "$CHUNK_ID" --arg e "$EMBED_ID" \
   '{name:"support",chunkingServiceId:$c,embeddingServiceId:$e}')
 curl -s -X POST \
-  http://localhost:8080/api/v1/workspaces/$WS_UID/knowledge-bases \
+  http://localhost:8080/api/v1/workspaces/$WS_ID/knowledge-bases \
   -H "content-type: application/json" -d "$KB_BODY"
 
-curl -s http://localhost:8080/api/v1/workspaces/$WS_UID/knowledge-bases
+curl -s http://localhost:8080/api/v1/workspaces/$WS_ID/knowledge-bases
 ```
 
 Delete the workspace — the KB, its collection, the services, and any
 documents go with it:
 
 ```bash
-curl -X DELETE http://localhost:8080/api/v1/workspaces/$WS_UID
+curl -X DELETE http://localhost:8080/api/v1/workspaces/$WS_ID
 ```

@@ -129,7 +129,8 @@ export function WorkspaceForm(
 					</p>
 				) : (
 					<p className="text-xs text-slate-500">
-						A human-readable label. Not unique — the uid is the identity.
+						A human-readable label. Not unique — the workspaceId is the
+						identity.
 					</p>
 				)}
 			</div>

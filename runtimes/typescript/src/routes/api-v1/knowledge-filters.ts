@@ -1,5 +1,5 @@
 /**
- * `/api/v1/workspaces/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/filters`
+ * `/api/v1/workspaces/{workspaceId}/knowledge-bases/{knowledgeBaseId}/filters`
  * — saved payload filters scoped to one Knowledge Base (issue #98).
  */
 
@@ -13,13 +13,13 @@ import type { AppEnv } from "../../lib/types.js";
 import {
 	CreateKnowledgeFilterInputSchema,
 	ErrorEnvelopeSchema,
-	KnowledgeBaseUidParamSchema,
+	KnowledgeBaseIdParamSchema,
+	KnowledgeFilterIdParamSchema,
 	KnowledgeFilterPageSchema,
 	KnowledgeFilterRecordSchema,
-	KnowledgeFilterUidParamSchema,
 	PaginationQuerySchema,
 	UpdateKnowledgeFilterInputSchema,
-	WorkspaceUidParamSchema,
+	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
 
 export function knowledgeFilterRoutes(
@@ -30,13 +30,13 @@ export function knowledgeFilterRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/filters",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/filters",
 			tags: ["knowledge-bases"],
 			summary: "List saved filters in a knowledge base",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
 				}),
 				query: PaginationQuerySchema,
 			},
@@ -54,12 +54,12 @@ export function knowledgeFilterRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid } = c.req.valid("param");
+			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceUid);
+			assertWorkspaceAccess(c, workspaceId);
 			const rows = await store.listKnowledgeFilters(
-				workspaceUid,
-				knowledgeBaseUid,
+				workspaceId,
+				knowledgeBaseId,
 			);
 			return c.json(paginate(rows, query), 200);
 		},
@@ -68,13 +68,13 @@ export function knowledgeFilterRoutes(
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/filters",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/filters",
 			tags: ["knowledge-bases"],
 			summary: "Create a saved knowledge-base filter",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
 				}),
 				body: {
 					content: {
@@ -95,18 +95,18 @@ export function knowledgeFilterRoutes(
 				},
 				409: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate uid",
+					description: "Duplicate knowledgeFilterId",
 				},
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.createKnowledgeFilter(
-				workspaceUid,
-				knowledgeBaseUid,
-				body,
+				workspaceId,
+				knowledgeBaseId,
+				{ ...body, uid: body.knowledgeFilterId },
 			);
 			return c.json(record, 201);
 		},
@@ -115,14 +115,14 @@ export function knowledgeFilterRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/filters/{knowledgeFilterUid}",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/filters/{knowledgeFilterId}",
 			tags: ["knowledge-bases"],
 			summary: "Get a saved knowledge-base filter",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
-					knowledgeFilterUid: KnowledgeFilterUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
+					knowledgeFilterId: KnowledgeFilterIdParamSchema,
 				}),
 			},
 			responses: {
@@ -139,18 +139,18 @@ export function knowledgeFilterRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid, knowledgeFilterUid } =
+			const { workspaceId, knowledgeBaseId, knowledgeFilterId } =
 				c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getKnowledgeFilter(
-				workspaceUid,
-				knowledgeBaseUid,
-				knowledgeFilterUid,
+				workspaceId,
+				knowledgeBaseId,
+				knowledgeFilterId,
 			);
 			if (!record) {
 				throw new ControlPlaneNotFoundError(
 					"knowledge filter",
-					knowledgeFilterUid,
+					knowledgeFilterId,
 				);
 			}
 			return c.json(record, 200);
@@ -159,15 +159,15 @@ export function knowledgeFilterRoutes(
 
 	app.openapi(
 		createRoute({
-			method: "put",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/filters/{knowledgeFilterUid}",
+			method: "patch",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/filters/{knowledgeFilterId}",
 			tags: ["knowledge-bases"],
 			summary: "Update a saved knowledge-base filter",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
-					knowledgeFilterUid: KnowledgeFilterUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
+					knowledgeFilterId: KnowledgeFilterIdParamSchema,
 				}),
 				body: {
 					content: {
@@ -189,14 +189,14 @@ export function knowledgeFilterRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid, knowledgeFilterUid } =
+			const { workspaceId, knowledgeBaseId, knowledgeFilterId } =
 				c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateKnowledgeFilter(
-				workspaceUid,
-				knowledgeBaseUid,
-				knowledgeFilterUid,
+				workspaceId,
+				knowledgeBaseId,
+				knowledgeFilterId,
 				body,
 			);
 			return c.json(record, 200);
@@ -206,14 +206,14 @@ export function knowledgeFilterRoutes(
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}/filters/{knowledgeFilterUid}",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/filters/{knowledgeFilterId}",
 			tags: ["knowledge-bases"],
 			summary: "Delete a saved knowledge-base filter",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					knowledgeBaseUid: KnowledgeBaseUidParamSchema,
-					knowledgeFilterUid: KnowledgeFilterUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
+					knowledgeFilterId: KnowledgeFilterIdParamSchema,
 				}),
 			},
 			responses: {
@@ -225,18 +225,18 @@ export function knowledgeFilterRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, knowledgeBaseUid, knowledgeFilterUid } =
+			const { workspaceId, knowledgeBaseId, knowledgeFilterId } =
 				c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			assertWorkspaceAccess(c, workspaceId);
 			const { deleted } = await store.deleteKnowledgeFilter(
-				workspaceUid,
-				knowledgeBaseUid,
-				knowledgeFilterUid,
+				workspaceId,
+				knowledgeBaseId,
+				knowledgeFilterId,
 			);
 			if (!deleted) {
 				throw new ControlPlaneNotFoundError(
 					"knowledge filter",
-					knowledgeFilterUid,
+					knowledgeFilterId,
 				);
 			}
 			return c.body(null, 204);

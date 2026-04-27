@@ -1,5 +1,5 @@
 /**
- * `/api/v1/workspaces/{workspaceUid}/embedding-services` — embedding
+ * `/api/v1/workspaces/{workspaceId}/embedding-services` — embedding
  * service CRUD (issue #98).
  *
  * Service rows describe **how** to call an embedding model — endpoint,
@@ -16,13 +16,13 @@ import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	CreateEmbeddingServiceInputSchema,
+	EmbeddingServiceIdParamSchema,
 	EmbeddingServicePageSchema,
 	EmbeddingServiceRecordSchema,
-	EmbeddingServiceUidParamSchema,
 	ErrorEnvelopeSchema,
 	PaginationQuerySchema,
 	UpdateEmbeddingServiceInputSchema,
-	WorkspaceUidParamSchema,
+	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
 import { toWireEmbedding, toWirePage } from "./service-serdes.js";
 
@@ -34,11 +34,11 @@ export function embeddingServiceRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/embedding-services",
+			path: "/{workspaceId}/embedding-services",
 			tags: ["embedding-services"],
 			summary: "List embedding services in a workspace",
 			request: {
-				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
 				query: PaginationQuerySchema,
 			},
 			responses: {
@@ -55,10 +55,10 @@ export function embeddingServiceRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
+			const { workspaceId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceUid);
-			const rows = await store.listEmbeddingServices(workspaceUid);
+			assertWorkspaceAccess(c, workspaceId);
+			const rows = await store.listEmbeddingServices(workspaceId);
 			return c.json(toWirePage(paginate(rows, query), toWireEmbedding), 200);
 		},
 	);
@@ -66,11 +66,11 @@ export function embeddingServiceRoutes(
 	app.openapi(
 		createRoute({
 			method: "post",
-			path: "/{workspaceUid}/embedding-services",
+			path: "/{workspaceId}/embedding-services",
 			tags: ["embedding-services"],
 			summary: "Create an embedding service",
 			request: {
-				params: z.object({ workspaceUid: WorkspaceUidParamSchema }),
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
 				body: {
 					content: {
 						"application/json": { schema: CreateEmbeddingServiceInputSchema },
@@ -90,15 +90,18 @@ export function embeddingServiceRoutes(
 				},
 				409: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate uid",
+					description: "Duplicate embeddingServiceId",
 				},
 			},
 		}),
 		async (c) => {
-			const { workspaceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
-			const record = await store.createEmbeddingService(workspaceUid, body);
+			const record = await store.createEmbeddingService(workspaceId, {
+				...body,
+				uid: body.embeddingServiceId,
+			});
 			return c.json(toWireEmbedding(record), 201);
 		},
 	);
@@ -106,13 +109,13 @@ export function embeddingServiceRoutes(
 	app.openapi(
 		createRoute({
 			method: "get",
-			path: "/{workspaceUid}/embedding-services/{embeddingServiceUid}",
+			path: "/{workspaceId}/embedding-services/{embeddingServiceId}",
 			tags: ["embedding-services"],
 			summary: "Get an embedding service",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					embeddingServiceUid: EmbeddingServiceUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					embeddingServiceId: EmbeddingServiceIdParamSchema,
 				}),
 			},
 			responses: {
@@ -129,16 +132,16 @@ export function embeddingServiceRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, embeddingServiceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, embeddingServiceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getEmbeddingService(
-				workspaceUid,
-				embeddingServiceUid,
+				workspaceId,
+				embeddingServiceId,
 			);
 			if (!record)
 				throw new ControlPlaneNotFoundError(
 					"embedding service",
-					embeddingServiceUid,
+					embeddingServiceId,
 				);
 			return c.json(toWireEmbedding(record), 200);
 		},
@@ -146,14 +149,14 @@ export function embeddingServiceRoutes(
 
 	app.openapi(
 		createRoute({
-			method: "put",
-			path: "/{workspaceUid}/embedding-services/{embeddingServiceUid}",
+			method: "patch",
+			path: "/{workspaceId}/embedding-services/{embeddingServiceId}",
 			tags: ["embedding-services"],
 			summary: "Update an embedding service",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					embeddingServiceUid: EmbeddingServiceUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					embeddingServiceId: EmbeddingServiceIdParamSchema,
 				}),
 				body: {
 					content: {
@@ -175,12 +178,12 @@ export function embeddingServiceRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, embeddingServiceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, embeddingServiceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateEmbeddingService(
-				workspaceUid,
-				embeddingServiceUid,
+				workspaceId,
+				embeddingServiceId,
 				body,
 			);
 			return c.json(toWireEmbedding(record), 200);
@@ -190,15 +193,15 @@ export function embeddingServiceRoutes(
 	app.openapi(
 		createRoute({
 			method: "delete",
-			path: "/{workspaceUid}/embedding-services/{embeddingServiceUid}",
+			path: "/{workspaceId}/embedding-services/{embeddingServiceId}",
 			tags: ["embedding-services"],
 			summary: "Delete an embedding service",
 			description:
 				"Refuses with 409 if any knowledge base still references this service.",
 			request: {
 				params: z.object({
-					workspaceUid: WorkspaceUidParamSchema,
-					embeddingServiceUid: EmbeddingServiceUidParamSchema,
+					workspaceId: WorkspaceIdParamSchema,
+					embeddingServiceId: EmbeddingServiceIdParamSchema,
 				}),
 			},
 			responses: {
@@ -214,16 +217,16 @@ export function embeddingServiceRoutes(
 			},
 		}),
 		async (c) => {
-			const { workspaceUid, embeddingServiceUid } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceUid);
+			const { workspaceId, embeddingServiceId } = c.req.valid("param");
+			assertWorkspaceAccess(c, workspaceId);
 			const { deleted } = await store.deleteEmbeddingService(
-				workspaceUid,
-				embeddingServiceUid,
+				workspaceId,
+				embeddingServiceId,
 			);
 			if (!deleted)
 				throw new ControlPlaneNotFoundError(
 					"embedding service",
-					embeddingServiceUid,
+					embeddingServiceId,
 				);
 			return c.body(null, 204);
 		},

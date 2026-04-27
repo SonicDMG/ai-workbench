@@ -79,7 +79,7 @@ interface AuthContext {
 
 Route handlers read it via `c.get("auth")`. Workspace-scoped
 authorization is enforced inside each `/api/v1/workspaces/*`
-handler via `assertWorkspaceAccess(c, workspaceUid)` — an
+handler via `assertWorkspaceAccess(c, workspaceId)` — an
 authenticated subject whose `workspaceScopes` does not include
 the target workspace gets `403 forbidden`. Anonymous and
 unscoped subjects pass through (unchanged behavior); `GET

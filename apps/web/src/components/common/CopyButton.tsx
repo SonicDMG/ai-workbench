@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
- * One-click clipboard copy for short strings (uids, SecretRefs,
+ * One-click clipboard copy for short strings (IDs, SecretRefs,
  * endpoints). Flashes a check icon for 1.5s so there's no toast
  * spam on rapid copy-paste workflows.
  */
@@ -14,7 +14,7 @@ export function CopyButton({
 	className,
 }: {
 	value: string;
-	/** Accessible label, e.g. "Copy workspace uid". */
+	/** Accessible label, e.g. "Copy workspace workspaceId". */
 	label: string;
 	className?: string;
 }) {

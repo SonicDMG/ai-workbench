@@ -47,16 +47,16 @@ async function createWorkspace(
 		body: JSON.stringify({ name: "ws", kind: "mock" }),
 	});
 	expect(res.status).toBe(201);
-	return (await json(res)).uid as string;
+	return (await json(res)).workspaceId as string;
 }
 
 async function createService(
 	app: ReturnType<typeof makeApp>,
-	workspaceUid: string,
+	workspaceId: string,
 	path: string,
 	body: Record<string, unknown>,
 ): Promise<string> {
-	const res = await app.request(`/api/v1/workspaces/${workspaceUid}/${path}`, {
+	const res = await app.request(`/api/v1/workspaces/${workspaceId}/${path}`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body),
@@ -102,7 +102,7 @@ describe("execution service routes", () => {
 		const updated = await app.request(
 			`/api/v1/workspaces/${ws}/chunking-services/${cBody.chunkingServiceId}`,
 			{
-				method: "PUT",
+				method: "PATCH",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({ status: "deprecated" }),
 			},
@@ -228,11 +228,11 @@ describe("knowledge-base routes", () => {
 		expect(get.status).toBe(200);
 		expect((await json(get)).knowledgeBaseId).toBe(kb.knowledgeBaseId);
 
-		// PUT changes mutable fields, doesn't touch the bound services.
+		// PATCH changes mutable fields, doesn't touch the bound services.
 		const upd = await app.request(
 			`/api/v1/workspaces/${ws}/knowledge-bases/${kb.knowledgeBaseId}`,
 			{
-				method: "PUT",
+				method: "PATCH",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({
 					rerankingServiceId: null,
@@ -255,7 +255,7 @@ describe("knowledge-base routes", () => {
 		expect(del.status).toBe(204);
 	});
 
-	test("PUT rejects embeddingServiceId mutation via strict body validation", async () => {
+	test("PATCH rejects embeddingServiceId mutation via strict body validation", async () => {
 		const app = makeApp();
 		const ws = await createWorkspace(app);
 		const embId = await createService(app, ws, "embedding-services", {
@@ -287,7 +287,7 @@ describe("knowledge-base routes", () => {
 		const bad = await app.request(
 			`/api/v1/workspaces/${ws}/knowledge-bases/${kb.knowledgeBaseId}`,
 			{
-				method: "PUT",
+				method: "PATCH",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({
 					embeddingServiceId: "00000000-0000-0000-0000-000000000099",
@@ -472,7 +472,7 @@ describe("knowledge-base routes", () => {
 		const update = await app.request(
 			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/filters/${saved.knowledgeFilterId}`,
 			{
-				method: "PUT",
+				method: "PATCH",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({ filter: { status: "archived" } }),
 			},
@@ -551,7 +551,7 @@ describe("KB document routes", () => {
 		const upd = await app.request(
 			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents/${doc.documentId}`,
 			{
-				method: "PUT",
+				method: "PATCH",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({ status: "ready" }),
 			},
@@ -628,7 +628,7 @@ describe("KB document routes", () => {
 		expect(res.status, await res.clone().text()).toBe(202);
 		const body = await json(res);
 		expect(body.job.status).toBe("pending");
-		expect(body.job.knowledgeBaseUid).toBe(kbId);
+		expect(body.job.knowledgeBaseId).toBe(kbId);
 		expect(body.document.knowledgeBaseId).toBe(kbId);
 	});
 

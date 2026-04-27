@@ -82,7 +82,7 @@ Data API Collections for `astra`).
 Shipped with the documents HTTP surface.
 
 - `GET|POST /api/v1/workspaces/{w}/catalogs/{c}/documents` and
-  `GET|PUT|DELETE .../documents/{d}` on the canonical TypeScript
+  `GET|PATCH|DELETE .../documents/{d}` on the canonical TypeScript
   runtime.
 - Backed by the already-existing `ControlPlaneStore.*Document` methods
   across all three backends (memory, file, astra).
@@ -114,7 +114,7 @@ Shipped in this phase so far:
   any future chunker must pass.
 - `POST .../catalogs/{c}/documents/search` — catalog-scoped search
   that delegates to the catalog's bound vector store. Merges
-  `catalogUid = catalog.uid` into the filter so a search cannot
+  `catalogUid = catalog.workspaceId` into the filter so a search cannot
   escape its catalog. Covered by scenario
   `catalog-scoped-document-search`.
 - **Hybrid + rerank lanes** on the search route. Driver contract
@@ -141,7 +141,7 @@ Shipped in this phase so far:
   the catalog's bound store, and creates a `Document` row with
   `status: ready`. Failures mark the row `failed` with
   `errorMessage` before re-raising. Chunk payloads carry
-  `catalogUid`, `documentUid`, `chunkIndex`, plus caller metadata.
+  `catalogUid`, `documentId`, `chunkIndex`, plus caller metadata.
   Covered by scenario `catalog-ingest-basic`.
 - `POST .../catalogs/{c}/ingest?async=true` — same pipeline, returned
   to the caller as a 202 with a `job` pointer. Background worker
@@ -176,7 +176,7 @@ Shipped in this phase so far:
   `ingest_input_json` column on `wb_jobs_by_workspace`). When the
   sweeper claims an orphan, it replays the original ingest through
   the shared `runIngestJob` worker — chunk IDs are deterministic
-  (`${documentUid}:${chunk.index}`) so the upsert is idempotent.
+  (`${documentId}:${chunk.index}`) so the upsert is idempotent.
   Wasted embedding cost on the second pass, correct final state.
   Older jobs without a snapshot, and any future non-`ingest` kinds,
   fall back to the original mark-failed path.
@@ -243,7 +243,7 @@ and running searches against them.
 Shipped:
 
 - **`/`** — workspace list + onboarding wizard.
-- **`/workspaces/{uid}`** — detail, test-connection, vector-store
+- **`/workspaces/{workspaceId}`** — detail, test-connection, vector-store
   CRUD panel, API-key issue/revoke panel.
 - **`/playground`** — ad-hoc vector + text queries with expandable
   results. See [`docs/playground.md`](playground.md).
@@ -325,7 +325,7 @@ Contracts will be defined as those phases approach.
 
 These run continuously rather than as discrete phases:
 
-- **Observability.** Structured logs with `workspaceUid`, request
+- **Observability.** Structured logs with `workspaceId`, request
   IDs, and OpenTelemetry traces. Logs today; OTel in Phase 2+.
 - **Conformance.** Every route added lands with a scenario and
   regenerated fixtures. Every language runtime updates in the same

@@ -41,7 +41,7 @@ export function useCreateWorkspace(): UseMutationResult<
 		mutationFn: api.createWorkspace,
 		onSuccess: (ws) => {
 			qc.invalidateQueries({ queryKey: keys.workspaces.all });
-			qc.setQueryData(keys.workspaces.detail(ws.uid), ws);
+			qc.setQueryData(keys.workspaces.detail(ws.workspaceId), ws);
 		},
 	});
 }

@@ -58,20 +58,20 @@ runtimes/typescript/
   "steps": [
     { "method": "POST", "path": "/api/v1/workspaces", "body": {...} },
     { "method": "GET",  "path": "/api/v1/workspaces" },
-    { "method": "GET",  "path": "/api/v1/workspaces/$1.uid" },
+    { "method": "GET",  "path": "/api/v1/workspaces/$1.workspaceId" },
     ...
   ]
 }
 ```
 
 `$N.field` references the `field` of step N's raw response body (1-indexed).
-Supports dot-paths: `$1.uid`, `$2.workspace.uid`, etc.
+Supports dot-paths: `$1.workspaceId`, `$2.workspace.workspaceId`, etc.
 
 Current scenarios:
 
 | Slug | Covers |
 |---|---|
-| `workspace-crud-basic` | Workspace POST / GET / PUT / DELETE lifecycle |
+| `workspace-crud-basic` | Workspace POST / GET / PATCH / DELETE lifecycle |
 | `workspace-kind-is-immutable` | Workspace `kind` cannot be changed after creation |
 | `workspace-credentials-must-be-secret-ref` | Raw credential values are rejected before reaching the SecretResolver |
 | `workspace-test-connection-mock` | Mock workspace connection probe response shape |
@@ -89,7 +89,7 @@ Routes that stay runtime-only by design (timing- or
 driver-method-dependent):
 
 - `GET /knowledge-bases/{kb}/documents/{d}/chunks` — driver-side
-  `listRecords` filtered by `documentUid`
+  `listRecords` filtered by `documentId`
 - `DELETE /knowledge-bases/{kb}/documents/{d}` — chunk-cascade via
   driver `deleteRecords`
 

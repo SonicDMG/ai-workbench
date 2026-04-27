@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
  * Lightweight key/value editor for the `credentials` map.
  * Values must be SecretRef strings (`env:VAR` or `file:/path`); this
  * component does soft validation inline. The API layer prunes empty
- * rows before the PUT/POST.
+ * rows before the PATCH/POST.
  */
 export function CredentialsEditor({
 	value,

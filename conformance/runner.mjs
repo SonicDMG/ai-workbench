@@ -19,7 +19,7 @@
  *
  * Template syntax in scenario bodies/paths:
  *   $N.field  →  the value of `field` in step N's raw (pre-normalized)
- *                response body. Supports dot-path like `$1.uid`.
+ *                response body. Supports dot-path like `$1.workspaceId`.
  *   (Only the raw value is substituted into the outgoing request; the
  *    fixture captures the normalized placeholder in the path.)
  */

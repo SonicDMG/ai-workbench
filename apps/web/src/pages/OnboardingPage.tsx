@@ -148,7 +148,7 @@ export function OnboardingPage() {
 								try {
 									const ws = await create.mutateAsync(input);
 									toast.success(`Workspace '${ws.name}' created`);
-									navigate(`/workspaces/${ws.uid}`);
+									navigate(`/workspaces/${ws.workspaceId}`);
 								} catch (err) {
 									toast.error("Couldn't create workspace", {
 										description: formatApiError(err),

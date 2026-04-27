@@ -94,6 +94,8 @@ const EMBEDDING_BLANK: CreateEmbeddingServiceInput = {
 	modelName: "",
 	embeddingDimension: 1536,
 	distanceMetric: "cosine",
+	authType: "api_key",
+	credentialRef: "env:OPENAI_API_KEY",
 };
 
 function EmbeddingSubpanel({ workspace }: { workspace: string }) {
@@ -288,6 +290,15 @@ function EmbeddingSubpanel({ workspace }: { workspace: string }) {
 								}))
 							}
 							type="number"
+						/>
+						<Field
+							label="Secret ref"
+							id="emb-secret-ref"
+							value={draft.credentialRef ?? ""}
+							onChange={(v) =>
+								setDraft((d) => ({ ...d, credentialRef: v || null }))
+							}
+							placeholder="env:OPENAI_API_KEY"
 						/>
 					</div>
 					<DialogFooter>
