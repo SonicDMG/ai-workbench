@@ -21,7 +21,7 @@ import { CredentialsEditor } from "./CredentialsEditor";
  * your token into your .env and click Create." Everything here is
  * editable — users can remove, rename, or add rows before submit.
  *
- * `endpoint` lives on the workspace record directly (not here); the
+ * `url` lives on the workspace record directly (not here); the
  * form pre-fills it separately with `env:ASTRA_DB_API_ENDPOINT`.
  */
 const DEFAULT_CREDENTIALS: Record<WorkspaceKind, Record<string, string>> = {
@@ -32,7 +32,7 @@ const DEFAULT_CREDENTIALS: Record<WorkspaceKind, Record<string, string>> = {
 };
 
 /**
- * Starter `endpoint` per kind. Astra / HCD get the canonical env-var
+ * Starter `url` per kind. Astra / HCD get the canonical env-var
  * ref; others get an empty default.
  */
 const DEFAULT_ENDPOINT: Record<WorkspaceKind, string> = {
@@ -73,15 +73,15 @@ export function WorkspaceForm(
 			? {
 					name: "",
 					kind,
-					endpoint: DEFAULT_ENDPOINT[kind],
-					keyspace: "",
-					credentialsRef: { ...DEFAULT_CREDENTIALS[kind] },
+					url: DEFAULT_ENDPOINT[kind],
+					namespace: "",
+					credentials: { ...DEFAULT_CREDENTIALS[kind] },
 				}
 			: {
 					name: props.workspace.name,
-					endpoint: props.workspace.endpoint ?? "",
-					keyspace: props.workspace.keyspace ?? "",
-					credentialsRef: { ...props.workspace.credentialsRef },
+					url: props.workspace.url ?? "",
+					namespace: props.workspace.namespace ?? "",
+					credentials: { ...props.workspace.credentials },
 				};
 
 	const schema =
@@ -154,47 +154,43 @@ export function WorkspaceForm(
 
 			{astraLike ? (
 				<div className="flex flex-col gap-1.5">
-					<Label htmlFor="keyspace">Keyspace</Label>
+					<Label htmlFor="namespace">Namespace</Label>
 					<Input
-						id="keyspace"
-						placeholder="default_keyspace"
-						{...register("keyspace")}
+						id="namespace"
+						placeholder="default_namespace"
+						{...register("namespace")}
 					/>
 					<p className="text-xs text-slate-500">
-						The Astra keyspace this workspace targets. Leave empty to use the
+						The Astra namespace this workspace targets. Leave empty to use the
 						default.
 					</p>
 				</div>
 			) : null}
 
 			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="endpoint">
-					{astraLike ? "Data API endpoint" : "Endpoint"}
-				</Label>
+				<Label htmlFor="url">{astraLike ? "Data API url" : "Url"}</Label>
 				<Input
-					id="endpoint"
+					id="url"
 					placeholder={
 						astraLike
 							? "env:ASTRA_DB_API_ENDPOINT or https://<db-id>-<region>.apps.astra.datastax.com"
-							: "endpoint URL or env:VAR ref"
+							: "url URL or env:VAR ref"
 					}
-					aria-invalid={Boolean(errors.endpoint)}
-					{...register("endpoint")}
+					aria-invalid={Boolean(errors.url)}
+					{...register("url")}
 				/>
-				{errors.endpoint ? (
-					<p className="text-xs text-red-600">
-						{errors.endpoint.message as string}
-					</p>
+				{errors.url ? (
+					<p className="text-xs text-red-600">{errors.url.message as string}</p>
 				) : astraLike ? (
 					<p className="text-xs text-slate-500">
 						The per-workspace Data API URL. Paste it in directly, or use a
 						SecretRef like <code className="font-mono">env:VAR</code> /{" "}
 						<code className="font-mono">file:/path</code>. Each Astra DB has its
-						own endpoint — one workspace per DB.
+						own url — one workspace per DB.
 					</p>
 				) : (
 					<p className="text-xs text-slate-500">
-						Data-plane endpoint for this workspace. URL or SecretRef.
+						Data-plane url for this workspace. URL or SecretRef.
 					</p>
 				)}
 			</div>
@@ -202,7 +198,7 @@ export function WorkspaceForm(
 			{astraLike ? (
 				<Controller
 					control={control}
-					name="credentialsRef"
+					name="credentials"
 					render={({ field }) => (
 						<CredentialsEditor
 							value={(field.value as Record<string, string>) ?? {}}

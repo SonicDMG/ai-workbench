@@ -30,6 +30,8 @@ import {
 	embeddingServiceToRow,
 	knowledgeBaseFromRow,
 	knowledgeBaseToRow,
+	knowledgeFilterFromRow,
+	knowledgeFilterToRow,
 	ragDocumentByHashToRow,
 	ragDocumentByStatusToRow,
 	ragDocumentFromRow,
@@ -60,6 +62,7 @@ import type {
 	CreateChunkingServiceInput,
 	CreateEmbeddingServiceInput,
 	CreateKnowledgeBaseInput,
+	CreateKnowledgeFilterInput,
 	CreateRagDocumentInput,
 	CreateRerankingServiceInput,
 	CreateWorkspaceInput,
@@ -67,6 +70,7 @@ import type {
 	UpdateChunkingServiceInput,
 	UpdateEmbeddingServiceInput,
 	UpdateKnowledgeBaseInput,
+	UpdateKnowledgeFilterInput,
 	UpdateRagDocumentInput,
 	UpdateRerankingServiceInput,
 	UpdateWorkspaceInput,
@@ -76,6 +80,7 @@ import type {
 	ChunkingServiceRecord,
 	EmbeddingServiceRecord,
 	KnowledgeBaseRecord,
+	KnowledgeFilterRecord,
 	RagDocumentRecord,
 	RerankingServiceRecord,
 	WorkspaceRecord,
@@ -113,10 +118,10 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		const record: WorkspaceRecord = {
 			uid,
 			name: input.name,
-			endpoint: input.endpoint ?? null,
+			url: input.url ?? null,
 			kind: input.kind,
-			credentialsRef: { ...(input.credentialsRef ?? {}) },
-			keyspace: input.keyspace ?? null,
+			credentials: { ...(input.credentials ?? {}) },
+			namespace: input.namespace ?? null,
 			createdAt: now,
 			updatedAt: now,
 		};
@@ -134,11 +139,11 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		const next: WorkspaceRecord = {
 			...base,
 			...(patch.name !== undefined && { name: patch.name }),
-			...(patch.endpoint !== undefined && { endpoint: patch.endpoint }),
-			...(patch.credentialsRef !== undefined && {
-				credentialsRef: { ...patch.credentialsRef },
+			...(patch.url !== undefined && { url: patch.url }),
+			...(patch.credentials !== undefined && {
+				credentials: { ...patch.credentials },
 			}),
-			...(patch.keyspace !== undefined && { keyspace: patch.keyspace }),
+			...(patch.namespace !== undefined && { namespace: patch.namespace }),
 			updatedAt: nowIso(),
 		};
 		const nextRow = workspaceToRow(next);
@@ -163,6 +168,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		await Promise.all([
 			this.tables.apiKeys.deleteMany({ workspace: uid }),
 			this.tables.knowledgeBases.deleteMany({ workspace_id: uid }),
+			this.tables.knowledgeFilters.deleteMany({ workspace_id: uid }),
 			this.tables.chunkingServices.deleteMany({ workspace_id: uid }),
 			this.tables.embeddingServices.deleteMany({ workspace_id: uid }),
 			this.tables.rerankingServices.deleteMany({ workspace_id: uid }),
@@ -399,7 +405,132 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 				workspace_id: workspace,
 				knowledge_base_id: uid,
 			}),
+			this.tables.knowledgeFilters.deleteMany({
+				workspace_id: workspace,
+				knowledge_base_id: uid,
+			}),
 		]);
+		return { deleted: true };
+	}
+
+	/* ---------------- Knowledge filters ---------------- */
+
+	async listKnowledgeFilters(
+		workspace: string,
+		knowledgeBase: string,
+	): Promise<readonly KnowledgeFilterRecord[]> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const rows = await this.tables.knowledgeFilters
+			.find({ workspace_id: workspace, knowledge_base_id: knowledgeBase })
+			.toArray();
+		return rows.map(knowledgeFilterFromRow);
+	}
+
+	async getKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<KnowledgeFilterRecord | null> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const row = await this.tables.knowledgeFilters.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: knowledgeBase,
+			knowledge_filter_id: uid,
+		});
+		return row ? knowledgeFilterFromRow(row) : null;
+	}
+
+	async createKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		input: CreateKnowledgeFilterInput,
+	): Promise<KnowledgeFilterRecord> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const uid = input.uid ?? randomUUID();
+		if (
+			await this.tables.knowledgeFilters.findOne({
+				workspace_id: workspace,
+				knowledge_base_id: knowledgeBase,
+				knowledge_filter_id: uid,
+			})
+		) {
+			throw new ControlPlaneConflictError(
+				`knowledge filter with uid '${uid}' already exists in knowledge base '${knowledgeBase}'`,
+			);
+		}
+		const now = nowIso();
+		const record: KnowledgeFilterRecord = {
+			workspaceId: workspace,
+			knowledgeBaseId: knowledgeBase,
+			knowledgeFilterId: uid,
+			name: input.name,
+			description: input.description ?? null,
+			filter: { ...input.filter },
+			createdAt: now,
+			updatedAt: now,
+		};
+		await this.tables.knowledgeFilters.insertOne(knowledgeFilterToRow(record));
+		return record;
+	}
+
+	async updateKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+		patch: UpdateKnowledgeFilterInput,
+	): Promise<KnowledgeFilterRecord> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const existing = await this.tables.knowledgeFilters.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: knowledgeBase,
+			knowledge_filter_id: uid,
+		});
+		if (!existing) throw new ControlPlaneNotFoundError("knowledge filter", uid);
+		const base = knowledgeFilterFromRow(existing);
+		const next: KnowledgeFilterRecord = {
+			...base,
+			...(patch.name !== undefined && { name: patch.name }),
+			...(patch.description !== undefined && {
+				description: patch.description,
+			}),
+			...(patch.filter !== undefined && { filter: { ...patch.filter } }),
+			updatedAt: nowIso(),
+		};
+		const nextRow = knowledgeFilterToRow(next);
+		const {
+			workspace_id: _w,
+			knowledge_base_id: _kb,
+			knowledge_filter_id: _kf,
+			...fields
+		} = nextRow;
+		await this.tables.knowledgeFilters.updateOne(
+			{
+				workspace_id: workspace,
+				knowledge_base_id: knowledgeBase,
+				knowledge_filter_id: uid,
+			},
+			{ $set: fields },
+		);
+		return next;
+	}
+
+	async deleteKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const existing = await this.tables.knowledgeFilters.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: knowledgeBase,
+			knowledge_filter_id: uid,
+		});
+		if (!existing) return { deleted: false };
+		await this.tables.knowledgeFilters.deleteOne({
+			workspace_id: workspace,
+			knowledge_base_id: knowledgeBase,
+			knowledge_filter_id: uid,
+		});
 		return { deleted: true };
 	}
 

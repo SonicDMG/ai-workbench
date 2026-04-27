@@ -20,10 +20,10 @@ const EndpointInputSchema = z
 export const WorkspaceRecordSchema = z.object({
 	uid: z.string().uuid(),
 	name: z.string(),
-	endpoint: z.string().nullable(),
+	url: z.string().nullable(),
 	kind: WorkspaceKindSchema,
-	credentialsRef: z.record(z.string(), z.string()),
-	keyspace: z.string().nullable(),
+	credentials: z.record(z.string(), z.string()),
+	namespace: z.string().nullable(),
 	createdAt: z.string(),
 	updatedAt: z.string(),
 });
@@ -33,17 +33,17 @@ export const WorkspacePageSchema = paginatedSchema(WorkspaceRecordSchema);
 export const CreateWorkspaceSchema = z.object({
 	name: z.string().min(1, "Name is required"),
 	kind: WorkspaceKindSchema,
-	endpoint: EndpointInputSchema,
-	keyspace: z.string().or(z.literal("")).nullable().optional(),
-	credentialsRef: z.record(z.string(), SecretRefSchema).optional(),
+	url: EndpointInputSchema,
+	namespace: z.string().or(z.literal("")).nullable().optional(),
+	credentials: z.record(z.string(), SecretRefSchema).optional(),
 });
 export type CreateWorkspaceInput = z.infer<typeof CreateWorkspaceSchema>;
 
 export const UpdateWorkspaceSchema = z.object({
 	name: z.string().min(1, "Name is required").optional(),
-	endpoint: EndpointInputSchema,
-	keyspace: z.string().or(z.literal("")).nullable().optional(),
-	credentialsRef: z.record(z.string(), SecretRefSchema).optional(),
+	url: EndpointInputSchema,
+	namespace: z.string().or(z.literal("")).nullable().optional(),
+	credentials: z.record(z.string(), SecretRefSchema).optional(),
 });
 export type UpdateWorkspaceInput = z.infer<typeof UpdateWorkspaceSchema>;
 
@@ -176,6 +176,36 @@ export const UpdateKnowledgeBaseInputSchema = z.object({
 });
 export type UpdateKnowledgeBaseInput = z.infer<
 	typeof UpdateKnowledgeBaseInputSchema
+>;
+
+export const KnowledgeFilterRecordSchema = z.object({
+	workspaceId: z.string().uuid(),
+	knowledgeBaseId: z.string().uuid(),
+	knowledgeFilterId: z.string().uuid(),
+	name: z.string(),
+	description: z.string().nullable(),
+	filter: z.record(z.string(), z.unknown()),
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type KnowledgeFilterRecord = z.infer<typeof KnowledgeFilterRecordSchema>;
+export const KnowledgeFilterPageSchema = paginatedSchema(
+	KnowledgeFilterRecordSchema,
+);
+
+export const CreateKnowledgeFilterInputSchema = z.object({
+	name: z.string().min(1, "Name is required"),
+	description: z.string().or(z.literal("")).nullable().optional(),
+	filter: z.record(z.string(), z.unknown()),
+});
+export type CreateKnowledgeFilterInput = z.infer<
+	typeof CreateKnowledgeFilterInputSchema
+>;
+
+export const UpdateKnowledgeFilterInputSchema =
+	CreateKnowledgeFilterInputSchema.partial();
+export type UpdateKnowledgeFilterInput = z.infer<
+	typeof UpdateKnowledgeFilterInputSchema
 >;
 
 /* ---------------- Execution services ---------------- */

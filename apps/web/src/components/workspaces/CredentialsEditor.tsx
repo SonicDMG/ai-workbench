@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 /**
- * Lightweight key/value editor for the `credentialsRef` map.
+ * Lightweight key/value editor for the `credentials` map.
  * Values must be SecretRef strings (`env:VAR` or `file:/path`); this
  * component does soft validation inline. The API layer prunes empty
  * rows before the PUT/POST.

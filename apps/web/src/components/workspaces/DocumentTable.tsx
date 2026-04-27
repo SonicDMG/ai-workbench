@@ -27,7 +27,7 @@ const STATUS_ORDER: Record<DocumentStatus, number> = {
 };
 
 /**
- * Catalog explorer table — sortable column heads, an inline search
+ * Knowledge Base explorer table — sortable column heads, an inline search
  * over filename / source-doc-id, and a clickable row that opens the
  * document detail drawer. Empty states for the no-docs and
  * no-matches cases keep the page from looking broken before the

@@ -133,27 +133,27 @@ export function WorkspaceDetailPage() {
 							<dt className="text-slate-500">Kind</dt>
 							<dd className="text-slate-900 font-mono text-xs">{data.kind}</dd>
 
-							<dt className="text-slate-500">Keyspace</dt>
+							<dt className="text-slate-500">Namespace</dt>
 							<dd className="text-slate-900 font-mono">
-								{data.keyspace ?? <span className="text-slate-400">—</span>}
+								{data.namespace ?? <span className="text-slate-400">—</span>}
 							</dd>
 
-							<dt className="text-slate-500">Endpoint</dt>
+							<dt className="text-slate-500">Url</dt>
 							<dd className="text-slate-900 truncate">
-								{data.endpoint ? (
-									isLiteralUrl(data.endpoint) ? (
+								{data.url ? (
+									isLiteralUrl(data.url) ? (
 										<a
-											href={data.endpoint}
+											href={data.url}
 											target="_blank"
 											rel="noreferrer"
 											className="inline-flex items-center gap-1 font-mono text-xs text-[var(--color-brand-600)] hover:underline"
 										>
-											{data.endpoint}
+											{data.url}
 											<ExternalLink className="h-3 w-3" />
 										</a>
 									) : (
 										<code className="font-mono text-xs text-slate-700">
-											{data.endpoint}
+											{data.url}
 										</code>
 									)
 								) : (
@@ -163,11 +163,11 @@ export function WorkspaceDetailPage() {
 
 							<dt className="text-slate-500">Credentials</dt>
 							<dd>
-								{Object.keys(data.credentialsRef).length === 0 ? (
+								{Object.keys(data.credentials).length === 0 ? (
 									<span className="text-slate-400">—</span>
 								) : (
 									<ul className="flex flex-col gap-1">
-										{Object.entries(data.credentialsRef).map(([key, ref]) => (
+										{Object.entries(data.credentials).map(([key, ref]) => (
 											<li
 												key={key}
 												className="flex items-baseline gap-2 text-slate-900"

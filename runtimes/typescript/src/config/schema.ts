@@ -267,10 +267,10 @@ const ControlPlaneSchema = z.discriminatedUnion("driver", [
 const SeedWorkspaceSchema = z.object({
 	uid: z.string().uuid().optional(),
 	name: z.string().min(1),
-	endpoint: z.union([z.string().url(), SecretRef]).nullable().optional(),
+	url: z.union([z.string().url(), SecretRef]).nullable().optional(),
 	kind: z.enum(["astra", "hcd", "openrag", "mock"]),
-	credentialsRef: z.record(z.string(), SecretRef).optional(),
-	keyspace: z.string().nullable().optional(),
+	namespace: z.string().nullable().optional(),
+	credentials: z.record(z.string(), SecretRef).optional(),
 });
 
 export const ConfigSchema = z

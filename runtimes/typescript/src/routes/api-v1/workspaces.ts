@@ -229,7 +229,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			tags: ["workspaces"],
 			summary: "Verify the workspace's credential refs can be resolved",
 			description:
-				"For `mock` workspaces, always returns `{ok: true}` (no credentials). For other kinds, resolves every value in `credentialsRef` via the runtime's SecretResolver and reports the first failure. This verifies refs only — it does NOT dial the backend or validate the resolved token against the remote service.",
+				"For `mock` workspaces, always returns `{ok: true}` (no credentials). For other kinds, resolves every value in `credentials` via the runtime's SecretResolver and reports the first failure. This verifies refs only — it does NOT dial the backend or validate the resolved token against the remote service.",
 			request: { params: z.object({ workspaceUid: WorkspaceUidParamSchema }) },
 			responses: {
 				200: {
@@ -263,7 +263,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 				);
 			}
 
-			const entries = Object.entries(ws.credentialsRef);
+			const entries = Object.entries(ws.credentials);
 			for (const [name, ref] of entries) {
 				try {
 					await secrets.resolve(ref);
@@ -281,7 +281,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 
 			const summary =
 				entries.length === 0
-					? "No credentials configured. Nothing to verify yet — add a credentialsRef entry to enable probing."
+					? "No credentials configured. Nothing to verify yet — add a credentials entry to enable probing."
 					: `${entries.length} ${entries.length === 1 ? "credential" : "credentials"} resolved. Note: this verifies refs only, not the backend token against the remote service.`;
 			return c.json({ ok: true, kind: ws.kind, details: summary }, 200);
 		},

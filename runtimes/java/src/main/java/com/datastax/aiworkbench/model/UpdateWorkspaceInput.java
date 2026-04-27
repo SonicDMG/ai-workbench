@@ -13,6 +13,6 @@ import java.util.Map;
 public record UpdateWorkspaceInput(
     String name,
     String url,
-    Map<String, String> credentialsRef,
-    String keyspace
+    Map<String, String> credentials,
+    String namespace
 ) {}

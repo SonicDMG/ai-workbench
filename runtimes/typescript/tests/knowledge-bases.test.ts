@@ -441,6 +441,51 @@ describe("knowledge-base routes", () => {
 		expect(body.items).toHaveLength(2);
 		expect(body.nextCursor).not.toBeNull();
 	});
+
+	test("knowledge filters CRUD round-trip under a KB", async () => {
+		const app = makeApp();
+		const { ws, kbId } = await makeReadyKb(app);
+
+		const create = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/filters`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "Published docs",
+					description: "Only ready-to-serve chunks",
+					filter: { status: "published", locale: "en" },
+				}),
+			},
+		);
+		expect(create.status, await create.clone().text()).toBe(201);
+		const saved = await json(create);
+		expect(saved.knowledgeBaseId).toBe(kbId);
+		expect(saved.filter).toEqual({ status: "published", locale: "en" });
+
+		const list = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/filters`,
+		);
+		expect(list.status).toBe(200);
+		expect((await json(list)).items).toHaveLength(1);
+
+		const update = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/filters/${saved.knowledgeFilterId}`,
+			{
+				method: "PUT",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ filter: { status: "archived" } }),
+			},
+		);
+		expect(update.status).toBe(200);
+		expect((await json(update)).filter).toEqual({ status: "archived" });
+
+		const del = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/filters/${saved.knowledgeFilterId}`,
+			{ method: "DELETE" },
+		);
+		expect(del.status).toBe(204);
+	});
 });
 
 /* ---------------- KB document / ingest routes ---------------- */

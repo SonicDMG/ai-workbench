@@ -14,9 +14,9 @@ public record WorkspaceRecord(
     String name,
     String url,
     WorkspaceKind kind,
-    /** Map of credential name → SecretRef pointer ({@code <provider>:<path>}). */
-    Map<String, String> credentialsRef,
-    String keyspace,
+    /** Map of credential name -> SecretRef pointer ({@code <provider>:<path>}). */
+    Map<String, String> credentials,
+    String namespace,
     String createdAt,
     String updatedAt
 ) {}

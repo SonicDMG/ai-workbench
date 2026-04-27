@@ -35,6 +35,7 @@ import type {
 	CreateChunkingServiceInput,
 	CreateEmbeddingServiceInput,
 	CreateKnowledgeBaseInput,
+	CreateKnowledgeFilterInput,
 	CreateRagDocumentInput,
 	CreateRerankingServiceInput,
 	CreateWorkspaceInput,
@@ -42,6 +43,7 @@ import type {
 	UpdateChunkingServiceInput,
 	UpdateEmbeddingServiceInput,
 	UpdateKnowledgeBaseInput,
+	UpdateKnowledgeFilterInput,
 	UpdateRagDocumentInput,
 	UpdateRerankingServiceInput,
 	UpdateWorkspaceInput,
@@ -51,6 +53,7 @@ import type {
 	ChunkingServiceRecord,
 	EmbeddingServiceRecord,
 	KnowledgeBaseRecord,
+	KnowledgeFilterRecord,
 	RagDocumentRecord,
 	RerankingServiceRecord,
 	WorkspaceRecord,
@@ -78,6 +81,12 @@ function freezeMetadata(
 	return Object.freeze({ ...(m ?? {}) });
 }
 
+function freezeFilter(
+	filter: Readonly<Record<string, unknown>> | undefined,
+): Readonly<Record<string, unknown>> {
+	return Object.freeze({ ...(filter ?? {}) });
+}
+
 function freezeCredentials(
 	c: Readonly<Record<string, string>> | undefined,
 ): Readonly<Record<string, string>> {
@@ -99,6 +108,10 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 	private readonly knowledgeBases = new Map<
 		string,
 		Map<string, KnowledgeBaseRecord>
+	>();
+	private readonly knowledgeFilters = new Map<
+		string,
+		Map<string, KnowledgeFilterRecord>
 	>();
 	private readonly chunkingServices = new Map<
 		string,
@@ -134,10 +147,10 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		const record: WorkspaceRecord = {
 			uid,
 			name: input.name,
-			endpoint: input.endpoint ?? null,
+			url: input.url ?? null,
 			kind: input.kind,
-			credentialsRef: freezeCredentials(input.credentialsRef),
-			keyspace: input.keyspace ?? null,
+			credentials: freezeCredentials(input.credentials),
+			namespace: input.namespace ?? null,
 			createdAt: now,
 			updatedAt: now,
 		};
@@ -156,11 +169,11 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		const next: WorkspaceRecord = {
 			...existing,
 			...(patch.name !== undefined && { name: patch.name }),
-			...(patch.endpoint !== undefined && { endpoint: patch.endpoint }),
-			...(patch.credentialsRef !== undefined && {
-				credentialsRef: freezeCredentials(patch.credentialsRef),
+			...(patch.url !== undefined && { url: patch.url }),
+			...(patch.credentials !== undefined && {
+				credentials: freezeCredentials(patch.credentials),
 			}),
-			...(patch.keyspace !== undefined && { keyspace: patch.keyspace }),
+			...(patch.namespace !== undefined && { namespace: patch.namespace }),
 			updatedAt: nowIso(),
 		};
 		this.workspaces.set(uid, next);
@@ -177,6 +190,9 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 			this.apiKeys.delete(uid);
 		}
 		this.knowledgeBases.delete(uid);
+		for (const key of Array.from(this.knowledgeFilters.keys())) {
+			if (key.startsWith(`${uid}:`)) this.knowledgeFilters.delete(key);
+		}
 		this.chunkingServices.delete(uid);
 		this.embeddingServices.delete(uid);
 		this.rerankingServices.delete(uid);
@@ -474,7 +490,101 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 			// uid starts clean. Underlying vector collection cleanup is the
 			// caller's responsibility (KB delete route handles it).
 			this.ragDocuments.delete(docKey(workspace, uid));
+			this.knowledgeFilters.delete(docKey(workspace, uid));
 		}
+		return { deleted };
+	}
+
+	/* ---------------- Knowledge filters ---------------- */
+
+	async listKnowledgeFilters(
+		workspace: string,
+		knowledgeBase: string,
+	): Promise<readonly KnowledgeFilterRecord[]> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		return Array.from(
+			this.knowledgeFilters.get(docKey(workspace, knowledgeBase))?.values() ??
+				[],
+		);
+	}
+
+	async getKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<KnowledgeFilterRecord | null> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		return (
+			this.knowledgeFilters.get(docKey(workspace, knowledgeBase))?.get(uid) ??
+			null
+		);
+	}
+
+	async createKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		input: CreateKnowledgeFilterInput,
+	): Promise<KnowledgeFilterRecord> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const uid = input.uid ?? randomUUID();
+		const key = docKey(workspace, knowledgeBase);
+		const bucket = this.knowledgeFilters.get(key) ?? new Map();
+		if (bucket.has(uid)) {
+			throw new ControlPlaneConflictError(
+				`knowledge filter with uid '${uid}' already exists in knowledge base '${knowledgeBase}'`,
+			);
+		}
+		const now = nowIso();
+		const record: KnowledgeFilterRecord = {
+			workspaceId: workspace,
+			knowledgeBaseId: knowledgeBase,
+			knowledgeFilterId: uid,
+			name: input.name,
+			description: input.description ?? null,
+			filter: freezeFilter(input.filter),
+			createdAt: now,
+			updatedAt: now,
+		};
+		bucket.set(uid, record);
+		this.knowledgeFilters.set(key, bucket);
+		return record;
+	}
+
+	async updateKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+		patch: UpdateKnowledgeFilterInput,
+	): Promise<KnowledgeFilterRecord> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const key = docKey(workspace, knowledgeBase);
+		const existing = this.knowledgeFilters.get(key)?.get(uid);
+		if (!existing) {
+			throw new ControlPlaneNotFoundError("knowledge filter", uid);
+		}
+		const next: KnowledgeFilterRecord = {
+			...existing,
+			...(patch.name !== undefined && { name: patch.name }),
+			...(patch.description !== undefined && {
+				description: patch.description,
+			}),
+			...(patch.filter !== undefined && { filter: freezeFilter(patch.filter) }),
+			updatedAt: nowIso(),
+		};
+		this.knowledgeFilters.get(key)?.set(uid, next);
+		return next;
+	}
+
+	async deleteKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const deleted =
+			this.knowledgeFilters
+				.get(docKey(workspace, knowledgeBase))
+				?.delete(uid) ?? false;
 		return { deleted };
 	}
 

@@ -14,9 +14,9 @@
 			"response": {
 				"body": {
 					"createdAt": "{{TS}}",
-					"credentialsRef": {},
-					"endpoint": null,
-					"keyspace": null,
+					"credentials": {},
+					"url": null,
+					"namespace": null,
 					"kind": "astra",
 					"name": "w",
 					"uid": "{{UUID_1}}",
@@ -55,9 +55,9 @@
 			"response": {
 				"body": {
 					"createdAt": "{{TS}}",
-					"credentialsRef": {},
-					"endpoint": null,
-					"keyspace": null,
+					"credentials": {},
+					"url": null,
+					"namespace": null,
 					"kind": "astra",
 					"name": "w",
 					"uid": "{{UUID_1}}",

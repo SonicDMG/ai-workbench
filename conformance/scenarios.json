@@ -59,7 +59,7 @@
 	},
 	{
 		"slug": "workspace-credentials-must-be-secret-ref",
-		"description": "`credentialsRef` values must match `<provider>:<path>` (e.g. `env:ASTRA_TOKEN`). A raw token value is rejected with 400 validation_error — it never reaches the SecretResolver.",
+		"description": "`credentials` values must match `<provider>:<path>` (e.g. `env:ASTRA_TOKEN`). A raw token value is rejected with 400 validation_error — it never reaches the SecretResolver.",
 		"steps": [
 			{
 				"method": "POST",
@@ -67,7 +67,7 @@
 				"body": {
 					"name": "w",
 					"kind": "astra",
-					"credentialsRef": {
+					"credentials": {
 						"token": "raw-token-here"
 					}
 				}

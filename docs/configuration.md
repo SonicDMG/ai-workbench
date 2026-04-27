@@ -188,9 +188,10 @@ seedWorkspaces:
     kind: mock
   - name: prod-astra
     kind: astra
-    credentialsRef:
+    url: env:ASTRA_DB_API_ENDPOINT
+    credentials:
       token: env:ASTRA_DB_APPLICATION_TOKEN
-    keyspace: workbench
+    namespace: workbench
 ```
 
 | Field | Type | Required | Notes |
@@ -198,9 +199,9 @@ seedWorkspaces:
 | `name` | string | yes | Workspace name |
 | `kind` | enum | yes | `astra \| hcd \| openrag \| mock` |
 | `uid` | UUID | no (auto-generated) | Only useful if other seeds reference it |
-| `url` | URL | no | Workspace-specific URL (optional metadata) |
-| `credentialsRef` | map<string, SecretRef> | no | Per-key secret pointers |
-| `keyspace` | string | no | Workspace-specific keyspace |
+| `url` | URL or SecretRef | no | Workspace-specific data-plane URL |
+| `credentials` | map<string, SecretRef> | no | Per-key secret pointers |
+| `namespace` | string | no | Workspace-specific namespace |
 
 Using `seedWorkspaces` with any driver other than `memory` is a
 validation error — workspaces already persist in the backend, so
@@ -293,7 +294,7 @@ At startup the runtime enforces:
 - `controlPlane.driver` is one of `memory | file | astra`.
 - Driver-specific required fields are present (e.g. `root` for file,
   `endpoint` + `tokenRef` for astra).
-- Every `tokenRef` / `credentialsRef` value matches the
+- Every `tokenRef` / `credentials` value matches the
   `<prefix>:<path>` shape.
 - `seedWorkspaces` is only non-empty when
   `controlPlane.driver == memory`.

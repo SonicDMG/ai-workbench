@@ -26,14 +26,14 @@ export function runContract(name: string, factory: ContractFactory): void {
 				const ws = await store.createWorkspace({
 					name: "prod",
 					kind: "astra",
-					credentialsRef: { token: "env:ASTRA_TOKEN" },
+					credentials: { token: "env:ASTRA_TOKEN" },
 				});
 				expect(ws.uid).toMatch(
 					/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
 				);
 				expect(ws.name).toBe("prod");
 				expect(ws.kind).toBe("astra");
-				expect(ws.credentialsRef.token).toBe("env:ASTRA_TOKEN");
+				expect(ws.credentials.token).toBe("env:ASTRA_TOKEN");
 				expect(ws.createdAt).toBe(ws.updatedAt);
 			} finally {
 				await cleanup?.();
@@ -372,6 +372,58 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
+		test("knowledge filter CRUD is scoped to a knowledge base", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const emb = await store.createEmbeddingService(ws.uid, {
+					name: "e",
+					provider: "mock",
+					modelName: "mock",
+					embeddingDimension: 4,
+				});
+				const chunk = await store.createChunkingService(ws.uid, {
+					name: "c",
+					engine: "docling",
+				});
+				const kb = await store.createKnowledgeBase(ws.uid, {
+					name: "kb",
+					embeddingServiceId: emb.embeddingServiceId,
+					chunkingServiceId: chunk.chunkingServiceId,
+				});
+
+				const filter = await store.createKnowledgeFilter(
+					ws.uid,
+					kb.knowledgeBaseId,
+					{
+						name: "Published",
+						filter: { status: "published" },
+					},
+				);
+				expect(filter.filter).toEqual({ status: "published" });
+				expect(
+					await store.listKnowledgeFilters(ws.uid, kb.knowledgeBaseId),
+				).toHaveLength(1);
+
+				const updated = await store.updateKnowledgeFilter(
+					ws.uid,
+					kb.knowledgeBaseId,
+					filter.knowledgeFilterId,
+					{ filter: { status: "draft" } },
+				);
+				expect(updated.filter).toEqual({ status: "draft" });
+
+				const { deleted } = await store.deleteKnowledgeFilter(
+					ws.uid,
+					kb.knowledgeBaseId,
+					filter.knowledgeFilterId,
+				);
+				expect(deleted).toBe(true);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("deleteWorkspace cascades to KBs and services", async () => {
 			const { store, cleanup } = await factory();
 			try {
@@ -433,8 +485,8 @@ export function runContract(name: string, factory: ContractFactory): void {
 					created.embeddingServiceId,
 				);
 				expect(reread).not.toBeNull();
-				expect(reread!.supportedLanguages).toContain("en");
-				expect(reread!.supportedLanguages).toHaveLength(3);
+				expect(reread?.supportedLanguages).toContain("en");
+				expect(reread?.supportedLanguages).toHaveLength(3);
 			} finally {
 				await cleanup?.();
 			}

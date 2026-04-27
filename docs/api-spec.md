@@ -32,7 +32,7 @@ to flag what's coming.
   strings.
 - Timestamps are ISO-8601 in UTC with millisecond precision
   (`2026-04-22T10:11:12.345Z`).
-- Secrets never appear by value. Fields like `credentialsRef` or
+- Secrets never appear by value. Fields like `credentials` or
   `embedding.secretRef` hold pointers of the form `<provider>:<path>`
   (e.g. `env:ASTRA_DB_APPLICATION_TOKEN`).
 
@@ -89,7 +89,7 @@ human-readable and may change. Currently emitted:
 
 | Status | Code | When |
 |---|---|---|
-| 400 | `validation_error` | Request body / params / query failed Zod validation. `message` carries the first failing field path and its reason (`name: Name is required`, `credentialsRef.token: expected '<provider>:<path>', e.g. 'env:FOO'`). |
+| 400 | `validation_error` | Request body / params / query failed Zod validation. `message` carries the first failing field path and its reason (`name: Name is required`, `credentials.token: expected '<provider>:<path>', e.g. 'env:FOO'`). |
 | 401 | `unauthorized` | Missing / malformed / invalid bearer token. `WWW-Authenticate: Bearer` set. See [`auth.md`](auth.md). |
 | 403 | `forbidden` | Token is valid but not authorized for the requested action — either the subject's `workspaceScopes` doesn't include the target workspace, or it's a scoped subject attempting a platform-level action (e.g. `POST /workspaces`). Also reserved for role-based checks in the upcoming RBAC phase. |
 | 413 | `payload_too_large` | `/api/v1/workspaces/*` request body exceeded the runtime's 1 MB JSON body limit. |
@@ -105,7 +105,7 @@ human-readable and may change. Currently emitted:
 | 400 | `dimension_mismatch` | Supplied vector length doesn't match the KB's bound embedding service |
 | 400 | `embedding_unavailable` | Text search/upsert fallback could not build an embedder for the KB's bound embedding service |
 | 400 | `embedding_dimension_mismatch` | Embedder output dimension doesn't match the bound embedding service |
-| 422 | `workspace_misconfigured` | Workspace is missing endpoint, token, keyspace, or similar driver-required config |
+| 422 | `workspace_misconfigured` | Workspace is missing url, token, namespace, or similar driver-required config |
 | 500 | `internal_error` | Unhandled exception |
 | 503 | `control_plane_unavailable` | Backing store is unreachable |
 | 503 | `collection_unavailable` | Underlying vector collection is unreachable or missing |
@@ -230,10 +230,10 @@ ordering so UI renders are deterministic.
     {
       "uid": "…",
       "name": "prod",
-      "endpoint": "env:ASTRA_DB_API_ENDPOINT",
+      "url": "env:ASTRA_DB_API_ENDPOINT",
       "kind": "astra",
-      "credentialsRef": { "token": "env:ASTRA_DB_APPLICATION_TOKEN" },
-      "keyspace": "default_keyspace",
+      "credentials": { "token": "env:ASTRA_DB_APPLICATION_TOKEN" },
+      "namespace": "default_keyspace",
       "createdAt": "2026-04-22T10:11:12.345Z",
       "updatedAt": "2026-04-22T10:11:12.345Z"
     }
@@ -253,9 +253,9 @@ omitted.
 {
   "name": "prod",
   "kind": "astra",
-  "endpoint": "env:ASTRA_DB_API_ENDPOINT",
-  "credentialsRef": { "token": "env:ASTRA_DB_APPLICATION_TOKEN" },
-  "keyspace": "default_keyspace"
+  "url": "env:ASTRA_DB_API_ENDPOINT",
+  "credentials": { "token": "env:ASTRA_DB_APPLICATION_TOKEN" },
+  "namespace": "default_keyspace"
 }
 ```
 
@@ -264,12 +264,12 @@ first-class option for CI and offline work.) Once set, `kind` is
 immutable — changing it would orphan any already-provisioned
 KB collections.
 
-`endpoint` is the workspace's data-plane URL (for `astra` / `hcd`,
+`url` is the workspace's data-plane URL (for `astra` / `hcd`,
 the Astra Data API endpoint). Accepts either a literal URL or a
 `SecretRef` — the driver resolves refs at dial time so the same
 record works across dev and prod without code changes.
 
-Each value in `credentialsRef` must be a `SecretRef`
+Each value in `credentials` must be a `SecretRef`
 (`<provider>:<path>`, e.g. `env:ASTRA_DB_APPLICATION_TOKEN` or
 `file:/etc/workbench/secrets/astra-token`). Raw secret values are
 rejected with `400`.
@@ -285,8 +285,8 @@ Fetch a single workspace.
 
 ### `PUT /api/v1/workspaces/{workspaceUid}`
 
-Patch one or more of `name`, `endpoint`, `credentialsRef`,
-`keyspace`. Every field is optional; omitted fields are preserved.
+Patch one or more of `name`, `url`, `credentials`,
+`namespace`. Every field is optional; omitted fields are preserved.
 
 `kind` and `uid` are immutable after creation and are rejected with
 `400`. Unknown fields are likewise rejected (strict body).
@@ -310,7 +310,7 @@ through the workspace's driver.
 ### `POST /api/v1/workspaces/{workspaceUid}/test-connection`
 
 Probe the workspace's credentials. Resolves every value in
-`credentialsRef` via the runtime's `SecretResolver` and reports the
+`credentials` via the runtime's `SecretResolver` and reports the
 first failure. For `mock` workspaces, always returns `ok: true`
 without touching any secrets. Verifies refs only — does NOT dial the
 backend or validate a resolved token against the remote service.
@@ -530,7 +530,7 @@ must reference services that exist in the same workspace.
   `chunking_service_not_found` / `reranking_service_not_found`
 - **409** `conflict` — `uid` collision
 - **422** `workspace_misconfigured` — workspace is missing
-  `endpoint` or `credentialsRef.token` required by its driver
+  `url` or `credentials.token` required by its driver
 - **503** `driver_unavailable` — no driver registered for the
   workspace's `kind`
 

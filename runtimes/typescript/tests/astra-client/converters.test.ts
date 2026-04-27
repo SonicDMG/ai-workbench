@@ -13,10 +13,10 @@ import type {
 const WS: WorkspaceRecord = {
 	uid: "11111111-2222-3333-4444-555555555555",
 	name: "prod",
-	endpoint: "https://prod.example",
+	url: "https://prod.example",
 	kind: "astra",
-	credentialsRef: { token: "env:ASTRA_TOKEN", scb: "file:/etc/scb.zip" },
-	keyspace: "workbench",
+	credentials: { token: "env:ASTRA_TOKEN", scb: "file:/etc/scb.zip" },
+	namespace: "workbench",
 	createdAt: "2026-04-22T00:00:00.000Z",
 	updatedAt: "2026-04-22T00:00:01.000Z",
 };
@@ -55,7 +55,7 @@ describe("converters — row shape is snake_case and flat", () => {
 		const row = workspaceToRow(WS);
 		expect(row).toMatchObject({
 			uid: WS.uid,
-			credentials_ref: WS.credentialsRef,
+			credentials: WS.credentials,
 			created_at: WS.createdAt,
 			updated_at: WS.updatedAt,
 		});
@@ -75,10 +75,10 @@ describe("converters — row shape is snake_case and flat", () => {
 });
 
 describe("converters — null/undefined handling", () => {
-	test("workspace with empty credentialsRef produces empty map row", () => {
-		const wsEmpty: WorkspaceRecord = { ...WS, credentialsRef: {} };
+	test("workspace with empty credentials produces empty map row", () => {
+		const wsEmpty: WorkspaceRecord = { ...WS, credentials: {} };
 		const row = workspaceToRow(wsEmpty);
-		expect(row.credentials_ref).toEqual({});
+		expect(row.credentials).toEqual({});
 	});
 
 	test("rag document with missing metadata defaults to empty on fromRow", () => {

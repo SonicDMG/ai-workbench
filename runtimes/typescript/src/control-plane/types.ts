@@ -39,7 +39,7 @@ export interface WorkspaceRecord {
 	readonly uid: string;
 	readonly name: string;
 	/**
-	 * Data-plane endpoint for this workspace's backend. For `astra` /
+	 * Data-plane URL for this workspace's backend. For `astra` /
 	 * `hcd` workspaces this is the Astra Data API URL the driver dials.
 	 * Accepts two shapes:
 	 *   - A literal URL: `https://<db>-<region>.apps.astra.datastax.com`
@@ -54,11 +54,12 @@ export interface WorkspaceRecord {
 	 * `mock` / `openrag` workspaces don't dial anything and leave this
 	 * `null`.
 	 */
-	readonly endpoint: string | null;
+	readonly url: string | null;
 	readonly kind: WorkspaceKind;
 	/** Map of credential name → secret ref. Never holds raw secrets. */
-	readonly credentialsRef: Readonly<Record<string, SecretRef>>;
-	readonly keyspace: string | null;
+	readonly credentials: Readonly<Record<string, SecretRef>>;
+	/** Astra/HCD namespace targeted by the workspace. */
+	readonly namespace: string | null;
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }
@@ -166,21 +167,8 @@ export type KnowledgeBaseLanguage = "en" | "fr" | "multi" | (string & {});
 /** Speaker role on an agent message. */
 export type AgentRole = "user" | "agent" | "tool" | "system";
 
-/** A workspace under the new schema (replaces `WorkspaceRecord`). */
-export interface ConfigWorkspaceRecord {
-	readonly uid: string;
-	readonly name: string;
-	/** Data-plane URL or {@link SecretRef}. Same semantics as the legacy
-	 * `WorkspaceRecord.endpoint`, now spelled `url`. */
-	readonly url: string | null;
-	readonly kind: WorkspaceKind;
-	/** Astra/HCD namespace (the legacy field was `keyspace`). */
-	readonly namespace: string | null;
-	/** Map of credential name → secret ref. Never holds raw secrets. */
-	readonly credentials: Readonly<Record<string, SecretRef>>;
-	readonly createdAt: string;
-	readonly updatedAt: string;
-}
+/** Backward-compatible type alias for older converter/test imports. */
+export type ConfigWorkspaceRecord = WorkspaceRecord;
 
 /** A Knowledge Base — replaces `CatalogRecord` + (most of) `VectorStoreRecord`. */
 export interface KnowledgeBaseRecord {
@@ -198,6 +186,19 @@ export interface KnowledgeBaseRecord {
 	 * surfaced read-only to callers. */
 	readonly vectorCollection: string | null;
 	readonly lexical: LexicalConfig;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+}
+
+/** A saved payload filter scoped to one Knowledge Base. */
+export interface KnowledgeFilterRecord {
+	readonly workspaceId: string;
+	readonly knowledgeBaseId: string;
+	readonly knowledgeFilterId: string;
+	readonly name: string;
+	readonly description: string | null;
+	/** JSON object merged into/searchable as the KB payload filter. */
+	readonly filter: Readonly<Record<string, unknown>>;
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }

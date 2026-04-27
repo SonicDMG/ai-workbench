@@ -18,6 +18,7 @@ import type {
 	EmbeddingServiceRow,
 	JobRow,
 	KnowledgeBaseRow,
+	KnowledgeFilterRow,
 	LlmServiceRow,
 	McpToolRow,
 	MessageRow,
@@ -36,7 +37,6 @@ import {
 	API_KEYS_TABLE,
 	CHUNKING_SERVICES_DEFINITION,
 	CHUNKING_SERVICES_TABLE,
-	CONFIG_WORKSPACES_DEFINITION,
 	CONFIG_WORKSPACES_TABLE,
 	CONVERSATIONS_DEFINITION,
 	CONVERSATIONS_TABLE,
@@ -46,6 +46,8 @@ import {
 	JOBS_TABLE,
 	KNOWLEDGE_BASES_DEFINITION,
 	KNOWLEDGE_BASES_TABLE,
+	KNOWLEDGE_FILTERS_DEFINITION,
+	KNOWLEDGE_FILTERS_TABLE,
 	LLM_SERVICES_DEFINITION,
 	LLM_SERVICES_TABLE,
 	MCP_TOOLS_DEFINITION,
@@ -94,6 +96,7 @@ export async function openAstraClient(
 		// Knowledge-base schema (issue #98).
 		configWorkspaces: db.table<ConfigWorkspaceRow>(CONFIG_WORKSPACES_TABLE),
 		knowledgeBases: db.table<KnowledgeBaseRow>(KNOWLEDGE_BASES_TABLE),
+		knowledgeFilters: db.table<KnowledgeFilterRow>(KNOWLEDGE_FILTERS_TABLE),
 		chunkingServices: db.table<ChunkingServiceRow>(CHUNKING_SERVICES_TABLE),
 		embeddingServices: db.table<EmbeddingServiceRow>(EMBEDDING_SERVICES_TABLE),
 		rerankingServices: db.table<RerankingServiceRow>(RERANKING_SERVICES_TABLE),
@@ -130,13 +133,13 @@ async function ensureTables(db: Db): Promise<void> {
 			definition: API_KEY_LOOKUP_DEFINITION,
 			ifNotExists: true,
 		}),
-		// Knowledge-base schema (issue #98).
-		db.createTable(CONFIG_WORKSPACES_TABLE, {
-			definition: CONFIG_WORKSPACES_DEFINITION,
-			ifNotExists: true,
-		}),
+		// WORKSPACES_TABLE is `wb_config_workspaces` (issue #98).
 		db.createTable(KNOWLEDGE_BASES_TABLE, {
 			definition: KNOWLEDGE_BASES_DEFINITION,
+			ifNotExists: true,
+		}),
+		db.createTable(KNOWLEDGE_FILTERS_TABLE, {
+			definition: KNOWLEDGE_FILTERS_DEFINITION,
 			ifNotExists: true,
 		}),
 		db.createTable(CHUNKING_SERVICES_TABLE, {

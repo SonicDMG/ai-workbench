@@ -104,7 +104,6 @@ const SecretRefSchema = z
 	.string()
 	.regex(/^[a-z][a-z0-9]*:.+/i, "expected '<provider>:<path>', e.g. 'env:FOO'")
 	.openapi("SecretRef", { example: "env:ASTRA_DB_APPLICATION_TOKEN" });
-const VectorSimilarity = z.enum(["cosine", "dot", "euclidean"]);
 const DocumentStatusSchema = z
 	.enum(["pending", "chunking", "embedding", "writing", "ready", "failed"])
 	.openapi("DocumentStatus");
@@ -127,10 +126,10 @@ export const WorkspaceRecordSchema = z
 	.object({
 		uid: z.string().uuid(),
 		name: z.string(),
-		endpoint: z.string().nullable(),
+		url: z.string().nullable(),
 		kind: WorkspaceKind,
-		credentialsRef: z.record(z.string(), SecretRefSchema),
-		keyspace: z.string().nullable(),
+		namespace: z.string().nullable(),
+		credentials: z.record(z.string(), SecretRefSchema),
 		createdAt: z.string(),
 		updatedAt: z.string(),
 	})
@@ -145,10 +144,10 @@ export const CreateWorkspaceInputSchema = z
 	.object({
 		uid: z.string().uuid().optional(),
 		name: z.string().min(1),
-		endpoint: EndpointSchema.nullable().optional(),
+		url: EndpointSchema.nullable().optional(),
 		kind: WorkspaceKind,
-		credentialsRef: z.record(z.string(), SecretRefSchema).optional(),
-		keyspace: z.string().nullable().optional(),
+		namespace: z.string().nullable().optional(),
+		credentials: z.record(z.string(), SecretRefSchema).optional(),
 	})
 	.openapi("CreateWorkspaceInput");
 
@@ -159,9 +158,9 @@ export const CreateWorkspaceInputSchema = z
 export const UpdateWorkspaceInputSchema = z
 	.object({
 		name: z.string().min(1).optional(),
-		endpoint: EndpointSchema.nullable().optional(),
-		credentialsRef: z.record(z.string(), SecretRefSchema).optional(),
-		keyspace: z.string().nullable().optional(),
+		url: EndpointSchema.nullable().optional(),
+		namespace: z.string().nullable().optional(),
+		credentials: z.record(z.string(), SecretRefSchema).optional(),
 	})
 	.strict()
 	.openapi("UpdateWorkspaceInput");
@@ -181,16 +180,6 @@ export const TestConnectionResponseSchema = z
 
 /* ---------------- Driver descriptor (internal — no longer wire-facing) ---------------- */
 
-const EmbeddingConfigSchema = z
-	.object({
-		provider: z.string(),
-		model: z.string(),
-		endpoint: z.string().url().nullable(),
-		dimension: z.number().int().positive(),
-		secretRef: z.string().nullable(),
-	})
-	.openapi("EmbeddingConfig");
-
 const LexicalConfigSchema = z
 	.object({
 		enabled: z.boolean(),
@@ -198,16 +187,6 @@ const LexicalConfigSchema = z
 		options: z.record(z.string(), z.string()),
 	})
 	.openapi("LexicalConfig");
-
-const RerankingConfigSchema = z
-	.object({
-		enabled: z.boolean(),
-		provider: z.string().nullable(),
-		model: z.string().nullable(),
-		endpoint: z.string().url().nullable(),
-		secretRef: z.string().nullable(),
-	})
-	.openapi("RerankingConfig");
 
 /**
  * One chunk listed under a document by
@@ -500,6 +479,40 @@ export const UpdateKnowledgeBaseInputSchema = z
 	.strict()
 	.openapi("UpdateKnowledgeBaseInput");
 
+/* ---------- Knowledge filter ---------- */
+
+export const KnowledgeFilterRecordSchema = z
+	.object({
+		workspaceId: z.string().uuid(),
+		knowledgeBaseId: z.string().uuid(),
+		knowledgeFilterId: z.string().uuid(),
+		name: z.string(),
+		description: z.string().nullable(),
+		filter: z.record(z.string(), z.unknown()),
+		createdAt: z.string(),
+		updatedAt: z.string(),
+	})
+	.openapi("KnowledgeFilter");
+
+export const KnowledgeFilterPageSchema = pageSchema(
+	"KnowledgeFilterPage",
+	KnowledgeFilterRecordSchema,
+);
+
+export const CreateKnowledgeFilterInputSchema = z
+	.object({
+		uid: z.string().uuid().optional(),
+		name: z.string().min(1),
+		description: z.string().nullable().optional(),
+		filter: z.record(z.string(), z.unknown()),
+	})
+	.openapi("CreateKnowledgeFilterInput");
+
+export const UpdateKnowledgeFilterInputSchema =
+	CreateKnowledgeFilterInputSchema.partial()
+		.omit({ uid: true })
+		.openapi("UpdateKnowledgeFilterInput");
+
 /* ---------- Chunking service ---------- */
 
 export const ChunkingServiceRecordSchema = z
@@ -704,6 +717,14 @@ export const KnowledgeBaseUidParamSchema = z
 	.uuid()
 	.openapi({
 		param: { name: "knowledgeBaseUid", in: "path" },
+		example: "11111111-2222-3333-4444-555555555555",
+	});
+
+export const KnowledgeFilterUidParamSchema = z
+	.string()
+	.uuid()
+	.openapi({
+		param: { name: "knowledgeFilterUid", in: "path" },
 		example: "11111111-2222-3333-4444-555555555555",
 	});
 

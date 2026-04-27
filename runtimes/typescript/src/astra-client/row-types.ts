@@ -16,7 +16,6 @@ import type {
 	KnowledgeBaseLanguage,
 	KnowledgeBaseStatus,
 	ServiceStatus,
-	VectorSimilarity,
 	WorkspaceKind,
 } from "../control-plane/types.js";
 
@@ -28,10 +27,10 @@ export type Uuid = string;
 export interface WorkspaceRow {
 	uid: Uuid;
 	name: string;
-	endpoint: string | null;
+	url: string | null;
 	kind: WorkspaceKind;
-	credentials_ref: Record<string, string>;
-	keyspace: string | null;
+	namespace: string | null;
+	credentials: Record<string, string>;
 	created_at: Iso;
 	updated_at: Iso;
 }
@@ -58,17 +57,8 @@ export interface ApiKeyLookupRow {
 /* Knowledge-Base schema row shapes (issue #98).                      */
 /* ================================================================== */
 
-/** `wb_config_workspaces` row (replaces `WorkspaceRow`). */
-export interface ConfigWorkspaceRow {
-	uid: Uuid;
-	name: string;
-	url: string | null;
-	kind: WorkspaceKind;
-	namespace: string | null;
-	credentials: Record<string, string>;
-	created_at: Iso;
-	updated_at: Iso;
-}
+/** Backward-compatible alias for older table-bundle imports. */
+export type ConfigWorkspaceRow = WorkspaceRow;
 
 export interface KnowledgeBaseRow {
 	workspace_id: Uuid;
@@ -84,6 +74,17 @@ export interface KnowledgeBaseRow {
 	lexical_enabled: boolean;
 	lexical_analyzer: string | null;
 	lexical_options: Record<string, string>;
+	created_at: Iso;
+	updated_at: Iso;
+}
+
+export interface KnowledgeFilterRow {
+	workspace_id: Uuid;
+	knowledge_base_id: Uuid;
+	knowledge_filter_id: Uuid;
+	name: string;
+	description: string | null;
+	filter_json: string;
 	created_at: Iso;
 	updated_at: Iso;
 }
