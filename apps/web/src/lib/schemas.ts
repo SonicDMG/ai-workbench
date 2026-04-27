@@ -2,8 +2,8 @@ import { z } from "zod";
 
 // Mirror of the runtime's schemas (see
 // runtimes/typescript/src/openapi/schemas.ts). Keep in sync when the
-// contract changes — the drift-guard conformance tests will catch
-// backend shifts, but the UI is on its own to track them here.
+// contract changes — the runtime tests will catch shifts in the
+// backend, but the UI is on its own to track them here.
 
 export const WorkspaceKindSchema = z.enum(["astra", "hcd", "openrag", "mock"]);
 export type WorkspaceKind = z.infer<typeof WorkspaceKindSchema>;
@@ -12,8 +12,6 @@ export const SecretRefSchema = z
 	.string()
 	.regex(/^[a-z][a-z0-9]*:.+/i, "Expected '<provider>:<path>', e.g. 'env:FOO'");
 
-// `endpoint` accepts either a URL or a SecretRef; the runtime
-// detects the form by prefix-matching the SecretResolver.
 const EndpointInputSchema = z
 	.union([z.string().url(), SecretRefSchema, z.literal("")])
 	.nullable()
@@ -100,65 +98,6 @@ export const CreatedApiKeyResponseSchema = z.object({
 });
 export type CreatedApiKeyResponse = z.infer<typeof CreatedApiKeyResponseSchema>;
 
-export const EmbeddingConfigSchema = z.object({
-	provider: z.string(),
-	model: z.string(),
-	endpoint: z.string().nullable(),
-	dimension: z.number().int().positive(),
-	secretRef: z.string().nullable(),
-});
-export type EmbeddingConfig = z.infer<typeof EmbeddingConfigSchema>;
-
-export const VectorSimilaritySchema = z.enum(["cosine", "dot", "euclidean"]);
-export type VectorSimilarity = z.infer<typeof VectorSimilaritySchema>;
-
-export const CreateVectorStoreInputSchema = z.object({
-	name: z.string().min(1, "Name is required"),
-	vectorDimension: z
-		.number()
-		.int()
-		.positive("Dimension must be a positive integer"),
-	vectorSimilarity: VectorSimilaritySchema.default("cosine"),
-	embedding: z.object({
-		provider: z.string().min(1, "Provider is required"),
-		model: z.string().min(1, "Model is required"),
-		endpoint: z.string().nullable(),
-		dimension: z.number().int().positive(),
-		secretRef: z
-			.string()
-			.regex(/^[a-z][a-z0-9]*:.+/i, "Expected '<provider>:<path>'")
-			.nullable(),
-	}),
-});
-export type CreateVectorStoreInput = z.infer<
-	typeof CreateVectorStoreInputSchema
->;
-
-export const VectorStoreRecordSchema = z.object({
-	workspace: z.string().uuid(),
-	uid: z.string().uuid(),
-	name: z.string(),
-	vectorDimension: z.number().int().positive(),
-	vectorSimilarity: z.enum(["cosine", "dot", "euclidean"]),
-	embedding: EmbeddingConfigSchema,
-	lexical: z.object({
-		enabled: z.boolean(),
-		analyzer: z.string().nullable(),
-		options: z.record(z.string(), z.string()),
-	}),
-	reranking: z.object({
-		enabled: z.boolean(),
-		provider: z.string().nullable(),
-		model: z.string().nullable(),
-		endpoint: z.string().nullable(),
-		secretRef: z.string().nullable(),
-	}),
-	createdAt: z.string(),
-	updatedAt: z.string(),
-});
-export type VectorStoreRecord = z.infer<typeof VectorStoreRecordSchema>;
-export const VectorStorePageSchema = paginatedSchema(VectorStoreRecordSchema);
-
 export const SearchHitSchema = z.object({
 	id: z.string(),
 	score: z.number(),
@@ -167,28 +106,211 @@ export const SearchHitSchema = z.object({
 });
 export type SearchHit = z.infer<typeof SearchHitSchema>;
 
-/* ---------------- Catalogs ---------------- */
+/* ---------------- Knowledge bases ---------------- */
 
-export const CatalogRecordSchema = z.object({
-	workspace: z.string().uuid(),
-	uid: z.string().uuid(),
+export const KnowledgeBaseStatusSchema = z.enum([
+	"active",
+	"draft",
+	"deprecated",
+]);
+export type KnowledgeBaseStatus = z.infer<typeof KnowledgeBaseStatusSchema>;
+
+export const ServiceStatusSchema = z.enum([
+	"active",
+	"deprecated",
+	"experimental",
+]);
+export type ServiceStatus = z.infer<typeof ServiceStatusSchema>;
+
+export const DistanceMetricSchema = z.enum(["cosine", "dot", "euclidean"]);
+export type DistanceMetric = z.infer<typeof DistanceMetricSchema>;
+
+export const AuthTypeSchema = z.enum(["none", "api_key", "oauth2", "mTLS"]);
+export type AuthType = z.infer<typeof AuthTypeSchema>;
+
+export const LexicalConfigSchema = z.object({
+	enabled: z.boolean(),
+	analyzer: z.string().nullable(),
+	options: z.record(z.string(), z.string()),
+});
+export type LexicalConfig = z.infer<typeof LexicalConfigSchema>;
+
+export const KnowledgeBaseRecordSchema = z.object({
+	workspaceId: z.string().uuid(),
+	knowledgeBaseId: z.string().uuid(),
 	name: z.string(),
 	description: z.string().nullable(),
-	vectorStore: z.string().uuid().nullable(),
+	status: KnowledgeBaseStatusSchema,
+	embeddingServiceId: z.string().uuid(),
+	chunkingServiceId: z.string().uuid(),
+	rerankingServiceId: z.string().uuid().nullable(),
+	language: z.string().nullable(),
+	vectorCollection: z.string().nullable(),
+	lexical: LexicalConfigSchema,
 	createdAt: z.string(),
 	updatedAt: z.string(),
 });
-export type CatalogRecord = z.infer<typeof CatalogRecordSchema>;
-export const CatalogPageSchema = paginatedSchema(CatalogRecordSchema);
+export type KnowledgeBaseRecord = z.infer<typeof KnowledgeBaseRecordSchema>;
+export const KnowledgeBasePageSchema = paginatedSchema(
+	KnowledgeBaseRecordSchema,
+);
 
-export const CreateCatalogInputSchema = z.object({
+export const CreateKnowledgeBaseInputSchema = z.object({
 	name: z.string().min(1, "Name is required"),
 	description: z.string().or(z.literal("")).nullable().optional(),
-	vectorStore: z.string().uuid().nullable().optional(),
+	embeddingServiceId: z.string().uuid("Pick an embedding service"),
+	chunkingServiceId: z.string().uuid("Pick a chunking service"),
+	rerankingServiceId: z.string().uuid().nullable().optional(),
+	language: z.string().or(z.literal("")).nullable().optional(),
 });
-export type CreateCatalogInput = z.infer<typeof CreateCatalogInputSchema>;
+export type CreateKnowledgeBaseInput = z.infer<
+	typeof CreateKnowledgeBaseInputSchema
+>;
 
-/* ---------------- Documents ---------------- */
+export const UpdateKnowledgeBaseInputSchema = z.object({
+	name: z.string().min(1).optional(),
+	description: z.string().or(z.literal("")).nullable().optional(),
+	status: KnowledgeBaseStatusSchema.optional(),
+	rerankingServiceId: z.string().uuid().nullable().optional(),
+	language: z.string().or(z.literal("")).nullable().optional(),
+});
+export type UpdateKnowledgeBaseInput = z.infer<
+	typeof UpdateKnowledgeBaseInputSchema
+>;
+
+/* ---------------- Execution services ---------------- */
+
+const ServiceEndpointFields = {
+	endpointBaseUrl: z.string().nullable(),
+	endpointPath: z.string().nullable(),
+	requestTimeoutMs: z.number().int().nonnegative().nullable(),
+	authType: AuthTypeSchema,
+	credentialRef: z.string().nullable(),
+};
+
+export const ChunkingServiceRecordSchema = z.object({
+	workspaceId: z.string().uuid(),
+	chunkingServiceId: z.string().uuid(),
+	name: z.string(),
+	description: z.string().nullable(),
+	status: ServiceStatusSchema,
+	engine: z.string(),
+	engineVersion: z.string().nullable(),
+	strategy: z.string().nullable(),
+	maxChunkSize: z.number().int().nullable(),
+	minChunkSize: z.number().int().nullable(),
+	chunkUnit: z.string().nullable(),
+	overlapSize: z.number().int().nullable(),
+	overlapUnit: z.string().nullable(),
+	preserveStructure: z.boolean().nullable(),
+	language: z.string().nullable(),
+	maxPayloadSizeKb: z.number().int().nullable(),
+	enableOcr: z.boolean().nullable(),
+	extractTables: z.boolean().nullable(),
+	extractFigures: z.boolean().nullable(),
+	readingOrder: z.string().nullable(),
+	...ServiceEndpointFields,
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type ChunkingServiceRecord = z.infer<typeof ChunkingServiceRecordSchema>;
+export const ChunkingServicePageSchema = paginatedSchema(
+	ChunkingServiceRecordSchema,
+);
+
+export const CreateChunkingServiceInputSchema = z.object({
+	name: z.string().min(1),
+	description: z.string().or(z.literal("")).nullable().optional(),
+	engine: z.string().min(1, "Engine is required"),
+	engineVersion: z.string().or(z.literal("")).nullable().optional(),
+	strategy: z.string().or(z.literal("")).nullable().optional(),
+	maxChunkSize: z.number().int().positive().nullable().optional(),
+	minChunkSize: z.number().int().nonnegative().nullable().optional(),
+	chunkUnit: z.string().or(z.literal("")).nullable().optional(),
+	overlapSize: z.number().int().nonnegative().nullable().optional(),
+	overlapUnit: z.string().or(z.literal("")).nullable().optional(),
+	language: z.string().or(z.literal("")).nullable().optional(),
+});
+export type CreateChunkingServiceInput = z.infer<
+	typeof CreateChunkingServiceInputSchema
+>;
+
+export const EmbeddingServiceRecordSchema = z.object({
+	workspaceId: z.string().uuid(),
+	embeddingServiceId: z.string().uuid(),
+	name: z.string(),
+	description: z.string().nullable(),
+	status: ServiceStatusSchema,
+	provider: z.string(),
+	modelName: z.string(),
+	embeddingDimension: z.number().int().positive(),
+	distanceMetric: DistanceMetricSchema,
+	maxBatchSize: z.number().int().nullable(),
+	maxInputTokens: z.number().int().nullable(),
+	supportedLanguages: z.array(z.string()),
+	supportedContent: z.array(z.string()),
+	...ServiceEndpointFields,
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type EmbeddingServiceRecord = z.infer<
+	typeof EmbeddingServiceRecordSchema
+>;
+export const EmbeddingServicePageSchema = paginatedSchema(
+	EmbeddingServiceRecordSchema,
+);
+
+export const CreateEmbeddingServiceInputSchema = z.object({
+	name: z.string().min(1),
+	description: z.string().or(z.literal("")).nullable().optional(),
+	provider: z.string().min(1),
+	modelName: z.string().min(1),
+	embeddingDimension: z.number().int().positive(),
+	distanceMetric: DistanceMetricSchema.optional(),
+});
+export type CreateEmbeddingServiceInput = z.infer<
+	typeof CreateEmbeddingServiceInputSchema
+>;
+
+export const RerankingServiceRecordSchema = z.object({
+	workspaceId: z.string().uuid(),
+	rerankingServiceId: z.string().uuid(),
+	name: z.string(),
+	description: z.string().nullable(),
+	status: ServiceStatusSchema,
+	provider: z.string(),
+	engine: z.string().nullable(),
+	modelName: z.string(),
+	modelVersion: z.string().nullable(),
+	maxCandidates: z.number().int().nullable(),
+	scoringStrategy: z.string().nullable(),
+	scoreNormalized: z.boolean().nullable(),
+	returnScores: z.boolean().nullable(),
+	maxBatchSize: z.number().int().nullable(),
+	supportedLanguages: z.array(z.string()),
+	supportedContent: z.array(z.string()),
+	...ServiceEndpointFields,
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type RerankingServiceRecord = z.infer<
+	typeof RerankingServiceRecordSchema
+>;
+export const RerankingServicePageSchema = paginatedSchema(
+	RerankingServiceRecordSchema,
+);
+
+export const CreateRerankingServiceInputSchema = z.object({
+	name: z.string().min(1),
+	description: z.string().or(z.literal("")).nullable().optional(),
+	provider: z.string().min(1),
+	modelName: z.string().min(1),
+});
+export type CreateRerankingServiceInput = z.infer<
+	typeof CreateRerankingServiceInputSchema
+>;
+
+/* ---------------- RAG documents (KB-scoped) ---------------- */
 
 export const DocumentStatusSchema = z.enum([
 	"pending",
@@ -200,15 +322,15 @@ export const DocumentStatusSchema = z.enum([
 ]);
 export type DocumentStatus = z.infer<typeof DocumentStatusSchema>;
 
-export const DocumentRecordSchema = z.object({
-	workspace: z.string().uuid(),
-	catalogUid: z.string().uuid(),
-	documentUid: z.string().uuid(),
+export const RagDocumentRecordSchema = z.object({
+	workspaceId: z.string().uuid(),
+	knowledgeBaseId: z.string().uuid(),
+	documentId: z.string().uuid(),
 	sourceDocId: z.string().nullable(),
 	sourceFilename: z.string().nullable(),
 	fileType: z.string().nullable(),
 	fileSize: z.number().int().nonnegative().nullable(),
-	md5Hash: z.string().nullable(),
+	contentHash: z.string().nullable(),
 	chunkTotal: z.number().int().nonnegative().nullable(),
 	ingestedAt: z.string().nullable(),
 	updatedAt: z.string(),
@@ -216,8 +338,16 @@ export const DocumentRecordSchema = z.object({
 	errorMessage: z.string().nullable(),
 	metadata: z.record(z.string(), z.string()),
 });
-export type DocumentRecord = z.infer<typeof DocumentRecordSchema>;
-export const DocumentPageSchema = paginatedSchema(DocumentRecordSchema);
+export type RagDocumentRecord = z.infer<typeof RagDocumentRecordSchema>;
+export const RagDocumentPageSchema = paginatedSchema(RagDocumentRecordSchema);
+
+export const DocumentChunkSchema = z.object({
+	id: z.string(),
+	chunkIndex: z.number().int().nonnegative().nullable(),
+	text: z.string().nullable(),
+	payload: z.record(z.string(), z.unknown()),
+});
+export type DocumentChunk = z.infer<typeof DocumentChunkSchema>;
 
 /* ---------------- Jobs ---------------- */
 
@@ -233,7 +363,7 @@ export const JobRecordSchema = z.object({
 	workspace: z.string().uuid(),
 	jobId: z.string().uuid(),
 	kind: z.enum(["ingest"]),
-	catalogUid: z.string().uuid().nullable(),
+	knowledgeBaseUid: z.string().uuid().nullable(),
 	documentUid: z.string().uuid().nullable(),
 	status: JobStatusSchema,
 	processed: z.number().int().nonnegative(),
@@ -254,76 +384,22 @@ export const IngestChunkerOptionsSchema = z.object({
 });
 export type IngestChunkerOptions = z.infer<typeof IngestChunkerOptionsSchema>;
 
-export const DocumentChunkSchema = z.object({
-	id: z.string(),
-	chunkIndex: z.number().int().nonnegative().nullable(),
-	text: z.string().nullable(),
-	payload: z.record(z.string(), z.unknown()),
-});
-export type DocumentChunk = z.infer<typeof DocumentChunkSchema>;
-
-export const AdoptableCollectionSchema = z.object({
-	name: z.string(),
-	vectorDimension: z.number().int().positive(),
-	vectorSimilarity: z.enum(["cosine", "dot", "euclidean"]),
-	embedding: z
-		.object({
-			provider: z.string(),
-			model: z.string(),
-		})
-		.nullable(),
-	lexicalEnabled: z.boolean(),
-	rerankEnabled: z.boolean(),
-	rerankProvider: z.string().nullable(),
-	rerankModel: z.string().nullable(),
-});
-export type AdoptableCollection = z.infer<typeof AdoptableCollectionSchema>;
-
-export const IngestRequestSchema = z.object({
+export const KbIngestRequestSchema = z.object({
 	text: z.string().min(1, "Content is required"),
 	sourceFilename: z.string().nullable().optional(),
 	fileType: z.string().nullable().optional(),
 	fileSize: z.number().int().nonnegative().nullable().optional(),
+	contentHash: z.string().nullable().optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
 	chunker: IngestChunkerOptionsSchema.optional(),
 });
-export type IngestRequest = z.infer<typeof IngestRequestSchema>;
+export type KbIngestRequest = z.infer<typeof KbIngestRequestSchema>;
 
-/**
- * Response from `POST /ingest?async=true` — the 202 envelope that
- * ties together the job to poll and the document row to watch.
- */
-export const AsyncIngestResponseSchema = z.object({
+export const KbAsyncIngestResponseSchema = z.object({
 	job: JobRecordSchema,
-	document: DocumentRecordSchema,
+	document: RagDocumentRecordSchema,
 });
-export type AsyncIngestResponse = z.infer<typeof AsyncIngestResponseSchema>;
-
-/* ---------------- Saved queries ---------------- */
-
-export const SavedQueryRecordSchema = z.object({
-	workspace: z.string().uuid(),
-	catalogUid: z.string().uuid(),
-	queryUid: z.string().uuid(),
-	name: z.string(),
-	description: z.string().nullable(),
-	text: z.string(),
-	topK: z.number().int().positive().max(1000).nullable(),
-	filter: z.record(z.string(), z.unknown()).nullable(),
-	createdAt: z.string(),
-	updatedAt: z.string(),
-});
-export type SavedQueryRecord = z.infer<typeof SavedQueryRecordSchema>;
-export const SavedQueryPageSchema = paginatedSchema(SavedQueryRecordSchema);
-
-export const CreateSavedQueryInputSchema = z.object({
-	name: z.string().min(1, "Name is required"),
-	description: z.string().or(z.literal("")).nullable().optional(),
-	text: z.string().min(1, "Text is required"),
-	topK: z.number().int().positive().max(1000).nullable().optional(),
-	filter: z.record(z.string(), z.unknown()).nullable().optional(),
-});
-export type CreateSavedQueryInput = z.infer<typeof CreateSavedQueryInputSchema>;
+export type KbAsyncIngestResponse = z.infer<typeof KbAsyncIngestResponseSchema>;
 
 export const KIND_LABELS: Record<WorkspaceKind, string> = {
 	astra: "Astra DB",

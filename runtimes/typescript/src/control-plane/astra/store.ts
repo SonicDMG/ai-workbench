@@ -2,50 +2,53 @@
  * {@link ../store.ControlPlaneStore} backed by Astra Data API Tables.
  *
  * Holds no state of its own — every operation is a `findOne`,
- * `insertOne`, `updateOne`, or `deleteOne` against the four `wb_*`
- * tables declared in {@link ../../astra-client/table-definitions.ts}.
+ * `insertOne`, `updateOne`, or `deleteOne` against the `wb_*` tables
+ * declared in {@link ../../astra-client/table-definitions.ts}.
  *
  * Error mapping contract:
  *   - `findOne` → null  → {@link ControlPlaneNotFoundError} on the
  *     relevant method.
  *   - Insert of a PK that already exists → {@link ControlPlaneConflictError}.
  *     (Astra's insert into Tables is upsert-by-default, so we check
- *     existence first. Race windows are accepted for now — Phase 1a
- *     targets correctness for single-writer scenarios; the route layer
- *     will add a retry policy in Phase 1a.3 if needed.)
+ *     existence first.)
  *
  * Cascade semantics:
- *   - `deleteWorkspace` → `deleteMany` on catalogs/vector stores/documents
- *     scoped by workspace. Accepted: partial failure across partitions
- *     (no cross-partition transaction). Behavior matches the `file`
- *     backend we shipped earlier.
- *   - `deleteCatalog` → `deleteMany` on documents scoped by
- *     (workspace, catalogUid).
+ *   - `deleteWorkspace` → `deleteMany` on every dependent partition.
+ *     Accepted: partial failure across partitions (no cross-partition
+ *     transaction).
+ *   - `deleteKnowledgeBase` → `deleteMany` on rag-documents scoped by
+ *     (workspace, knowledge_base_id) and the by-status secondary index.
  */
 
 import { randomUUID } from "node:crypto";
 import {
 	apiKeyFromRow,
 	apiKeyToRow,
-	catalogFromRow,
-	catalogToRow,
-	documentFromRow,
-	documentToRow,
-	savedQueryFromRow,
-	savedQueryToRow,
-	vectorStoreFromRow,
-	vectorStoreToRow,
+	chunkingServiceFromRow,
+	chunkingServiceToRow,
+	embeddingServiceFromRow,
+	embeddingServiceToRow,
+	knowledgeBaseFromRow,
+	knowledgeBaseToRow,
+	ragDocumentByHashToRow,
+	ragDocumentByStatusToRow,
+	ragDocumentFromRow,
+	ragDocumentToRow,
+	rerankingServiceFromRow,
+	rerankingServiceToRow,
 	workspaceFromRow,
 	workspaceToRow,
 } from "../../astra-client/converters.js";
 import type { TablesBundle } from "../../astra-client/tables.js";
 import {
-	assertVectorStorePatchIsEmpty,
 	byCreatedAtThenKeyId,
 	byCreatedAtThenUid,
+	DEFAULT_AUTH_TYPE,
+	DEFAULT_DISTANCE_METRIC,
+	DEFAULT_KB_STATUS,
 	DEFAULT_LEXICAL,
-	DEFAULT_RERANKING,
-	DEFAULT_SIMILARITY,
+	DEFAULT_SERVICE_STATUS,
+	defaultVectorCollection,
 	nowIso,
 } from "../defaults.js";
 import {
@@ -54,26 +57,35 @@ import {
 } from "../errors.js";
 import type {
 	ControlPlaneStore,
-	CreateCatalogInput,
-	CreateDocumentInput,
-	CreateSavedQueryInput,
-	CreateVectorStoreInput,
+	CreateChunkingServiceInput,
+	CreateEmbeddingServiceInput,
+	CreateKnowledgeBaseInput,
+	CreateRagDocumentInput,
+	CreateRerankingServiceInput,
 	CreateWorkspaceInput,
 	PersistApiKeyInput,
-	UpdateCatalogInput,
-	UpdateDocumentInput,
-	UpdateSavedQueryInput,
-	UpdateVectorStoreInput,
+	UpdateChunkingServiceInput,
+	UpdateEmbeddingServiceInput,
+	UpdateKnowledgeBaseInput,
+	UpdateRagDocumentInput,
+	UpdateRerankingServiceInput,
 	UpdateWorkspaceInput,
 } from "../store.js";
 import type {
 	ApiKeyRecord,
-	CatalogRecord,
-	DocumentRecord,
-	SavedQueryRecord,
-	VectorStoreRecord,
+	ChunkingServiceRecord,
+	EmbeddingServiceRecord,
+	KnowledgeBaseRecord,
+	RagDocumentRecord,
+	RerankingServiceRecord,
 	WorkspaceRecord,
 } from "../types.js";
+
+function freezeStringSet(
+	value: ReadonlySet<string> | readonly string[] | undefined,
+): readonly string[] {
+	return Object.freeze([...new Set(value ?? [])].sort());
+}
 
 export class AstraControlPlaneStore implements ControlPlaneStore {
 	constructor(private readonly tables: TablesBundle) {}
@@ -149,435 +161,14 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		}
 		await this.tables.workspaces.deleteOne({ uid });
 		await Promise.all([
-			this.tables.catalogs.deleteMany({ workspace: uid }),
-			this.tables.vectorStores.deleteMany({ workspace: uid }),
-			this.tables.documents.deleteMany({ workspace: uid }),
-			this.tables.savedQueries.deleteMany({ workspace: uid }),
 			this.tables.apiKeys.deleteMany({ workspace: uid }),
+			this.tables.knowledgeBases.deleteMany({ workspace_id: uid }),
+			this.tables.chunkingServices.deleteMany({ workspace_id: uid }),
+			this.tables.embeddingServices.deleteMany({ workspace_id: uid }),
+			this.tables.rerankingServices.deleteMany({ workspace_id: uid }),
+			this.tables.ragDocuments.deleteMany({ workspace_id: uid }),
+			this.tables.ragDocumentsByStatus.deleteMany({ workspace_id: uid }),
 		]);
-		return { deleted: true };
-	}
-
-	/* ---------------- Catalogs ---------------- */
-
-	async listCatalogs(workspace: string): Promise<readonly CatalogRecord[]> {
-		await this.assertWorkspace(workspace);
-		const rows = await this.tables.catalogs.find({ workspace }).toArray();
-		return rows.map(catalogFromRow);
-	}
-
-	async getCatalog(
-		workspace: string,
-		uid: string,
-	): Promise<CatalogRecord | null> {
-		await this.assertWorkspace(workspace);
-		const row = await this.tables.catalogs.findOne({ workspace, uid });
-		return row ? catalogFromRow(row) : null;
-	}
-
-	async createCatalog(
-		workspace: string,
-		input: CreateCatalogInput,
-	): Promise<CatalogRecord> {
-		await this.assertWorkspace(workspace);
-		if (input.vectorStore !== undefined && input.vectorStore !== null) {
-			await this.assertVectorStore(workspace, input.vectorStore);
-		}
-		const uid = input.uid ?? randomUUID();
-		if (await this.tables.catalogs.findOne({ workspace, uid })) {
-			throw new ControlPlaneConflictError(
-				`catalog with uid '${uid}' already exists in workspace '${workspace}'`,
-			);
-		}
-		const now = nowIso();
-		const record: CatalogRecord = {
-			workspace,
-			uid,
-			name: input.name,
-			description: input.description ?? null,
-			vectorStore: input.vectorStore ?? null,
-			createdAt: now,
-			updatedAt: now,
-		};
-		await this.tables.catalogs.insertOne(catalogToRow(record));
-		return record;
-	}
-
-	async updateCatalog(
-		workspace: string,
-		uid: string,
-		patch: UpdateCatalogInput,
-	): Promise<CatalogRecord> {
-		await this.assertWorkspace(workspace);
-		if (patch.vectorStore !== undefined && patch.vectorStore !== null) {
-			await this.assertVectorStore(workspace, patch.vectorStore);
-		}
-		const existing = await this.tables.catalogs.findOne({ workspace, uid });
-		if (!existing) throw new ControlPlaneNotFoundError("catalog", uid);
-		const base = catalogFromRow(existing);
-		const next: CatalogRecord = {
-			...base,
-			...(patch.name !== undefined && { name: patch.name }),
-			...(patch.description !== undefined && {
-				description: patch.description,
-			}),
-			...(patch.vectorStore !== undefined && {
-				vectorStore: patch.vectorStore,
-			}),
-			updatedAt: nowIso(),
-		};
-		const nextRow = catalogToRow(next);
-		const { workspace: _w, uid: _u, ...fields } = nextRow;
-		await this.tables.catalogs.updateOne({ workspace, uid }, { $set: fields });
-		return next;
-	}
-
-	async deleteCatalog(
-		workspace: string,
-		uid: string,
-	): Promise<{ deleted: boolean }> {
-		await this.assertWorkspace(workspace);
-		const existing = await this.tables.catalogs.findOne({ workspace, uid });
-		if (!existing) return { deleted: false };
-		await this.tables.catalogs.deleteOne({ workspace, uid });
-		await Promise.all([
-			this.tables.documents.deleteMany({ workspace, catalog_uid: uid }),
-			this.tables.savedQueries.deleteMany({ workspace, catalog_uid: uid }),
-		]);
-		return { deleted: true };
-	}
-
-	/* ---------------- Vector stores ---------------- */
-
-	async listVectorStores(
-		workspace: string,
-	): Promise<readonly VectorStoreRecord[]> {
-		await this.assertWorkspace(workspace);
-		const rows = await this.tables.vectorStores.find({ workspace }).toArray();
-		return rows.map(vectorStoreFromRow);
-	}
-
-	async getVectorStore(
-		workspace: string,
-		uid: string,
-	): Promise<VectorStoreRecord | null> {
-		await this.assertWorkspace(workspace);
-		const row = await this.tables.vectorStores.findOne({ workspace, uid });
-		return row ? vectorStoreFromRow(row) : null;
-	}
-
-	async createVectorStore(
-		workspace: string,
-		input: CreateVectorStoreInput,
-	): Promise<VectorStoreRecord> {
-		await this.assertWorkspace(workspace);
-		const uid = input.uid ?? randomUUID();
-		if (await this.tables.vectorStores.findOne({ workspace, uid })) {
-			throw new ControlPlaneConflictError(
-				`vector store with uid '${uid}' already exists in workspace '${workspace}'`,
-			);
-		}
-		const now = nowIso();
-		const record: VectorStoreRecord = {
-			workspace,
-			uid,
-			name: input.name,
-			vectorDimension: input.vectorDimension,
-			vectorSimilarity: input.vectorSimilarity ?? DEFAULT_SIMILARITY,
-			embedding: input.embedding,
-			lexical: input.lexical ?? DEFAULT_LEXICAL,
-			reranking: input.reranking ?? DEFAULT_RERANKING,
-			createdAt: now,
-			updatedAt: now,
-		};
-		await this.tables.vectorStores.insertOne(vectorStoreToRow(record));
-		return record;
-	}
-
-	async updateVectorStore(
-		workspace: string,
-		uid: string,
-		patch: UpdateVectorStoreInput,
-	): Promise<VectorStoreRecord> {
-		await this.assertWorkspace(workspace);
-		const existing = await this.tables.vectorStores.findOne({ workspace, uid });
-		if (!existing) throw new ControlPlaneNotFoundError("vector store", uid);
-		assertVectorStorePatchIsEmpty(patch);
-		return vectorStoreFromRow(existing);
-	}
-
-	async deleteVectorStore(
-		workspace: string,
-		uid: string,
-	): Promise<{ deleted: boolean }> {
-		await this.assertWorkspace(workspace);
-		await this.assertVectorStoreNotReferenced(workspace, uid);
-		const existing = await this.tables.vectorStores.findOne({ workspace, uid });
-		if (!existing) return { deleted: false };
-		await this.tables.vectorStores.deleteOne({ workspace, uid });
-		return { deleted: true };
-	}
-
-	/* ---------------- Documents ---------------- */
-
-	async listDocuments(
-		workspace: string,
-		catalog: string,
-	): Promise<readonly DocumentRecord[]> {
-		await this.assertCatalog(workspace, catalog);
-		const rows = await this.tables.documents
-			.find({ workspace, catalog_uid: catalog })
-			.toArray();
-		return rows.map(documentFromRow);
-	}
-
-	async getDocument(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<DocumentRecord | null> {
-		await this.assertCatalog(workspace, catalog);
-		const row = await this.tables.documents.findOne({
-			workspace,
-			catalog_uid: catalog,
-			document_uid: uid,
-		});
-		return row ? documentFromRow(row) : null;
-	}
-
-	async createDocument(
-		workspace: string,
-		catalog: string,
-		input: CreateDocumentInput,
-	): Promise<DocumentRecord> {
-		await this.assertCatalog(workspace, catalog);
-		const uid = input.uid ?? randomUUID();
-		if (
-			await this.tables.documents.findOne({
-				workspace,
-				catalog_uid: catalog,
-				document_uid: uid,
-			})
-		) {
-			throw new ControlPlaneConflictError(
-				`document with uid '${uid}' already exists in catalog '${catalog}'`,
-			);
-		}
-		const now = nowIso();
-		const record: DocumentRecord = {
-			workspace,
-			catalogUid: catalog,
-			documentUid: uid,
-			sourceDocId: input.sourceDocId ?? null,
-			sourceFilename: input.sourceFilename ?? null,
-			fileType: input.fileType ?? null,
-			fileSize: input.fileSize ?? null,
-			md5Hash: input.md5Hash ?? null,
-			chunkTotal: input.chunkTotal ?? null,
-			ingestedAt: input.ingestedAt ?? null,
-			updatedAt: now,
-			status: input.status ?? "pending",
-			errorMessage: input.errorMessage ?? null,
-			metadata: { ...(input.metadata ?? {}) },
-		};
-		await this.tables.documents.insertOne(documentToRow(record));
-		return record;
-	}
-
-	async updateDocument(
-		workspace: string,
-		catalog: string,
-		uid: string,
-		patch: UpdateDocumentInput,
-	): Promise<DocumentRecord> {
-		await this.assertCatalog(workspace, catalog);
-		const existing = await this.tables.documents.findOne({
-			workspace,
-			catalog_uid: catalog,
-			document_uid: uid,
-		});
-		if (!existing) throw new ControlPlaneNotFoundError("document", uid);
-		const base = documentFromRow(existing);
-		const next: DocumentRecord = {
-			...base,
-			...(patch.sourceDocId !== undefined && {
-				sourceDocId: patch.sourceDocId,
-			}),
-			...(patch.sourceFilename !== undefined && {
-				sourceFilename: patch.sourceFilename,
-			}),
-			...(patch.fileType !== undefined && { fileType: patch.fileType }),
-			...(patch.fileSize !== undefined && { fileSize: patch.fileSize }),
-			...(patch.md5Hash !== undefined && { md5Hash: patch.md5Hash }),
-			...(patch.chunkTotal !== undefined && {
-				chunkTotal: patch.chunkTotal,
-			}),
-			...(patch.ingestedAt !== undefined && {
-				ingestedAt: patch.ingestedAt,
-			}),
-			...(patch.status !== undefined && { status: patch.status }),
-			...(patch.errorMessage !== undefined && {
-				errorMessage: patch.errorMessage,
-			}),
-			...(patch.metadata !== undefined && {
-				metadata: { ...patch.metadata },
-			}),
-			updatedAt: nowIso(),
-		};
-		const nextRow = documentToRow(next);
-		const {
-			workspace: _w,
-			catalog_uid: _c,
-			document_uid: _d,
-			...fields
-		} = nextRow;
-		await this.tables.documents.updateOne(
-			{ workspace, catalog_uid: catalog, document_uid: uid },
-			{ $set: fields },
-		);
-		return next;
-	}
-
-	async deleteDocument(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<{ deleted: boolean }> {
-		await this.assertCatalog(workspace, catalog);
-		const existing = await this.tables.documents.findOne({
-			workspace,
-			catalog_uid: catalog,
-			document_uid: uid,
-		});
-		if (!existing) return { deleted: false };
-		await this.tables.documents.deleteOne({
-			workspace,
-			catalog_uid: catalog,
-			document_uid: uid,
-		});
-		return { deleted: true };
-	}
-
-	/* ---------------- Saved queries ---------------- */
-
-	async listSavedQueries(
-		workspace: string,
-		catalog: string,
-	): Promise<readonly SavedQueryRecord[]> {
-		await this.assertCatalog(workspace, catalog);
-		const rows = await this.tables.savedQueries
-			.find({ workspace, catalog_uid: catalog })
-			.toArray();
-		return rows.map(savedQueryFromRow);
-	}
-
-	async getSavedQuery(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<SavedQueryRecord | null> {
-		await this.assertCatalog(workspace, catalog);
-		const row = await this.tables.savedQueries.findOne({
-			workspace,
-			catalog_uid: catalog,
-			query_uid: uid,
-		});
-		return row ? savedQueryFromRow(row) : null;
-	}
-
-	async createSavedQuery(
-		workspace: string,
-		catalog: string,
-		input: CreateSavedQueryInput,
-	): Promise<SavedQueryRecord> {
-		await this.assertCatalog(workspace, catalog);
-		const uid = input.uid ?? randomUUID();
-		if (
-			await this.tables.savedQueries.findOne({
-				workspace,
-				catalog_uid: catalog,
-				query_uid: uid,
-			})
-		) {
-			throw new ControlPlaneConflictError(
-				`saved query with uid '${uid}' already exists in catalog '${catalog}'`,
-			);
-		}
-		const now = nowIso();
-		const record: SavedQueryRecord = {
-			workspace,
-			catalogUid: catalog,
-			queryUid: uid,
-			name: input.name,
-			description: input.description ?? null,
-			text: input.text,
-			topK: input.topK ?? null,
-			filter: input.filter ? { ...input.filter } : null,
-			createdAt: now,
-			updatedAt: now,
-		};
-		await this.tables.savedQueries.insertOne(savedQueryToRow(record));
-		return record;
-	}
-
-	async updateSavedQuery(
-		workspace: string,
-		catalog: string,
-		uid: string,
-		patch: UpdateSavedQueryInput,
-	): Promise<SavedQueryRecord> {
-		await this.assertCatalog(workspace, catalog);
-		const existing = await this.tables.savedQueries.findOne({
-			workspace,
-			catalog_uid: catalog,
-			query_uid: uid,
-		});
-		if (!existing) throw new ControlPlaneNotFoundError("saved query", uid);
-		const base = savedQueryFromRow(existing);
-		const next: SavedQueryRecord = {
-			...base,
-			...(patch.name !== undefined && { name: patch.name }),
-			...(patch.description !== undefined && {
-				description: patch.description,
-			}),
-			...(patch.text !== undefined && { text: patch.text }),
-			...(patch.topK !== undefined && { topK: patch.topK }),
-			...(patch.filter !== undefined && {
-				filter: patch.filter ? { ...patch.filter } : null,
-			}),
-			updatedAt: nowIso(),
-		};
-		const nextRow = savedQueryToRow(next);
-		const {
-			workspace: _w,
-			catalog_uid: _c,
-			query_uid: _q,
-			...fields
-		} = nextRow;
-		await this.tables.savedQueries.updateOne(
-			{ workspace, catalog_uid: catalog, query_uid: uid },
-			{ $set: fields },
-		);
-		return next;
-	}
-
-	async deleteSavedQuery(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<{ deleted: boolean }> {
-		await this.assertCatalog(workspace, catalog);
-		const existing = await this.tables.savedQueries.findOne({
-			workspace,
-			catalog_uid: catalog,
-			query_uid: uid,
-		});
-		if (!existing) return { deleted: false };
-		await this.tables.savedQueries.deleteOne({
-			workspace,
-			catalog_uid: catalog,
-			query_uid: uid,
-		});
 		return { deleted: true };
 	}
 
@@ -676,6 +267,721 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		);
 	}
 
+	/* ---------------- Knowledge bases (issue #98) ---------------- */
+
+	async listKnowledgeBases(
+		workspace: string,
+	): Promise<readonly KnowledgeBaseRecord[]> {
+		await this.assertWorkspace(workspace);
+		const rows = await this.tables.knowledgeBases
+			.find({ workspace_id: workspace })
+			.toArray();
+		return rows.map(knowledgeBaseFromRow);
+	}
+
+	async getKnowledgeBase(
+		workspace: string,
+		uid: string,
+	): Promise<KnowledgeBaseRecord | null> {
+		await this.assertWorkspace(workspace);
+		const row = await this.tables.knowledgeBases.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: uid,
+		});
+		return row ? knowledgeBaseFromRow(row) : null;
+	}
+
+	async createKnowledgeBase(
+		workspace: string,
+		input: CreateKnowledgeBaseInput,
+	): Promise<KnowledgeBaseRecord> {
+		await this.assertWorkspace(workspace);
+		await this.assertEmbeddingService(workspace, input.embeddingServiceId);
+		await this.assertChunkingService(workspace, input.chunkingServiceId);
+		if (input.rerankingServiceId) {
+			await this.assertRerankingService(workspace, input.rerankingServiceId);
+		}
+		const uid = input.uid ?? randomUUID();
+		if (
+			await this.tables.knowledgeBases.findOne({
+				workspace_id: workspace,
+				knowledge_base_id: uid,
+			})
+		) {
+			throw new ControlPlaneConflictError(
+				`knowledge base with uid '${uid}' already exists in workspace '${workspace}'`,
+			);
+		}
+		const now = nowIso();
+		const record: KnowledgeBaseRecord = {
+			workspaceId: workspace,
+			knowledgeBaseId: uid,
+			name: input.name,
+			description: input.description ?? null,
+			status: input.status ?? DEFAULT_KB_STATUS,
+			embeddingServiceId: input.embeddingServiceId,
+			chunkingServiceId: input.chunkingServiceId,
+			rerankingServiceId: input.rerankingServiceId ?? null,
+			language: input.language ?? null,
+			vectorCollection: input.vectorCollection ?? defaultVectorCollection(uid),
+			lexical: input.lexical ?? DEFAULT_LEXICAL,
+			createdAt: now,
+			updatedAt: now,
+		};
+		await this.tables.knowledgeBases.insertOne(knowledgeBaseToRow(record));
+		return record;
+	}
+
+	async updateKnowledgeBase(
+		workspace: string,
+		uid: string,
+		patch: UpdateKnowledgeBaseInput,
+	): Promise<KnowledgeBaseRecord> {
+		await this.assertWorkspace(workspace);
+		if (
+			patch.rerankingServiceId !== undefined &&
+			patch.rerankingServiceId !== null
+		) {
+			await this.assertRerankingService(workspace, patch.rerankingServiceId);
+		}
+		const existing = await this.tables.knowledgeBases.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: uid,
+		});
+		if (!existing) throw new ControlPlaneNotFoundError("knowledge base", uid);
+		const base = knowledgeBaseFromRow(existing);
+		const next: KnowledgeBaseRecord = {
+			...base,
+			...(patch.name !== undefined && { name: patch.name }),
+			...(patch.description !== undefined && {
+				description: patch.description,
+			}),
+			...(patch.status !== undefined && { status: patch.status }),
+			...(patch.rerankingServiceId !== undefined && {
+				rerankingServiceId: patch.rerankingServiceId,
+			}),
+			...(patch.language !== undefined && { language: patch.language }),
+			...(patch.lexical !== undefined && { lexical: patch.lexical }),
+			updatedAt: nowIso(),
+		};
+		const nextRow = knowledgeBaseToRow(next);
+		const { workspace_id: _w, knowledge_base_id: _kb, ...fields } = nextRow;
+		await this.tables.knowledgeBases.updateOne(
+			{ workspace_id: workspace, knowledge_base_id: uid },
+			{ $set: fields },
+		);
+		return next;
+	}
+
+	async deleteKnowledgeBase(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspace);
+		const existing = await this.tables.knowledgeBases.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: uid,
+		});
+		if (!existing) return { deleted: false };
+		await this.tables.knowledgeBases.deleteOne({
+			workspace_id: workspace,
+			knowledge_base_id: uid,
+		});
+		// Cascade RAG document rows + secondary indexes. Underlying vector
+		// collection cleanup is the caller's responsibility (KB delete
+		// route handles it).
+		await Promise.all([
+			this.tables.ragDocuments.deleteMany({
+				workspace_id: workspace,
+				knowledge_base_id: uid,
+			}),
+			this.tables.ragDocumentsByStatus.deleteMany({
+				workspace_id: workspace,
+				knowledge_base_id: uid,
+			}),
+		]);
+		return { deleted: true };
+	}
+
+	/* ---------------- RAG documents (KB-scoped) ---------------- */
+
+	async listRagDocuments(
+		workspace: string,
+		knowledgeBase: string,
+	): Promise<readonly RagDocumentRecord[]> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const rows = await this.tables.ragDocuments
+			.find({ workspace_id: workspace, knowledge_base_id: knowledgeBase })
+			.toArray();
+		return rows.map(ragDocumentFromRow);
+	}
+
+	async getRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<RagDocumentRecord | null> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const row = await this.tables.ragDocuments.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: knowledgeBase,
+			document_id: uid,
+		});
+		return row ? ragDocumentFromRow(row) : null;
+	}
+
+	async createRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		input: CreateRagDocumentInput,
+	): Promise<RagDocumentRecord> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const uid = input.uid ?? randomUUID();
+		if (
+			await this.tables.ragDocuments.findOne({
+				workspace_id: workspace,
+				knowledge_base_id: knowledgeBase,
+				document_id: uid,
+			})
+		) {
+			throw new ControlPlaneConflictError(
+				`document with uid '${uid}' already exists in knowledge base '${knowledgeBase}'`,
+			);
+		}
+		const now = nowIso();
+		const record: RagDocumentRecord = {
+			workspaceId: workspace,
+			knowledgeBaseId: knowledgeBase,
+			documentId: uid,
+			sourceDocId: input.sourceDocId ?? null,
+			sourceFilename: input.sourceFilename ?? null,
+			fileType: input.fileType ?? null,
+			fileSize: input.fileSize ?? null,
+			contentHash: input.contentHash ?? null,
+			chunkTotal: input.chunkTotal ?? null,
+			ingestedAt: input.ingestedAt ?? null,
+			updatedAt: now,
+			status: input.status ?? "pending",
+			errorMessage: input.errorMessage ?? null,
+			metadata: { ...(input.metadata ?? {}) },
+		};
+		await this.tables.ragDocuments.insertOne(ragDocumentToRow(record));
+		await this.writeRagStatusIndex(record);
+		if (record.contentHash) {
+			await this.tables.ragDocumentsByHash.insertOne(
+				ragDocumentByHashToRow({
+					contentHash: record.contentHash,
+					workspaceId: record.workspaceId,
+					knowledgeBaseId: record.knowledgeBaseId,
+					documentId: record.documentId,
+				}),
+			);
+		}
+		return record;
+	}
+
+	async updateRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+		patch: UpdateRagDocumentInput,
+	): Promise<RagDocumentRecord> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const existing = await this.tables.ragDocuments.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: knowledgeBase,
+			document_id: uid,
+		});
+		if (!existing) throw new ControlPlaneNotFoundError("document", uid);
+		const base = ragDocumentFromRow(existing);
+		const next: RagDocumentRecord = {
+			...base,
+			...(patch.sourceDocId !== undefined && {
+				sourceDocId: patch.sourceDocId,
+			}),
+			...(patch.sourceFilename !== undefined && {
+				sourceFilename: patch.sourceFilename,
+			}),
+			...(patch.fileType !== undefined && { fileType: patch.fileType }),
+			...(patch.fileSize !== undefined && { fileSize: patch.fileSize }),
+			...(patch.contentHash !== undefined && {
+				contentHash: patch.contentHash,
+			}),
+			...(patch.chunkTotal !== undefined && { chunkTotal: patch.chunkTotal }),
+			...(patch.ingestedAt !== undefined && { ingestedAt: patch.ingestedAt }),
+			...(patch.status !== undefined && { status: patch.status }),
+			...(patch.errorMessage !== undefined && {
+				errorMessage: patch.errorMessage,
+			}),
+			...(patch.metadata !== undefined && {
+				metadata: { ...patch.metadata },
+			}),
+			updatedAt: nowIso(),
+		};
+		const nextRow = ragDocumentToRow(next);
+		const {
+			workspace_id: _w,
+			knowledge_base_id: _k,
+			document_id: _d,
+			...fields
+		} = nextRow;
+		await this.tables.ragDocuments.updateOne(
+			{
+				workspace_id: workspace,
+				knowledge_base_id: knowledgeBase,
+				document_id: uid,
+			},
+			{ $set: fields },
+		);
+		// Status index — drop the old row when status changed, write the new.
+		if (base.status !== next.status) {
+			await this.tables.ragDocumentsByStatus.deleteOne({
+				workspace_id: workspace,
+				knowledge_base_id: knowledgeBase,
+				status: base.status,
+				document_id: uid,
+			});
+		}
+		await this.writeRagStatusIndex(next);
+		// Hash index updates only when content_hash changed.
+		if (base.contentHash !== next.contentHash) {
+			if (base.contentHash) {
+				await this.tables.ragDocumentsByHash.deleteOne({
+					content_hash: base.contentHash,
+				});
+			}
+			if (next.contentHash) {
+				await this.tables.ragDocumentsByHash.insertOne(
+					ragDocumentByHashToRow({
+						contentHash: next.contentHash,
+						workspaceId: next.workspaceId,
+						knowledgeBaseId: next.knowledgeBaseId,
+						documentId: next.documentId,
+					}),
+				);
+			}
+		}
+		return next;
+	}
+
+	async deleteRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const existing = await this.tables.ragDocuments.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: knowledgeBase,
+			document_id: uid,
+		});
+		if (!existing) return { deleted: false };
+		const base = ragDocumentFromRow(existing);
+		await Promise.all([
+			this.tables.ragDocuments.deleteOne({
+				workspace_id: workspace,
+				knowledge_base_id: knowledgeBase,
+				document_id: uid,
+			}),
+			this.tables.ragDocumentsByStatus.deleteOne({
+				workspace_id: workspace,
+				knowledge_base_id: knowledgeBase,
+				status: base.status,
+				document_id: uid,
+			}),
+			base.contentHash
+				? this.tables.ragDocumentsByHash.deleteOne({
+						content_hash: base.contentHash,
+					})
+				: Promise.resolve(),
+		]);
+		return { deleted: true };
+	}
+
+	private async writeRagStatusIndex(rec: RagDocumentRecord): Promise<void> {
+		await this.tables.ragDocumentsByStatus.insertOne(
+			ragDocumentByStatusToRow({
+				workspaceId: rec.workspaceId,
+				knowledgeBaseId: rec.knowledgeBaseId,
+				status: rec.status,
+				documentId: rec.documentId,
+				sourceFilename: rec.sourceFilename,
+				ingestedAt: rec.ingestedAt,
+			}),
+		);
+	}
+
+	/* ---------------- Chunking services ---------------- */
+
+	async listChunkingServices(
+		workspace: string,
+	): Promise<readonly ChunkingServiceRecord[]> {
+		await this.assertWorkspace(workspace);
+		const rows = await this.tables.chunkingServices
+			.find({ workspace_id: workspace })
+			.toArray();
+		return rows.map(chunkingServiceFromRow);
+	}
+
+	async getChunkingService(
+		workspace: string,
+		uid: string,
+	): Promise<ChunkingServiceRecord | null> {
+		await this.assertWorkspace(workspace);
+		const row = await this.tables.chunkingServices.findOne({
+			workspace_id: workspace,
+			chunking_service_id: uid,
+		});
+		return row ? chunkingServiceFromRow(row) : null;
+	}
+
+	async createChunkingService(
+		workspace: string,
+		input: CreateChunkingServiceInput,
+	): Promise<ChunkingServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const uid = input.uid ?? randomUUID();
+		if (
+			await this.tables.chunkingServices.findOne({
+				workspace_id: workspace,
+				chunking_service_id: uid,
+			})
+		) {
+			throw new ControlPlaneConflictError(
+				`chunking service with uid '${uid}' already exists in workspace '${workspace}'`,
+			);
+		}
+		const now = nowIso();
+		const record: ChunkingServiceRecord = {
+			workspaceId: workspace,
+			chunkingServiceId: uid,
+			name: input.name,
+			description: input.description ?? null,
+			status: input.status ?? DEFAULT_SERVICE_STATUS,
+			engine: input.engine,
+			engineVersion: input.engineVersion ?? null,
+			strategy: input.strategy ?? null,
+			maxChunkSize: input.maxChunkSize ?? null,
+			minChunkSize: input.minChunkSize ?? null,
+			chunkUnit: input.chunkUnit ?? null,
+			overlapSize: input.overlapSize ?? null,
+			overlapUnit: input.overlapUnit ?? null,
+			preserveStructure: input.preserveStructure ?? null,
+			language: input.language ?? null,
+			endpointBaseUrl: input.endpointBaseUrl ?? null,
+			endpointPath: input.endpointPath ?? null,
+			requestTimeoutMs: input.requestTimeoutMs ?? null,
+			authType: input.authType ?? DEFAULT_AUTH_TYPE,
+			credentialRef: input.credentialRef ?? null,
+			maxPayloadSizeKb: input.maxPayloadSizeKb ?? null,
+			enableOcr: input.enableOcr ?? null,
+			extractTables: input.extractTables ?? null,
+			extractFigures: input.extractFigures ?? null,
+			readingOrder: input.readingOrder ?? null,
+			createdAt: now,
+			updatedAt: now,
+		};
+		await this.tables.chunkingServices.insertOne(chunkingServiceToRow(record));
+		return record;
+	}
+
+	async updateChunkingService(
+		workspace: string,
+		uid: string,
+		patch: UpdateChunkingServiceInput,
+	): Promise<ChunkingServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const existing = await this.tables.chunkingServices.findOne({
+			workspace_id: workspace,
+			chunking_service_id: uid,
+		});
+		if (!existing) throw new ControlPlaneNotFoundError("chunking service", uid);
+		const base = chunkingServiceFromRow(existing);
+		const next: ChunkingServiceRecord = {
+			...base,
+			...mergeDefinedKeys(patch),
+			updatedAt: nowIso(),
+		};
+		const nextRow = chunkingServiceToRow(next);
+		const { workspace_id: _w, chunking_service_id: _id, ...fields } = nextRow;
+		await this.tables.chunkingServices.updateOne(
+			{ workspace_id: workspace, chunking_service_id: uid },
+			{ $set: fields },
+		);
+		return next;
+	}
+
+	async deleteChunkingService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspace);
+		await this.assertServiceNotReferenced(workspace, "chunkingServiceId", uid);
+		const existing = await this.tables.chunkingServices.findOne({
+			workspace_id: workspace,
+			chunking_service_id: uid,
+		});
+		if (!existing) return { deleted: false };
+		await this.tables.chunkingServices.deleteOne({
+			workspace_id: workspace,
+			chunking_service_id: uid,
+		});
+		return { deleted: true };
+	}
+
+	/* ---------------- Embedding services ---------------- */
+
+	async listEmbeddingServices(
+		workspace: string,
+	): Promise<readonly EmbeddingServiceRecord[]> {
+		await this.assertWorkspace(workspace);
+		const rows = await this.tables.embeddingServices
+			.find({ workspace_id: workspace })
+			.toArray();
+		return rows.map(embeddingServiceFromRow);
+	}
+
+	async getEmbeddingService(
+		workspace: string,
+		uid: string,
+	): Promise<EmbeddingServiceRecord | null> {
+		await this.assertWorkspace(workspace);
+		const row = await this.tables.embeddingServices.findOne({
+			workspace_id: workspace,
+			embedding_service_id: uid,
+		});
+		return row ? embeddingServiceFromRow(row) : null;
+	}
+
+	async createEmbeddingService(
+		workspace: string,
+		input: CreateEmbeddingServiceInput,
+	): Promise<EmbeddingServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const uid = input.uid ?? randomUUID();
+		if (
+			await this.tables.embeddingServices.findOne({
+				workspace_id: workspace,
+				embedding_service_id: uid,
+			})
+		) {
+			throw new ControlPlaneConflictError(
+				`embedding service with uid '${uid}' already exists in workspace '${workspace}'`,
+			);
+		}
+		const now = nowIso();
+		const record: EmbeddingServiceRecord = {
+			workspaceId: workspace,
+			embeddingServiceId: uid,
+			name: input.name,
+			description: input.description ?? null,
+			status: input.status ?? DEFAULT_SERVICE_STATUS,
+			provider: input.provider,
+			modelName: input.modelName,
+			embeddingDimension: input.embeddingDimension,
+			distanceMetric: input.distanceMetric ?? DEFAULT_DISTANCE_METRIC,
+			endpointBaseUrl: input.endpointBaseUrl ?? null,
+			endpointPath: input.endpointPath ?? null,
+			requestTimeoutMs: input.requestTimeoutMs ?? null,
+			maxBatchSize: input.maxBatchSize ?? null,
+			maxInputTokens: input.maxInputTokens ?? null,
+			authType: input.authType ?? DEFAULT_AUTH_TYPE,
+			credentialRef: input.credentialRef ?? null,
+			supportedLanguages: freezeStringSet(input.supportedLanguages),
+			supportedContent: freezeStringSet(input.supportedContent),
+			createdAt: now,
+			updatedAt: now,
+		};
+		await this.tables.embeddingServices.insertOne(
+			embeddingServiceToRow(record),
+		);
+		return record;
+	}
+
+	async updateEmbeddingService(
+		workspace: string,
+		uid: string,
+		patch: UpdateEmbeddingServiceInput,
+	): Promise<EmbeddingServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const existing = await this.tables.embeddingServices.findOne({
+			workspace_id: workspace,
+			embedding_service_id: uid,
+		});
+		if (!existing)
+			throw new ControlPlaneNotFoundError("embedding service", uid);
+		const base = embeddingServiceFromRow(existing);
+		const {
+			supportedLanguages: _langs,
+			supportedContent: _content,
+			...scalarPatch
+		} = patch;
+		const merged: EmbeddingServiceRecord = {
+			...base,
+			...mergeDefinedKeys(scalarPatch),
+			...(patch.supportedLanguages !== undefined && {
+				supportedLanguages: freezeStringSet(patch.supportedLanguages),
+			}),
+			...(patch.supportedContent !== undefined && {
+				supportedContent: freezeStringSet(patch.supportedContent),
+			}),
+			updatedAt: nowIso(),
+		};
+		const nextRow = embeddingServiceToRow(merged);
+		const { workspace_id: _w, embedding_service_id: _id, ...fields } = nextRow;
+		await this.tables.embeddingServices.updateOne(
+			{ workspace_id: workspace, embedding_service_id: uid },
+			{ $set: fields },
+		);
+		return merged;
+	}
+
+	async deleteEmbeddingService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspace);
+		await this.assertServiceNotReferenced(workspace, "embeddingServiceId", uid);
+		const existing = await this.tables.embeddingServices.findOne({
+			workspace_id: workspace,
+			embedding_service_id: uid,
+		});
+		if (!existing) return { deleted: false };
+		await this.tables.embeddingServices.deleteOne({
+			workspace_id: workspace,
+			embedding_service_id: uid,
+		});
+		return { deleted: true };
+	}
+
+	/* ---------------- Reranking services ---------------- */
+
+	async listRerankingServices(
+		workspace: string,
+	): Promise<readonly RerankingServiceRecord[]> {
+		await this.assertWorkspace(workspace);
+		const rows = await this.tables.rerankingServices
+			.find({ workspace_id: workspace })
+			.toArray();
+		return rows.map(rerankingServiceFromRow);
+	}
+
+	async getRerankingService(
+		workspace: string,
+		uid: string,
+	): Promise<RerankingServiceRecord | null> {
+		await this.assertWorkspace(workspace);
+		const row = await this.tables.rerankingServices.findOne({
+			workspace_id: workspace,
+			reranking_service_id: uid,
+		});
+		return row ? rerankingServiceFromRow(row) : null;
+	}
+
+	async createRerankingService(
+		workspace: string,
+		input: CreateRerankingServiceInput,
+	): Promise<RerankingServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const uid = input.uid ?? randomUUID();
+		if (
+			await this.tables.rerankingServices.findOne({
+				workspace_id: workspace,
+				reranking_service_id: uid,
+			})
+		) {
+			throw new ControlPlaneConflictError(
+				`reranking service with uid '${uid}' already exists in workspace '${workspace}'`,
+			);
+		}
+		const now = nowIso();
+		const record: RerankingServiceRecord = {
+			workspaceId: workspace,
+			rerankingServiceId: uid,
+			name: input.name,
+			description: input.description ?? null,
+			status: input.status ?? DEFAULT_SERVICE_STATUS,
+			provider: input.provider,
+			engine: input.engine ?? null,
+			modelName: input.modelName,
+			modelVersion: input.modelVersion ?? null,
+			maxCandidates: input.maxCandidates ?? null,
+			scoringStrategy: input.scoringStrategy ?? null,
+			scoreNormalized: input.scoreNormalized ?? null,
+			returnScores: input.returnScores ?? null,
+			endpointBaseUrl: input.endpointBaseUrl ?? null,
+			endpointPath: input.endpointPath ?? null,
+			requestTimeoutMs: input.requestTimeoutMs ?? null,
+			maxBatchSize: input.maxBatchSize ?? null,
+			authType: input.authType ?? DEFAULT_AUTH_TYPE,
+			credentialRef: input.credentialRef ?? null,
+			supportedLanguages: freezeStringSet(input.supportedLanguages),
+			supportedContent: freezeStringSet(input.supportedContent),
+			createdAt: now,
+			updatedAt: now,
+		};
+		await this.tables.rerankingServices.insertOne(
+			rerankingServiceToRow(record),
+		);
+		return record;
+	}
+
+	async updateRerankingService(
+		workspace: string,
+		uid: string,
+		patch: UpdateRerankingServiceInput,
+	): Promise<RerankingServiceRecord> {
+		await this.assertWorkspace(workspace);
+		const existing = await this.tables.rerankingServices.findOne({
+			workspace_id: workspace,
+			reranking_service_id: uid,
+		});
+		if (!existing)
+			throw new ControlPlaneNotFoundError("reranking service", uid);
+		const base = rerankingServiceFromRow(existing);
+		const {
+			supportedLanguages: _langs,
+			supportedContent: _content,
+			...scalarPatch
+		} = patch;
+		const merged: RerankingServiceRecord = {
+			...base,
+			...mergeDefinedKeys(scalarPatch),
+			...(patch.supportedLanguages !== undefined && {
+				supportedLanguages: freezeStringSet(patch.supportedLanguages),
+			}),
+			...(patch.supportedContent !== undefined && {
+				supportedContent: freezeStringSet(patch.supportedContent),
+			}),
+			updatedAt: nowIso(),
+		};
+		const nextRow = rerankingServiceToRow(merged);
+		const { workspace_id: _w, reranking_service_id: _id, ...fields } = nextRow;
+		await this.tables.rerankingServices.updateOne(
+			{ workspace_id: workspace, reranking_service_id: uid },
+			{ $set: fields },
+		);
+		return merged;
+	}
+
+	async deleteRerankingService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspace);
+		await this.assertServiceNotReferenced(workspace, "rerankingServiceId", uid);
+		const existing = await this.tables.rerankingServices.findOne({
+			workspace_id: workspace,
+			reranking_service_id: uid,
+		});
+		if (!existing) return { deleted: false };
+		await this.tables.rerankingServices.deleteOne({
+			workspace_id: workspace,
+			reranking_service_id: uid,
+		});
+		return { deleted: true };
+	}
+
 	/* ---------------- Helpers ---------------- */
 
 	private async assertWorkspace(uid: string): Promise<void> {
@@ -683,40 +989,89 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		if (!row) throw new ControlPlaneNotFoundError("workspace", uid);
 	}
 
-	private async assertCatalog(
+	private async assertKnowledgeBase(
 		workspace: string,
-		catalog: string,
+		knowledgeBase: string,
 	): Promise<void> {
 		await this.assertWorkspace(workspace);
-		const row = await this.tables.catalogs.findOne({
-			workspace,
-			uid: catalog,
+		const row = await this.tables.knowledgeBases.findOne({
+			workspace_id: workspace,
+			knowledge_base_id: knowledgeBase,
 		});
-		if (!row) throw new ControlPlaneNotFoundError("catalog", catalog);
+		if (!row) {
+			throw new ControlPlaneNotFoundError("knowledge base", knowledgeBase);
+		}
 	}
 
-	private async assertVectorStore(
+	private async assertChunkingService(
 		workspace: string,
-		vectorStore: string,
+		uid: string,
 	): Promise<void> {
-		await this.assertWorkspace(workspace);
-		const row = await this.tables.vectorStores.findOne({
-			workspace,
-			uid: vectorStore,
+		const row = await this.tables.chunkingServices.findOne({
+			workspace_id: workspace,
+			chunking_service_id: uid,
 		});
-		if (!row) throw new ControlPlaneNotFoundError("vector store", vectorStore);
+		if (!row) throw new ControlPlaneNotFoundError("chunking service", uid);
 	}
 
-	private async assertVectorStoreNotReferenced(
+	private async assertEmbeddingService(
 		workspace: string,
-		vectorStore: string,
+		uid: string,
 	): Promise<void> {
-		const catalogs = await this.tables.catalogs.find({ workspace }).toArray();
-		const ref = catalogs.find((c) => c.vector_store === vectorStore);
+		const row = await this.tables.embeddingServices.findOne({
+			workspace_id: workspace,
+			embedding_service_id: uid,
+		});
+		if (!row) throw new ControlPlaneNotFoundError("embedding service", uid);
+	}
+
+	private async assertRerankingService(
+		workspace: string,
+		uid: string,
+	): Promise<void> {
+		const row = await this.tables.rerankingServices.findOne({
+			workspace_id: workspace,
+			reranking_service_id: uid,
+		});
+		if (!row) throw new ControlPlaneNotFoundError("reranking service", uid);
+	}
+
+	private async assertServiceNotReferenced(
+		workspace: string,
+		field: "embeddingServiceId" | "chunkingServiceId" | "rerankingServiceId",
+		serviceUid: string,
+	): Promise<void> {
+		const rows = await this.tables.knowledgeBases
+			.find({ workspace_id: workspace })
+			.toArray();
+		const fieldOnRow: keyof (typeof rows)[number] =
+			field === "embeddingServiceId"
+				? "embedding_service_id"
+				: field === "chunkingServiceId"
+					? "chunking_service_id"
+					: "reranking_service_id";
+		const ref = rows.find((kb) => kb[fieldOnRow] === serviceUid);
 		if (ref) {
 			throw new ControlPlaneConflictError(
-				`vector store '${vectorStore}' is referenced by catalog '${ref.uid}'`,
+				`service '${serviceUid}' is referenced by knowledge base '${ref.knowledge_base_id}' (${field})`,
 			);
 		}
 	}
+}
+
+/**
+ * Spread a `Partial<...>` patch onto an existing record, ignoring
+ * `undefined` values. Mirrors what we do for vector-store updates but
+ * generalised so it works across the KB-schema service updaters.
+ *
+ * Set-typed columns aren't handled here because their input shape
+ * (`readonly string[] | ReadonlySet<string>`) doesn't match the record
+ * shape (`ReadonlySet<string>`); call sites override them after.
+ */
+function mergeDefinedKeys<T extends object>(patch: T): Partial<T> {
+	const out: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+		if (v !== undefined) out[k] = v;
+	}
+	return out as Partial<T>;
 }

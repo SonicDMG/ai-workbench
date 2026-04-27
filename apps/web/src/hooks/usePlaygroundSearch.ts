@@ -4,7 +4,7 @@ import type { SearchHit } from "@/lib/schemas";
 
 export interface PlaygroundSearchArgs {
 	readonly workspace: string;
-	readonly vectorStore: string;
+	readonly knowledgeBase: string;
 	readonly input: PlaygroundSearchInput;
 }
 
@@ -14,7 +14,7 @@ export function usePlaygroundSearch(): UseMutationResult<
 	PlaygroundSearchArgs
 > {
 	return useMutation({
-		mutationFn: ({ workspace, vectorStore, input }) =>
-			api.search(workspace, vectorStore, input),
+		mutationFn: ({ workspace, knowledgeBase, input }) =>
+			api.kbSearch(workspace, knowledgeBase, input),
 	});
 }

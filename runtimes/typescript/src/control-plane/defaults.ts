@@ -4,15 +4,33 @@
  * all produce structurally identical records for identical input.
  */
 
-import { ControlPlaneConflictError } from "./errors.js";
-import type { UpdateVectorStoreInput } from "./store.js";
 import type {
+	AuthType,
+	DistanceMetric,
+	KnowledgeBaseStatus,
 	LexicalConfig,
 	RerankingConfig,
-	VectorSimilarity,
+	ServiceStatus,
 } from "./types.js";
 
-export const DEFAULT_SIMILARITY: VectorSimilarity = "cosine";
+/* ---- Knowledge-Base schema defaults (issue #98) ---- */
+
+export const DEFAULT_DISTANCE_METRIC: DistanceMetric = "cosine";
+export const DEFAULT_KB_STATUS: KnowledgeBaseStatus = "active";
+export const DEFAULT_SERVICE_STATUS: ServiceStatus = "active";
+export const DEFAULT_AUTH_TYPE: AuthType = "none";
+
+/**
+ * Build the auto-provisioned Astra collection name for a KB. The KB
+ * id (a UUID) maps 1:1 to a single physical collection — naming by id
+ * means renaming a KB never touches the data plane.
+ *
+ * Hyphens are stripped because Astra collection names must match
+ * `^[a-zA-Z][a-zA-Z0-9_]*$`.
+ */
+export function defaultVectorCollection(knowledgeBaseId: string): string {
+	return `wb_vectors_${knowledgeBaseId.replace(/-/g, "")}`;
+}
 
 export const DEFAULT_LEXICAL: LexicalConfig = Object.freeze({
 	enabled: false,
@@ -60,20 +78,4 @@ export function byCreatedAtThenKeyId<
 	if (a.keyId < b.keyId) return -1;
 	if (a.keyId > b.keyId) return 1;
 	return 0;
-}
-
-/**
- * Vector-store descriptors mirror real collections. Mutating any
- * collection-defining field in-place would make the control plane lie
- * about the data plane, so updates are intentionally rejected until a
- * real migration/reconcile endpoint exists.
- */
-export function assertVectorStorePatchIsEmpty(
-	patch: UpdateVectorStoreInput,
-): void {
-	const keys = Object.keys(patch);
-	if (keys.length === 0) return;
-	throw new ControlPlaneConflictError(
-		`vector-store descriptors are immutable after creation; attempted to update ${keys.join(", ")}. Create a new vector store or use a future migration endpoint.`,
-	);
 }

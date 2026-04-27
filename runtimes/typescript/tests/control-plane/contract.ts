@@ -11,27 +11,12 @@ import {
 	ControlPlaneConflictError,
 	ControlPlaneNotFoundError,
 } from "../../src/control-plane/errors.js";
-import type {
-	ControlPlaneStore,
-	CreateVectorStoreInput,
-} from "../../src/control-plane/store.js";
+import type { ControlPlaneStore } from "../../src/control-plane/store.js";
 
 export type ContractFactory = () => Promise<{
 	readonly store: ControlPlaneStore;
 	readonly cleanup?: () => Promise<void>;
 }>;
-
-const VECTOR_STORE_BASE: Omit<CreateVectorStoreInput, "name"> = {
-	vectorDimension: 1536,
-	vectorSimilarity: "cosine",
-	embedding: {
-		provider: "openai",
-		model: "text-embedding-3-small",
-		endpoint: null,
-		dimension: 1536,
-		secretRef: "env:OPENAI_API_KEY",
-	},
-};
 
 export function runContract(name: string, factory: ContractFactory): void {
 	describe(`ControlPlaneStore contract: ${name}`, () => {
@@ -148,218 +133,18 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
-		test("deleteWorkspace cascades to catalogs, vector stores and documents", async () => {
+		test("deleteWorkspace cascades to KBs and api keys", async () => {
 			const { store, cleanup } = await factory();
 			try {
-				const ws = await store.createWorkspace({
-					name: "a",
-					kind: "mock",
-				});
-				const vs = await store.createVectorStore(ws.uid, {
-					name: "vs",
-					...VECTOR_STORE_BASE,
-				});
-				const cat = await store.createCatalog(ws.uid, {
-					name: "cat",
-					vectorStore: vs.uid,
-				});
-				await store.createDocument(ws.uid, cat.uid, {
-					sourceFilename: "x.pdf",
-				});
-
+				const ws = await store.createWorkspace({ name: "a", kind: "mock" });
 				await store.deleteWorkspace(ws.uid);
-
 				expect(await store.getWorkspace(ws.uid)).toBeNull();
-				await expect(store.listCatalogs(ws.uid)).rejects.toBeInstanceOf(
+				await expect(store.listKnowledgeBases(ws.uid)).rejects.toBeInstanceOf(
 					ControlPlaneNotFoundError,
 				);
-				await expect(store.listVectorStores(ws.uid)).rejects.toBeInstanceOf(
+				await expect(store.listApiKeys(ws.uid)).rejects.toBeInstanceOf(
 					ControlPlaneNotFoundError,
 				);
-			} finally {
-				await cleanup?.();
-			}
-		});
-
-		test("catalogs are scoped per workspace", async () => {
-			const { store, cleanup } = await factory();
-			try {
-				const ws1 = await store.createWorkspace({
-					name: "w1",
-					kind: "mock",
-				});
-				const ws2 = await store.createWorkspace({
-					name: "w2",
-					kind: "mock",
-				});
-				await store.createCatalog(ws1.uid, { name: "shared" });
-				await store.createCatalog(ws2.uid, { name: "shared" });
-
-				expect((await store.listCatalogs(ws1.uid)).length).toBe(1);
-				expect((await store.listCatalogs(ws2.uid)).length).toBe(1);
-			} finally {
-				await cleanup?.();
-			}
-		});
-
-		test("multiple catalogs may bind the same vector store (N:1)", async () => {
-			const { store, cleanup } = await factory();
-			try {
-				const ws = await store.createWorkspace({
-					name: "w",
-					kind: "mock",
-				});
-				const vs = await store.createVectorStore(ws.uid, {
-					name: "shared-vs",
-					...VECTOR_STORE_BASE,
-				});
-				const c1 = await store.createCatalog(ws.uid, {
-					name: "c1",
-					vectorStore: vs.uid,
-				});
-				const c2 = await store.createCatalog(ws.uid, {
-					name: "c2",
-					vectorStore: vs.uid,
-				});
-				expect(c1.vectorStore).toBe(vs.uid);
-				expect(c2.vectorStore).toBe(vs.uid);
-			} finally {
-				await cleanup?.();
-			}
-		});
-
-		test("catalog vectorStore must reference a vector store in the same workspace", async () => {
-			const { store, cleanup } = await factory();
-			try {
-				const ws = await store.createWorkspace({
-					name: "w",
-					kind: "mock",
-				});
-				const missing = "00000000-0000-4000-8000-0000000000ff";
-				await expect(
-					store.createCatalog(ws.uid, {
-						name: "c",
-						vectorStore: missing,
-					}),
-				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
-
-				const cat = await store.createCatalog(ws.uid, { name: "c" });
-				await expect(
-					store.updateCatalog(ws.uid, cat.uid, { vectorStore: missing }),
-				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
-			} finally {
-				await cleanup?.();
-			}
-		});
-
-		test("deleteVectorStore is blocked while catalogs reference it", async () => {
-			const { store, cleanup } = await factory();
-			try {
-				const ws = await store.createWorkspace({
-					name: "w",
-					kind: "mock",
-				});
-				const vs = await store.createVectorStore(ws.uid, {
-					name: "shared-vs",
-					...VECTOR_STORE_BASE,
-				});
-				const cat = await store.createCatalog(ws.uid, {
-					name: "c",
-					vectorStore: vs.uid,
-				});
-				await expect(
-					store.deleteVectorStore(ws.uid, vs.uid),
-				).rejects.toBeInstanceOf(ControlPlaneConflictError);
-
-				await store.updateCatalog(ws.uid, cat.uid, { vectorStore: null });
-				await expect(store.deleteVectorStore(ws.uid, vs.uid)).resolves.toEqual({
-					deleted: true,
-				});
-			} finally {
-				await cleanup?.();
-			}
-		});
-
-		test("vector store defaults are applied", async () => {
-			const { store, cleanup } = await factory();
-			try {
-				const ws = await store.createWorkspace({
-					name: "w",
-					kind: "mock",
-				});
-				const vs = await store.createVectorStore(ws.uid, {
-					name: "v",
-					vectorDimension: 1536,
-					embedding: VECTOR_STORE_BASE.embedding,
-				});
-				expect(vs.vectorSimilarity).toBe("cosine");
-				expect(vs.lexical.enabled).toBe(false);
-				expect(vs.reranking.enabled).toBe(false);
-			} finally {
-				await cleanup?.();
-			}
-		});
-
-		test("vector store descriptor updates are rejected to prevent collection drift", async () => {
-			const { store, cleanup } = await factory();
-			try {
-				const ws = await store.createWorkspace({
-					name: "w",
-					kind: "mock",
-				});
-				const vs = await store.createVectorStore(ws.uid, {
-					name: "v",
-					vectorDimension: 1536,
-					embedding: VECTOR_STORE_BASE.embedding,
-				});
-				await expect(
-					store.updateVectorStore(ws.uid, vs.uid, { vectorDimension: 768 }),
-				).rejects.toBeInstanceOf(ControlPlaneConflictError);
-				expect(
-					(await store.getVectorStore(ws.uid, vs.uid))?.vectorDimension,
-				).toBe(1536);
-			} finally {
-				await cleanup?.();
-			}
-		});
-
-		test("document status defaults to 'pending'", async () => {
-			const { store, cleanup } = await factory();
-			try {
-				const ws = await store.createWorkspace({
-					name: "w",
-					kind: "mock",
-				});
-				const cat = await store.createCatalog(ws.uid, { name: "c" });
-				const doc = await store.createDocument(ws.uid, cat.uid, {
-					sourceFilename: "a.pdf",
-				});
-				expect(doc.status).toBe("pending");
-			} finally {
-				await cleanup?.();
-			}
-		});
-
-		test("document update transitions status and clears error on success", async () => {
-			const { store, cleanup } = await factory();
-			try {
-				const ws = await store.createWorkspace({
-					name: "w",
-					kind: "mock",
-				});
-				const cat = await store.createCatalog(ws.uid, { name: "c" });
-				const doc = await store.createDocument(ws.uid, cat.uid, {
-					status: "failed",
-					errorMessage: "oops",
-				});
-				const next = await store.updateDocument(
-					ws.uid,
-					cat.uid,
-					doc.documentUid,
-					{ status: "ready", errorMessage: null },
-				);
-				expect(next.status).toBe("ready");
-				expect(next.errorMessage).toBeNull();
 			} finally {
 				await cleanup?.();
 			}
@@ -369,29 +154,12 @@ export function runContract(name: string, factory: ContractFactory): void {
 			const { store, cleanup } = await factory();
 			try {
 				const ghost = "00000000-0000-0000-0000-000000000000";
-				await expect(store.listCatalogs(ghost)).rejects.toBeInstanceOf(
+				await expect(store.listKnowledgeBases(ghost)).rejects.toBeInstanceOf(
 					ControlPlaneNotFoundError,
 				);
-				await expect(store.listVectorStores(ghost)).rejects.toBeInstanceOf(
+				await expect(store.listApiKeys(ghost)).rejects.toBeInstanceOf(
 					ControlPlaneNotFoundError,
 				);
-			} finally {
-				await cleanup?.();
-			}
-		});
-
-		test("delete returns { deleted: false } for unknown ids", async () => {
-			const { store, cleanup } = await factory();
-			try {
-				const ws = await store.createWorkspace({
-					name: "w",
-					kind: "mock",
-				});
-				const res = await store.deleteVectorStore(
-					ws.uid,
-					"00000000-0000-0000-0000-000000000000",
-				);
-				expect(res.deleted).toBe(false);
 			} finally {
 				await cleanup?.();
 			}
@@ -489,74 +257,297 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
-		test("saved query CRUD is scoped to its catalog", async () => {
+		/* ============================================================== */
+		/* Knowledge-base schema (issue #98)                              */
+		/* ============================================================== */
+
+		test("creating a knowledge base validates referenced services exist", async () => {
 			const { store, cleanup } = await factory();
 			try {
 				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
-				const cat = await store.createCatalog(ws.uid, { name: "c" });
-				const other = await store.createCatalog(ws.uid, { name: "c2" });
-
-				const created = await store.createSavedQuery(ws.uid, cat.uid, {
-					name: "refunds",
-					text: "how do refunds work?",
-					topK: 5,
-					filter: { section: "billing" },
-				});
-				expect(created.queryUid).toMatch(/^[0-9a-f-]{36}$/);
-				expect(created.catalogUid).toBe(cat.uid);
-				expect(created.filter).toEqual({ section: "billing" });
-
-				// Scoped lookups.
-				expect(
-					(await store.listSavedQueries(ws.uid, cat.uid)).map(
-						(r) => r.queryUid,
-					),
-				).toEqual([created.queryUid]);
-				expect(await store.listSavedQueries(ws.uid, other.uid)).toHaveLength(0);
-				expect(
-					await store.getSavedQuery(ws.uid, other.uid, created.queryUid),
-				).toBeNull();
-
-				const updated = await store.updateSavedQuery(
-					ws.uid,
-					cat.uid,
-					created.queryUid,
-					{ name: "refund FAQ", topK: 10, filter: null },
-				);
-				expect(updated.name).toBe("refund FAQ");
-				expect(updated.topK).toBe(10);
-				expect(updated.filter).toBeNull();
-
-				expect(
-					await store.deleteSavedQuery(ws.uid, cat.uid, created.queryUid),
-				).toEqual({ deleted: true });
-				expect(
-					await store.deleteSavedQuery(ws.uid, cat.uid, created.queryUid),
-				).toEqual({ deleted: false });
+				// Missing embedding service ⇒ 404.
+				await expect(
+					store.createKnowledgeBase(ws.uid, {
+						name: "kb",
+						embeddingServiceId: "00000000-0000-0000-0000-000000000001",
+						chunkingServiceId: "00000000-0000-0000-0000-000000000002",
+					}),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
 			} finally {
 				await cleanup?.();
 			}
 		});
 
-		test("deleteCatalog cascades to its saved queries", async () => {
+		test("knowledge base CRUD round-trip with auto-provisioned vector collection", async () => {
 			const { store, cleanup } = await factory();
 			try {
 				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
-				const cat = await store.createCatalog(ws.uid, { name: "c" });
-				const sq = await store.createSavedQuery(ws.uid, cat.uid, {
-					name: "q",
-					text: "t",
+				const emb = await store.createEmbeddingService(ws.uid, {
+					name: "openai-3-small",
+					provider: "openai",
+					modelName: "text-embedding-3-small",
+					embeddingDimension: 1536,
 				});
-				await store.deleteCatalog(ws.uid, cat.uid);
-				const ws2 = await store.createWorkspace({ name: "w2", kind: "mock" });
-				const cat2 = await store.createCatalog(ws2.uid, {
-					uid: cat.uid,
-					name: "c2",
+				const chunk = await store.createChunkingService(ws.uid, {
+					name: "docling-default",
+					engine: "docling",
 				});
-				// Recreating the same catalog UID under a new workspace must
-				// not resurrect the old saved query.
-				expect(await store.listSavedQueries(ws2.uid, cat2.uid)).toHaveLength(0);
-				void sq;
+				const rerank = await store.createRerankingService(ws.uid, {
+					name: "cohere-rerank-3",
+					provider: "cohere",
+					modelName: "rerank-english-v3.0",
+				});
+
+				const kb = await store.createKnowledgeBase(ws.uid, {
+					name: "products",
+					description: "product catalog",
+					embeddingServiceId: emb.embeddingServiceId,
+					chunkingServiceId: chunk.chunkingServiceId,
+					rerankingServiceId: rerank.rerankingServiceId,
+					language: "en",
+				});
+
+				expect(kb.workspaceId).toBe(ws.uid);
+				expect(kb.embeddingServiceId).toBe(emb.embeddingServiceId);
+				expect(kb.chunkingServiceId).toBe(chunk.chunkingServiceId);
+				expect(kb.rerankingServiceId).toBe(rerank.rerankingServiceId);
+				// Auto-provisioned collection name follows the wb_vectors_<id>
+				// (hyphen-stripped) convention.
+				expect(kb.vectorCollection).toMatch(/^wb_vectors_[0-9a-f]+$/);
+				expect(kb.vectorCollection).not.toContain("-");
+				expect(kb.lexical.enabled).toBe(false);
+
+				const list = await store.listKnowledgeBases(ws.uid);
+				expect(list).toHaveLength(1);
+
+				// PATCH does not allow embeddingServiceId / chunkingServiceId
+				// (omitted from the input type, enforced at the type system).
+				// Reranker, language, status, lexical all swing freely.
+				const updated = await store.updateKnowledgeBase(
+					ws.uid,
+					kb.knowledgeBaseId,
+					{
+						rerankingServiceId: null,
+						language: "fr",
+						status: "draft",
+					},
+				);
+				expect(updated.rerankingServiceId).toBeNull();
+				expect(updated.language).toBe("fr");
+				expect(updated.status).toBe("draft");
+				expect(updated.embeddingServiceId).toBe(emb.embeddingServiceId);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleting a service that a KB still references is a conflict", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const emb = await store.createEmbeddingService(ws.uid, {
+					name: "openai-3-small",
+					provider: "openai",
+					modelName: "text-embedding-3-small",
+					embeddingDimension: 1536,
+				});
+				const chunk = await store.createChunkingService(ws.uid, {
+					name: "docling-default",
+					engine: "docling",
+				});
+				await store.createKnowledgeBase(ws.uid, {
+					name: "products",
+					embeddingServiceId: emb.embeddingServiceId,
+					chunkingServiceId: chunk.chunkingServiceId,
+				});
+
+				await expect(
+					store.deleteEmbeddingService(ws.uid, emb.embeddingServiceId),
+				).rejects.toBeInstanceOf(ControlPlaneConflictError);
+				await expect(
+					store.deleteChunkingService(ws.uid, chunk.chunkingServiceId),
+				).rejects.toBeInstanceOf(ControlPlaneConflictError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteWorkspace cascades to KBs and services", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await store.createEmbeddingService(ws.uid, {
+					name: "e",
+					provider: "openai",
+					modelName: "m",
+					embeddingDimension: 4,
+				});
+				await store.createChunkingService(ws.uid, {
+					name: "c",
+					engine: "docling",
+				});
+				await store.createRerankingService(ws.uid, {
+					name: "r",
+					provider: "cohere",
+					modelName: "rerank",
+				});
+				await store.deleteWorkspace(ws.uid);
+
+				// Workspace is gone — listing on it throws.
+				await expect(store.listKnowledgeBases(ws.uid)).rejects.toBeInstanceOf(
+					ControlPlaneNotFoundError,
+				);
+				await expect(store.listChunkingServices(ws.uid)).rejects.toBeInstanceOf(
+					ControlPlaneNotFoundError,
+				);
+				await expect(
+					store.listEmbeddingServices(ws.uid),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+				await expect(
+					store.listRerankingServices(ws.uid),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("embedding service supportedLanguages round-trips deduped + sorted", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const created = await store.createEmbeddingService(ws.uid, {
+					name: "multi",
+					provider: "openai",
+					modelName: "m",
+					embeddingDimension: 4,
+					// Duplicates and unsorted; the store normalises both.
+					supportedLanguages: ["fr", "en", "es", "fr"],
+					supportedContent: ["text"],
+				});
+				expect(Array.isArray(created.supportedLanguages)).toBe(true);
+				expect(created.supportedLanguages).toEqual(["en", "es", "fr"]);
+				expect(created.supportedContent).toEqual(["text"]);
+
+				const reread = await store.getEmbeddingService(
+					ws.uid,
+					created.embeddingServiceId,
+				);
+				expect(reread).not.toBeNull();
+				expect(reread!.supportedLanguages).toContain("en");
+				expect(reread!.supportedLanguages).toHaveLength(3);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("RAG document CRUD round-trip and KB scoping", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const emb = await store.createEmbeddingService(ws.uid, {
+					name: "e",
+					provider: "openai",
+					modelName: "m",
+					embeddingDimension: 4,
+				});
+				const chunk = await store.createChunkingService(ws.uid, {
+					name: "c",
+					engine: "docling",
+				});
+				const kb = await store.createKnowledgeBase(ws.uid, {
+					name: "kb",
+					embeddingServiceId: emb.embeddingServiceId,
+					chunkingServiceId: chunk.chunkingServiceId,
+				});
+
+				const doc = await store.createRagDocument(ws.uid, kb.knowledgeBaseId, {
+					sourceFilename: "alpha.txt",
+					contentHash: "sha-abc",
+					metadata: { tag: "x" },
+				});
+				expect(doc.workspaceId).toBe(ws.uid);
+				expect(doc.knowledgeBaseId).toBe(kb.knowledgeBaseId);
+				expect(doc.contentHash).toBe("sha-abc");
+
+				const list = await store.listRagDocuments(ws.uid, kb.knowledgeBaseId);
+				expect(list).toHaveLength(1);
+
+				const updated = await store.updateRagDocument(
+					ws.uid,
+					kb.knowledgeBaseId,
+					doc.documentId,
+					{ status: "ready" },
+				);
+				expect(updated.status).toBe("ready");
+
+				const got = await store.getRagDocument(
+					ws.uid,
+					kb.knowledgeBaseId,
+					doc.documentId,
+				);
+				expect(got?.status).toBe("ready");
+
+				const { deleted } = await store.deleteRagDocument(
+					ws.uid,
+					kb.knowledgeBaseId,
+					doc.documentId,
+				);
+				expect(deleted).toBe(true);
+				expect(
+					await store.getRagDocument(
+						ws.uid,
+						kb.knowledgeBaseId,
+						doc.documentId,
+					),
+				).toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("RAG document operations 404 on unknown KB", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await expect(
+					store.listRagDocuments(
+						ws.uid,
+						"00000000-0000-0000-0000-000000000000",
+					),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteKnowledgeBase cascades RAG documents", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const emb = await store.createEmbeddingService(ws.uid, {
+					name: "e",
+					provider: "openai",
+					modelName: "m",
+					embeddingDimension: 4,
+				});
+				const chunk = await store.createChunkingService(ws.uid, {
+					name: "c",
+					engine: "docling",
+				});
+				const kb = await store.createKnowledgeBase(ws.uid, {
+					name: "kb",
+					embeddingServiceId: emb.embeddingServiceId,
+					chunkingServiceId: chunk.chunkingServiceId,
+				});
+				await store.createRagDocument(ws.uid, kb.knowledgeBaseId, {
+					sourceFilename: "f.txt",
+				});
+				await store.deleteKnowledgeBase(ws.uid, kb.knowledgeBaseId);
+				// The KB is gone, so list throws not-found rather than
+				// returning a stale row.
+				await expect(
+					store.listRagDocuments(ws.uid, kb.knowledgeBaseId),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
 			} finally {
 				await cleanup?.();
 			}

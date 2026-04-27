@@ -26,7 +26,7 @@ import {
 	isReadableTextFile,
 	READABLE_TEXT_EXTENSIONS,
 } from "@/lib/files";
-import type { CatalogRecord, JobRecord } from "@/lib/schemas";
+import type { JobRecord, KnowledgeBaseRecord } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 import { FileTypeBadge } from "./FileTypeBadge";
 
@@ -65,12 +65,12 @@ interface QueueItem {
 
 export function IngestQueueDialog({
 	workspace,
-	catalog,
+	knowledgeBase,
 	open,
 	onOpenChange,
 }: {
 	workspace: string;
-	catalog: CatalogRecord;
+	knowledgeBase: KnowledgeBaseRecord;
 	open: boolean;
 	onOpenChange: (v: boolean) => void;
 }) {
@@ -81,7 +81,7 @@ export function IngestQueueDialog({
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const folderInputRef = useRef<HTMLInputElement | null>(null);
 
-	const ingest = useAsyncIngest(workspace, catalog.uid);
+	const ingest = useAsyncIngest(workspace, knowledgeBase.knowledgeBaseId);
 	// Drives only the *active* row's poller. Each row shows a live
 	// snapshot from this hook while it's the head of the queue. We
 	// derive the jobId from items+activeId synchronously each render
@@ -330,10 +330,11 @@ export function IngestQueueDialog({
 		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogContent className="max-w-2xl">
 				<DialogHeader>
-					<DialogTitle>Ingest into "{catalog.name}"</DialogTitle>
+					<DialogTitle>Ingest into "{knowledgeBase.name}"</DialogTitle>
 					<DialogDescription>
 						Drop one or more files, or a folder. Each file becomes a separate
-						document; ingests run sequentially through the bound vector store.
+						document; ingests run sequentially through the KB's bound chunking +
+						embedding services.
 					</DialogDescription>
 				</DialogHeader>
 

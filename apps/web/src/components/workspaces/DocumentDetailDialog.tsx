@@ -9,38 +9,35 @@ import {
 } from "@/components/ui/dialog";
 import { useDocumentChunks } from "@/hooks/useDocuments";
 import { formatFileSize } from "@/lib/files";
-import type { DocumentChunk, DocumentRecord } from "@/lib/schemas";
+import type { DocumentChunk, RagDocumentRecord } from "@/lib/schemas";
 import { formatDate } from "@/lib/utils";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
 import { FileTypeBadge } from "./FileTypeBadge";
 
 /**
- * Read-only metadata view for one document. Opens from the catalog
- * explorer's row click. Shows everything the runtime persists on
- * `DocumentRecord` plus the failure message verbatim when the
+ * Read-only metadata view for one KB document. Opens from the
+ * KB-explorer's row click. Shows everything the runtime persists on
+ * `RagDocumentRecord` plus the failure message verbatim when the
  * document is in `failed` state.
- *
- * Re-ingest, delete, and chunk-preview affordances are deliberately
- * absent — they need bulk-doc API surface that hasn't shipped yet.
  */
 export function DocumentDetailDialog({
 	workspace,
-	catalogUid,
+	knowledgeBaseUid,
 	doc,
 	onOpenChange,
 }: {
 	workspace: string;
-	catalogUid: string;
-	doc: DocumentRecord | null;
+	knowledgeBaseUid: string;
+	doc: RagDocumentRecord | null;
 	onOpenChange: (open: boolean) => void;
 }) {
 	const open = doc !== null;
-	// Fetch chunks lazily when the dialog opens for a document. Disabled
-	// while closed so the catalog explorer table doesn't fan out a
-	// chunks query per row visit.
-	const chunks = useDocumentChunks(workspace, catalogUid, doc?.documentUid, {
-		enabled: open && doc?.status === "ready",
-	});
+	const chunks = useDocumentChunks(
+		workspace,
+		knowledgeBaseUid,
+		doc?.documentId,
+		{ enabled: open && doc?.status === "ready" },
+	);
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-2xl">
@@ -53,7 +50,7 @@ export function DocumentDetailDialog({
 									fileType={doc.fileType}
 								/>
 								<span className="text-base">
-									{doc.sourceFilename ?? doc.documentUid}
+									{doc.sourceFilename ?? doc.documentId}
 								</span>
 							</>
 						) : (
@@ -89,7 +86,7 @@ export function DocumentDetailDialog({
 						) : null}
 
 						<div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-							<KV label="Document UID" value={doc.documentUid} mono />
+							<KV label="Document UID" value={doc.documentId} mono />
 							<KV label="Source ID" value={doc.sourceDocId ?? "—"} mono />
 							<KV
 								label="Size"
@@ -101,7 +98,7 @@ export function DocumentDetailDialog({
 								value={doc.chunkTotal !== null ? String(doc.chunkTotal) : "—"}
 							/>
 							<KV label="MIME / type" value={doc.fileType ?? "—"} mono />
-							<KV label="MD5" value={doc.md5Hash ?? "—"} mono />
+							<KV label="Content hash" value={doc.contentHash ?? "—"} mono />
 						</div>
 
 						{Object.keys(doc.metadata).length > 0 ? (
@@ -114,7 +111,9 @@ export function DocumentDetailDialog({
 										{Object.entries(doc.metadata).map(([k, v]) => (
 											<div key={k} className="contents">
 												<dt className="text-slate-500">{k}</dt>
-												<dd className="text-slate-900 break-words">{v}</dd>
+												<dd className="text-slate-900 break-words">
+													{String(v)}
+												</dd>
 											</div>
 										))}
 									</dl>

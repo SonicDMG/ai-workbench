@@ -56,9 +56,9 @@ export function OnboardingPage() {
 							</h1>
 							<p className="mt-3 text-sm leading-relaxed text-white/85 max-w-lg">
 								A <strong className="font-semibold">workspace</strong> is the
-								top-level tenant for catalogs, vector stores, and documents. Use
-								it to organize ingestion, retrieval, and governed AI app data
-								across Astra DB, HCD, and local mock environments.
+								top-level tenant for knowledge bases, services, and documents.
+								Use it to organize ingestion, retrieval, and governed AI app
+								data across Astra DB, HCD, and local mock environments.
 							</p>
 						</div>
 					</div>

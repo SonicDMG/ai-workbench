@@ -15,7 +15,7 @@ import { controlPlaneFromConfig } from "./control-plane/factory.js";
 import { buildVectorStoreDriverRegistry } from "./drivers/factory.js";
 import { makeEmbedderFactory } from "./embeddings/factory.js";
 import { buildJobStore } from "./jobs/factory.js";
-import { runIngestJob } from "./jobs/ingest-worker.js";
+import { runKbIngestJob } from "./jobs/ingest-worker.js";
 import { JobOrphanSweeper } from "./jobs/sweeper.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
 import { EnvSecretProvider } from "./secrets/env.js";
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
 	// deployments opt in via `controlPlane.jobsResume.enabled` so the
 	// single-replica reference deployment doesn't pay for it. When
 	// on, reclaimed orphans with a persisted `ingestInput` snapshot
-	// flow through `runIngestJob` for a real resume; orphans without
+	// flow through `runKbIngestJob` for a real resume; orphans without
 	// one fall back to mark-failed.
 	const sweeperCfg = config.controlPlane.jobsResume;
 	const sweeper =
@@ -109,7 +109,7 @@ async function main(): Promise<void> {
 					graceMs: sweeperCfg.graceMs,
 					intervalMs: sweeperCfg.intervalMs,
 					resume: ({ workspaceUid, jobId, replicaId: rid, input }) => {
-						void runIngestJob({
+						void runKbIngestJob({
 							deps: { store, drivers, embedders, jobs },
 							workspaceUid,
 							jobId,

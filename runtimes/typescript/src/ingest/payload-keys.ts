@@ -1,19 +1,15 @@
 /**
- * Reserved payload keys that the ingest pipeline stamps onto every
- * chunk record, and that the catalog-scoped search route filters on.
+ * Reserved payload keys that the KB ingest pipeline stamps onto every
+ * chunk record, and that KB-scoped surfaces filter on.
  *
- * One shared module means the writer (pipeline) and reader (search
- * route) can't drift on the key names. Putting them in the ingest
- * subtree breaks a cycle between `routes/api-v1/documents.ts` (which
- * consumes them for search) and `ingest/pipeline.ts` (which writes
- * them).
+ * One shared module means the writer (pipeline) and readers (search,
+ * chunk listing, document delete) can't drift on the key names.
+ * Putting them in the ingest subtree breaks an otherwise-cyclic
+ * dependency between routes and the pipeline.
  */
 
-/** Payload key carrying the owning catalog's UID. The catalog-scoped
- * search route merges `{ [CATALOG_SCOPE_KEY]: catalog.uid }` into the
- * effective filter unconditionally, so records without it — or with a
- * mismatched value — are invisible. */
-export const CATALOG_SCOPE_KEY = "catalogUid";
+/** Payload key carrying the owning knowledge base's UID. */
+export const KB_SCOPE_KEY = "knowledgeBaseUid";
 
 /** Payload key identifying which source document a chunk belongs to.
  * Used for future document-scoped surfaces ("show all chunks of this

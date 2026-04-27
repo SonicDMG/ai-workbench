@@ -6,7 +6,10 @@
 			{
 				"method": "POST",
 				"path": "/api/v1/workspaces",
-				"body": { "name": "prod", "kind": "astra" }
+				"body": {
+					"name": "prod",
+					"kind": "astra"
+				}
 			},
 			{
 				"method": "GET",
@@ -19,232 +22,13 @@
 			{
 				"method": "PUT",
 				"path": "/api/v1/workspaces/$1.uid",
-				"body": { "name": "production" }
+				"body": {
+					"name": "production"
+				}
 			},
 			{
 				"method": "DELETE",
 				"path": "/api/v1/workspaces/$1.uid"
-			}
-		]
-	},
-	{
-		"slug": "catalog-under-workspace",
-		"description": "Workspaces with nested catalogs, scoped correctly.",
-		"steps": [
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "astra" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs",
-				"body": { "name": "c1" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs",
-				"body": { "name": "c2" }
-			},
-			{
-				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid/catalogs"
-			},
-			{
-				"method": "DELETE",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid"
-			}
-		]
-	},
-	{
-		"slug": "vector-store-definition",
-		"description": "Descriptor row in wb_vector_store_by_workspace plus the underlying collection provisioning (mock kind to keep the fixture runtime-agnostic).",
-		"steps": [
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "mock" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores",
-				"body": {
-					"name": "vs",
-					"vectorDimension": 4,
-					"embedding": {
-						"provider": "mock",
-						"model": "mock-embedder",
-						"endpoint": null,
-						"dimension": 4,
-						"secretRef": null
-					}
-				}
-			},
-			{
-				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid"
-			}
-		]
-	},
-	{
-		"slug": "vector-store-upsert-and-search",
-		"description": "End-to-end data plane: create a vector store, upsert 3 records, search with topK=2 + a payload filter, delete one record.",
-		"steps": [
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "mock" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores",
-				"body": {
-					"name": "vs",
-					"vectorDimension": 4,
-					"vectorSimilarity": "cosine",
-					"embedding": {
-						"provider": "mock",
-						"model": "mock-embedder",
-						"endpoint": null,
-						"dimension": 4,
-						"secretRef": null
-					}
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/records",
-				"body": {
-					"records": [
-						{ "id": "a", "vector": [1, 0, 0, 0], "payload": { "tag": "keep" } },
-						{ "id": "b", "vector": [0, 1, 0, 0], "payload": { "tag": "drop" } },
-						{
-							"id": "c",
-							"vector": [0.9, 0.1, 0, 0],
-							"payload": { "tag": "keep" }
-						}
-					]
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/search",
-				"body": {
-					"vector": [1, 0, 0, 0],
-					"topK": 2,
-					"filter": { "tag": "keep" }
-				}
-			},
-			{
-				"method": "DELETE",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/records/a"
-			},
-			{
-				"method": "DELETE",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/records/a"
-			}
-		]
-	},
-	{
-		"slug": "catalog-vector-store-reference-integrity",
-		"description": "Catalogs can only bind vector stores in the same workspace, and referenced vector stores cannot be deleted out from under catalogs.",
-		"steps": [
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "mock" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs",
-				"body": {
-					"name": "bad",
-					"vectorStore": "00000000-0000-4000-8000-0000000000ff"
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores",
-				"body": {
-					"name": "vs",
-					"vectorDimension": 4,
-					"embedding": {
-						"provider": "mock",
-						"model": "mock-embedder",
-						"endpoint": null,
-						"dimension": 4,
-						"secretRef": null
-					}
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs",
-				"body": { "name": "good", "vectorStore": "$3.uid" }
-			},
-			{
-				"method": "DELETE",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$3.uid"
-			},
-			{
-				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$3.uid"
-			}
-		]
-	},
-	{
-		"slug": "document-crud-basic",
-		"description": "Document metadata CRUD under a catalog: create → list → get → update → delete, including a cross-catalog scoping 404.",
-		"steps": [
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "astra" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs",
-				"body": { "name": "support" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs",
-				"body": { "name": "other" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid/documents",
-				"body": {
-					"sourceFilename": "readme.md",
-					"fileType": "text/markdown",
-					"fileSize": 1024,
-					"metadata": { "source": "upload" }
-				}
-			},
-			{
-				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid/documents"
-			},
-			{
-				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid"
-			},
-			{
-				"method": "PUT",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid",
-				"body": { "status": "ready", "chunkTotal": 7 }
-			},
-			{
-				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/documents/$4.documentUid"
-			},
-			{
-				"method": "DELETE",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid"
-			},
-			{
-				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$2.uid/documents/$4.documentUid"
 			}
 		]
 	},
@@ -255,12 +39,17 @@
 			{
 				"method": "POST",
 				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "astra" }
+				"body": {
+					"name": "w",
+					"kind": "astra"
+				}
 			},
 			{
 				"method": "PUT",
 				"path": "/api/v1/workspaces/$1.uid",
-				"body": { "kind": "mock" }
+				"body": {
+					"kind": "mock"
+				}
 			},
 			{
 				"method": "GET",
@@ -278,7 +67,9 @@
 				"body": {
 					"name": "w",
 					"kind": "astra",
-					"credentialsRef": { "token": "raw-token-here" }
+					"credentialsRef": {
+						"token": "raw-token-here"
+					}
 				}
 			},
 			{
@@ -294,7 +85,10 @@
 			{
 				"method": "POST",
 				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "mock" }
+				"body": {
+					"name": "w",
+					"kind": "mock"
+				}
 			},
 			{
 				"method": "POST",
@@ -309,12 +103,17 @@
 			{
 				"method": "POST",
 				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "mock" }
+				"body": {
+					"name": "w",
+					"kind": "mock"
+				}
 			},
 			{
 				"method": "POST",
 				"path": "/api/v1/workspaces/$1.uid/api-keys",
-				"body": { "label": "ci" }
+				"body": {
+					"label": "ci"
+				}
 			},
 			{
 				"method": "GET",
@@ -327,363 +126,6 @@
 			{
 				"method": "GET",
 				"path": "/api/v1/workspaces/$1.uid/api-keys"
-			}
-		]
-	},
-	{
-		"slug": "catalog-ingest-basic",
-		"description": "POST /catalogs/{c}/ingest chunks + embeds + upserts synchronously. Document row is created with status=ready and chunkTotal reflects chunker output. A second ingest against an unbound catalog returns 409 catalog_not_bound_to_vector_store.",
-		"steps": [
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "mock" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores",
-				"body": {
-					"name": "vs",
-					"vectorDimension": 4,
-					"embedding": {
-						"provider": "mock",
-						"model": "mock-embedder",
-						"endpoint": null,
-						"dimension": 4,
-						"secretRef": null
-					}
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs",
-				"body": { "name": "kb", "vectorStore": "$2.uid" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/ingest",
-				"body": {
-					"text": "Apples are red. Bananas are yellow.",
-					"sourceFilename": "fruit.md",
-					"chunker": { "maxChars": 20, "minChars": 5, "overlapChars": 3 }
-				}
-			},
-			{
-				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/documents"
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs",
-				"body": { "name": "unbound" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$6.uid/ingest",
-				"body": { "text": "no home for this" }
-			}
-		]
-	},
-	{
-		"slug": "catalog-scoped-document-search",
-		"description": "POST /catalogs/{c}/documents/search delegates to the catalog's bound vector store, merging `catalogUid = catalog.uid` into the filter. Records in other catalogs are invisible; an unbound catalog returns 409 catalog_not_bound_to_vector_store.",
-		"steps": [
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "mock" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores",
-				"body": {
-					"name": "vs",
-					"vectorDimension": 4,
-					"embedding": {
-						"provider": "mock",
-						"model": "mock-embedder",
-						"endpoint": null,
-						"dimension": 4,
-						"secretRef": null
-					}
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs",
-				"body": { "name": "support", "vectorStore": "$2.uid" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs",
-				"body": { "name": "other", "vectorStore": "$2.uid" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/records",
-				"body": {
-					"records": [
-						{
-							"id": "s1",
-							"vector": [1, 0, 0, 0],
-							"payload": { "catalogUid": "$3.uid", "tag": "t" }
-						},
-						{
-							"id": "o1",
-							"vector": [0.9, 0.1, 0, 0],
-							"payload": { "catalogUid": "$4.uid", "tag": "t" }
-						}
-					]
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/documents/search",
-				"body": { "vector": [1, 0, 0, 0], "topK": 10 }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs",
-				"body": { "name": "unbound" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$7.uid/documents/search",
-				"body": { "vector": [1, 0, 0, 0] }
-			}
-		]
-	},
-	{
-		"slug": "catalog-saved-queries",
-		"description": "Saved-query CRUD under a catalog: create → list → update → delete. A second scenario pins the /run semantics — saved queries replay through catalog-scoped search and cannot escape catalog scope via their own filter. A third variant covers 409 catalog_not_bound_to_vector_store on /run.",
-		"steps": [
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "mock" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores",
-				"body": {
-					"name": "vs",
-					"vectorDimension": 4,
-					"embedding": {
-						"provider": "mock",
-						"model": "mock-embedder",
-						"endpoint": null,
-						"dimension": 4,
-						"secretRef": null
-					}
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs",
-				"body": { "name": "kb", "vectorStore": "$2.uid" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/queries",
-				"body": {
-					"name": "refunds",
-					"description": "billing questions",
-					"text": "how do refunds work?",
-					"topK": 3,
-					"filter": { "section": "billing" }
-				}
-			},
-			{
-				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/queries"
-			},
-			{
-				"method": "PUT",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/queries/$4.queryUid",
-				"body": { "name": "refund FAQ", "filter": null }
-			},
-			{
-				"method": "DELETE",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/queries/$4.queryUid"
-			},
-			{
-				"method": "GET",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/queries/$4.queryUid"
-			}
-		]
-	},
-	{
-		"slug": "vector-store-text-dispatch-mock",
-		"description": "Driver-native text dispatch on the vector-store search route. With a mock-embedding descriptor, the runtime routes `{ text }` through `searchByText` (mockEmbed-derived vector) instead of calling the embedder factory. Mirrors the playground's text path.",
-		"steps": [
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "mock" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores",
-				"body": {
-					"name": "vs",
-					"vectorDimension": 4,
-					"embedding": {
-						"provider": "mock",
-						"model": "mock-embedder",
-						"endpoint": null,
-						"dimension": 4,
-						"secretRef": null
-					}
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/records",
-				"body": {
-					"records": [
-						{
-							"id": "a",
-							"text": "alpha bravo charlie",
-							"payload": { "tag": "x" }
-						},
-						{
-							"id": "b",
-							"text": "delta echo foxtrot",
-							"payload": { "tag": "y" }
-						},
-						{ "id": "c", "text": "alpha delta golf", "payload": { "tag": "x" } }
-					]
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/search",
-				"body": { "text": "alpha bravo charlie", "topK": 2 }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/search",
-				"body": {
-					"text": "alpha bravo charlie",
-					"topK": 2,
-					"filter": { "tag": "x" }
-				}
-			}
-		]
-	},
-	{
-		"slug": "vector-store-hybrid-and-rerank-mock",
-		"description": "Pins the wire shape of the `{ hybrid, rerank, lexicalWeight }` lanes on `POST /vector-stores/{vs}/search`. The mock driver's hybrid combines vector + lexical with min-max normalization; standalone rerank reorders by lexical-only score. A hybrid request without `text` returns 400; a hybrid request against a workspace whose driver lacks `searchHybrid` (here we negate by sending vector-only) is exercised through the validation path.",
-		"steps": [
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "mock" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores",
-				"body": {
-					"name": "vs",
-					"vectorDimension": 4,
-					"embedding": {
-						"provider": "mock",
-						"model": "mock-embedder",
-						"endpoint": null,
-						"dimension": 4,
-						"secretRef": null
-					},
-					"lexical": { "enabled": true, "analyzer": null, "options": {} },
-					"reranking": {
-						"enabled": true,
-						"provider": "mock",
-						"model": "mock-rerank",
-						"endpoint": null,
-						"secretRef": null
-					}
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/records",
-				"body": {
-					"records": [
-						{
-							"id": "a",
-							"text": "alpha bravo charlie",
-							"payload": { "tag": "x" }
-						},
-						{
-							"id": "b",
-							"text": "alpha bravo delta",
-							"payload": { "tag": "x" }
-						},
-						{
-							"id": "c",
-							"text": "completely unrelated text",
-							"payload": { "tag": "y" }
-						}
-					]
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/search",
-				"body": {
-					"text": "alpha bravo",
-					"topK": 3,
-					"hybrid": true,
-					"lexicalWeight": 0.5
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/search",
-				"body": { "text": "alpha bravo", "topK": 3, "rerank": true }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores/$2.uid/search",
-				"body": { "vector": [1, 0, 0, 0], "topK": 3, "hybrid": true }
-			}
-		]
-	},
-	{
-		"slug": "catalog-async-ingest-202",
-		"description": "Pins the 202 wire shape for `POST /catalogs/{c}/ingest?async=true`. The job snapshot is captured at creation time (status: pending, processed: 0, total: null) so the response is deterministic — eventual completion still depends on the worker scheduling and remains out of conformance scope.",
-		"steps": [
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces",
-				"body": { "name": "w", "kind": "mock" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/vector-stores",
-				"body": {
-					"name": "vs",
-					"vectorDimension": 4,
-					"embedding": {
-						"provider": "mock",
-						"model": "mock-embedder",
-						"endpoint": null,
-						"dimension": 4,
-						"secretRef": null
-					}
-				}
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs",
-				"body": { "name": "c", "vectorStore": "$2.uid" }
-			},
-			{
-				"method": "POST",
-				"path": "/api/v1/workspaces/$1.uid/catalogs/$3.uid/ingest?async=true",
-				"body": {
-					"text": "alpha bravo charlie delta echo foxtrot golf hotel",
-					"chunker": { "chunkSize": 16, "chunkOverlap": 0 }
-				}
 			}
 		]
 	}

@@ -15,7 +15,7 @@
 
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type {
-	CatalogRecord,
+	KnowledgeBaseRecord,
 	VectorStoreRecord,
 	WorkspaceRecord,
 } from "../control-plane/types.js";
@@ -25,10 +25,10 @@ import { safeErrorMessage } from "../lib/safe-error.js";
 import { dispatchUpsert } from "../routes/api-v1/upsert-dispatch.js";
 import type { ChunkerOptions } from "./chunker.js";
 import {
-	CATALOG_SCOPE_KEY,
 	CHUNK_INDEX_KEY,
 	CHUNK_TEXT_KEY,
 	DOCUMENT_SCOPE_KEY,
+	KB_SCOPE_KEY,
 } from "./payload-keys.js";
 import { RecursiveCharacterChunker } from "./recursive-chunker.js";
 
@@ -44,13 +44,6 @@ export interface IngestPipelineDeps {
 	readonly embedders: EmbedderFactory;
 }
 
-export interface IngestContext {
-	readonly workspace: WorkspaceRecord;
-	readonly catalog: CatalogRecord;
-	readonly descriptor: VectorStoreRecord;
-	readonly documentUid: string;
-}
-
 export interface IngestProgress {
 	readonly processed: number;
 	readonly total: number;
@@ -60,23 +53,33 @@ export interface IngestResult {
 	readonly chunks: number;
 }
 
+/* ------------------------------------------------------------------ */
+/* KB-scoped ingest (issue #98)                                       */
+/* ------------------------------------------------------------------ */
+
+export interface KbIngestContext {
+	readonly workspace: WorkspaceRecord;
+	readonly knowledgeBase: KnowledgeBaseRecord;
+	/** Synthesised driver descriptor — the data plane stays
+	 * descriptor-shaped while the control plane speaks KB. */
+	readonly descriptor: VectorStoreRecord;
+	readonly documentUid: string;
+}
+
 /**
- * Run the chunk → embed → upsert pipeline for a single document.
- *
- * Caller is responsible for creating the {@link DocumentRecord} up
- * front (so both sync and async callers can return it before the
- * pipeline completes). On success this function flips the document
- * row to `ready`; on failure, to `failed` with `errorMessage`, then
- * re-raises.
+ * KB-scoped sibling of {@link runIngest}. Same chunk → embed → upsert
+ * pipeline; differs only in which document table it patches and which
+ * scope key gets stamped on each chunk's payload.
  */
-export async function runIngest(
+export async function runKbIngest(
 	deps: IngestPipelineDeps,
-	ctx: IngestContext,
+	ctx: KbIngestContext,
 	input: IngestInput,
 	onProgress?: (p: IngestProgress) => void,
 ): Promise<IngestResult> {
 	const { store, drivers, embedders } = deps;
-	const { workspace, catalog, descriptor, documentUid } = ctx;
+	const { workspace, knowledgeBase, descriptor, documentUid } = ctx;
+	const kbId = knowledgeBase.knowledgeBaseId;
 
 	const chunker = new RecursiveCharacterChunker(input.chunker);
 	const chunks = chunker.chunk({
@@ -84,9 +87,7 @@ export async function runIngest(
 		metadata: input.metadata,
 	});
 
-	// Anchor the chunk count on the document row up front so pollers
-	// see a meaningful total even before upsert finishes.
-	await store.updateDocument(workspace.uid, catalog.uid, documentUid, {
+	await store.updateRagDocument(workspace.uid, kbId, documentUid, {
 		chunkTotal: chunks.length,
 	});
 	onProgress?.({ processed: 0, total: chunks.length });
@@ -104,27 +105,23 @@ export async function runIngest(
 					text: chunk.text,
 					payload: {
 						...chunk.metadata,
-						[CATALOG_SCOPE_KEY]: catalog.uid,
+						[KB_SCOPE_KEY]: kbId,
 						[DOCUMENT_SCOPE_KEY]: documentUid,
 						[CHUNK_INDEX_KEY]: chunk.index,
-						// Stamp the chunk's text into the payload so the
-						// document-chunks view can show it without depending on
-						// the driver's `$vectorize` round-trip semantics. Read
-						// back through `search`/`listRecords` as `payload.chunkText`.
 						[CHUNK_TEXT_KEY]: chunk.text,
 					},
 				})),
 			});
 		}
 		onProgress?.({ processed: chunks.length, total: chunks.length });
-		await store.updateDocument(workspace.uid, catalog.uid, documentUid, {
+		await store.updateRagDocument(workspace.uid, kbId, documentUid, {
 			status: "ready",
 			ingestedAt: new Date().toISOString(),
 		});
 		return { chunks: chunks.length };
 	} catch (err) {
 		await store
-			.updateDocument(workspace.uid, catalog.uid, documentUid, {
+			.updateRagDocument(workspace.uid, kbId, documentUid, {
 				status: "failed",
 				errorMessage: safeErrorMessage(err),
 			})

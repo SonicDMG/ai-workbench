@@ -29,57 +29,6 @@ export const WORKSPACES_DEFINITION = {
 	primaryKey: "uid",
 } as const satisfies CreateTableDefinition;
 
-/** `wb_catalog_by_workspace` — catalogs, partitioned by workspace. */
-export const CATALOGS_TABLE = "wb_catalog_by_workspace";
-export const CATALOGS_DEFINITION = {
-	columns: {
-		workspace: "uuid",
-		uid: "uuid",
-		name: "text",
-		description: "text",
-		vector_store: "uuid",
-		created_at: "timestamp",
-		updated_at: "timestamp",
-	},
-	primaryKey: {
-		partitionBy: ["workspace"],
-		partitionSort: { uid: 1 },
-	},
-} as const satisfies CreateTableDefinition;
-
-/** `wb_vector_store_by_workspace` — the DEFINITION row for a vector
- * store. The actual vector data lives in a Data API Collection created
- * separately in Phase 1b. */
-export const VECTOR_STORES_TABLE = "wb_vector_store_by_workspace";
-export const VECTOR_STORES_DEFINITION = {
-	columns: {
-		workspace: "uuid",
-		uid: "uuid",
-		name: "text",
-		vector_dimension: "int",
-		vector_similarity: "text",
-		embedding_provider: "text",
-		embedding_model: "text",
-		embedding_endpoint: "text",
-		embedding_dimension: "int",
-		embedding_secret_ref: "text",
-		lexical_enabled: "boolean",
-		lexical_analyzer: "text",
-		lexical_options: { type: "map", keyType: "text", valueType: "text" },
-		reranking_enabled: "boolean",
-		reranking_provider: "text",
-		reranking_model: "text",
-		reranking_endpoint: "text",
-		reranking_secret_ref: "text",
-		created_at: "timestamp",
-		updated_at: "timestamp",
-	},
-	primaryKey: {
-		partitionBy: ["workspace"],
-		partitionSort: { uid: 1 },
-	},
-} as const satisfies CreateTableDefinition;
-
 /**
  * `wb_api_key_by_workspace` — per-workspace list of API keys. The
  * stored `hash` is a scrypt digest; plaintext is never written. Walked
@@ -120,59 +69,399 @@ export const API_KEY_LOOKUP_DEFINITION = {
 	primaryKey: "prefix",
 } as const satisfies CreateTableDefinition;
 
-/** `wb_documents_by_catalog` — documents, partitioned by (workspace, catalog). */
-export const DOCUMENTS_TABLE = "wb_documents_by_catalog";
-export const DOCUMENTS_DEFINITION = {
+/* ================================================================== */
+/*                                                                    */
+/*  Knowledge-Base schema (issue #98).                                */
+/*                                                                    */
+/*  Three layers, mirroring the CQL the design proposes:              */
+/*    • config — workspaces, knowledge bases, execution services      */
+/*    • rag    — documents, indexed three ways                        */
+/*    • agentic — agents, conversations, messages (Stage 2)           */
+/*                                                                    */
+/*  All shapes use snake_case columns and partition keys that match   */
+/*  the access pattern in the route name. Application records         */
+/*  (camelCase, nested) and converters live next door.                */
+/*                                                                    */
+/* ================================================================== */
+
+/* --------------------------- config layer ------------------------- */
+
+/** `wb_config_workspaces` — replaces `wb_workspaces`. */
+export const CONFIG_WORKSPACES_TABLE = "wb_config_workspaces";
+export const CONFIG_WORKSPACES_DEFINITION = {
 	columns: {
-		workspace: "uuid",
-		catalog_uid: "uuid",
-		document_uid: "uuid",
-		source_doc_id: "text",
-		source_filename: "text",
-		file_type: "text",
-		file_size: "bigint",
-		md5_hash: "text",
-		chunk_total: "int",
-		ingested_at: "timestamp",
+		uid: "uuid",
+		name: "text",
+		url: "text",
+		kind: "text",
+		namespace: "text",
+		credentials: { type: "map", keyType: "text", valueType: "text" },
+		created_at: "timestamp",
 		updated_at: "timestamp",
-		status: "text",
-		error_message: "text",
-		metadata: { type: "map", keyType: "text", valueType: "text" },
 	},
-	primaryKey: {
-		partitionBy: ["workspace", "catalog_uid"],
-		partitionSort: { document_uid: 1 },
-	},
+	primaryKey: "uid",
 } as const satisfies CreateTableDefinition;
 
 /**
- * `wb_saved_queries_by_catalog` — reusable search recipes scoped to a
- * catalog. Partitioned by (workspace, catalog) and sorted by query_uid
- * so the list endpoint's scan is bounded to one partition.
+ * `wb_config_knowledge_bases_by_workspace` — replaces
+ * `wb_catalog_by_workspace`. References execution services by id;
+ * `vector_collection` is the auto-provisioned Astra Data API
+ * collection name (set by the runtime on KB create from the bound
+ * embedding service's dimension + distance metric).
  *
- * `filter_json` is a serialized `Record<string, unknown>` — `text`
- * column because the filter's value types are unbounded. The runtime
- * parses on read; the field is opaque to the backend.
+ * Lexical config is folded onto the row because it's a property of
+ * how the underlying collection is built, not a callable service.
  */
-export const SAVED_QUERIES_TABLE = "wb_saved_queries_by_catalog";
-export const SAVED_QUERIES_DEFINITION = {
+export const KNOWLEDGE_BASES_TABLE = "wb_config_knowledge_bases_by_workspace";
+export const KNOWLEDGE_BASES_DEFINITION = {
 	columns: {
-		workspace: "uuid",
-		catalog_uid: "uuid",
-		query_uid: "uuid",
+		workspace_id: "uuid",
+		knowledge_base_id: "uuid",
 		name: "text",
 		description: "text",
-		text: "text",
-		top_k: "int",
-		filter_json: "text",
+		status: "text", // active | draft | deprecated
+		embedding_service_id: "uuid",
+		chunking_service_id: "uuid",
+		reranking_service_id: "uuid",
+		language: "text", // en | fr | multi
+		// runtime-managed: the auto-provisioned vector collection backing
+		// this KB. Set on create, never edited by callers.
+		vector_collection: "text",
+		// lexical / BM25 — folded onto the KB row, see issue #98 thread.
+		lexical_enabled: "boolean",
+		lexical_analyzer: "text",
+		lexical_options: { type: "map", keyType: "text", valueType: "text" },
 		created_at: "timestamp",
 		updated_at: "timestamp",
 	},
 	primaryKey: {
-		partitionBy: ["workspace", "catalog_uid"],
-		partitionSort: { query_uid: 1 },
+		partitionBy: ["workspace_id"],
+		partitionSort: { knowledge_base_id: 1 },
 	},
 } as const satisfies CreateTableDefinition;
+
+/** `wb_config_chunking_service_by_workspace` — chunking executor config. */
+export const CHUNKING_SERVICES_TABLE =
+	"wb_config_chunking_service_by_workspace";
+export const CHUNKING_SERVICES_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		chunking_service_id: "uuid",
+		name: "text",
+		description: "text",
+		status: "text", // active | deprecated | experimental
+		engine: "text", // docling | langchain_ts
+		engine_version: "text",
+		strategy: "text", // layout | recursive | semantic | hybrid
+		max_chunk_size: "int",
+		min_chunk_size: "int",
+		chunk_unit: "text", // tokens | characters
+		overlap_size: "int",
+		overlap_unit: "text",
+		preserve_structure: "boolean",
+		language: "text",
+		endpoint_base_url: "text",
+		endpoint_path: "text",
+		request_timeout_ms: "int",
+		max_payload_size_kb: "int",
+		auth_type: "text", // none | api_key | oauth2 | mTLS
+		credential_ref: "text",
+		enable_ocr: "boolean",
+		extract_tables: "boolean",
+		extract_figures: "boolean",
+		reading_order: "text",
+		created_at: "timestamp",
+		updated_at: "timestamp",
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id"],
+		partitionSort: { chunking_service_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/** `wb_config_embedding_service_by_workspace` — embedding executor config. */
+export const EMBEDDING_SERVICES_TABLE =
+	"wb_config_embedding_service_by_workspace";
+export const EMBEDDING_SERVICES_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		embedding_service_id: "uuid",
+		name: "text",
+		description: "text",
+		status: "text",
+		provider: "text", // openai | azure_openai | huggingface | custom
+		model_name: "text",
+		embedding_dimension: "int",
+		distance_metric: "text", // cosine | dot | euclidean
+		endpoint_base_url: "text",
+		endpoint_path: "text",
+		request_timeout_ms: "int",
+		max_batch_size: "int",
+		max_input_tokens: "int",
+		auth_type: "text",
+		credential_ref: "text",
+		supported_languages: { type: "set", valueType: "text" },
+		supported_content: { type: "set", valueType: "text" },
+		created_at: "timestamp",
+		updated_at: "timestamp",
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id"],
+		partitionSort: { embedding_service_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/** `wb_config_reranking_service_by_workspace` — reranker executor config. */
+export const RERANKING_SERVICES_TABLE =
+	"wb_config_reranking_service_by_workspace";
+export const RERANKING_SERVICES_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		reranking_service_id: "uuid",
+		name: "text",
+		description: "text",
+		status: "text",
+		provider: "text", // cohere | openai | huggingface | custom
+		engine: "text", // cross_encoder | llm | api
+		model_name: "text",
+		model_version: "text",
+		max_candidates: "int",
+		scoring_strategy: "text",
+		score_normalized: "boolean",
+		return_scores: "boolean",
+		endpoint_base_url: "text",
+		endpoint_path: "text",
+		request_timeout_ms: "int",
+		max_batch_size: "int",
+		auth_type: "text",
+		credential_ref: "text",
+		supported_languages: { type: "set", valueType: "text" },
+		supported_content: { type: "set", valueType: "text" },
+		created_at: "timestamp",
+		updated_at: "timestamp",
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id"],
+		partitionSort: { reranking_service_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/** `wb_config_llm_service_by_workspace` — LLM executor config (Stage 2). */
+export const LLM_SERVICES_TABLE = "wb_config_llm_service_by_workspace";
+export const LLM_SERVICES_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		llm_service_id: "uuid",
+		name: "text",
+		description: "text",
+		status: "text",
+		provider: "text", // openai | azure_openai | anthropic | huggingface | custom
+		engine: "text", // langchain_ts | direct_rest | sdk
+		model_name: "text",
+		model_version: "text",
+		context_window_tokens: "int",
+		max_output_tokens: "int",
+		temperature_min: "double",
+		temperature_max: "double",
+		supports_streaming: "boolean",
+		supports_tools: "boolean",
+		endpoint_base_url: "text",
+		endpoint_path: "text",
+		request_timeout_ms: "int",
+		max_batch_size: "int",
+		auth_type: "text",
+		credential_ref: "text",
+		supported_languages: { type: "set", valueType: "text" },
+		supported_content: { type: "set", valueType: "text" },
+		created_at: "timestamp",
+		updated_at: "timestamp",
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id"],
+		partitionSort: { llm_service_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/** `wb_config_mcp_tools_by_workspace` — tool registry (Stage 2). */
+export const MCP_TOOLS_TABLE = "wb_config_mcp_tools_by_workspace";
+export const MCP_TOOLS_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		tool_id: "uuid",
+		name: "text",
+		description: "text",
+		tool_type: "text", // mcp | http | function | builtin
+		endpoint_base_url: "text",
+		endpoint_path: "text",
+		http_method: "text", // GET | POST
+		input_schema: "text", // JSON schema, serialized
+		output_schema: "text",
+		auth_type: "text",
+		credential_ref: "text",
+		tags: { type: "set", valueType: "text" },
+		created_at: "timestamp",
+		updated_at: "timestamp",
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id"],
+		partitionSort: { tool_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/* ----------------------------- rag layer -------------------------- */
+
+/** `wb_rag_documents_by_knowledge_base` — primary docs view, by KB. */
+export const RAG_DOCUMENTS_TABLE = "wb_rag_documents_by_knowledge_base";
+export const RAG_DOCUMENTS_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		knowledge_base_id: "uuid",
+		document_id: "uuid",
+		source_doc_id: "text",
+		source_filename: "text",
+		file_type: "text",
+		file_size: "bigint",
+		content_hash: "text",
+		chunk_total: "int",
+		status: "text",
+		error_message: "text",
+		ingested_at: "timestamp",
+		updated_at: "timestamp",
+		metadata: { type: "map", keyType: "text", valueType: "text" },
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id", "knowledge_base_id"],
+		partitionSort: { document_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/**
+ * `wb_rag_documents_by_knowledge_base_and_status` — secondary index for
+ * "all docs in KB with status X" (e.g. dashboard pending/failed lists).
+ * Maintained in lockstep with `wb_rag_documents_by_knowledge_base`.
+ */
+export const RAG_DOCUMENTS_BY_STATUS_TABLE =
+	"wb_rag_documents_by_knowledge_base_and_status";
+export const RAG_DOCUMENTS_BY_STATUS_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		knowledge_base_id: "uuid",
+		status: "text",
+		document_id: "uuid",
+		source_filename: "text",
+		ingested_at: "timestamp",
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id", "knowledge_base_id", "status"],
+		partitionSort: { document_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/**
+ * `wb_rag_documents_by_content_hash` — dedup index. Lets ingest check
+ * "have I already seen this content?" without scanning per-KB rows.
+ * One physical document may appear across multiple KBs, so the row is
+ * partitioned by hash and clustered by `(workspace_id, knowledge_base_id, document_id)`.
+ */
+export const RAG_DOCUMENTS_BY_HASH_TABLE = "wb_rag_documents_by_content_hash";
+export const RAG_DOCUMENTS_BY_HASH_DEFINITION = {
+	columns: {
+		content_hash: "text",
+		workspace_id: "uuid",
+		knowledge_base_id: "uuid",
+		document_id: "uuid",
+	},
+	primaryKey: {
+		partitionBy: ["content_hash"],
+		partitionSort: {
+			workspace_id: 1,
+			knowledge_base_id: 1,
+			document_id: 1,
+		},
+	},
+} as const satisfies CreateTableDefinition;
+
+/* --------------------------- agentic layer ------------------------ */
+
+/** `wb_agentic_agents_by_workspace` — agent definitions (Stage 2). */
+export const AGENTS_TABLE = "wb_agentic_agents_by_workspace";
+export const AGENTS_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		agent_id: "uuid",
+		name: "text",
+		description: "text",
+		system_prompt: "text",
+		user_prompt: "text",
+		tool_ids: { type: "set", valueType: "uuid" },
+		rag_enabled: "boolean",
+		knowledge_base_ids: { type: "set", valueType: "uuid" },
+		rag_max_results: "int",
+		rag_min_score: "double",
+		rerank_enabled: "boolean",
+		reranking_service_id: "uuid",
+		rerank_max_results: "int",
+		created_at: "timestamp",
+		updated_at: "timestamp",
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id"],
+		partitionSort: { agent_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/**
+ * `wb_agentic_conversations_by_agent` — conversation list per agent.
+ * Clustered by `created_at DESC` so list endpoints get newest-first
+ * for free. `conversation_id` is part of the cluster key so two
+ * conversations with identical timestamps don't collide.
+ */
+export const CONVERSATIONS_TABLE = "wb_agentic_conversations_by_agent";
+export const CONVERSATIONS_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		agent_id: "uuid",
+		conversation_id: "uuid",
+		created_at: "timestamp",
+		title: "text",
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id", "agent_id"],
+		partitionSort: { created_at: -1, conversation_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/**
+ * `wb_agentic_messages_by_conversation` — message log per conversation.
+ * Clustered ASC by timestamp so replay/streaming reads in chronological
+ * order; UI flips to display order client-side. `message_id` is a
+ * non-key column for client-side dedup.
+ */
+export const MESSAGES_TABLE = "wb_agentic_messages_by_conversation";
+export const MESSAGES_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		conversation_id: "uuid",
+		message_ts: "timestamp",
+		message_id: "uuid",
+		role: "text", // user | agent | tool | system
+		author_id: "uuid",
+		content: "text",
+		tool_id: "uuid",
+		tool_call_payload: "text",
+		tool_response: "text",
+		token_count: "int",
+		metadata: { type: "map", keyType: "text", valueType: "text" },
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id", "conversation_id"],
+		partitionSort: { message_ts: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/* ================================================================== */
+/* End knowledge-base schema (issue #98).                             */
+/* ================================================================== */
 
 /**
  * `wb_jobs_by_workspace` — background-operation records for async
@@ -189,7 +478,7 @@ export const JOBS_DEFINITION = {
 		workspace: "uuid",
 		job_id: "uuid",
 		kind: "text",
-		catalog_uid: "uuid",
+		knowledge_base_uid: "uuid",
 		document_uid: "uuid",
 		status: "text",
 		processed: "int",

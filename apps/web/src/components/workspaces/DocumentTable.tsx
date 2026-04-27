@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatFileSize } from "@/lib/files";
-import type { DocumentRecord, DocumentStatus } from "@/lib/schemas";
+import type { DocumentStatus, RagDocumentRecord } from "@/lib/schemas";
 import { cn, formatDate } from "@/lib/utils";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
 import { FileTypeBadge } from "./FileTypeBadge";
@@ -39,11 +39,11 @@ export function DocumentTable({
 	onDelete,
 	deletingDocumentId,
 }: {
-	docs: readonly DocumentRecord[];
-	onSelect?: (doc: DocumentRecord) => void;
+	docs: readonly RagDocumentRecord[];
+	onSelect?: (doc: RagDocumentRecord) => void;
 	/** When provided, a trash button renders on each row that calls
 	 * back to the parent (which usually pops a confirm dialog). */
-	onDelete?: (doc: DocumentRecord) => void;
+	onDelete?: (doc: RagDocumentRecord) => void;
 	/** documentUid currently being deleted — disables that row's
 	 * trash button to prevent double-clicks during the round trip. */
 	deletingDocumentId?: string | null;
@@ -59,7 +59,7 @@ export function DocumentTable({
 			(d) =>
 				(d.sourceFilename ?? "").toLowerCase().includes(q) ||
 				(d.sourceDocId ?? "").toLowerCase().includes(q) ||
-				d.documentUid.toLowerCase().includes(q),
+				d.documentId.toLowerCase().includes(q),
 		);
 	}, [docs, filter]);
 
@@ -164,7 +164,7 @@ export function DocumentTable({
 						) : (
 							sorted.map((d) => (
 								<tr
-									key={d.documentUid}
+									key={d.documentId}
 									onClick={() => onSelect?.(d)}
 									className={cn(
 										"border-t border-slate-100",
@@ -176,7 +176,7 @@ export function DocumentTable({
 										<div className="truncate font-medium text-slate-900">
 											{d.sourceFilename ?? (
 												<span className="font-mono text-slate-500">
-													{d.documentUid}
+													{d.documentId}
 												</span>
 											)}
 										</div>
@@ -211,7 +211,7 @@ export function DocumentTable({
 											<Button
 												variant="ghost"
 												size="sm"
-												disabled={deletingDocumentId === d.documentUid}
+												disabled={deletingDocumentId === d.documentId}
 												onClick={(e) => {
 													// Stop the row-level click that opens the
 													// detail dialog — destructive actions
@@ -220,7 +220,7 @@ export function DocumentTable({
 													e.stopPropagation();
 													onDelete(d);
 												}}
-												aria-label={`Delete ${d.sourceFilename ?? d.documentUid}`}
+												aria-label={`Delete ${d.sourceFilename ?? d.documentId}`}
 											>
 												<Trash2 className="h-4 w-4 text-red-600" />
 											</Button>
@@ -241,11 +241,15 @@ export function DocumentTable({
 	);
 }
 
-function compare(a: DocumentRecord, b: DocumentRecord, key: SortKey): number {
+function compare(
+	a: RagDocumentRecord,
+	b: RagDocumentRecord,
+	key: SortKey,
+): number {
 	switch (key) {
 		case "name": {
-			const an = a.sourceFilename ?? a.documentUid;
-			const bn = b.sourceFilename ?? b.documentUid;
+			const an = a.sourceFilename ?? a.documentId;
+			const bn = b.sourceFilename ?? b.documentId;
 			return an.localeCompare(bn, undefined, { sensitivity: "base" });
 		}
 		case "size":

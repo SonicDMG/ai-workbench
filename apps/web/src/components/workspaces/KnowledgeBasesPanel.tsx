@@ -1,6 +1,6 @@
 import {
 	ArrowUpRight,
-	FolderOpen,
+	Database,
 	Loader2,
 	Plus,
 	RefreshCw,
@@ -20,42 +20,41 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { useCatalogs, useDeleteCatalog } from "@/hooks/useCatalogs";
 import { useDocuments } from "@/hooks/useDocuments";
+import {
+	useDeleteKnowledgeBase,
+	useKnowledgeBases,
+} from "@/hooks/useKnowledgeBases";
 import { formatApiError } from "@/lib/api";
 import { formatFileSize } from "@/lib/files";
-import type { CatalogRecord, DocumentRecord } from "@/lib/schemas";
+import type { KnowledgeBaseRecord, RagDocumentRecord } from "@/lib/schemas";
 import { formatDate } from "@/lib/utils";
-import { CreateCatalogDialog } from "./CreateCatalogDialog";
+import { CreateKnowledgeBaseDialog } from "./CreateKnowledgeBaseDialog";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
 import { FileTypeBadge } from "./FileTypeBadge";
 import { IngestQueueDialog } from "./IngestQueueDialog";
-import { SavedQueriesSection } from "./SavedQueriesSection";
 
 /**
- * Workspace-scoped catalog management + ingest trigger.
+ * Workspace-scoped KB management + ingest trigger.
  *
- * Each row shows the catalog, its bound vector store (if any), a
- * document count, and two actions: "Ingest" (opens the ingest
- * dialog, which runs async + polls) and delete.
- *
- * Rows are expandable to show the first 10 documents in the
- * catalog — useful for the post-ingest sanity check without
- * bouncing to another page.
+ * Each row shows the KB, a status badge, document count, and two
+ * actions: "Ingest" (opens the ingest dialog, which runs async +
+ * polls) and delete. Rows are expandable to show the first 10
+ * documents in the KB.
  */
-export function CatalogsPanel({ workspace }: { workspace: string }) {
-	const list = useCatalogs(workspace);
-	const del = useDeleteCatalog(workspace);
+export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
+	const list = useKnowledgeBases(workspace);
+	const del = useDeleteKnowledgeBase(workspace);
 	const [createOpen, setCreateOpen] = useState(false);
-	const [toDelete, setToDelete] = useState<CatalogRecord | null>(null);
-	const [ingestFor, setIngestFor] = useState<CatalogRecord | null>(null);
+	const [toDelete, setToDelete] = useState<KnowledgeBaseRecord | null>(null);
+	const [ingestFor, setIngestFor] = useState<KnowledgeBaseRecord | null>(null);
 	const [expanded, setExpanded] = useState<string | null>(null);
 
-	if (list.isLoading) return <LoadingState label="Loading catalogs…" />;
+	if (list.isLoading) return <LoadingState label="Loading knowledge bases…" />;
 	if (list.isError) {
 		return (
 			<ErrorState
-				title="Couldn't load catalogs"
+				title="Couldn't load knowledge bases"
 				message={list.error.message}
 				actions={
 					<Button variant="secondary" onClick={() => list.refetch()}>
@@ -72,43 +71,45 @@ export function CatalogsPanel({ workspace }: { workspace: string }) {
 		<div className="flex flex-col gap-4">
 			<div className="flex items-start justify-between gap-3 flex-wrap">
 				<div>
-					<p className="text-sm font-medium text-slate-900">Catalogs</p>
+					<p className="text-sm font-medium text-slate-900">Knowledge bases</p>
 					<p className="text-xs text-slate-500 mt-0.5">
 						{rows.length === 0
-							? "No catalogs yet — create one to start ingesting documents."
-							: `${rows.length} catalog${rows.length === 1 ? "" : "s"} in this workspace.`}
+							? "No knowledge bases yet — create one to start ingesting documents."
+							: `${rows.length} knowledge base${rows.length === 1 ? "" : "s"} in this workspace.`}
 					</p>
 				</div>
 				<Button variant="brand" size="sm" onClick={() => setCreateOpen(true)}>
-					<Plus className="h-4 w-4" /> New catalog
+					<Plus className="h-4 w-4" /> New knowledge base
 				</Button>
 			</div>
 
 			{rows.length === 0 ? (
 				<div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600">
-					A catalog is a named group of documents bound to one vector store.
-					Create a vector store first (above), then create a catalog that binds
-					to it, then ingest documents.
+					A knowledge base owns one Astra collection plus the chunking,
+					embedding, and (optionally) reranking services that produce its
+					content. Create the services first, then a KB that binds them.
 				</div>
 			) : (
 				<div className="flex flex-col gap-2">
-					{rows.map((cat) => (
-						<CatalogRow
-							key={cat.uid}
+					{rows.map((kb) => (
+						<KnowledgeBaseRow
+							key={kb.knowledgeBaseId}
 							workspace={workspace}
-							catalog={cat}
-							expanded={expanded === cat.uid}
+							kb={kb}
+							expanded={expanded === kb.knowledgeBaseId}
 							onToggle={() =>
-								setExpanded((cur) => (cur === cat.uid ? null : cat.uid))
+								setExpanded((cur) =>
+									cur === kb.knowledgeBaseId ? null : kb.knowledgeBaseId,
+								)
 							}
-							onIngest={() => setIngestFor(cat)}
-							onDelete={() => setToDelete(cat)}
+							onIngest={() => setIngestFor(kb)}
+							onDelete={() => setToDelete(kb)}
 						/>
 					))}
 				</div>
 			)}
 
-			<CreateCatalogDialog
+			<CreateKnowledgeBaseDialog
 				workspace={workspace}
 				open={createOpen}
 				onOpenChange={setCreateOpen}
@@ -117,21 +118,21 @@ export function CatalogsPanel({ workspace }: { workspace: string }) {
 			{ingestFor ? (
 				<IngestQueueDialog
 					workspace={workspace}
-					catalog={ingestFor}
+					knowledgeBase={ingestFor}
 					open={true}
 					onOpenChange={(o) => !o && setIngestFor(null)}
 				/>
 			) : null}
 
-			<DeleteCatalogDialog
-				catalog={toDelete}
+			<DeleteKnowledgeBaseDialog
+				kb={toDelete}
 				submitting={del.isPending}
 				onOpenChange={(o) => !o && setToDelete(null)}
 				onConfirm={async () => {
 					if (!toDelete) return;
 					try {
-						await del.mutateAsync(toDelete.uid);
-						toast.success(`Catalog '${toDelete.name}' deleted`);
+						await del.mutateAsync(toDelete.knowledgeBaseId);
+						toast.success(`Knowledge base '${toDelete.name}' deleted`);
 						setToDelete(null);
 					} catch (err) {
 						toast.error("Couldn't delete", {
@@ -144,28 +145,25 @@ export function CatalogsPanel({ workspace }: { workspace: string }) {
 	);
 }
 
-function CatalogRow({
+function KnowledgeBaseRow({
 	workspace,
-	catalog,
+	kb,
 	expanded,
 	onToggle,
 	onIngest,
 	onDelete,
 }: {
 	workspace: string;
-	catalog: CatalogRecord;
+	kb: KnowledgeBaseRecord;
 	expanded: boolean;
 	onToggle: () => void;
 	onIngest: () => void;
 	onDelete: () => void;
 }) {
-	// The documents query is expensive per-catalog; only fetch when
-	// the row is expanded so the collapsed list stays cheap.
 	const docs = useDocuments(
 		expanded ? workspace : undefined,
-		expanded ? catalog.uid : undefined,
+		expanded ? kb.knowledgeBaseId : undefined,
 	);
-	const canIngest = catalog.vectorStore !== null;
 
 	return (
 		<div className="rounded-lg border border-slate-200 bg-white">
@@ -176,63 +174,50 @@ function CatalogRow({
 					className="flex min-w-0 flex-1 items-center gap-2 text-left"
 					aria-expanded={expanded}
 				>
-					<FolderOpen className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+					<Database className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
 					<div className="min-w-0 flex-1">
 						<div className="flex items-center gap-2 flex-wrap">
 							<span className="font-medium text-slate-900 truncate">
-								{catalog.name}
+								{kb.name}
 							</span>
-							{catalog.vectorStore ? (
-								<span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 border border-emerald-200">
-									bound
+							<KbStatusBadge status={kb.status} />
+							{kb.rerankingServiceId ? (
+								<span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-700 border border-purple-200">
+									reranker
 								</span>
-							) : (
-								<span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 border border-amber-200">
-									unbound
-								</span>
-							)}
+							) : null}
 						</div>
-						{catalog.description ? (
+						{kb.description ? (
 							<p className="text-xs text-slate-500 mt-0.5 truncate">
-								{catalog.description}
+								{kb.description}
 							</p>
 						) : (
 							<p className="text-xs text-slate-400 mt-0.5 font-mono truncate">
-								{catalog.uid}
+								{kb.knowledgeBaseId}
 							</p>
 						)}
 					</div>
 					<span className="text-xs text-slate-500 shrink-0">
-						{formatDate(catalog.createdAt)}
+						{formatDate(kb.createdAt)}
 					</span>
 				</button>
 				<div className="shrink-0 flex items-center gap-1">
 					<Button variant="ghost" size="sm" asChild>
 						<Link
-							to={`/workspaces/${workspace}/catalogs/${catalog.uid}`}
-							title="Open the catalog explorer"
+							to={`/workspaces/${workspace}/knowledge-bases/${kb.knowledgeBaseId}`}
+							title="Open the knowledge-base explorer"
 						>
 							Open <ArrowUpRight className="h-3.5 w-3.5" />
 						</Link>
 					</Button>
-					<Button
-						variant="secondary"
-						size="sm"
-						onClick={onIngest}
-						disabled={!canIngest}
-						title={
-							canIngest
-								? "Ingest one or more files into this catalog"
-								: "Bind this catalog to a vector store first"
-						}
-					>
+					<Button variant="secondary" size="sm" onClick={onIngest}>
 						<Upload className="h-4 w-4" /> Ingest
 					</Button>
 					<Button
 						variant="ghost"
 						size="sm"
 						onClick={onDelete}
-						aria-label={`Delete ${catalog.name}`}
+						aria-label={`Delete ${kb.name}`}
 					>
 						<Trash2 className="h-4 w-4 text-red-600" />
 					</Button>
@@ -261,19 +246,33 @@ function CatalogRow({
 							<DocumentList rows={docs.data ?? []} />
 						)}
 					</div>
-					<SavedQueriesSection workspace={workspace} catalogUid={catalog.uid} />
 				</div>
 			) : null}
 		</div>
 	);
 }
 
-function DocumentList({ rows }: { rows: readonly DocumentRecord[] }) {
+function KbStatusBadge({ status }: { status: KnowledgeBaseRecord["status"] }) {
+	const styles: Record<KnowledgeBaseRecord["status"], string> = {
+		active: "bg-emerald-50 text-emerald-700 border-emerald-200",
+		draft: "bg-slate-50 text-slate-600 border-slate-200",
+		deprecated: "bg-amber-50 text-amber-700 border-amber-200",
+	};
+	return (
+		<span
+			className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${styles[status]}`}
+		>
+			{status}
+		</span>
+	);
+}
+
+function DocumentList({ rows }: { rows: readonly RagDocumentRecord[] }) {
 	const trimmed = rows.slice(0, 10);
 	return (
 		<div className="flex flex-col gap-1">
 			{trimmed.map((d) => (
-				<DocumentRow key={d.documentUid} doc={d} />
+				<DocumentRow key={d.documentId} doc={d} />
 			))}
 			{rows.length > trimmed.length ? (
 				<p className="text-xs text-slate-500 pl-6">
@@ -284,7 +283,7 @@ function DocumentList({ rows }: { rows: readonly DocumentRecord[] }) {
 	);
 }
 
-function DocumentRow({ doc }: { doc: DocumentRecord }) {
+function DocumentRow({ doc }: { doc: RagDocumentRecord }) {
 	return (
 		<div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-white">
 			<DocumentStatusBadge status={doc.status} />
@@ -294,7 +293,7 @@ function DocumentRow({ doc }: { doc: DocumentRecord }) {
 			/>
 			<span className="min-w-0 truncate text-slate-700">
 				{doc.sourceFilename ?? (
-					<span className="font-mono text-slate-500">{doc.documentUid}</span>
+					<span className="font-mono text-slate-500">{doc.documentId}</span>
 				)}
 			</span>
 			<span className="ml-auto flex shrink-0 items-center gap-3 text-slate-500 tabular-nums">
@@ -307,20 +306,20 @@ function DocumentRow({ doc }: { doc: DocumentRecord }) {
 	);
 }
 
-function DeleteCatalogDialog({
-	catalog,
+function DeleteKnowledgeBaseDialog({
+	kb,
 	submitting,
 	onOpenChange,
 	onConfirm,
 }: {
-	catalog: CatalogRecord | null;
+	kb: KnowledgeBaseRecord | null;
 	submitting: boolean;
 	onOpenChange: (v: boolean) => void;
 	onConfirm: () => void;
 }) {
 	const [confirm, setConfirm] = useState("");
-	const open = catalog !== null;
-	const expected = catalog?.name ?? "";
+	const open = kb !== null;
+	const expected = kb?.name ?? "";
 	const typed = confirm.trim() === expected && expected.length > 0;
 	return (
 		<Dialog
@@ -332,11 +331,10 @@ function DeleteCatalogDialog({
 		>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>Delete catalog</DialogTitle>
+					<DialogTitle>Delete knowledge base</DialogTitle>
 					<DialogDescription>
-						Drops the catalog and every document it holds. The vector-store
-						records they wrote stay in place — search simply can't reach them
-						any more through this catalog. Type{" "}
+						Drops the KB, every document it holds, and the underlying Astra
+						collection. The bound services stay in place. Type{" "}
 						<span className="font-mono">{expected}</span> to confirm.
 					</DialogDescription>
 				</DialogHeader>

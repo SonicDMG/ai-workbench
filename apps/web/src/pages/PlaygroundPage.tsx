@@ -18,19 +18,25 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { CreateVectorStoreDialog } from "@/components/workspaces/CreateVectorStoreDialog";
+import { CreateKnowledgeBaseDialog } from "@/components/workspaces/CreateKnowledgeBaseDialog";
+import { useKnowledgeBases } from "@/hooks/useKnowledgeBases";
 import { usePlaygroundSearch } from "@/hooks/usePlaygroundSearch";
-import { useVectorStores } from "@/hooks/useVectorStores";
+import { useEmbeddingServices } from "@/hooks/useServices";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
 import { formatApiError, type PlaygroundSearchInput } from "@/lib/api";
-import type { SearchHit, VectorStoreRecord, Workspace } from "@/lib/schemas";
+import type {
+	EmbeddingServiceRecord,
+	KnowledgeBaseRecord,
+	SearchHit,
+	Workspace,
+} from "@/lib/schemas";
 
 /**
  * The playground.
  *
  * Flow:
- *   1. pick a workspace → we load its vector stores
- *   2. pick a vector store → the query form enables
+ *   1. pick a workspace → we load its knowledge bases
+ *   2. pick a knowledge base → the query form enables
  *   3. submit a text or vector query → POST /search → render hits
  *
  * Routing is pure client-side; no persistence. Query results live
@@ -39,7 +45,7 @@ import type { SearchHit, VectorStoreRecord, Workspace } from "@/lib/schemas";
 export function PlaygroundPage() {
 	const workspacesQuery = useWorkspaces();
 	const [workspaceUid, setWorkspaceUid] = useState<string>("");
-	const [vectorStoreUid, setVectorStoreUid] = useState<string>("");
+	const [knowledgeBaseUid, setKnowledgeBaseUid] = useState<string>("");
 	const [hits, setHits] = useState<SearchHit[] | null>(null);
 
 	if (workspacesQuery.isLoading)
@@ -74,31 +80,32 @@ export function PlaygroundPage() {
 							Playground
 						</h1>
 						<p className="mt-1 text-sm text-slate-600">
-							Run vector or text queries against a workspace's vector store and
-							inspect the top hits. No state is saved — this is a scratchpad.
+							Run vector or text queries against a workspace's knowledge base
+							and inspect the top hits. No state is saved — this is a
+							scratchpad.
 						</p>
 					</div>
 				</div>
 			</div>
 
-			<WorkspaceVectorStoreSelect
+			<WorkspaceKbSelect
 				workspaces={workspaces}
 				workspaceUid={workspaceUid}
 				setWorkspaceUid={(v) => {
 					setWorkspaceUid(v);
-					setVectorStoreUid("");
+					setKnowledgeBaseUid("");
 					setHits(null);
 				}}
-				vectorStoreUid={vectorStoreUid}
-				setVectorStoreUid={(v) => {
-					setVectorStoreUid(v);
+				knowledgeBaseUid={knowledgeBaseUid}
+				setKnowledgeBaseUid={(v) => {
+					setKnowledgeBaseUid(v);
 					setHits(null);
 				}}
 			/>
 
 			<SearchPanel
 				workspaceUid={workspaceUid}
-				vectorStoreUid={vectorStoreUid}
+				knowledgeBaseUid={knowledgeBaseUid}
 				hits={hits}
 				setHits={setHits}
 			/>
@@ -106,24 +113,24 @@ export function PlaygroundPage() {
 	);
 }
 
-function WorkspaceVectorStoreSelect({
+function WorkspaceKbSelect({
 	workspaces,
 	workspaceUid,
 	setWorkspaceUid,
-	vectorStoreUid,
-	setVectorStoreUid,
+	knowledgeBaseUid,
+	setKnowledgeBaseUid,
 }: {
 	workspaces: Workspace[];
 	workspaceUid: string;
 	setWorkspaceUid: (v: string) => void;
-	vectorStoreUid: string;
-	setVectorStoreUid: (v: string) => void;
+	knowledgeBaseUid: string;
+	setKnowledgeBaseUid: (v: string) => void;
 }) {
-	const vsQuery = useVectorStores(workspaceUid || undefined);
-	const vectorStores = vsQuery.data ?? [];
+	const kbQuery = useKnowledgeBases(workspaceUid || undefined);
+	const knowledgeBases = kbQuery.data ?? [];
 	const [createOpen, setCreateOpen] = useState(false);
 	const isEmpty =
-		Boolean(workspaceUid) && !vsQuery.isLoading && vectorStores.length === 0;
+		Boolean(workspaceUid) && !kbQuery.isLoading && knowledgeBases.length === 0;
 
 	return (
 		<div className="flex flex-col gap-3">
@@ -147,31 +154,31 @@ function WorkspaceVectorStoreSelect({
 					</Select>
 				</div>
 				<div className="flex flex-col gap-1.5">
-					<Label htmlFor="pg-vs">Vector store</Label>
+					<Label htmlFor="pg-kb">Knowledge base</Label>
 					<Select
-						value={vectorStoreUid}
-						onValueChange={setVectorStoreUid}
-						disabled={!workspaceUid || vectorStores.length === 0}
+						value={knowledgeBaseUid}
+						onValueChange={setKnowledgeBaseUid}
+						disabled={!workspaceUid || knowledgeBases.length === 0}
 					>
-						<SelectTrigger id="pg-vs" aria-label="Vector store">
+						<SelectTrigger id="pg-kb" aria-label="Knowledge base">
 							<SelectValue
 								placeholder={
 									!workspaceUid
 										? "Pick a workspace first"
-										: vsQuery.isLoading
+										: kbQuery.isLoading
 											? "Loading…"
-											: vectorStores.length === 0
-												? "No vector stores yet — create one"
-												: "Select a vector store"
+											: knowledgeBases.length === 0
+												? "No knowledge bases yet — create one"
+												: "Select a knowledge base"
 								}
 							/>
 						</SelectTrigger>
 						<SelectContent>
-							{vectorStores.map((vs) => (
-								<SelectItem key={vs.uid} value={vs.uid}>
-									{vs.name}{" "}
+							{knowledgeBases.map((kb) => (
+								<SelectItem key={kb.knowledgeBaseId} value={kb.knowledgeBaseId}>
+									{kb.name}{" "}
 									<span className="text-xs text-slate-500 font-mono ml-1">
-										dim {vs.vectorDimension}
+										{kb.status}
 									</span>
 								</SelectItem>
 							))}
@@ -183,7 +190,7 @@ function WorkspaceVectorStoreSelect({
 			{isEmpty ? (
 				<div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50/80 px-4 py-3">
 					<p className="text-sm text-slate-600">
-						This workspace has no vector stores yet. Create one to start
+						This workspace has no knowledge bases yet. Create one to start
 						querying.
 					</p>
 					<div className="flex items-center gap-2">
@@ -195,22 +202,17 @@ function WorkspaceVectorStoreSelect({
 							size="sm"
 							onClick={() => setCreateOpen(true)}
 						>
-							<Plus className="h-4 w-4" /> New vector store
+							<Plus className="h-4 w-4" /> New knowledge base
 						</Button>
 					</div>
 				</div>
 			) : null}
 
 			{workspaceUid ? (
-				<CreateVectorStoreDialog
+				<CreateKnowledgeBaseDialog
 					workspace={workspaceUid}
 					open={createOpen}
-					onOpenChange={(o) => {
-						setCreateOpen(o);
-						// On close after a successful create, the useVectorStores
-						// query is invalidated by the mutation; selecting the new
-						// store is the user's next click.
-					}}
+					onOpenChange={setCreateOpen}
 				/>
 			) : null}
 		</div>
@@ -219,34 +221,40 @@ function WorkspaceVectorStoreSelect({
 
 function SearchPanel({
 	workspaceUid,
-	vectorStoreUid,
+	knowledgeBaseUid,
 	hits,
 	setHits,
 }: {
 	workspaceUid: string;
-	vectorStoreUid: string;
+	knowledgeBaseUid: string;
 	hits: SearchHit[] | null;
 	setHits: (h: SearchHit[] | null) => void;
 }) {
-	const vsQuery = useVectorStores(workspaceUid || undefined);
-	const vectorStore: VectorStoreRecord | undefined = vsQuery.data?.find(
-		(v) => v.uid === vectorStoreUid,
+	const kbQuery = useKnowledgeBases(workspaceUid || undefined);
+	const embeddings = useEmbeddingServices(workspaceUid || undefined);
+	const knowledgeBase: KnowledgeBaseRecord | undefined = kbQuery.data?.find(
+		(k) => k.knowledgeBaseId === knowledgeBaseUid,
 	);
+	const embedding: EmbeddingServiceRecord | undefined =
+		knowledgeBase &&
+		embeddings.data?.find(
+			(e) => e.embeddingServiceId === knowledgeBase.embeddingServiceId,
+		);
 	const search = usePlaygroundSearch();
 
 	async function run(input: PlaygroundSearchInput) {
-		if (!workspaceUid || !vectorStoreUid) return;
+		if (!workspaceUid || !knowledgeBaseUid) return;
 		try {
 			const out = await search.mutateAsync({
 				workspace: workspaceUid,
-				vectorStore: vectorStoreUid,
+				knowledgeBase: knowledgeBaseUid,
 				input,
 			});
 			setHits(out);
 			if (out.length === 0) {
 				toast.info("No matches", {
 					description:
-						"The query ran but the store returned no hits. Check the filter, topK, or the data you've upserted.",
+						"The query ran but the KB returned no hits. Check the filter, topK, or what's been ingested.",
 				});
 			}
 		} catch (err) {
@@ -254,19 +262,28 @@ function SearchPanel({
 		}
 	}
 
-	if (!workspaceUid || !vectorStoreUid || !vectorStore) {
+	if (!workspaceUid || !knowledgeBaseUid || !knowledgeBase) {
 		return (
 			<EmptyState
-				title="Pick a workspace and vector store to query"
+				title="Pick a workspace and knowledge base to query"
 				description="The query form unlocks once both are selected."
 			/>
 		);
 	}
 
+	if (!embedding) {
+		return <LoadingState label="Loading KB's embedding service…" />;
+	}
+
 	return (
 		<div className="flex flex-col gap-6">
 			<QueryForm
-				vectorStore={vectorStore}
+				target={{
+					vectorDimension: embedding.embeddingDimension,
+					embeddingProvider: `${embedding.provider}:${embedding.modelName}`,
+					lexicalSupported: knowledgeBase.lexical.enabled,
+					rerankSupported: knowledgeBase.rerankingServiceId !== null,
+				}}
 				onRun={run}
 				pending={search.isPending}
 			/>

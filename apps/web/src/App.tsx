@@ -31,9 +31,9 @@ const WorkspaceDetailPage = lazy(() =>
 		default: m.WorkspaceDetailPage,
 	})),
 );
-const CatalogExplorerPage = lazy(() =>
-	import("@/pages/CatalogExplorerPage").then((m) => ({
-		default: m.CatalogExplorerPage,
+const KnowledgeBaseExplorerPage = lazy(() =>
+	import("@/pages/KnowledgeBaseExplorerPage").then((m) => ({
+		default: m.KnowledgeBaseExplorerPage,
 	})),
 );
 
@@ -84,8 +84,8 @@ function RoutedView() {
 						element={<WorkspaceDetailPage />}
 					/>
 					<Route
-						path="/workspaces/:workspaceUid/catalogs/:catalogUid"
-						element={<CatalogExplorerPage />}
+						path="/workspaces/:workspaceUid/knowledge-bases/:knowledgeBaseUid"
+						element={<KnowledgeBaseExplorerPage />}
 					/>
 					<Route path="/playground" element={<PlaygroundPage />} />
 					<Route path="*" element={<Navigate to="/" replace />} />

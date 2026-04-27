@@ -1,35 +1,14 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { VectorStoreRecord } from "@/lib/schemas";
-import { QueryForm } from "./QueryForm";
+import { QueryForm, type QueryFormTarget } from "./QueryForm";
 
-function makeStore(
-	overrides: Partial<VectorStoreRecord> = {},
-): VectorStoreRecord {
+function makeTarget(overrides: Partial<QueryFormTarget> = {}): QueryFormTarget {
 	return {
-		workspace: "00000000-0000-4000-8000-000000000001",
-		uid: "00000000-0000-4000-8000-0000000000aa",
-		name: "vs",
 		vectorDimension: 4,
-		vectorSimilarity: "cosine",
-		embedding: {
-			provider: "mock",
-			model: "mock-embedder",
-			endpoint: null,
-			dimension: 4,
-			secretRef: null,
-		},
-		lexical: { enabled: false, analyzer: null, options: {} },
-		reranking: {
-			enabled: false,
-			provider: null,
-			model: null,
-			endpoint: null,
-			secretRef: null,
-		},
-		createdAt: "2026-04-22T10:11:12.345Z",
-		updatedAt: "2026-04-22T10:11:12.345Z",
+		embeddingProvider: "mock:mock-embedder",
+		lexicalSupported: false,
+		rerankSupported: false,
 		...overrides,
 	};
 }
@@ -38,13 +17,9 @@ describe("QueryForm", () => {
 	it("submits a text query with a parsed filter", async () => {
 		const onRun = vi.fn();
 		const user = userEvent.setup();
-		render(
-			<QueryForm vectorStore={makeStore()} onRun={onRun} pending={false} />,
-		);
+		render(<QueryForm target={makeTarget()} onRun={onRun} pending={false} />);
 
 		await user.type(screen.getByLabelText(/Query/), "blue sweater");
-		// userEvent.type treats `{` / `[` as keyboard descriptors; for
-		// JSON-shaped values we drive the textarea via fireEvent.change.
 		fireEvent.change(screen.getByLabelText(/Filter/), {
 			target: { value: '{"category": "apparel"}' },
 		});
@@ -61,9 +36,7 @@ describe("QueryForm", () => {
 	it("rejects an empty text query inline without calling onRun", async () => {
 		const onRun = vi.fn();
 		const user = userEvent.setup();
-		render(
-			<QueryForm vectorStore={makeStore()} onRun={onRun} pending={false} />,
-		);
+		render(<QueryForm target={makeTarget()} onRun={onRun} pending={false} />);
 
 		await user.click(screen.getByRole("button", { name: /Run query/ }));
 
@@ -76,9 +49,7 @@ describe("QueryForm", () => {
 		const user = userEvent.setup();
 		render(
 			<QueryForm
-				vectorStore={makeStore({
-					lexical: { enabled: true, analyzer: null, options: {} },
-				})}
+				target={makeTarget({ lexicalSupported: true })}
 				onRun={onRun}
 				pending={false}
 			/>,
@@ -102,21 +73,16 @@ describe("QueryForm", () => {
 		const user = userEvent.setup();
 		render(
 			<QueryForm
-				vectorStore={makeStore({
-					lexical: { enabled: true, analyzer: null, options: {} },
-				})}
+				target={makeTarget({ lexicalSupported: true })}
 				onRun={onRun}
 				pending={false}
 			/>,
 		);
 
-		// Pre-toggle: slider should not be in the DOM.
 		expect(screen.queryByLabelText(/Lexical weight/i)).not.toBeInTheDocument();
 
 		await user.click(screen.getByRole("checkbox", { name: /Hybrid/ }));
 
-		// Post-toggle: slider appears with the default value rendered in
-		// the label.
 		expect(
 			screen.getByLabelText(/Lexical weight \(0\.50\)/),
 		).toBeInTheDocument();
@@ -127,9 +93,7 @@ describe("QueryForm", () => {
 		const user = userEvent.setup();
 		render(
 			<QueryForm
-				vectorStore={makeStore({
-					lexical: { enabled: true, analyzer: null, options: {} },
-				})}
+				target={makeTarget({ lexicalSupported: true })}
 				onRun={onRun}
 				pending={false}
 			/>,
@@ -152,9 +116,7 @@ describe("QueryForm", () => {
 		const user = userEvent.setup();
 		render(
 			<QueryForm
-				vectorStore={makeStore({
-					lexical: { enabled: true, analyzer: null, options: {} },
-				})}
+				target={makeTarget({ lexicalSupported: true })}
 				onRun={onRun}
 				pending={false}
 			/>,
@@ -173,9 +135,7 @@ describe("QueryForm", () => {
 		const user = userEvent.setup();
 		render(
 			<QueryForm
-				vectorStore={makeStore({
-					lexical: { enabled: true, analyzer: null, options: {} },
-				})}
+				target={makeTarget({ lexicalSupported: true })}
 				onRun={onRun}
 				pending={false}
 			/>,

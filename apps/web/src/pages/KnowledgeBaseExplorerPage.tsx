@@ -1,5 +1,5 @@
-import { ArrowLeft, FolderOpen, RefreshCw, Upload } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ArrowLeft, Database, RefreshCw, Upload } from "lucide-react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ErrorState, LoadingState } from "@/components/common/states";
@@ -23,73 +23,66 @@ import { DocumentDetailDialog } from "@/components/workspaces/DocumentDetailDial
 import { DocumentTable } from "@/components/workspaces/DocumentTable";
 import { FileTypeBadge } from "@/components/workspaces/FileTypeBadge";
 import { IngestQueueDialog } from "@/components/workspaces/IngestQueueDialog";
-import { SavedQueriesSection } from "@/components/workspaces/SavedQueriesSection";
-import { useCatalogs } from "@/hooks/useCatalogs";
 import { useDeleteDocument, useDocuments } from "@/hooks/useDocuments";
+import { useKnowledgeBase } from "@/hooks/useKnowledgeBases";
 import { useWorkspace } from "@/hooks/useWorkspaces";
 import { formatApiError } from "@/lib/api";
 import { formatFileSize } from "@/lib/files";
-import type { DocumentRecord } from "@/lib/schemas";
+import type { RagDocumentRecord } from "@/lib/schemas";
 
 /**
- * Catalog explorer — `/workspaces/:wid/catalogs/:cid`. Shows the
- * documents in one catalog as a sortable, searchable table with
+ * Knowledge-base explorer — `/workspaces/:wid/knowledge-bases/:kbid`.
+ * Shows the documents in one KB as a sortable, searchable table with
  * file-type badges, sizes, statuses, and an inline detail dialog.
  *
- * The "Ingest" button here pops the multi-file / folder queue; the
- * inline single-file ingest dialog still lives on the parent
- * workspace page for one-off uploads.
+ * The "Ingest" button pops the multi-file / folder queue.
  */
-export function CatalogExplorerPage() {
-	const params = useParams<{ workspaceUid: string; catalogUid: string }>();
+export function KnowledgeBaseExplorerPage() {
+	const params = useParams<{
+		workspaceUid: string;
+		knowledgeBaseUid: string;
+	}>();
 	const workspaceUid = params.workspaceUid;
-	const catalogUid = params.catalogUid;
+	const knowledgeBaseUid = params.knowledgeBaseUid;
 
 	const ws = useWorkspace(workspaceUid);
-	const catalogs = useCatalogs(workspaceUid);
-	const docs = useDocuments(workspaceUid, catalogUid);
-
-	const catalog = useMemo(
-		() => catalogs.data?.find((c) => c.uid === catalogUid) ?? null,
-		[catalogs.data, catalogUid],
-	);
+	const kb = useKnowledgeBase(workspaceUid, knowledgeBaseUid);
+	const docs = useDocuments(workspaceUid, knowledgeBaseUid);
 
 	const [ingestOpen, setIngestOpen] = useState(false);
-	const [detail, setDetail] = useState<DocumentRecord | null>(null);
-	const [toDelete, setToDelete] = useState<DocumentRecord | null>(null);
-	const deleteDoc = useDeleteDocument(workspaceUid ?? "", catalogUid ?? "");
+	const [detail, setDetail] = useState<RagDocumentRecord | null>(null);
+	const [toDelete, setToDelete] = useState<RagDocumentRecord | null>(null);
+	const deleteDoc = useDeleteDocument(
+		workspaceUid ?? "",
+		knowledgeBaseUid ?? "",
+	);
 
-	if (!workspaceUid || !catalogUid) {
+	if (!workspaceUid || !knowledgeBaseUid) {
 		return (
 			<ErrorState
 				title="Invalid URL"
-				message="Missing workspace or catalog UID."
+				message="Missing workspace or knowledge-base UID."
 			/>
 		);
 	}
 
-	if (ws.isLoading || catalogs.isLoading) {
-		return <LoadingState label="Loading catalog…" />;
+	if (ws.isLoading || kb.isLoading) {
+		return <LoadingState label="Loading knowledge base…" />;
 	}
 	if (ws.isError) {
 		return (
 			<ErrorState title="Couldn't load workspace" message={ws.error.message} />
 		);
 	}
-	if (catalogs.isError) {
-		return (
-			<ErrorState
-				title="Couldn't load catalogs"
-				message={catalogs.error.message}
-			/>
-		);
-	}
-	if (!catalog) {
+	if (kb.isError || !kb.data) {
 		return (
 			<div className="mx-auto max-w-3xl px-6 py-10">
 				<ErrorState
-					title="Catalog not found"
-					message={`No catalog ${catalogUid} in this workspace.`}
+					title="Knowledge base not found"
+					message={
+						kb.error?.message ??
+						`No knowledge base ${knowledgeBaseUid} in this workspace.`
+					}
 					actions={
 						<Button variant="secondary" asChild>
 							<Link to={`/workspaces/${workspaceUid}`}>
@@ -102,7 +95,7 @@ export function CatalogExplorerPage() {
 		);
 	}
 
-	const canIngest = catalog.vectorStore !== null;
+	const knowledgeBase = kb.data;
 
 	return (
 		<div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
@@ -116,16 +109,18 @@ export function CatalogExplorerPage() {
 				</Link>
 				<div className="flex flex-wrap items-start justify-between gap-3">
 					<div className="flex items-start gap-3">
-						<FolderOpen className="h-7 w-7 text-slate-400 mt-1" aria-hidden />
+						<Database className="h-7 w-7 text-slate-400 mt-1" aria-hidden />
 						<div>
 							<h1 className="text-2xl font-semibold text-slate-900">
-								{catalog.name}
+								{knowledgeBase.name}
 							</h1>
-							{catalog.description ? (
-								<p className="text-sm text-slate-600">{catalog.description}</p>
+							{knowledgeBase.description ? (
+								<p className="text-sm text-slate-600">
+									{knowledgeBase.description}
+								</p>
 							) : (
 								<p className="text-xs text-slate-500 font-mono">
-									{catalog.uid}
+									{knowledgeBase.knowledgeBaseId}
 								</p>
 							)}
 						</div>
@@ -142,12 +137,6 @@ export function CatalogExplorerPage() {
 							variant="brand"
 							size="sm"
 							onClick={() => setIngestOpen(true)}
-							disabled={!canIngest}
-							title={
-								canIngest
-									? "Ingest one or more files into this catalog"
-									: "Bind this catalog to a vector store first"
-							}
 						>
 							<Upload className="h-4 w-4" /> Ingest
 						</Button>
@@ -190,31 +179,15 @@ export function CatalogExplorerPage() {
 				</CardContent>
 			</Card>
 
-			<Card>
-				<CardHeader>
-					<CardTitle>Saved queries</CardTitle>
-					<CardDescription>
-						Reusable text searches scoped to this catalog. Run them from here or
-						from the playground.
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<SavedQueriesSection
-						workspace={workspaceUid}
-						catalogUid={catalog.uid}
-					/>
-				</CardContent>
-			</Card>
-
 			<IngestQueueDialog
 				workspace={workspaceUid}
-				catalog={catalog}
+				knowledgeBase={knowledgeBase}
 				open={ingestOpen}
 				onOpenChange={setIngestOpen}
 			/>
 			<DocumentDetailDialog
 				workspace={workspaceUid}
-				catalogUid={catalog.uid}
+				knowledgeBaseUid={knowledgeBase.knowledgeBaseId}
 				doc={detail}
 				onOpenChange={(o) => !o && setDetail(null)}
 			/>
@@ -226,12 +199,12 @@ export function CatalogExplorerPage() {
 				onConfirm={async () => {
 					if (!toDelete) return;
 					try {
-						await deleteDoc.mutateAsync(toDelete.documentUid);
+						await deleteDoc.mutateAsync(toDelete.documentId);
 						toast.success(
-							`Deleted '${toDelete.sourceFilename ?? toDelete.documentUid}'`,
+							`Deleted '${toDelete.sourceFilename ?? toDelete.documentId}'`,
 							{
 								description:
-									"Document and its chunks were removed from the catalog.",
+									"Document and its chunks were removed from the knowledge base.",
 							},
 						);
 						setToDelete(null);
@@ -252,7 +225,7 @@ function DeleteDocumentDialog({
 	onOpenChange,
 	onConfirm,
 }: {
-	doc: DocumentRecord | null;
+	doc: RagDocumentRecord | null;
 	submitting: boolean;
 	onOpenChange: (open: boolean) => void;
 	onConfirm: () => void;
@@ -272,8 +245,8 @@ function DeleteDocumentDialog({
 								? "chunks"
 								: `${chunkCount} chunk${chunkCount === 1 ? "" : "s"}`}
 						</strong>{" "}
-						from the bound vector store. The original file is not deleted from
-						your computer; re-uploading it will re-create the document.
+						from the KB's vector collection. The original file is not deleted
+						from your computer; re-uploading it will re-create the document.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -284,7 +257,7 @@ function DeleteDocumentDialog({
 							fileType={doc.fileType}
 						/>
 						<span className="font-medium text-slate-900 truncate">
-							{doc.sourceFilename ?? doc.documentUid}
+							{doc.sourceFilename ?? doc.documentId}
 						</span>
 						<span className="ml-auto text-xs text-slate-500 tabular-nums">
 							{formatFileSize(doc.fileSize)}

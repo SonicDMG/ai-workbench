@@ -4,30 +4,36 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { PlaygroundSearchInput } from "@/lib/api";
-import type { VectorStoreRecord } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 
 type Tab = "text" | "vector";
+
+export interface QueryFormTarget {
+	readonly vectorDimension: number;
+	readonly embeddingProvider: string;
+	readonly lexicalSupported: boolean;
+	readonly rerankSupported: boolean;
+}
 
 /**
  * Playground query input.
  *
  * Text tab sends `{ text }`; the backend picks the server-side
  * embedding path when the driver supports it and falls back to
- * client-side embedding via the store's `embedding` config.
+ * client-side embedding via the KB's bound embedding service.
  * Vector tab sends `{ vector }` directly — expects a JSON array of
- * numbers with length == `vs.vectorDimension`.
+ * numbers with length == `target.vectorDimension`.
  *
  * Filter input is a JSON textarea. Empty means no filter. We parse
  * on submit and surface a clear message inline if it's invalid
  * rather than posting a broken body.
  */
 export function QueryForm({
-	vectorStore,
+	target,
 	onRun,
 	pending,
 }: {
-	vectorStore: VectorStoreRecord;
+	target: QueryFormTarget;
 	onRun: (input: PlaygroundSearchInput) => void;
 	pending: boolean;
 }) {
@@ -41,8 +47,8 @@ export function QueryForm({
 	const [rerank, setRerank] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const lexicalSupported = vectorStore.lexical.enabled;
-	const rerankSupported = vectorStore.reranking.enabled;
+	const lexicalSupported = target.lexicalSupported;
+	const rerankSupported = target.rerankSupported;
 
 	function submit() {
 		setError(null);
@@ -97,9 +103,9 @@ export function QueryForm({
 			);
 			return;
 		}
-		if (vec.length !== vectorStore.vectorDimension) {
+		if (vec.length !== target.vectorDimension) {
 			setError(
-				`vector length ${vec.length} doesn't match store dimension ${vectorStore.vectorDimension}`,
+				`vector length ${vec.length} doesn't match store dimension ${target.vectorDimension}`,
 			);
 			return;
 		}
@@ -128,22 +134,22 @@ export function QueryForm({
 						placeholder="e.g. a blue sweater for cold weather"
 					/>
 					<p className="text-xs text-slate-500">
-						The runtime embeds via the vector store's configured provider (
-						<span className="font-mono">{vectorStore.embedding.provider}</span>)
-						when the backend can't do it server-side.
+						The runtime embeds via the KB's bound embedding service (
+						<span className="font-mono">{target.embeddingProvider}</span>) when
+						the backend can't do it server-side.
 					</p>
 				</div>
 			) : (
 				<div className="flex flex-col gap-1.5">
 					<Label htmlFor="pg-vec">
-						Vector ({vectorStore.vectorDimension} floats)
+						Vector ({target.vectorDimension} floats)
 					</Label>
 					<textarea
 						id="pg-vec"
 						className="min-h-[96px] rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:border-[var(--color-brand-500)]"
 						value={vectorStr}
 						onChange={(e) => setVectorStr(e.target.value)}
-						placeholder={`[0.12, -0.05, …]  // length ${vectorStore.vectorDimension}`}
+						placeholder={`[0.12, -0.05, …]  // length ${target.vectorDimension}`}
 					/>
 				</div>
 			)}

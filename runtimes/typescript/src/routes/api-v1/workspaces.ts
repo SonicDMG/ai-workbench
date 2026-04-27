@@ -35,6 +35,7 @@ import {
 	WorkspaceUidParamSchema,
 } from "../../openapi/schemas.js";
 import type { SecretResolver } from "../../secrets/provider.js";
+import { resolveKb } from "./kb-descriptor.js";
 
 export interface WorkspaceRouteDeps {
 	readonly store: ControlPlaneStore;
@@ -184,7 +185,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			path: "/{workspaceUid}",
 			tags: ["workspaces"],
 			summary:
-				"Delete a workspace (cascades to catalogs/vector stores/documents)",
+				"Delete a workspace (cascades to KBs, services, documents, and their collections)",
 			request: { params: z.object({ workspaceUid: WorkspaceUidParamSchema }) },
 			responses: {
 				204: { description: "Deleted" },
@@ -200,7 +201,19 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			const workspace = await store.getWorkspace(workspaceUid);
 			if (!workspace)
 				throw new ControlPlaneNotFoundError("workspace", workspaceUid);
-			const descriptors = await store.listVectorStores(workspaceUid);
+			// Resolve every KB into a driver descriptor, drop their
+			// collections, then delete the workspace row (which cascades
+			// the rest of the schema).
+			const kbs = await store.listKnowledgeBases(workspaceUid);
+			const descriptors: VectorStoreRecord[] = [];
+			for (const kb of kbs) {
+				const resolved = await resolveKb(
+					store,
+					workspaceUid,
+					kb.knowledgeBaseId,
+				);
+				descriptors.push(resolved.descriptor);
+			}
 			await dropWorkspaceCollections({ workspace, descriptors, drivers });
 			const { deleted } = await store.deleteWorkspace(workspaceUid);
 			if (!deleted)

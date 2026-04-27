@@ -2,17 +2,19 @@
  * Hono app factory — the default (TypeScript) AI Workbench green box.
  *
  * Mounts:
- *   `/`, `/healthz`, `/readyz`, `/version`        operational
- *   `/api/v1/workspaces`                          workspaces CRUD
- *   `/api/v1/workspaces/{w}/catalogs`             catalogs CRUD
- *   `/api/v1/workspaces/{w}/catalogs/{c}/documents`  document metadata CRUD
- *   `/api/v1/workspaces/{w}/catalogs/{c}/documents/search`  catalog-scoped search
- *   `/api/v1/workspaces/{w}/catalogs/{c}/ingest`  sync + async ingest
- *   `/api/v1/workspaces/{w}/jobs/{jobId}`         job poll + SSE
- *   `/api/v1/workspaces/{w}/catalogs/{c}/queries`  saved queries CRUD + /run
- *   `/api/v1/workspaces/{w}/vector-stores`        vector-store descriptor CRUD
- *   `/api/v1/openapi.json`                        generated OpenAPI doc
- *   `/docs`                                       Scalar-rendered docs
+ *   `/`, `/healthz`, `/readyz`, `/version`                            operational
+ *   `/api/v1/workspaces`                                              workspaces CRUD
+ *   `/api/v1/workspaces/{w}/knowledge-bases`                          KB CRUD
+ *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents`           document CRUD
+ *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents/{d}/chunks` chunk listing
+ *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest`              sync + async ingest
+ *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records`             upsert
+ *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records/{id}`        delete record
+ *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/search`              vector / hybrid / rerank
+ *   `/api/v1/workspaces/{w}/{chunking,embedding,reranking}-services`  service CRUD
+ *   `/api/v1/workspaces/{w}/jobs/{jobId}`                             job poll + SSE
+ *   `/api/v1/openapi.json`                                            generated OpenAPI doc
+ *   `/docs`                                                           Scalar-rendered docs
  */
 
 import { randomUUID } from "node:crypto";
@@ -39,12 +41,14 @@ import { requestId } from "./lib/request-id.js";
 import { securityHeaders } from "./lib/security-headers.js";
 import type { AppEnv } from "./lib/types.js";
 import { apiKeyRoutes } from "./routes/api-v1/api-keys.js";
-import { catalogRoutes } from "./routes/api-v1/catalogs.js";
-import { documentRoutes } from "./routes/api-v1/documents.js";
+import { chunkingServiceRoutes } from "./routes/api-v1/chunking-services.js";
+import { embeddingServiceRoutes } from "./routes/api-v1/embedding-services.js";
 import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
 import { jobRoutes } from "./routes/api-v1/jobs.js";
-import { savedQueryRoutes } from "./routes/api-v1/saved-queries.js";
-import { vectorStoreRoutes } from "./routes/api-v1/vector-stores.js";
+import { kbDataPlaneRoutes } from "./routes/api-v1/kb-data-plane.js";
+import { kbDocumentRoutes } from "./routes/api-v1/kb-documents.js";
+import { knowledgeBaseRoutes } from "./routes/api-v1/knowledge-bases.js";
+import { rerankingServiceRoutes } from "./routes/api-v1/reranking-services.js";
 import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
 import { authLoginRoutes } from "./routes/auth.js";
 import type { ReadinessSignal } from "./routes/operational.js";
@@ -164,33 +168,33 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			drivers: opts.drivers,
 		}),
 	);
-	app.route("/api/v1/workspaces", catalogRoutes(opts.store));
+	app.route("/api/v1/workspaces", jobRoutes({ jobs: jobsStore }));
+	app.route("/api/v1/workspaces", apiKeyRoutes(opts.store));
+	// Knowledge-base routes (issue #98). The legacy /catalogs and
+	// /vector-stores surface was retired in phase 1c.
 	app.route(
 		"/api/v1/workspaces",
-		documentRoutes({
+		knowledgeBaseRoutes({ store: opts.store, drivers: opts.drivers }),
+	);
+	app.route("/api/v1/workspaces", chunkingServiceRoutes(opts.store));
+	app.route("/api/v1/workspaces", embeddingServiceRoutes(opts.store));
+	app.route("/api/v1/workspaces", rerankingServiceRoutes(opts.store));
+	app.route(
+		"/api/v1/workspaces",
+		kbDataPlaneRoutes({
+			store: opts.store,
+			drivers: opts.drivers,
+			embedders: opts.embedders,
+		}),
+	);
+	app.route(
+		"/api/v1/workspaces",
+		kbDocumentRoutes({
 			store: opts.store,
 			drivers: opts.drivers,
 			embedders: opts.embedders,
 			jobs: jobsStore,
 			replicaId,
-		}),
-	);
-	app.route("/api/v1/workspaces", jobRoutes({ jobs: jobsStore }));
-	app.route(
-		"/api/v1/workspaces",
-		savedQueryRoutes({
-			store: opts.store,
-			drivers: opts.drivers,
-			embedders: opts.embedders,
-		}),
-	);
-	app.route("/api/v1/workspaces", apiKeyRoutes(opts.store));
-	app.route(
-		"/api/v1/workspaces",
-		vectorStoreRoutes({
-			store: opts.store,
-			drivers: opts.drivers,
-			embedders: opts.embedders,
 		}),
 	);
 

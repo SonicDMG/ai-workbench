@@ -1,41 +1,44 @@
 import { z } from "zod";
 import { getAuthToken } from "./authToken";
 import {
-	type AdoptableCollection,
-	AdoptableCollectionSchema,
 	ApiKeyPageSchema,
 	type ApiKeyRecord,
-	type AsyncIngestResponse,
-	AsyncIngestResponseSchema,
-	CatalogPageSchema,
-	type CatalogRecord,
-	CatalogRecordSchema,
+	ChunkingServicePageSchema,
+	type ChunkingServiceRecord,
+	ChunkingServiceRecordSchema,
 	type CreateApiKeyInput,
-	type CreateCatalogInput,
+	type CreateChunkingServiceInput,
 	type CreatedApiKeyResponse,
 	CreatedApiKeyResponseSchema,
-	type CreateSavedQueryInput,
-	type CreateVectorStoreInput,
+	type CreateEmbeddingServiceInput,
+	type CreateKnowledgeBaseInput,
+	type CreateRerankingServiceInput,
 	type CreateWorkspaceInput,
 	type DocumentChunk,
 	DocumentChunkSchema,
-	DocumentPageSchema,
-	type DocumentRecord,
+	EmbeddingServicePageSchema,
+	type EmbeddingServiceRecord,
+	EmbeddingServiceRecordSchema,
 	ErrorEnvelopeSchema,
-	type IngestRequest,
 	type JobRecord,
 	JobRecordSchema,
-	SavedQueryPageSchema,
-	type SavedQueryRecord,
-	SavedQueryRecordSchema,
+	type KbAsyncIngestResponse,
+	KbAsyncIngestResponseSchema,
+	type KbIngestRequest,
+	KnowledgeBasePageSchema,
+	type KnowledgeBaseRecord,
+	KnowledgeBaseRecordSchema,
+	RagDocumentPageSchema,
+	type RagDocumentRecord,
+	RerankingServicePageSchema,
+	type RerankingServiceRecord,
+	RerankingServiceRecordSchema,
 	type SearchHit,
 	SearchHitSchema,
 	type TestConnectionResult,
 	TestConnectionResultSchema,
+	type UpdateKnowledgeBaseInput,
 	type UpdateWorkspaceInput,
-	VectorStorePageSchema,
-	type VectorStoreRecord,
-	VectorStoreRecordSchema,
 	type Workspace,
 	WorkspacePageSchema,
 	WorkspaceRecordSchema,
@@ -62,12 +65,6 @@ export class ApiError extends Error {
 	}
 }
 
-/**
- * Render any caught value into a single human-readable line for a
- * toast description or inline error banner. Centralizes the
- * `ApiError ? "code: message" : Error ? message : "Unknown error"`
- * shape that was duplicated across every dialog and mutation site.
- */
 export function formatApiError(err: unknown): string {
 	if (err instanceof ApiError) return `${err.code}: ${err.message}`;
 	if (err instanceof Error) return err.message;
@@ -102,11 +99,6 @@ async function request<T>(
 	const body: unknown = text.length > 0 ? JSON.parse(text) : null;
 
 	if (res.status === 401 && !token) {
-		// Session expired (or never existed) and no paste-token is
-		// active. Phase 3c: try a silent refresh once before falling
-		// through to the login redirect. The check returns true only
-		// when the runtime advertises `refreshPath` in /auth/config —
-		// for the apiKey-only and disabled-auth deployments it's a no-op.
 		if (opts.retryAfterRefresh !== false && (await trySilentRefresh())) {
 			return request(path, init, responseSchema, { retryAfterRefresh: false });
 		}
@@ -135,13 +127,6 @@ async function request<T>(
 	return responseSchema.parse(body);
 }
 
-/**
- * Single-flight gate: only one /auth/refresh request is in flight at
- * a time. Concurrent 401s from a wall of in-flight queries all wait
- * on the same refresh attempt and either retry or redirect together.
- * The promise resolves to `true` when the cookie was rotated and the
- * caller should retry.
- */
 let inFlightRefresh: Promise<boolean> | null = null;
 async function trySilentRefresh(): Promise<boolean> {
 	if (inFlightRefresh) return inFlightRefresh;
@@ -162,10 +147,6 @@ async function trySilentRefresh(): Promise<boolean> {
 	}
 }
 
-// Cache the auth config look-up so a wall of 401s doesn't fire off
-// a /auth/config request for every one. Only the first 401 in a
-// page lifetime triggers a redirect; subsequent ones just throw
-// normally and surface in whatever UI is calling.
 let redirecting = false;
 async function maybeRedirectToLogin(): Promise<void> {
 	if (redirecting) return;
@@ -177,7 +158,7 @@ async function maybeRedirectToLogin(): Promise<void> {
 			window.location.assign(loginHref(cfg.loginPath, here));
 		}
 	} catch {
-		// leave the caller's ApiError(401) to surface normally
+		// surface the original 401
 	} finally {
 		redirecting = false;
 	}
@@ -249,146 +230,214 @@ export const api = {
 			null,
 		),
 
-	listVectorStores: (workspaceUid: string): Promise<VectorStoreRecord[]> =>
+	/* -------- Knowledge bases -------- */
+
+	listKnowledgeBases: (workspaceUid: string): Promise<KnowledgeBaseRecord[]> =>
 		request(
-			`/workspaces/${workspaceUid}/vector-stores`,
+			`/workspaces/${workspaceUid}/knowledge-bases`,
 			{ method: "GET" },
-			VectorStorePageSchema,
+			KnowledgeBasePageSchema,
 		).then((page) => page.items),
 
-	createVectorStore: (
+	getKnowledgeBase: (
 		workspaceUid: string,
-		input: CreateVectorStoreInput,
-	): Promise<VectorStoreRecord> =>
+		kbUid: string,
+	): Promise<KnowledgeBaseRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/vector-stores`,
-			{ method: "POST", body: JSON.stringify(input) },
-			VectorStoreRecordSchema,
-		),
-
-	deleteVectorStore: (workspaceUid: string, uid: string): Promise<void> =>
-		request(
-			`/workspaces/${workspaceUid}/vector-stores/${uid}`,
-			{ method: "DELETE" },
-			null,
-		),
-
-	listDiscoverableCollections: (
-		workspaceUid: string,
-	): Promise<AdoptableCollection[]> =>
-		request(
-			`/workspaces/${workspaceUid}/vector-stores/discoverable`,
+			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}`,
 			{ method: "GET" },
-			z.array(AdoptableCollectionSchema),
+			KnowledgeBaseRecordSchema,
 		),
 
-	adoptCollection: (
+	createKnowledgeBase: (
 		workspaceUid: string,
-		collectionName: string,
-	): Promise<VectorStoreRecord> =>
+		input: CreateKnowledgeBaseInput,
+	): Promise<KnowledgeBaseRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/vector-stores/adopt`,
-			{ method: "POST", body: JSON.stringify({ collectionName }) },
-			VectorStoreRecordSchema,
-		),
-
-	search: (
-		workspaceUid: string,
-		vectorStore: string,
-		input: PlaygroundSearchInput,
-	): Promise<SearchHit[]> =>
-		request(
-			`/workspaces/${workspaceUid}/vector-stores/${vectorStore}/search`,
-			{ method: "POST", body: JSON.stringify(input) },
-			z.array(SearchHitSchema),
-		),
-
-	/* -------- Catalogs -------- */
-
-	listCatalogs: (workspaceUid: string): Promise<CatalogRecord[]> =>
-		request(
-			`/workspaces/${workspaceUid}/catalogs`,
-			{ method: "GET" },
-			CatalogPageSchema,
-		).then((page) => page.items),
-
-	createCatalog: (
-		workspaceUid: string,
-		input: CreateCatalogInput,
-	): Promise<CatalogRecord> =>
-		request(
-			`/workspaces/${workspaceUid}/catalogs`,
+			`/workspaces/${workspaceUid}/knowledge-bases`,
 			{
 				method: "POST",
 				body: JSON.stringify({
 					name: input.name,
 					description: input.description ? input.description : null,
-					vectorStore: input.vectorStore ?? null,
+					embeddingServiceId: input.embeddingServiceId,
+					chunkingServiceId: input.chunkingServiceId,
+					rerankingServiceId: input.rerankingServiceId ?? null,
+					language: input.language ? input.language : null,
 				}),
 			},
-			CatalogRecordSchema,
+			KnowledgeBaseRecordSchema,
 		),
 
-	deleteCatalog: (workspaceUid: string, catalogUid: string): Promise<void> =>
+	updateKnowledgeBase: (
+		workspaceUid: string,
+		kbUid: string,
+		patch: UpdateKnowledgeBaseInput,
+	): Promise<KnowledgeBaseRecord> => {
+		const body: Record<string, unknown> = {};
+		if (patch.name !== undefined) body.name = patch.name;
+		if (patch.description !== undefined)
+			body.description = patch.description ? patch.description : null;
+		if (patch.status !== undefined) body.status = patch.status;
+		if (patch.rerankingServiceId !== undefined)
+			body.rerankingServiceId = patch.rerankingServiceId;
+		if (patch.language !== undefined)
+			body.language = patch.language ? patch.language : null;
+		return request(
+			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}`,
+			{ method: "PUT", body: JSON.stringify(body) },
+			KnowledgeBaseRecordSchema,
+		);
+	},
+
+	deleteKnowledgeBase: (workspaceUid: string, kbUid: string): Promise<void> =>
 		request(
-			`/workspaces/${workspaceUid}/catalogs/${catalogUid}`,
+			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}`,
 			{ method: "DELETE" },
 			null,
 		),
 
-	/* -------- Documents -------- */
+	/* -------- Execution services -------- */
 
-	listDocuments: (
+	listChunkingServices: (
 		workspaceUid: string,
-		catalogUid: string,
-	): Promise<DocumentRecord[]> =>
+	): Promise<ChunkingServiceRecord[]> =>
 		request(
-			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/documents`,
+			`/workspaces/${workspaceUid}/chunking-services`,
 			{ method: "GET" },
-			DocumentPageSchema,
+			ChunkingServicePageSchema,
 		).then((page) => page.items),
 
-	listDocumentChunks: (
+	createChunkingService: (
 		workspaceUid: string,
-		catalogUid: string,
+		input: CreateChunkingServiceInput,
+	): Promise<ChunkingServiceRecord> =>
+		request(
+			`/workspaces/${workspaceUid}/chunking-services`,
+			{ method: "POST", body: JSON.stringify(stripEmptyStrings(input)) },
+			ChunkingServiceRecordSchema,
+		),
+
+	deleteChunkingService: (workspaceUid: string, uid: string): Promise<void> =>
+		request(
+			`/workspaces/${workspaceUid}/chunking-services/${uid}`,
+			{ method: "DELETE" },
+			null,
+		),
+
+	listEmbeddingServices: (
+		workspaceUid: string,
+	): Promise<EmbeddingServiceRecord[]> =>
+		request(
+			`/workspaces/${workspaceUid}/embedding-services`,
+			{ method: "GET" },
+			EmbeddingServicePageSchema,
+		).then((page) => page.items),
+
+	createEmbeddingService: (
+		workspaceUid: string,
+		input: CreateEmbeddingServiceInput,
+	): Promise<EmbeddingServiceRecord> =>
+		request(
+			`/workspaces/${workspaceUid}/embedding-services`,
+			{ method: "POST", body: JSON.stringify(stripEmptyStrings(input)) },
+			EmbeddingServiceRecordSchema,
+		),
+
+	deleteEmbeddingService: (workspaceUid: string, uid: string): Promise<void> =>
+		request(
+			`/workspaces/${workspaceUid}/embedding-services/${uid}`,
+			{ method: "DELETE" },
+			null,
+		),
+
+	listRerankingServices: (
+		workspaceUid: string,
+	): Promise<RerankingServiceRecord[]> =>
+		request(
+			`/workspaces/${workspaceUid}/reranking-services`,
+			{ method: "GET" },
+			RerankingServicePageSchema,
+		).then((page) => page.items),
+
+	createRerankingService: (
+		workspaceUid: string,
+		input: CreateRerankingServiceInput,
+	): Promise<RerankingServiceRecord> =>
+		request(
+			`/workspaces/${workspaceUid}/reranking-services`,
+			{ method: "POST", body: JSON.stringify(stripEmptyStrings(input)) },
+			RerankingServiceRecordSchema,
+		),
+
+	deleteRerankingService: (workspaceUid: string, uid: string): Promise<void> =>
+		request(
+			`/workspaces/${workspaceUid}/reranking-services/${uid}`,
+			{ method: "DELETE" },
+			null,
+		),
+
+	/* -------- KB documents -------- */
+
+	listKbDocuments: (
+		workspaceUid: string,
+		kbUid: string,
+	): Promise<RagDocumentRecord[]> =>
+		request(
+			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/documents`,
+			{ method: "GET" },
+			RagDocumentPageSchema,
+		).then((page) => page.items),
+
+	listKbDocumentChunks: (
+		workspaceUid: string,
+		kbUid: string,
 		documentUid: string,
 		opts?: { limit?: number },
 	): Promise<DocumentChunk[]> => {
 		const qs = opts?.limit ? `?limit=${opts.limit}` : "";
 		return request(
-			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/documents/${documentUid}/chunks${qs}`,
+			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/documents/${documentUid}/chunks${qs}`,
 			{ method: "GET" },
 			z.array(DocumentChunkSchema),
 		);
 	},
 
-	deleteDocument: (
+	deleteKbDocument: (
 		workspaceUid: string,
-		catalogUid: string,
+		kbUid: string,
 		documentUid: string,
 	): Promise<void> =>
 		request(
-			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/documents/${documentUid}`,
+			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/documents/${documentUid}`,
 			{ method: "DELETE" },
 			null,
 		),
 
+	/* -------- KB data plane -------- */
+
+	kbSearch: (
+		workspaceUid: string,
+		kbUid: string,
+		input: PlaygroundSearchInput,
+	): Promise<SearchHit[]> =>
+		request(
+			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/search`,
+			{ method: "POST", body: JSON.stringify(input) },
+			z.array(SearchHitSchema),
+		),
+
 	/* -------- Ingest + jobs -------- */
 
-	/**
-	 * Async ingest. The response comes back immediately with a job +
-	 * document pointer; the pipeline runs in the background and the
-	 * caller polls {@link api.getJob} for progress.
-	 */
-	ingestAsync: (
+	kbIngestAsync: (
 		workspaceUid: string,
-		catalogUid: string,
-		input: IngestRequest,
-	): Promise<AsyncIngestResponse> =>
+		kbUid: string,
+		input: KbIngestRequest,
+	): Promise<KbAsyncIngestResponse> =>
 		request(
-			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/ingest?async=true`,
+			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/ingest?async=true`,
 			{ method: "POST", body: JSON.stringify(input) },
-			AsyncIngestResponseSchema,
+			KbAsyncIngestResponseSchema,
 		),
 
 	getJob: (workspaceUid: string, jobId: string): Promise<JobRecord> =>
@@ -396,60 +445,6 @@ export const api = {
 			`/workspaces/${workspaceUid}/jobs/${jobId}`,
 			{ method: "GET" },
 			JobRecordSchema,
-		),
-
-	/* -------- Saved queries -------- */
-
-	listSavedQueries: (
-		workspaceUid: string,
-		catalogUid: string,
-	): Promise<SavedQueryRecord[]> =>
-		request(
-			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/queries`,
-			{ method: "GET" },
-			SavedQueryPageSchema,
-		).then((page) => page.items),
-
-	createSavedQuery: (
-		workspaceUid: string,
-		catalogUid: string,
-		input: CreateSavedQueryInput,
-	): Promise<SavedQueryRecord> =>
-		request(
-			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/queries`,
-			{
-				method: "POST",
-				body: JSON.stringify({
-					name: input.name,
-					description: input.description ? input.description : null,
-					text: input.text,
-					topK: input.topK ?? null,
-					filter: input.filter ?? null,
-				}),
-			},
-			SavedQueryRecordSchema,
-		),
-
-	deleteSavedQuery: (
-		workspaceUid: string,
-		catalogUid: string,
-		queryUid: string,
-	): Promise<void> =>
-		request(
-			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/queries/${queryUid}`,
-			{ method: "DELETE" },
-			null,
-		),
-
-	runSavedQuery: (
-		workspaceUid: string,
-		catalogUid: string,
-		queryUid: string,
-	): Promise<SearchHit[]> =>
-		request(
-			`/workspaces/${workspaceUid}/catalogs/${catalogUid}/queries/${queryUid}/run`,
-			{ method: "POST" },
-			z.array(SearchHitSchema),
 		),
 };
 
@@ -459,17 +454,11 @@ export interface PlaygroundSearchInput {
 	readonly topK?: number;
 	readonly filter?: Record<string, unknown>;
 	readonly includeEmbeddings?: boolean;
-	/** Opt into the hybrid (vector + lexical) lane. Requires `text`. */
 	readonly hybrid?: boolean;
-	/** Weight of the lexical score in the hybrid combination (0..1). */
 	readonly lexicalWeight?: number;
-	/** Opt into driver-side reranking after retrieval. Requires `text`. */
 	readonly rerank?: boolean;
 }
 
-// Normalize form empties to match the backend's nullable contract: empty
-// strings → null so the server doesn't see "". credentialsRef keys with
-// empty names get dropped.
 function normalizeCreate(input: CreateWorkspaceInput) {
 	return {
 		name: input.name,
@@ -501,4 +490,20 @@ function pruneCredentials(
 	);
 	if (entries.length === 0) return undefined;
 	return Object.fromEntries(entries);
+}
+
+/**
+ * Drop empty-string entries before sending — the form layer uses ""
+ * as the "not set" sentinel for optional text fields, but the backend
+ * expects either a real value or the field to be absent.
+ */
+function stripEmptyStrings<T extends Record<string, unknown>>(
+	input: T,
+): Partial<T> {
+	const out: Partial<T> = {};
+	for (const [k, v] of Object.entries(input)) {
+		if (v === "" || v === null || v === undefined) continue;
+		(out as Record<string, unknown>)[k] = v;
+	}
+	return out;
 }

@@ -23,13 +23,22 @@ import type {
 	TableUpdateFilter,
 } from "@datastax/astra-db-ts";
 import type {
+	AgentRow,
 	ApiKeyLookupRow,
 	ApiKeyRow,
-	CatalogRow,
-	DocumentRow,
+	ChunkingServiceRow,
+	ConfigWorkspaceRow,
+	ConversationRow,
+	EmbeddingServiceRow,
 	JobRow,
-	SavedQueryRow,
-	VectorStoreRow,
+	KnowledgeBaseRow,
+	LlmServiceRow,
+	McpToolRow,
+	MessageRow,
+	RagDocumentByContentHashRow,
+	RagDocumentByStatusRow,
+	RagDocumentRow,
+	RerankingServiceRow,
 	WorkspaceRow,
 } from "../../src/astra-client/row-types.js";
 import type {
@@ -98,12 +107,22 @@ class FakeTable<Row extends SomeRow> implements TableLike<Row> {
 export function createFakeTablesBundle(): TablesBundle {
 	return {
 		workspaces: new FakeTable<WorkspaceRow>(),
-		catalogs: new FakeTable<CatalogRow>(),
-		vectorStores: new FakeTable<VectorStoreRow>(),
-		documents: new FakeTable<DocumentRow>(),
-		savedQueries: new FakeTable<SavedQueryRow>(),
 		jobs: new FakeTable<JobRow>(),
 		apiKeys: new FakeTable<ApiKeyRow>(),
 		apiKeyLookup: new FakeTable<ApiKeyLookupRow>(),
+		// Knowledge-base schema (issue #98).
+		configWorkspaces: new FakeTable<ConfigWorkspaceRow>(),
+		knowledgeBases: new FakeTable<KnowledgeBaseRow>(),
+		chunkingServices: new FakeTable<ChunkingServiceRow>(),
+		embeddingServices: new FakeTable<EmbeddingServiceRow>(),
+		rerankingServices: new FakeTable<RerankingServiceRow>(),
+		llmServices: new FakeTable<LlmServiceRow>(),
+		mcpTools: new FakeTable<McpToolRow>(),
+		ragDocuments: new FakeTable<RagDocumentRow>(),
+		ragDocumentsByStatus: new FakeTable<RagDocumentByStatusRow>(),
+		ragDocumentsByHash: new FakeTable<RagDocumentByContentHashRow>(),
+		agents: new FakeTable<AgentRow>(),
+		conversations: new FakeTable<ConversationRow>(),
+		messages: new FakeTable<MessageRow>(),
 	};
 }

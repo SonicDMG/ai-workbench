@@ -1,19 +1,21 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { DocumentRecord } from "@/lib/schemas";
+import type { RagDocumentRecord } from "@/lib/schemas";
 import { DocumentTable } from "./DocumentTable";
 
-function makeDoc(overrides: Partial<DocumentRecord> = {}): DocumentRecord {
+function makeDoc(
+	overrides: Partial<RagDocumentRecord> = {},
+): RagDocumentRecord {
 	return {
-		workspace: "00000000-0000-4000-8000-000000000001",
-		catalogUid: "00000000-0000-4000-8000-000000000002",
-		documentUid: `doc-${Math.random()}`,
+		workspaceId: "00000000-0000-4000-8000-000000000001",
+		knowledgeBaseId: "00000000-0000-4000-8000-000000000002",
+		documentId: `doc-${Math.random()}`,
 		sourceDocId: null,
 		sourceFilename: "default.txt",
 		fileType: "text/plain",
 		fileSize: 1024,
-		md5Hash: null,
+		contentHash: null,
 		chunkTotal: 4,
 		ingestedAt: "2026-04-25T10:00:00.000Z",
 		updatedAt: "2026-04-25T10:00:00.000Z",
@@ -103,7 +105,7 @@ describe("DocumentTable", () => {
 		// Clicking the cell propagates to the row.
 		fireEvent.click(screen.getByText("click-me.md"));
 		expect(onSelect).toHaveBeenCalledTimes(1);
-		expect(onSelect.mock.calls[0]?.[0].documentUid).toBe(doc.documentUid);
+		expect(onSelect.mock.calls[0]?.[0].documentId).toBe(doc.documentId);
 	});
 
 	it("renders a delete button when onDelete is provided and stops row-click propagation", async () => {
@@ -119,7 +121,7 @@ describe("DocumentTable", () => {
 			screen.getByRole("button", { name: /Delete drop-me\.md/ }),
 		);
 		expect(onDelete).toHaveBeenCalledTimes(1);
-		expect(onDelete.mock.calls[0]?.[0].documentUid).toBe(doc.documentUid);
+		expect(onDelete.mock.calls[0]?.[0].documentId).toBe(doc.documentId);
 		// Row-click handler must NOT fire — destructive actions
 		// shouldn't pop the metadata dialog at the same time.
 		expect(onSelect).not.toHaveBeenCalled();
@@ -132,7 +134,7 @@ describe("DocumentTable", () => {
 			<DocumentTable
 				docs={[doc]}
 				onDelete={onDelete}
-				deletingDocumentId={doc.documentUid}
+				deletingDocumentId={doc.documentId}
 			/>,
 		);
 		const btn = screen.getByRole("button", { name: /Delete wait\.md/ });

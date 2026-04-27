@@ -16,16 +16,19 @@
 
 import type {
 	ApiKeyRecord,
-	CatalogRecord,
-	DocumentRecord,
+	AuthType,
+	ChunkingServiceRecord,
+	DistanceMetric,
 	DocumentStatus,
-	EmbeddingConfig,
+	EmbeddingServiceRecord,
+	KnowledgeBaseLanguage,
+	KnowledgeBaseRecord,
+	KnowledgeBaseStatus,
 	LexicalConfig,
-	RerankingConfig,
-	SavedQueryRecord,
+	RagDocumentRecord,
+	RerankingServiceRecord,
 	SecretRef,
-	VectorSimilarity,
-	VectorStoreRecord,
+	ServiceStatus,
 	WorkspaceKind,
 	WorkspaceRecord,
 } from "./types.js";
@@ -58,33 +61,16 @@ export interface UpdateWorkspaceInput {
 }
 
 /* ------------------------------------------------------------------ */
-/* Catalog                                                            */
+/* RAG document (KB-scoped — issue #98)                               */
 /* ------------------------------------------------------------------ */
 
-export interface CreateCatalogInput {
-	readonly uid?: string;
-	readonly name: string;
-	readonly description?: string | null;
-	readonly vectorStore?: string | null;
-}
-
-export interface UpdateCatalogInput {
-	readonly name?: string;
-	readonly description?: string | null;
-	readonly vectorStore?: string | null;
-}
-
-/* ------------------------------------------------------------------ */
-/* Document                                                           */
-/* ------------------------------------------------------------------ */
-
-export interface CreateDocumentInput {
+export interface CreateRagDocumentInput {
 	readonly uid?: string;
 	readonly sourceDocId?: string | null;
 	readonly sourceFilename?: string | null;
 	readonly fileType?: string | null;
 	readonly fileSize?: number | null;
-	readonly md5Hash?: string | null;
+	readonly contentHash?: string | null;
 	readonly chunkTotal?: number | null;
 	readonly ingestedAt?: string | null;
 	readonly status?: DocumentStatus;
@@ -92,39 +78,9 @@ export interface CreateDocumentInput {
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
-export interface UpdateDocumentInput {
-	readonly sourceDocId?: string | null;
-	readonly sourceFilename?: string | null;
-	readonly fileType?: string | null;
-	readonly fileSize?: number | null;
-	readonly md5Hash?: string | null;
-	readonly chunkTotal?: number | null;
-	readonly ingestedAt?: string | null;
-	readonly status?: DocumentStatus;
-	readonly errorMessage?: string | null;
-	readonly metadata?: Readonly<Record<string, string>>;
-}
-
-/* ------------------------------------------------------------------ */
-/* Saved query                                                        */
-/* ------------------------------------------------------------------ */
-
-export interface CreateSavedQueryInput {
-	readonly uid?: string;
-	readonly name: string;
-	readonly description?: string | null;
-	readonly text: string;
-	readonly topK?: number | null;
-	readonly filter?: Readonly<Record<string, unknown>> | null;
-}
-
-export interface UpdateSavedQueryInput {
-	readonly name?: string;
-	readonly description?: string | null;
-	readonly text?: string;
-	readonly topK?: number | null;
-	readonly filter?: Readonly<Record<string, unknown>> | null;
-}
+export type UpdateRagDocumentInput = Partial<
+	Omit<CreateRagDocumentInput, "uid">
+>;
 
 /* ------------------------------------------------------------------ */
 /* API key                                                            */
@@ -144,27 +100,117 @@ export interface PersistApiKeyInput {
 }
 
 /* ------------------------------------------------------------------ */
-/* Vector store                                                       */
+/* Knowledge base (issue #98)                                         */
 /* ------------------------------------------------------------------ */
 
-export interface CreateVectorStoreInput {
+export interface CreateKnowledgeBaseInput {
 	readonly uid?: string;
 	readonly name: string;
-	readonly vectorDimension: number;
-	readonly vectorSimilarity?: VectorSimilarity;
-	readonly embedding: EmbeddingConfig;
+	readonly description?: string | null;
+	readonly status?: KnowledgeBaseStatus;
+	readonly embeddingServiceId: string;
+	readonly chunkingServiceId: string;
+	readonly rerankingServiceId?: string | null;
+	readonly language?: KnowledgeBaseLanguage | null;
 	readonly lexical?: LexicalConfig;
-	readonly reranking?: RerankingConfig;
+	/** Optional override for the auto-provisioned vector collection name.
+	 * If omitted the store generates `wb_vectors_<knowledge_base_id>`. */
+	readonly vectorCollection?: string | null;
 }
 
-export interface UpdateVectorStoreInput {
+/**
+ * Patch a Knowledge Base. `embeddingServiceId` and `chunkingServiceId`
+ * are intentionally absent — they're immutable after creation because
+ * existing vectors / chunks on disk are bound to the model that
+ * produced them. Re-embedding is a separate operation.
+ */
+export interface UpdateKnowledgeBaseInput {
 	readonly name?: string;
-	readonly vectorDimension?: number;
-	readonly vectorSimilarity?: VectorSimilarity;
-	readonly embedding?: EmbeddingConfig;
+	readonly description?: string | null;
+	readonly status?: KnowledgeBaseStatus;
+	readonly rerankingServiceId?: string | null;
+	readonly language?: KnowledgeBaseLanguage | null;
 	readonly lexical?: LexicalConfig;
-	readonly reranking?: RerankingConfig;
 }
+
+/* ------------------------------------------------------------------ */
+/* Execution services (chunking, embedding, reranking)                */
+/* ------------------------------------------------------------------ */
+
+interface ServiceEndpointInput {
+	readonly endpointBaseUrl?: string | null;
+	readonly endpointPath?: string | null;
+	readonly requestTimeoutMs?: number | null;
+	readonly authType?: AuthType;
+	readonly credentialRef?: SecretRef | null;
+}
+
+export interface CreateChunkingServiceInput extends ServiceEndpointInput {
+	readonly uid?: string;
+	readonly name: string;
+	readonly description?: string | null;
+	readonly status?: ServiceStatus;
+	readonly engine: string;
+	readonly engineVersion?: string | null;
+	readonly strategy?: string | null;
+	readonly maxChunkSize?: number | null;
+	readonly minChunkSize?: number | null;
+	readonly chunkUnit?: string | null;
+	readonly overlapSize?: number | null;
+	readonly overlapUnit?: string | null;
+	readonly preserveStructure?: boolean | null;
+	readonly language?: string | null;
+	readonly maxPayloadSizeKb?: number | null;
+	readonly enableOcr?: boolean | null;
+	readonly extractTables?: boolean | null;
+	readonly extractFigures?: boolean | null;
+	readonly readingOrder?: string | null;
+}
+
+export type UpdateChunkingServiceInput = Partial<
+	Omit<CreateChunkingServiceInput, "uid">
+>;
+
+export interface CreateEmbeddingServiceInput extends ServiceEndpointInput {
+	readonly uid?: string;
+	readonly name: string;
+	readonly description?: string | null;
+	readonly status?: ServiceStatus;
+	readonly provider: string;
+	readonly modelName: string;
+	readonly embeddingDimension: number;
+	readonly distanceMetric?: DistanceMetric;
+	readonly maxBatchSize?: number | null;
+	readonly maxInputTokens?: number | null;
+	readonly supportedLanguages?: ReadonlySet<string> | readonly string[];
+	readonly supportedContent?: ReadonlySet<string> | readonly string[];
+}
+
+export type UpdateEmbeddingServiceInput = Partial<
+	Omit<CreateEmbeddingServiceInput, "uid">
+>;
+
+export interface CreateRerankingServiceInput extends ServiceEndpointInput {
+	readonly uid?: string;
+	readonly name: string;
+	readonly description?: string | null;
+	readonly status?: ServiceStatus;
+	readonly provider: string;
+	readonly engine?: string | null;
+	readonly modelName: string;
+	readonly modelVersion?: string | null;
+	readonly maxCandidates?: number | null;
+	readonly scoringStrategy?: string | null;
+	readonly scoreNormalized?: boolean | null;
+	readonly returnScores?: boolean | null;
+	readonly maxBatchSize?: number | null;
+	readonly supportedLanguages?: ReadonlySet<string> | readonly string[];
+	readonly supportedContent?: ReadonlySet<string> | readonly string[];
+}
+
+export type UpdateRerankingServiceInput = Partial<
+	Omit<CreateRerankingServiceInput, "uid">
+>;
 
 /* ------------------------------------------------------------------ */
 /* Store                                                              */
@@ -186,94 +232,6 @@ export interface ControlPlaneStore {
 	): Promise<WorkspaceRecord>;
 	deleteWorkspace(uid: string): Promise<{ deleted: boolean }>;
 
-	/* Catalogs */
-	listCatalogs(workspace: string): Promise<readonly CatalogRecord[]>;
-	getCatalog(workspace: string, uid: string): Promise<CatalogRecord | null>;
-	createCatalog(
-		workspace: string,
-		input: CreateCatalogInput,
-	): Promise<CatalogRecord>;
-	updateCatalog(
-		workspace: string,
-		uid: string,
-		patch: UpdateCatalogInput,
-	): Promise<CatalogRecord>;
-	deleteCatalog(workspace: string, uid: string): Promise<{ deleted: boolean }>;
-
-	/* Vector stores */
-	listVectorStores(workspace: string): Promise<readonly VectorStoreRecord[]>;
-	getVectorStore(
-		workspace: string,
-		uid: string,
-	): Promise<VectorStoreRecord | null>;
-	createVectorStore(
-		workspace: string,
-		input: CreateVectorStoreInput,
-	): Promise<VectorStoreRecord>;
-	updateVectorStore(
-		workspace: string,
-		uid: string,
-		patch: UpdateVectorStoreInput,
-	): Promise<VectorStoreRecord>;
-	deleteVectorStore(
-		workspace: string,
-		uid: string,
-	): Promise<{ deleted: boolean }>;
-
-	/* Documents */
-	listDocuments(
-		workspace: string,
-		catalog: string,
-	): Promise<readonly DocumentRecord[]>;
-	getDocument(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<DocumentRecord | null>;
-	createDocument(
-		workspace: string,
-		catalog: string,
-		input: CreateDocumentInput,
-	): Promise<DocumentRecord>;
-	updateDocument(
-		workspace: string,
-		catalog: string,
-		uid: string,
-		patch: UpdateDocumentInput,
-	): Promise<DocumentRecord>;
-	deleteDocument(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<{ deleted: boolean }>;
-
-	/* Saved queries */
-	listSavedQueries(
-		workspace: string,
-		catalog: string,
-	): Promise<readonly SavedQueryRecord[]>;
-	getSavedQuery(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<SavedQueryRecord | null>;
-	createSavedQuery(
-		workspace: string,
-		catalog: string,
-		input: CreateSavedQueryInput,
-	): Promise<SavedQueryRecord>;
-	updateSavedQuery(
-		workspace: string,
-		catalog: string,
-		uid: string,
-		patch: UpdateSavedQueryInput,
-	): Promise<SavedQueryRecord>;
-	deleteSavedQuery(
-		workspace: string,
-		catalog: string,
-		uid: string,
-	): Promise<{ deleted: boolean }>;
-
 	/* API keys */
 	listApiKeys(workspace: string): Promise<readonly ApiKeyRecord[]>;
 	getApiKey(workspace: string, keyId: string): Promise<ApiKeyRecord | null>;
@@ -291,6 +249,123 @@ export interface ControlPlaneStore {
 	findApiKeyByPrefix(prefix: string): Promise<ApiKeyRecord | null>;
 	/** Fire-and-forget bump of `lastUsedAt` after a successful verify. */
 	touchApiKey(workspace: string, keyId: string): Promise<void>;
+
+	/* RAG documents (KB-scoped, issue #98). New surface backed by
+	 * `wb_rag_documents_by_knowledge_base`. The legacy catalog-scoped
+	 * Document methods above stay until phase 1c drops `/catalogs`. */
+	listRagDocuments(
+		workspace: string,
+		knowledgeBase: string,
+	): Promise<readonly RagDocumentRecord[]>;
+	getRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<RagDocumentRecord | null>;
+	createRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		input: CreateRagDocumentInput,
+	): Promise<RagDocumentRecord>;
+	updateRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+		patch: UpdateRagDocumentInput,
+	): Promise<RagDocumentRecord>;
+	deleteRagDocument(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<{ deleted: boolean }>;
+
+	/* Knowledge bases (issue #98) */
+	listKnowledgeBases(
+		workspace: string,
+	): Promise<readonly KnowledgeBaseRecord[]>;
+	getKnowledgeBase(
+		workspace: string,
+		uid: string,
+	): Promise<KnowledgeBaseRecord | null>;
+	createKnowledgeBase(
+		workspace: string,
+		input: CreateKnowledgeBaseInput,
+	): Promise<KnowledgeBaseRecord>;
+	updateKnowledgeBase(
+		workspace: string,
+		uid: string,
+		patch: UpdateKnowledgeBaseInput,
+	): Promise<KnowledgeBaseRecord>;
+	deleteKnowledgeBase(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }>;
+
+	/* Chunking services */
+	listChunkingServices(
+		workspace: string,
+	): Promise<readonly ChunkingServiceRecord[]>;
+	getChunkingService(
+		workspace: string,
+		uid: string,
+	): Promise<ChunkingServiceRecord | null>;
+	createChunkingService(
+		workspace: string,
+		input: CreateChunkingServiceInput,
+	): Promise<ChunkingServiceRecord>;
+	updateChunkingService(
+		workspace: string,
+		uid: string,
+		patch: UpdateChunkingServiceInput,
+	): Promise<ChunkingServiceRecord>;
+	deleteChunkingService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }>;
+
+	/* Embedding services */
+	listEmbeddingServices(
+		workspace: string,
+	): Promise<readonly EmbeddingServiceRecord[]>;
+	getEmbeddingService(
+		workspace: string,
+		uid: string,
+	): Promise<EmbeddingServiceRecord | null>;
+	createEmbeddingService(
+		workspace: string,
+		input: CreateEmbeddingServiceInput,
+	): Promise<EmbeddingServiceRecord>;
+	updateEmbeddingService(
+		workspace: string,
+		uid: string,
+		patch: UpdateEmbeddingServiceInput,
+	): Promise<EmbeddingServiceRecord>;
+	deleteEmbeddingService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }>;
+
+	/* Reranking services */
+	listRerankingServices(
+		workspace: string,
+	): Promise<readonly RerankingServiceRecord[]>;
+	getRerankingService(
+		workspace: string,
+		uid: string,
+	): Promise<RerankingServiceRecord | null>;
+	createRerankingService(
+		workspace: string,
+		input: CreateRerankingServiceInput,
+	): Promise<RerankingServiceRecord>;
+	updateRerankingService(
+		workspace: string,
+		uid: string,
+		patch: UpdateRerankingServiceInput,
+	): Promise<RerankingServiceRecord>;
+	deleteRerankingService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }>;
 
 	/** Optional: run migrations, open connections, etc. Idempotent. */
 	init?(): Promise<void>;
