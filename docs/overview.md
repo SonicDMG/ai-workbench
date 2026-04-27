@@ -2,9 +2,10 @@
 
 AI Workbench is a self-hosted control center for building and operating
 retrieval-backed AI applications on DataStax Astra. It gives teams one
-place to connect workspaces, organize source material, create vector
-stores, ingest documents, test search behavior, and keep the same
-workflow portable across runtime implementations.
+place to connect workspaces, register chunking / embedding / reranking
+services, compose them into knowledge bases, ingest documents, test
+search behavior, and keep the same workflow portable across runtime
+implementations.
 
 The goal is not to make operators think about runtimes first. The goal
 is to help a team get from "we have documents and embeddings" to "we can
@@ -17,13 +18,14 @@ together a one-off admin app for every project.
   to manage.
 - **Connect Astra-backed stores** while keeping credentials outside
   records and config.
-- **Model catalogs** around the content domains your application queries.
+- **Define execution services** (chunking, embedding, reranking) once
+  per workspace and bind them into knowledge bases.
+- **Spin up knowledge bases** that auto-provision an Astra collection
+  sized to the bound embedding service.
 - **Ingest documents** through sync or async flows with job status and
   server-sent progress updates.
 - **Test retrieval quality** in the browser with text, vector, hybrid,
-  and rerank search paths.
-- **Save repeatable queries** so useful checks do not live only in a
-  developer's scratch file.
+  and rerank search paths against a chosen knowledge base.
 - **Run the same HTTP contract** from the default TypeScript runtime or
   another language-native runtime as the project evolves.
 
@@ -40,7 +42,7 @@ runtime and UI:
 | Need | Workbench surface |
 |---|---|
 | Bring up a retrieval environment quickly | One Docker image with the UI and default runtime |
-| Keep project data isolated | Workspace-scoped catalogs, vector stores, documents, jobs, and API keys |
+| Keep project data isolated | Workspace-scoped knowledge bases, services, documents, jobs, and API keys |
 | Avoid storing secrets in records | `SecretRef` pointers such as `env:OPENAI_API_KEY` and `file:/path` |
 | Inspect search behavior | Playground for text, vector, hybrid, and rerank queries |
 | Move from demo to production | Memory, file, and Astra-backed control-plane stores |
@@ -51,9 +53,10 @@ runtime and UI:
 AI Workbench has three connected surfaces:
 
 1. **Workspace management.** Create and configure the spaces that own
-   catalogs, vector stores, documents, saved queries, jobs, and API keys.
-2. **Knowledge operations.** Ingest content, track status, bind catalogs
-   to vector stores, and keep the operational state visible.
+   knowledge bases, execution services, documents, jobs, and API keys.
+2. **Knowledge operations.** Compose chunking + embedding + reranking
+   services into a knowledge base, ingest content into it, track job
+   status, and keep the operational state visible.
 3. **Retrieval playground.** Try real searches against real workspace
    data before wiring the same API into an application.
 
@@ -70,8 +73,9 @@ npm run dev
 ```
 
 Then open the bundled UI at `http://localhost:8080`, create a workspace,
-add a vector store, ingest content from the workspace detail page, and
-use the playground to inspect the results.
+register at least one chunking + embedding service, create a knowledge
+base that binds them, ingest content from the workspace detail page,
+and use the playground to inspect the results.
 
 The generated API reference is available from the running runtime at
 `http://localhost:8080/docs`, and the machine-readable contract is

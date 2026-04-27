@@ -6,13 +6,13 @@ consumes `/api/v1/workspaces` on the default TypeScript runtime.
 ## Status
 
 **Shipped.** First-run onboarding wizard, workspace list / detail /
-edit / destructive delete, full CRUD over catalogs, vector-store
-descriptors, and workspace-scoped API keys. Async ingest from the
-browser (file upload → chunk → embed → upsert) with live progress
-streamed via SSE. Saved-query CRUD per catalog, runnable from the UI.
-Playground for ad-hoc text / vector / hybrid / rerank queries against
-any vector store. OIDC login + silent refresh and paste-a-token
-fallback are both wired through the same auth layer.
+edit / destructive delete, full CRUD over knowledge bases,
+chunking / embedding / reranking services, and workspace-scoped API
+keys. Async ingest from the browser (file upload → chunk → embed →
+upsert) with live progress streamed via SSE. Playground for ad-hoc
+text / vector / hybrid / rerank queries against any knowledge base.
+OIDC login + silent refresh and paste-a-token fallback are both wired
+through the same auth layer.
 
 HCD and OpenRAG kinds are visible in the onboarding picker but
 intentionally non-selectable ("Coming soon" badge) — the runtime
@@ -95,37 +95,26 @@ navigation shows the shared loader while the chunk streams.
 |---|---|
 | `/` | Workspaces list. Redirects to `/onboarding` when empty. |
 | `/onboarding` | Two-step wizard — pick a backend kind, then fill details. HCD / OpenRAG tiles render but are non-selectable. |
-| `/workspaces/:uid` | Detail + edit + destructive delete (type-to-confirm). Hosts the catalogs, vector-stores, and API-keys panels for this workspace. |
-| `/workspaces/:uid/catalogs/:catalogId` | Catalog explorer — sortable / filterable document table with file-type badges, sizes, statuses, and a click-through detail dialog. Multi-file / folder ingest queue lives here. |
-| `/playground` | Ad-hoc text / vector / hybrid / rerank queries against a workspace's vector stores. See [`docs/playground.md`](../../docs/playground.md). |
+| `/workspaces/:uid` | Detail + edit + destructive delete (type-to-confirm). Hosts the knowledge-bases, services, and API-keys panels for this workspace. |
+| `/workspaces/:uid/knowledge-bases/:kbId` | Knowledge-base explorer — sortable / filterable document table with file-type badges, sizes, statuses, and a click-through detail dialog. Multi-file / folder ingest queue lives here. |
+| `/playground` | Ad-hoc text / vector / hybrid / rerank queries against a workspace's knowledge bases. See [`docs/playground.md`](../../docs/playground.md). |
 
 The workspace detail page composes four panels (collapsible cards):
 
 | Panel | What it does |
 |---|---|
-| Catalogs | List + create + delete catalogs. Each row expands to a quick-look document preview and houses the saved-queries section. The "Open" button on every row jumps to the catalog explorer for the full table; "Ingest" pops the multi-file / folder upload queue. |
-| Vector stores | List + create + delete vector-store descriptors. Create flow provisions the underlying collection on the bound driver. |
+| Knowledge bases | List + create + delete knowledge bases. Create flow auto-provisions the underlying vector collection sized to the bound embedding service. The "Open" button on every row jumps to the KB explorer for the full document table; "Ingest" pops the multi-file / folder upload queue. |
+| Services | List + create + delete chunking, embedding, and reranking service definitions. Services are reusable across knowledge bases in the same workspace. |
 | API keys | List + issue + revoke workspace-scoped `wb_live_*` keys. Fresh keys are shown once, then masked. |
 | Detail / edit | The kind-aware edit form (kind is read-only after create) and the destructive delete dialog. |
 
-The catalog explorer adds:
+The KB explorer adds:
 
 - A document table with sortable columns (name, size, chunks, status, ingestedAt) and an inline filename/source-id filter.
 - Color-coded `FileTypeBadge` (Markdown violet, structured-data emerald, tabular amber, code blue, etc.) and pill-shaped `DocumentStatusBadge` (animated glyph for in-flight states).
-- Per-row trash button that pops a confirm dialog and runs the cascade-delete: the bound vector store's chunks are wiped before the document row is dropped, so deleted documents don't surface in playground searches.
+- Per-row trash button that pops a confirm dialog and runs the cascade-delete: the KB's chunks are wiped before the document row is dropped, so deleted documents don't surface in playground searches.
 - Click-through metadata dialog showing the full Document record, the failure message verbatim when status is `failed`, **and** the chunks the runtime extracted (chunk index, id, and snippet text — text comes from the reserved `chunkText` payload key the ingest pipeline stamps).
 - An ingest queue dialog accepting drag-drop, multi-file picker, or a folder picker (`webkitdirectory`). Files run sequentially through async ingest with a per-row live progress bar — sequential rather than parallel so embedding-provider rate limits stay predictable and a misbehaving file doesn't tank the others.
-
-The vector-stores panel on the workspace detail also exposes an
-**Adopt existing** button. It opens a dialog listing collections
-that already live in the workspace's data plane but aren't yet
-wrapped in a workbench descriptor (created by another tool, by
-hand, by an older workbench install whose state was wiped). One
-click adopts the collection — the runtime reads the live vector /
-lexical / rerank options off the data plane and stamps a matching
-descriptor without re-provisioning. Mock workspaces always see
-the empty state since the mock driver has no notion of "external"
-collections.
 
 ## Stack
 
@@ -137,7 +126,7 @@ collections.
 - **React Hook Form + Zod** for forms; the same Zod schemas that
   describe API shapes drive form validation, so the UI and backend
   can't disagree about request shape.
-- **React Router** for the five routes (`/`, `/onboarding`, `/workspaces/:uid`, `/workspaces/:uid/catalogs/:catalogId`, `/playground`).
+- **React Router** for the five routes (`/`, `/onboarding`, `/workspaces/:uid`, `/workspaces/:uid/knowledge-bases/:kbId`, `/playground`).
 - **Sonner** for toasts.
 - **Lucide React** for icons.
 
@@ -162,11 +151,10 @@ apps/web/
 │   │   └── utils.ts                 ← cn() + formatDate()
 │   ├── hooks/
 │   │   ├── useWorkspaces.ts         ← list/get/create/update/delete
-│   │   ├── useCatalogs.ts           ← catalog CRUD
-│   │   ├── useDocuments.ts          ← per-catalog document list
-│   │   ├── useVectorStores.ts       ← vector-store descriptor CRUD
+│   │   ├── useKnowledgeBases.ts     ← knowledge-base CRUD
+│   │   ├── useServices.ts           ← chunking/embedding/reranking service CRUD
+│   │   ├── useDocuments.ts          ← per-KB document list
 │   │   ├── useIngest.ts             ← async ingest + SSE progress
-│   │   ├── useSavedQueries.ts       ← saved-query CRUD + /run
 │   │   ├── usePlaygroundSearch.ts   ← /search dispatch + result hits
 │   │   ├── useApiKeys.ts            ← workspace API-key mutations
 │   │   ├── useAuthToken.ts          ← reactive bearer-token hook
@@ -190,22 +178,19 @@ apps/web/
 │   │       ├── TestConnectionPanel.tsx
 │   │       ├── ApiKeysPanel.tsx
 │   │       ├── CreateApiKeyDialog.tsx
-│   │       ├── CatalogsPanel.tsx    ← catalog list + per-row docs preview
-│   │       ├── CreateCatalogDialog.tsx
+│   │       ├── KnowledgeBasesPanel.tsx ← KB list + per-row docs preview
+│   │       ├── CreateKnowledgeBaseDialog.tsx
+│   │       ├── ServicesPanel.tsx    ← chunking/embedding/reranking services
 │   │       ├── DocumentTable.tsx    ← sortable doc table for the explorer
 │   │       ├── DocumentDetailDialog.tsx
 │   │       ├── DocumentStatusBadge.tsx
 │   │       ├── FileTypeBadge.tsx
-│   │       ├── IngestQueueDialog.tsx ← multi-file / folder ingest queue
-│   │       ├── SavedQueriesSection.tsx
-│   │       ├── VectorStoresPanel.tsx
-│   │       ├── CreateVectorStoreDialog.tsx
-│   │       └── AdoptCollectionDialog.tsx ← discover + adopt existing collections
+│   │       └── IngestQueueDialog.tsx ← multi-file / folder ingest queue
 │   └── pages/
 │       ├── WorkspacesPage.tsx
 │       ├── OnboardingPage.tsx
 │       ├── WorkspaceDetailPage.tsx
-│       ├── CatalogExplorerPage.tsx
+│       ├── KnowledgeBaseExplorerPage.tsx
 │       └── PlaygroundPage.tsx
 ```
 
@@ -218,7 +203,8 @@ apps/web/
   `provider:path` shape inline and drops empty rows before submit.
   The runtime rejects raw secrets with `400` anyway.
 - **Destructive delete requires typing the workspace name.** Cascade
-  is real — catalogs, vector-store collections, and documents all go.
+  is real — knowledge bases, their underlying vector collections,
+  service definitions, and documents all go.
 - **Empty state → onboarding redirect.** First-run users never see a
   bare "no workspaces" screen; they land directly in the wizard.
 - **List order is deterministic.** The runtime sorts by `createdAt`
@@ -246,11 +232,11 @@ apps/web/
 | `npm test` | Unit + component tests under `src/**/*.{test,spec}.{ts,tsx}` (vitest + jsdom + RTL). Fast — no browser. |
 | `npm run test:watch` | Same in watch mode. |
 | `npm run test:coverage` | Same as `npm test` but with v8 coverage. **Gates `src/lib/**` at lines: 50, statements: 50, branches: 80, functions: 20.** Components are exercised end-to-end through Playwright; locking thresholds on them prematurely pushes toward shallow tests. |
-| `npm run test:e2e` | Playwright golden-path spec. Builds the runtime + SPA, boots the runtime against the bundled `examples/workbench.yaml` (memory backend, auth disabled), drives Chromium through the onboarding → vector-store → upsert → playground flow. Reuses an existing `:8080` server in dev; CI starts a fresh one. |
+| `npm run test:e2e` | Playwright golden-path spec. Builds the runtime + SPA, boots the runtime against the bundled `examples/workbench.yaml` (memory backend, auth disabled), drives Chromium through the onboarding → services → knowledge-base → upsert → playground flow. Reuses an existing `:8080` server in dev; CI starts a fresh one. |
 | `npm run test:e2e:ui` | Same in Playwright's UI mode for debugging. |
 | `npm run e2e:install` | One-time: `playwright install chromium --with-deps`. |
 
-E2E specs deliberately stay on the **vector** lane. The route's `resolveQuery()` always builds an `Embedder` for any text query (so hybrid search has a vector handle); with a mock embedding descriptor the production embedder factory throws `embedding_unavailable`. Vector input bypasses that path entirely. Adding text-search coverage to the E2E suite needs either a real provider key in CI or a runtime override that lets a fake embedder run alongside production code — both deferred.
+E2E specs deliberately stay on the **vector** lane. The route's `resolveQuery()` always builds an `Embedder` for any text query (so hybrid search has a vector handle); with a mock embedding-service config the production embedder factory throws `embedding_unavailable`. Vector input bypasses that path entirely. Adding text-search coverage to the E2E suite needs either a real provider key in CI or a runtime override that lets a fake embedder run alongside production code — both deferred.
 
 ## House rules
 

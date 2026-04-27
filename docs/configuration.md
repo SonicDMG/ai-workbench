@@ -4,9 +4,9 @@ Runtime behavior is driven by a single YAML file, conventionally named
 `workbench.yaml`. The runtime loads it at startup and validates it
 against a strict schema.
 
-**Workspaces, catalogs, and vector stores are not in config.** They're
-runtime data, mutable via the HTTP API. `workbench.yaml` decides two
-things:
+**Workspaces, knowledge bases, and execution services are not in
+config.** They're runtime data, mutable via the HTTP API.
+`workbench.yaml` decides two things:
 
 1. Where that data is persisted (the **control-plane backend**).
 2. Optionally, which **seed workspaces** to load into the memory
@@ -83,7 +83,7 @@ Production deployments should start from
 
 ### `controlPlane`
 
-Picks where workspaces, catalogs, vector-store descriptors, and
+Picks where workspaces, knowledge bases, execution services, and RAG
 documents are persisted. Discriminated on `driver`.
 
 #### `memory` (default)
@@ -132,7 +132,7 @@ multi-writer-safe.
 |-------|------|----------|-------|
 | `endpoint` | URL | yes | Astra Data API endpoint |
 | `tokenRef` | SecretRef | yes | Pointer to the application token (`env:…` / `file:…`) |
-| `keyspace` | string | no (default `workbench`) | Keyspace hosting the four `wb_*` tables |
+| `keyspace` | string | no (default `workbench`) | Keyspace hosting the `wb_*` control-plane tables |
 | `jobPollIntervalMs` | int (50–60000) | `500` | Cross-replica job-subscriber poll interval in ms. Each subscribed `(workspace, jobId)` pair is re-read at this cadence so SSE clients on a different replica from the worker still see updates. Same-replica updates fan out instantly; the poller is a no-op when no one is subscribed. Raise for cost-sensitive deployments where second-scale staleness is fine; lower for hot SSE paths. Astra-only — `memory` and `file` are single-replica by definition. |
 | `jobsResume` | object | off | Cross-replica orphan-sweeper config. See below. |
 

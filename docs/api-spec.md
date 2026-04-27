@@ -42,8 +42,9 @@ Every nested resource carries its parent UIDs in the path:
 
 ```
 /api/v1/workspaces/{workspaceUid}
-/api/v1/workspaces/{workspaceUid}/catalogs/{catalogUid}
-/api/v1/workspaces/{workspaceUid}/vector-stores/{vectorStoreUid}
+/api/v1/workspaces/{workspaceUid}/knowledge-bases/{knowledgeBaseUid}
+/api/v1/workspaces/{workspaceUid}/knowledge-bases/{kb}/documents/{documentUid}
+/api/v1/workspaces/{workspaceUid}/{chunking,embedding,reranking}-services/{uid}
 ```
 
 A request whose path references a non-existent workspace returns
@@ -94,19 +95,16 @@ human-readable and may change. Currently emitted:
 | 413 | `payload_too_large` | `/api/v1/workspaces/*` request body exceeded the runtime's 1 MB JSON body limit. |
 | 404 | `not_found` | Unknown route |
 | 404 | `workspace_not_found` | Workspace UID doesn't exist |
-| 404 | `catalog_not_found` | Catalog UID doesn't exist in workspace |
-| 404 | `vector_store_not_found` | Vector-store UID doesn't exist in workspace |
-| 404 | `document_not_found` | Document UID doesn't exist in the catalog |
+| 404 | `knowledge_base_not_found` | Knowledge-base UID doesn't exist in workspace |
+| 404 | `document_not_found` | Document UID doesn't exist in the knowledge base |
+| 404 | `chunking_service_not_found` / `embedding_service_not_found` / `reranking_service_not_found` | Service UID doesn't exist in workspace |
 | 404 | `job_not_found` | Job ID doesn't exist in the workspace |
-| 404 | `saved_query_not_found` | Saved query UID doesn't exist in the catalog |
-| 409 | `conflict` | Create with an already-taken UID |
-| 409 | `catalog_not_bound_to_vector_store` | Catalog-scoped search against a catalog whose `vectorStore` is `null` |
+| 409 | `conflict` | Create with an already-taken UID, or service deletion refused while a KB still references it |
 | 501 | `hybrid_not_supported` | Caller asked for hybrid search on a workspace kind whose driver doesn't implement `searchHybrid` |
 | 501 | `rerank_not_supported` | Caller asked for rerank on a workspace kind whose driver doesn't implement `rerank` |
-| 409 | `catalog_not_bound_to_vector_store` | Catalog-scoped search, ingest, or saved-query run against a catalog whose `vectorStore` is `null` |
-| 400 | `dimension_mismatch` | Supplied vector length doesn't match the vector-store descriptor |
-| 400 | `embedding_unavailable` | Text search/upsert fallback could not build an embedder for the descriptor |
-| 400 | `embedding_dimension_mismatch` | Embedder output dimension doesn't match the descriptor |
+| 400 | `dimension_mismatch` | Supplied vector length doesn't match the KB's bound embedding service |
+| 400 | `embedding_unavailable` | Text search/upsert fallback could not build an embedder for the KB's bound embedding service |
+| 400 | `embedding_dimension_mismatch` | Embedder output dimension doesn't match the bound embedding service |
 | 422 | `workspace_misconfigured` | Workspace is missing endpoint, token, keyspace, or similar driver-required config |
 | 500 | `internal_error` | Unhandled exception |
 | 503 | `control_plane_unavailable` | Backing store is unreachable |
@@ -264,7 +262,7 @@ omitted.
 `kind` is one of `astra | hcd | openrag | mock`. (`mock` stays a
 first-class option for CI and offline work.) Once set, `kind` is
 immutable — changing it would orphan any already-provisioned
-vector-store collections.
+KB collections.
 
 `endpoint` is the workspace's data-plane URL (for `astra` / `hcd`,
 the Astra Data API endpoint). Accepts either a literal URL or a
@@ -299,14 +297,15 @@ Patch one or more of `name`, `endpoint`, `credentialsRef`,
 
 ### `DELETE /api/v1/workspaces/{workspaceUid}`
 
-Cascades to the workspace's catalogs, vector-store descriptors, and
-documents. Before removing the control-plane rows, the runtime drops
-each underlying vector-store collection through the workspace's driver.
+Cascades to the workspace's knowledge bases, execution services,
+RAG documents, and API keys. Before removing the control-plane
+rows, the runtime drops each KB's underlying Astra collection
+through the workspace's driver.
 
 - **204** — deleted
 - **404** `workspace_not_found`
-- **503** `driver_unavailable` — workspace has vector stores but no
-  registered driver to drop their collections
+- **503** `driver_unavailable` — workspace has knowledge bases but
+  no registered driver to drop their collections
 
 ### `POST /api/v1/workspaces/{workspaceUid}/test-connection`
 
@@ -404,24 +403,97 @@ no-op that still returns `204`.
 
 ---
 
-## `/api/v1/workspaces/{workspaceUid}/catalogs`
+## `/api/v1/workspaces/{workspaceUid}/{chunking,embedding,reranking}-services`
+
+Workspace-scoped execution services. Knowledge bases compose one
+chunking + one embedding + (optionally) one reranking service at
+create time. The three surfaces share an identical CRUD shape; only
+the body fields differ.
 
 ### `GET`
 
-List catalogs in the workspace.
+List services in the workspace.
 
-- **200** — paginated `Catalog` records
+- **200** — paginated `ChunkingService` / `EmbeddingService` /
+  `RerankingService` records (sorted by `createdAt` ascending,
+  `*ServiceId` as tie-breaker)
 - **404** `workspace_not_found`
 
-A `Catalog`:
+### `POST`
+
+Create a service. The runtime generates a UID if `uid` is omitted.
+Required fields by kind:
+
+| Kind | Required |
+|---|---|
+| chunking | `name`, `engine` |
+| embedding | `name`, `provider`, `modelName`, `embeddingDimension` |
+| reranking | `name`, `provider`, `modelName` |
+
+Optional fields cover endpoint config (`endpointBaseUrl`,
+`endpointPath`, `requestTimeoutMs`, `authType`, `credentialRef`),
+provider/engine tuning, and supported language/content tags. See
+the OpenAPI spec for the full per-kind shape.
 
 ```json
 {
-  "workspace": "…",
-  "uid": "…",
-  "name": "support",
-  "description": null,
-  "vectorStore": "…",
+  "name": "openai-3-small",
+  "provider": "openai",
+  "modelName": "text-embedding-3-small",
+  "embeddingDimension": 1536,
+  "distanceMetric": "cosine",
+  "endpointBaseUrl": "https://api.openai.com/v1",
+  "credentialRef": "env:OPENAI_API_KEY",
+  "supportedLanguages": ["en", "fr"],
+  "supportedContent": ["text"]
+}
+```
+
+`supportedLanguages` and `supportedContent` arrive as arrays and are
+returned deduplicated + sorted on the wire. (Astra-row layer keeps
+them as `SET<TEXT>`; the converter normalises at the boundary.)
+
+- **201** — the created record (with the generated `*ServiceId`)
+- **400** `validation_error` — schema failure
+- **404** `workspace_not_found`
+- **409** `conflict` — `uid` collision
+
+### `GET /{serviceId}` / `PUT /{serviceId}` / `DELETE /{serviceId}`
+
+Fetch / patch / delete. `PUT` accepts every field from create
+(all optional). Strict bodies — unknown keys return `400`.
+
+`DELETE` is **refused with `409 conflict` while any KB still
+references the service**. Drop or rebind the dependent KBs first.
+The error message names the offending KB so operators can navigate
+straight to it.
+
+---
+
+## `/api/v1/workspaces/{workspaceUid}/knowledge-bases`
+
+### `GET`
+
+List knowledge bases in the workspace.
+
+- **200** — paginated `KnowledgeBase` records
+- **404** `workspace_not_found`
+
+A `KnowledgeBase`:
+
+```json
+{
+  "workspaceId": "…",
+  "knowledgeBaseId": "…",
+  "name": "support-docs",
+  "description": "customer support knowledge base",
+  "status": "active",
+  "embeddingServiceId": "…",
+  "chunkingServiceId": "…",
+  "rerankingServiceId": null,
+  "language": "en",
+  "vectorCollection": "wb_vectors_<kb_id>",
+  "lexical": { "enabled": false, "analyzer": null, "options": {} },
   "createdAt": "…",
   "updatedAt": "…"
 }
@@ -429,148 +501,50 @@ A `Catalog`:
 
 ### `POST`
 
-Create a catalog. `vectorStore` is optional and refers to a vector
-store in the same workspace (N:1 — multiple catalogs may share a
-single vector store).
+Create a KB **and** auto-provision its underlying Astra collection.
+Transactional — if collection provisioning fails, the KB row is
+rolled back so the control plane and data plane never drift.
+
+`vectorCollection` is generated as `wb_vectors_<kb_id>` (hyphen-
+stripped) by default; supply your own to adopt a pre-existing
+collection.
 
 **Request**
 
 ```json
-{ "name": "support", "vectorStore": "<vector-store-uid>" }
-```
-
-- **201** — the created `Catalog`
-- **404** `workspace_not_found`
-- **404** `vector_store_not_found` — `vectorStore` points at a missing descriptor
-- **409** `conflict` — `uid` collision
-
-### `GET /{catalogUid}` / `PUT /{catalogUid}` / `DELETE /{catalogUid}`
-
-Fetch / patch / delete. `DELETE` cascades to the catalog's documents.
-
----
-
-## `/api/v1/workspaces/{workspaceUid}/vector-stores`
-
-### `GET`
-
-List vector-store descriptors in the workspace.
-
-- **200** — paginated `VectorStore` records
-- **404** `workspace_not_found`
-
-A `VectorStore` descriptor:
-
-```json
 {
-  "workspace": "…",
-  "uid": "…",
-  "name": "support-vectors",
-  "vectorDimension": 1536,
-  "vectorSimilarity": "cosine",
-  "embedding": {
-    "provider": "openai",
-    "model": "text-embedding-3-small",
-    "endpoint": null,
-    "dimension": 1536,
-    "secretRef": "env:OPENAI_API_KEY"
-  },
-  "lexical":   { "enabled": false, "analyzer": null, "options": {} },
-  "reranking": { "enabled": false, "provider": null, "model": null, "endpoint": null, "secretRef": null },
-  "createdAt": "…",
-  "updatedAt": "…"
+  "name": "support-docs",
+  "description": "customer support",
+  "embeddingServiceId": "…",
+  "chunkingServiceId": "…",
+  "rerankingServiceId": null,
+  "language": "en"
 }
 ```
 
-### `POST`
+`embeddingServiceId` and `chunkingServiceId` are required. Both
+must reference services that exist in the same workspace.
 
-Create a descriptor **and** provision the underlying Data API
-Collection via the workspace's driver. Transactional — if collection
-provisioning fails, the descriptor row is rolled back so the control
-plane and data plane never drift.
-
-`vectorSimilarity` defaults to `cosine`; `lexical` and `reranking`
-default to `{ enabled: false, ... }` if omitted.
-
-**Required fields:** `name`, `vectorDimension`, `embedding`.
-
-- **201** — the created `VectorStore` (collection now exists)
-- **404** `workspace_not_found`
-- **409** `conflict`
-- **422** `workspace_misconfigured` — workspace is missing `endpoint` or `credentialsRef.token` required by its driver
-- **503** `driver_unavailable` — no driver registered for the workspace's `kind`
-
-### `GET /discoverable`
-
-List collections that exist in the workspace's data plane but aren't
-yet wrapped in a workbench descriptor — useful for adopting
-collections created by another tool, by hand, or by an older
-workbench install whose control-plane state was lost. Returns `[]`
-for drivers that don't expose external collections (the mock
-driver).
-
-```json
-[
-  {
-    "name": "legacy_openai_coll",
-    "vectorDimension": 1536,
-    "vectorSimilarity": "cosine",
-    "embedding": { "provider": "openai", "model": "text-embedding-3-small" },
-    "lexicalEnabled": true,
-    "rerankEnabled": false,
-    "rerankProvider": null,
-    "rerankModel": null
-  }
-]
-```
-
-- **200** — list of `AdoptableCollection`s (already-adopted
-  collections are filtered out)
-- **404** `workspace_not_found`
+- **201** — the created `KnowledgeBase` (collection now exists)
+- **404** `workspace_not_found` / `embedding_service_not_found` /
+  `chunking_service_not_found` / `reranking_service_not_found`
+- **409** `conflict` — `uid` collision
+- **422** `workspace_misconfigured` — workspace is missing
+  `endpoint` or `credentialsRef.token` required by its driver
 - **503** `driver_unavailable` — no driver registered for the
   workspace's `kind`
 
-### `POST /adopt`
+### `GET /{knowledgeBaseUid}` / `PUT /{knowledgeBaseUid}` / `DELETE /{knowledgeBaseUid}`
 
-Wrap an existing data-plane collection in a workbench descriptor
-without re-provisioning it. The route reads the live collection's
-vector / lexical / rerank options off the data plane and stamps a
-descriptor matching them; the descriptor's `name` equals the
-collection's name (which is already a valid Astra identifier by
-construction).
+`GET` reads the record. `PUT` accepts a partial — `name`,
+`description`, `status`, `rerankingServiceId`, `language`, `lexical`
+are mutable; **`embeddingServiceId` and `chunkingServiceId` are
+immutable post-create** and the schema is `.strict()`, so accidentally
+including them in a body returns `400`. `DELETE` drops the underlying
+Astra collection first, then the KB row, then cascades RAG document
+rows.
 
-**Request:**
-
-```json
-{ "collectionName": "legacy_openai_coll" }
-```
-
-- **201** — the created `VectorStore` descriptor
-- **404** `collection_not_found` — the named collection isn't on
-  the data plane (or the driver no longer reports it)
-- **409** `collection_already_adopted` — a descriptor with that name
-  already exists in this workspace
-- **503** `adopt_not_supported` — driver doesn't expose
-  `listAdoptable`
-
-Vectorless / vector-only collections (no `$vectorize` service
-configured) get a placeholder `embedding: { provider: "external",
-model: "external", … }` — clients still need to supply vectors at
-upsert / search time. Create a new vector store when you need a
-different provider or dimension; descriptors intentionally mirror the
-underlying collection and are immutable after creation.
-
-### `GET /{vectorStoreUid}` / `PUT /{vectorStoreUid}` / `DELETE /{vectorStoreUid}`
-
-`GET` reads the descriptor. `PUT` accepts an empty patch and returns
-the existing descriptor, but rejects any field changes with
-`409 conflict` because dimensions, similarity, embedding, lexical,
-rerank, and collection naming are physical collection properties.
-`DELETE` drops the underlying Data API Collection **and** removes the descriptor.
-If any catalog still references the vector store, `DELETE` returns
-`409 conflict`; clear or move those catalog bindings first.
-
-### `POST /{vectorStoreUid}/records` — upsert records
+### `POST /{knowledgeBaseUid}/records` — upsert records
 
 **Request** — each record carries exactly one of `vector` or `text`:
 
@@ -587,15 +561,15 @@ If any catalog still references the vector store, `DELETE` returns
 - `records` — 1..500 items per request.
 - `id` is the application's identifier; re-upsert replaces the prior
   value.
-- `vector.length` must equal the descriptor's `vectorDimension`.
+- `vector.length` must equal the bound embedding service's
+  `embeddingDimension`.
 - **Text dispatch** mirrors search: the route tries
   `driver.upsertByText()` for all-text batches (Astra `$vectorize`
   inserts for collections with a service block). On
   `NotSupportedError` the runtime embeds each text record via the
-  vector store's `embedding` config and retries through plain
-  `upsert`. Mixed batches always embed client-side so the whole
-  batch stays in one transactional call. See
-  [`docs/playground.md`](playground.md).
+  KB's bound embedding service and retries through plain `upsert`.
+  Mixed batches always embed client-side so the whole batch stays
+  in one transactional call.
 
 **Response 200**
 
@@ -603,62 +577,48 @@ If any catalog still references the vector store, `DELETE` returns
 { "upserted": 2 }
 ```
 
-- **400** `validation_error` — a record has neither or both of `vector`/`text`
-- **400** `dimension_mismatch` — at least one vector has the wrong length
-- **400** `embedding_unavailable` — text records + descriptor's embedding config can't be resolved
-- **400** `embedding_dimension_mismatch` — provider returned a vector whose length doesn't match the descriptor
-- **404** `workspace_not_found` / `vector_store_not_found`
+- **400** `validation_error` — record has neither/both of `vector`/`text`
+- **400** `dimension_mismatch` — vector length doesn't match the
+  bound embedding service's `embeddingDimension`
+- **400** `embedding_unavailable` / `embedding_dimension_mismatch`
+- **404** `workspace_not_found` / `knowledge_base_not_found`
 
-### `DELETE /{vectorStoreUid}/records/{recordId}`
+### `DELETE /{knowledgeBaseUid}/records/{recordId}`
 
-Delete a single record. `recordId` is the application's `id` (not a
-UUID — any non-empty string).
-
-**Response 200**
+Delete a single record. `recordId` is the application's `id` (any
+non-empty string).
 
 ```json
-{ "deleted": true }    // or false, if the record wasn't present
+{ "deleted": true }
 ```
 
-### `POST /{vectorStoreUid}/search` — vector or text search
+### `POST /{knowledgeBaseUid}/search` — vector or text search
 
-**Request** — exactly one of `vector` or `text`:
+**Request** — exactly one of `vector` or `text`, plus optional
+`hybrid` / `lexicalWeight` / `rerank`:
 
 ```json
 {
-  "vector": [0.01, -0.02, ...],
-  "topK": 10,
-  "filter": { "tag": "keep" },
-  "includeEmbeddings": false
-}
-```
-
-```json
-{
-  "text": "winter sweater in blue",
-  "topK": 10
+  "text": "how do refunds work?",
+  "topK": 5,
+  "filter": { "section": "billing" },
+  "hybrid": true,
+  "lexicalWeight": 0.3,
+  "rerank": true
 }
 ```
 
 - `topK` defaults to 10, clamped to `[1, 1000]`.
-- `filter` is shallow-equal on payload keys. Backends with richer
-  filter languages may accept more; the portable subset is
-  shallow-equal.
-- `includeEmbeddings: true` returns the stored vector on each hit.
+- `filter` is shallow-equal on payload keys.
+- `hybrid: true` runs the driver's vector + lexical lane (defaults
+  to the KB's `lexical.enabled`). Requires `text`.
+- `rerank: true` reorders hits through the KB's bound reranking
+  service. Defaults to `true` when `rerankingServiceId` is non-null.
+  Requires `text`.
 
-**Text dispatch**: the route tries the driver's `searchByText()`
-first — for Astra collections whose descriptor names a supported
-vectorize provider (`openai`, `azureOpenAI`, `cohere`, `jinaAI`,
-`mistral`, `nvidia`, `voyageAI`) and carries a `secretRef`, the
-driver opens a collection handle with the resolved API key as
-`embeddingApiKey` and issues `find(sort: { $vectorize: text })`.
-The runtime never sees or transmits the vector. Legacy
-collections (no `service` block) return a "vectorize not
-configured" error; the driver catches it and rethrows as
-`NotSupportedError`, after which the runtime falls back to a
-client-side embedding (built from the vector store's `embedding`
-config via the Vercel AI SDK) and runs a normal vector search.
-See [`docs/playground.md`](playground.md) for the mental model.
+The route synthesises a driver-facing descriptor from the KB plus
+its bound services (see `kb-descriptor.ts`) so the dispatch layer
+stays unchanged.
 
 **Response 200** — array of hits, sorted by `score` descending:
 
@@ -669,7 +629,8 @@ See [`docs/playground.md`](playground.md) for the mental model.
 ]
 ```
 
-Score semantics match the descriptor's `vectorSimilarity`:
+Score semantics match the bound embedding service's
+`distanceMetric`:
 
 | Metric | Score |
 |---|---|
@@ -677,37 +638,32 @@ Score semantics match the descriptor's `vectorSimilarity`:
 | `dot` | Raw dot product; unbounded |
 | `euclidean` | `1 / (1 + distance)` so higher = closer |
 
-- **400** `validation_error` — neither or both of `vector`/`text`
-- **400** `dimension_mismatch` — supplied vector length mismatched
-- **400** `embedding_unavailable` — text search but the vector
-  store's `embedding` config can't be resolved (missing secret,
-  unknown provider, ...)
-- **400** `embedding_dimension_mismatch` — provider returned a
-  vector whose length doesn't match the store's declared dim
-- **404** `workspace_not_found` / `vector_store_not_found`
+- **400** `validation_error` — neither/both of `vector`/`text`,
+  or `hybrid`/`rerank` without `text`
+- **400** `dimension_mismatch` / `embedding_unavailable` /
+  `embedding_dimension_mismatch`
+- **404** `workspace_not_found` / `knowledge_base_not_found`
+- **501** `hybrid_not_supported` / `rerank_not_supported`
 
----
+### `GET /{knowledgeBaseUid}/documents`
 
-## `/api/v1/workspaces/{workspaceUid}/catalogs/{catalogUid}/documents`
+List RAG documents in the KB.
 
-Document **metadata** CRUD. A `Document` is a named entry in a
-catalog — the metadata row the in-process ingest pipeline attaches
-vectors to. `PUT` updates metadata only; content changes go through
-`POST /ingest` (sync) or `POST /ingest?async=true` (returns 202 with
-a job pointer), both documented further down.
+- **200** — paginated `RagDocument` records
+- **404** `workspace_not_found` / `knowledge_base_not_found`
 
-A `Document`:
+A `RagDocument`:
 
 ```json
 {
-  "workspace": "…",
-  "catalogUid": "…",
-  "documentUid": "…",
+  "workspaceId": "…",
+  "knowledgeBaseId": "…",
+  "documentId": "…",
   "sourceDocId": null,
   "sourceFilename": "readme.md",
   "fileType": "text/markdown",
   "fileSize": 1024,
-  "md5Hash": null,
+  "contentHash": "sha256:…",
   "chunkTotal": null,
   "ingestedAt": null,
   "updatedAt": "…",
@@ -717,61 +673,45 @@ A `Document`:
 }
 ```
 
-`status` is one of `pending | chunking | embedding | writing | ready |
-failed`. The in-process ingest pipeline (sync + async) is the
-canonical writer of `status` / `errorMessage` / `chunkTotal` /
-`ingestedAt`. Clients can also set these directly via `PUT` so an
-external ingest driver can own the lifecycle if it prefers.
+`status` is one of `pending | chunking | embedding | writing | ready
+| failed`. The KB ingest pipeline is the canonical writer of
+`status` / `errorMessage` / `chunkTotal` / `ingestedAt`. Clients
+can also set these directly via `PUT` if they own the lifecycle
+externally.
 
-### `GET`
+### `POST /{knowledgeBaseUid}/documents`
 
-List documents in the catalog.
-
-- **200** — paginated `Document` records
-- **404** `workspace_not_found` / `catalog_not_found`
-
-### `POST`
-
-Register a document in the catalog.
-
-**Request** — all fields optional except uniqueness of `uid` within
-the catalog:
+Register a document in the KB without running the ingest pipeline.
 
 ```json
 {
   "sourceFilename": "readme.md",
   "fileType": "text/markdown",
   "fileSize": 1024,
+  "contentHash": "sha256:…",
   "metadata": { "source": "upload" }
 }
 ```
 
-- **201** — the created `Document` (`status` defaults to `pending`,
-  `metadata` defaults to `{}`)
-- **404** `workspace_not_found` / `catalog_not_found`
-- **409** `conflict` — `uid` collision within the same catalog
+- **201** — the created `RagDocument` (`status` defaults to
+  `pending`, `metadata` defaults to `{}`)
+- **404** `workspace_not_found` / `knowledge_base_not_found`
+- **409** `conflict` — `uid` collision within the same KB
 
-### `GET /{documentUid}` / `PUT /{documentUid}` / `DELETE /{documentUid}`
+### `GET /{knowledgeBaseUid}/documents/{documentUid}` / `PUT /{documentUid}` / `DELETE /{documentUid}`
 
-Fetch / patch / delete. `PUT` accepts every field from the create body
-(all optional) and updates only the fields present. Cross-catalog
-access — requesting a document from a catalog it does not belong to —
-returns `404 document_not_found`.
+Fetch / patch / delete. `PUT` accepts every field from create (all
+optional). `DELETE` cascades into the KB's collection: chunks
+matched by `payload.documentUid` are removed before the row is
+dropped, so a successful delete leaves no traces in KB-scoped
+search. Drivers exposing `deleteRecords` use a single bulk call;
+older drivers fall back to a `listRecords` + per-row delete loop.
 
-`DELETE` cascades into the bound vector store: the document's chunks
-(matched by `payload.documentUid`) are removed before the document
-row is dropped, so a successful delete leaves no traces in
-catalog-scoped search. Drivers exposing `deleteRecords` use a single
-bulk call; older drivers fall back to a `listRecords` + per-row
-delete loop. Catalogs with no `vectorStore` binding skip the cascade
-and only drop the row.
-
-### `GET /{documentUid}/chunks`
+### `GET /{knowledgeBaseUid}/documents/{documentUid}/chunks`
 
 Lists the chunks the ingest pipeline extracted from this document.
-Reads raw records out of the catalog's bound vector store filtered
-on `documentUid`, sorts by the `chunkIndex` payload key, and
-returns:
+Reads raw records out of the KB's collection filtered on
+`documentUid`, sorts by the `chunkIndex` payload key, and returns:
 
 ```json
 [
@@ -780,7 +720,7 @@ returns:
     "chunkIndex": 0,
     "text": "First paragraph about apples.",
     "payload": {
-      "catalogUid": "…",
+      "knowledgeBaseUid": "…",
       "documentUid": "…",
       "chunkIndex": 0,
       "chunkText": "First paragraph about apples.",
@@ -795,104 +735,19 @@ Query params:
 - `limit` (1–1000, default 1000) — caps the number of chunks
   returned.
 
-The ingest pipeline stamps the chunk's text into the reserved
-`chunkText` payload key, so the response always carries the source
-text — even on collections with no `$vectorize` round-trip.
-Records ingested before the `chunkText` key landed return
-`text: null`.
-
 - **200** — array of chunks, sorted by `chunkIndex` ascending
-- **404** `workspace_not_found` / `catalog_not_found` /
-  `document_not_found` / `vector store_not_found`
-- **409** `catalog_not_bound_to_vector_store`
+- **404** `workspace_not_found` / `knowledge_base_not_found` /
+  `document_not_found`
 - **501** `list_records_not_supported` — driver doesn't expose
   `listRecords`
 
-### `POST /search`
-
-Catalog-scoped vector / text search. Delegates to the vector store
-bound at `catalog.vectorStore`, merging `catalogUid = catalog.uid`
-into the effective filter so records outside the catalog are
-invisible.
-
-**Request** — identical envelope to
-`POST /vector-stores/{vectorStoreUid}/search`. Either `vector` OR `text` is
-required; never both.
-
-```json
-{
-  "text": "how do refunds work?",
-  "topK": 5,
-  "filter": { "section": "billing" },
-  "hybrid": true,
-  "lexicalWeight": 0.3,
-  "rerank": true
-}
-```
-
-**Response** — `200` array of `SearchHit`, highest score first.
-
-**Scope merging.** The server sets `filter.catalogUid` to the path's
-catalog UID unconditionally. Any caller-supplied `catalogUid` is
-overridden — a search can never escape its catalog. Other filter
-keys merge normally.
-
-**Hybrid + rerank lanes.**
-
-- `hybrid: true` runs the driver's combined vector + lexical lane.
-  Defaults to the bound store's `lexical.enabled`. Requires `text` —
-  the lexical signal has nothing to score against without it.
-  `lexicalWeight` (0..1, default 0.5) tunes how much the lexical
-  score contributes vs. the vector score.
-- `rerank: true` post-processes the retrieval hits through the
-  driver's reranker. Defaults to the bound store's
-  `reranking.enabled`. Also requires `text`.
-
-Drivers can support either, both, or neither.
-
-- `mock` — supports both when the descriptor's `embedding.provider`
-  is `"mock"`. Hybrid and rerank are two separate phases in the
-  dispatcher.
-- `astra` — supports hybrid natively via `findAndRerank` (astra-
-  db-ts's built-in API). Requires the descriptor to opt into both
-  `lexical.enabled: true` **and** `reranking.enabled: true` — the
-  collection is provisioned with a lexical index and reranker
-  service at create time. Standalone `rerank` is **not** exposed on
-  Astra because the Data API combines retrieval + reranking in one
-  call; callers that want rerank set `hybrid: true`. `lexicalWeight`
-  is ignored on Astra — the reranker owns the blend. A
-  `rerank: true` request against an Astra workspace therefore
-  returns 501 unless paired with `hybrid: true`.
-
-**Errors**
-
-- **400** `validation_error` — `vector` / `text` presence rules,
-  including "hybrid: true requires text" and "rerank: true requires
-  text"
-- **400** `embedding_unavailable` — the fallback embedder could not be
-  built (text path only)
-- **400** `embedding_dimension_mismatch` — provider returned a vector
-  whose length doesn't match the bound store's declared dim
-- **404** `workspace_not_found` / `catalog_not_found`
-- **404** `vector_store_not_found` — the binding exists but the
-  referenced store no longer does (stale binding)
-- **409** `catalog_not_bound_to_vector_store` — `catalog.vectorStore`
-  is `null`
-- **501** `hybrid_not_supported` / `rerank_not_supported` — the
-  workspace kind's driver doesn't implement the requested lane
-
-Text records written through `POST /ingest` carry a `catalogUid`
-stamp on every chunk payload — that's what lets this route scope
-correctly. The route also works against any records that carry a
-matching `catalogUid` regardless of how they arrived.
-
-### `POST /ingest`
+### `POST /{knowledgeBaseUid}/ingest`
 
 Synchronous end-to-end ingest. Chunks the input text, embeds every
-chunk (server-side via `$vectorize` where the bound store supports
-it, otherwise client-side via the descriptor's `embedding` config),
-upserts the chunks into the bound vector store, and creates a
-`Document` metadata row with `status: ready` + `chunkTotal`.
+chunk through the KB's bound embedding service (server-side via
+`$vectorize` where the driver supports it, otherwise client-side),
+upserts the chunks into the KB's collection, and creates a
+`RagDocument` row with `status: ready` + `chunkTotal`.
 
 **Request**
 
@@ -905,11 +760,11 @@ upserts the chunks into the bound vector store, and creates a
 }
 ```
 
-All fields except `text` are optional. `chunker` overrides the
-runtime defaults for this call only. `metadata` is merged onto every
-chunk's payload; the reserved keys `catalogUid`, `documentUid`, and
-`chunkIndex` are always set by the runtime and will override any
-caller-supplied values. `text` is capped at 200,000 characters.
+`chunker` overrides the runtime defaults for this call only.
+`metadata` is merged onto every chunk's payload; the reserved keys
+`knowledgeBaseUid`, `documentUid`, `chunkIndex`, and `chunkText` are
+always set by the runtime and override any caller-supplied values.
+`text` is capped at 200,000 characters.
 
 **Response 201**
 
@@ -920,39 +775,22 @@ caller-supplied values. `text` is capped at 200,000 characters.
 }
 ```
 
-**Chunk payloads.** Every chunk upserted to the vector store carries:
+**Chunk payloads.** Every chunk upserted carries:
 
-- `catalogUid` — the catalog's UID (used by `/documents/search`)
-- `documentUid` — the UID of the `Document` row this ingest created
+- `knowledgeBaseUid` — the KB's UID (used by `/search`)
+- `documentUid` — the UID of the `RagDocument` row this ingest created
 - `chunkIndex` — 0-based position within the source document
-- `chunker.id` — the chunker impl that produced the slice
-  (`recursive-char:1` today)
+- `chunkText` — the chunk's raw text (read back through `/chunks`)
 - Plus every caller-supplied `metadata` key
 
-**Errors**
-
-- **400** `validation_error` — missing/empty `text`, bad chunker
-  config, or the Zod schema otherwise fails
-- **400** `embedding_unavailable` — client-side embedding fallback
-  could not build an embedder (missing secret, etc.)
-- **400** `embedding_dimension_mismatch` — embedder dimension
-  disagrees with the bound store
-- **404** `workspace_not_found` / `catalog_not_found`
-- **404** `vector_store_not_found` — stale binding (catalog points at
-  a deleted store)
-- **409** `catalog_not_bound_to_vector_store` — `catalog.vectorStore`
-  is `null`
-
 **Failure semantics.** When chunking or upsert throws, the
-`Document` row is marked `status: failed` with `errorMessage` before
-the error is re-raised. Operators can inspect the row via
-`GET /documents/{documentUid}`.
+`RagDocument` row is marked `status: failed` with `errorMessage`
+before the error is re-raised.
 
-### `POST /ingest?async=true`
+### `POST /{knowledgeBaseUid}/ingest?async=true`
 
-Same request body as the sync variant. The pipeline runs in the
-background; the response returns immediately with a job pointer so
-the UI doesn't block on long uploads.
+Same body. The pipeline runs in the background; the response
+returns immediately with a job pointer.
 
 **Response 202**
 
@@ -962,7 +800,7 @@ the UI doesn't block on long uploads.
     "workspace": "…",
     "jobId": "…",
     "kind": "ingest",
-    "catalogUid": "…",
+    "knowledgeBaseUid": "…",
     "documentUid": "…",
     "status": "pending",
     "processed": 0,
@@ -976,19 +814,13 @@ the UI doesn't block on long uploads.
 }
 ```
 
-Errors are the same set as the sync path — validation /
-embedding / not-found / 409. A 4xx means the request was rejected
-outright; nothing was enqueued and no job row exists.
+Errors are the same set as the sync path. A 4xx means the request
+was rejected outright; nothing was enqueued and no job row exists.
 
-Once a job is running, failures are captured into the job record
-(`status: failed`, `errorMessage` populated) and the document row
-(also `status: failed`). The HTTP response has already been sent by
-then.
-
-**Progress callbacks.** The background worker reports
-`{processed, total}` via `JobStore.update`. Today it fires once
-before upsert (`processed: 0`) and once after (`processed: total`);
-later slices can emit per-batch updates without a contract change.
+Once the job is running, failures are captured into the job record
+(`status: failed`, `errorMessage` populated) and the document row.
+The `runKbIngestJob` worker resolves the KB descriptor on every
+call so renames or service swaps mid-flight don't drift.
 
 ---
 
@@ -1028,13 +860,15 @@ persistent job backends.
 | `workspace` | uuid | Owning workspace |
 | `jobId` | uuid | |
 | `kind` | `"ingest"` | Discriminator — more kinds arrive with more async ops |
-| `catalogUid` | uuid or null | Set for ingest jobs |
+| `knowledgeBaseUid` | uuid or null | Set for ingest jobs |
 | `documentUid` | uuid or null | Set for ingest jobs |
 | `status` | `"pending"` \| `"running"` \| `"succeeded"` \| `"failed"` | Terminal: succeeded, failed |
 | `processed` | int | Units completed |
 | `total` | int or null | Units expected (null if unknown) |
 | `result` | object or null | Kind-specific summary on success (ingest: `{ chunks: N }`) |
 | `errorMessage` | string or null | Populated on `failed` |
+| `leasedBy` | string or null | Replica id holding the lease on a `running` job (cross-replica resume) |
+| `leasedAt` | iso-8601 or null | Last heartbeat from the lease holder |
 | `createdAt` | iso-8601 | |
 | `updatedAt` | iso-8601 | |
 
@@ -1057,106 +891,26 @@ resume-worker promotes it to `failed`. Callers that need
 restart-resume today should treat any `running` job older than a
 heartbeat threshold as failed and resubmit.
 
----
-
-## `/api/v1/workspaces/{workspaceUid}/catalogs/{catalogUid}/queries`
-
-Saved search recipes scoped to a catalog. Each `SavedQuery` carries a
-`text` plus optional `topK` and `filter`, and is replayed through the
-catalog-scoped search path by `POST /{queryUid}/run`.
-
-Deleting a workspace or catalog cascades to its saved queries (every
-backend — memory, file, astra).
-
-A `SavedQuery`:
-
-```json
-{
-  "workspace": "…",
-  "catalogUid": "…",
-  "queryUid": "…",
-  "name": "refunds",
-  "description": "billing questions",
-  "text": "how do refunds work?",
-  "topK": 5,
-  "filter": { "section": "billing" },
-  "createdAt": "…",
-  "updatedAt": "…"
-}
-```
-
-Text-only by design — saved vectors are rarely the right abstraction
-and serialize heavily. Callers wanting vector-form queries write the
-search body directly against `POST /documents/search`.
-
-### `GET`
-
-List saved queries in the catalog.
-
-- **200** — paginated `SavedQuery` records
-- **404** `workspace_not_found` / `catalog_not_found`
-
-### `POST`
-
-Create a saved query. `uid` is optional.
-
-```json
-{
-  "name": "refunds",
-  "description": "billing questions",
-  "text": "how do refunds work?",
-  "topK": 5,
-  "filter": { "section": "billing" }
-}
-```
-
-- **201** — the created `SavedQuery`
-- **404** `workspace_not_found` / `catalog_not_found`
-- **409** `conflict` — `uid` collision within the same catalog
-
-### `GET /{queryUid}` / `PUT /{queryUid}` / `DELETE /{queryUid}`
-
-Fetch / patch / delete. `PUT` accepts every field from create (all
-optional). Deleting a non-existent query returns
-`404 saved_query_not_found`.
-
-### `POST /{queryUid}/run`
-
-Execute a saved query and return the hits. The catalog's UID is
-merged into the effective filter — a saved filter carrying a
-different `catalogUid` is silently overridden, so a saved query can
-never escape its catalog.
-
-**Response 200** — array of `SearchHit` (same shape as
-`/documents/search`).
-
-**Errors**
-
-- **400** `embedding_unavailable` / `embedding_dimension_mismatch`
-  (client-side embedding fallback path)
-- **404** `workspace_not_found` / `catalog_not_found` /
-  `saved_query_not_found` / `vector_store_not_found`
-- **409** `catalog_not_bound_to_vector_store`
-
----
 
 ## Planned routes
 
 These do not exist yet. Shapes may shift before they land.
 
-The Phase 2 routes (saved queries CRUD + `/run`, async ingest, jobs
-poll + SSE) and the Phase 3 playground dispatch (text/vector via the
-existing `POST .../search` route) shipped in #53–#60 and are
-documented above.
+### Stage 2 — agents, conversations, messages
 
-### Phase 4+ — Chats, MCP
+The schema for `wb_agentic_*` and `wb_config_llm_service_*` /
+`wb_config_mcp_tools_*` is provisioned at boot but not yet wired
+through the runtime. The route shapes are reserved:
 
-Reserved:
+- `/api/v1/workspaces/{w}/llm-services` — CRUD
+- `/api/v1/workspaces/{w}/mcp-tools` — CRUD
+- `/api/v1/workspaces/{w}/agents` — CRUD; an agent composes one LLM
+  + a list of MCP tools + a list of knowledge bases
+- `/api/v1/workspaces/{w}/agents/{a}/conversations` — CRUD; nested
+  `messages` resource
+- `/api/v1/workspaces/{w}/agents/{a}/run` — execution loop
 
-- `/api/v1/workspaces/{w}/chats/…`
-- `/api/v1/workspaces/{w}/mcp/…`
-
-Contracts finalized as those phases approach.
+See [`roadmap.md`](roadmap.md) for the phase plan.
 
 ---
 

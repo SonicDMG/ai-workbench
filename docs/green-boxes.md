@@ -21,7 +21,7 @@ picks which one to target at deploy time via `BACKEND_URL`.
 
 | Runtime | Location | Status | Astra SDK |
 |---|---|---|---|
-| **TypeScript** (default) | [`runtimes/typescript/`](../runtimes/typescript/) | Operational through Phase 3 + auth (UI, playground, API keys, OIDC login + silent refresh, vector/text search, hybrid + rerank, sync/async ingest with pipeline resume after orphan reclaim, durable JobStore with cross-replica subscription polling + lease/heartbeat + orphan sweeper, saved queries, chunks listing, document delete cascade, adopt-existing-collection flow) | `@datastax/astra-db-ts` |
+| **TypeScript** (default) | [`runtimes/typescript/`](../runtimes/typescript/) | Operational through Phase 3 + auth (UI, playground, API keys, OIDC login + silent refresh, knowledge bases with auto-provisioned collections, chunking / embedding / reranking services, vector/text search, hybrid + rerank, sync/async ingest with pipeline resume after orphan reclaim, durable JobStore with cross-replica subscription polling + lease/heartbeat + orphan sweeper, chunks listing, document delete cascade) | `@datastax/astra-db-ts` |
 | **Python** | [`runtimes/python/`](../runtimes/python/) | FastAPI scaffold — routes return 501 until implemented | `astrapy` (pending) |
 | **Java** | [`runtimes/java/`](../runtimes/java/) | Spring Boot scaffold — routes return 501 until implemented | `astra-db-java` (pending) |
 
@@ -44,9 +44,11 @@ Every green box serves:
 | `GET /docs` | OpenAPI reference UI |
 | `GET /api/v1/openapi.json` | Machine-readable OpenAPI 3.1 doc |
 | `(CRUD)` `/api/v1/workspaces[/{uid}]` | Workspace lifecycle |
-| `(CRUD)` `/api/v1/workspaces/{w}/catalogs[/{uid}]` | Catalog lifecycle |
-| `(CRUD)` `/api/v1/workspaces/{w}/vector-stores[/{uid}]` | Descriptor lifecycle (POST also provisions the collection) |
-| `POST / DELETE / POST` | `/api/v1/workspaces/{w}/vector-stores/{v}/records`, `.../records/{rid}`, `.../search` | Data plane — upsert, delete, vector search |
+| `(CRUD)` `/api/v1/workspaces/{w}/{chunking,embedding,reranking}-services[/{uid}]` | Service-definition lifecycle |
+| `(CRUD)` `/api/v1/workspaces/{w}/knowledge-bases[/{uid}]` | KB lifecycle (POST auto-provisions the underlying vector collection; DELETE drops it) |
+| `POST / DELETE / POST` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records`, `.../records/{rid}`, `.../search` | Data plane — upsert, delete, vector / hybrid search |
+| `(CRUD)` `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents[/{uid}]` | Document metadata + chunks listing under a KB |
+| `POST` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest[?async=true]` | Sync / async ingest pipeline |
 
 Full contract details: [`api-spec.md`](api-spec.md).
 

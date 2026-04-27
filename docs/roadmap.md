@@ -8,13 +8,14 @@ runnable artifact and a stable slice of the HTTP contract.
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Runtime bootstrap + docs | ✅ Shipped |
-| 1a | Control-plane CRUD (`/api/v1/workspaces`, `/catalogs`, `/vector-stores`) | ✅ Shipped |
-| 1b | Vector-store data plane (provisioning, upsert, search) | ✅ Shipped |
-| 2a | Document metadata CRUD (`/catalogs/{c}/documents`) | ✅ Shipped |
-| 2b | Ingest + catalog-scoped search + saved queries + cross-replica jobs + adopt + document chunks/delete cascade | ✅ Shipped |
+| 1a | Control-plane CRUD (`/api/v1/workspaces`, `/catalogs`, `/vector-stores`) | ✅ Shipped (later refactored — see Phase KB) |
+| 1b | Vector-store data plane (provisioning, upsert, search) | ✅ Shipped (later refactored — see Phase KB) |
+| 2a | Document metadata CRUD (`/catalogs/{c}/documents`) | ✅ Shipped (later refactored — see Phase KB) |
+| 2b | Ingest + catalog-scoped search + saved queries + cross-replica jobs + adopt + document chunks/delete cascade | ✅ Shipped (saved queries / adopt retired in Phase KB) |
 | 2c | Server-side embedding (Astra `$vectorize`) for search + upsert | ✅ Shipped |
 | 3 | Playground + UI | ✅ Shipped |
 | Auth | Middleware, API keys, OIDC verifier, browser login, silent refresh | ✅ Shipped (1–3c); 4 (RBAC) planned |
+| KB | Catalogs + vector-store descriptors → knowledge bases + chunking/embedding/reranking services | ✅ Shipped |
 | 4+ | Chats, MCP | Reserved |
 
 ## Phase 0 — Bootstrap ✅
@@ -269,11 +270,53 @@ workspace UI rather than the playground itself):
   the workspace UI. The playground itself remains a stateless
   scratchpad by design.
 
+## Phase KB — Knowledge bases & execution services ✅
+
+Refactored the catalog / vector-store / saved-query model into a
+single first-class concept: the **knowledge base**. A KB owns its
+Astra collection end-to-end and binds the chunking + embedding +
+(optional) reranking services that produce its content.
+
+Shipped:
+
+- **Knowledge bases.** New `wb_config_knowledge_bases_by_workspace`
+  table. KB create transactionally provisions the underlying
+  `wb_vectors_<kb_id>` collection through the workspace's driver,
+  using the bound embedding service to determine vector dimensions
+  and similarity. KB delete drops the collection and cascades RAG
+  documents.
+- **Execution services.** Three new tables —
+  `wb_config_chunking_service_by_workspace`,
+  `wb_config_embedding_service_by_workspace`,
+  `wb_config_reranking_service_by_workspace`. Multiple KBs may
+  share a service definition; deleting an in-use embedding /
+  chunking service is blocked with `409 conflict`.
+- **Service immutability for vector-determining bindings.** A KB's
+  `embeddingServiceId` and `chunkingServiceId` are pinned at create
+  time (the collection's dimensions follow the embedding service);
+  `rerankingServiceId` stays mutable.
+- **`resolveKb` synthesis layer.** Existing driver / dispatch /
+  ingest code keeps a vector-store-shaped descriptor view by
+  resolving a KB + its bound services on demand, so the data-plane
+  surface stayed stable across the refactor.
+- **Routes.** All catalog / vector-store / saved-query routes
+  retired in favor of:
+  - `/api/v1/workspaces/{w}/{chunking,embedding,reranking}-services`
+  - `/api/v1/workspaces/{w}/knowledge-bases[/{kb}]`
+  - `.../knowledge-bases/{kb}/{records,search,documents,ingest}`
+- **UI.** Catalogs panel + vector-stores panel removed; replaced
+  with `KnowledgeBasesPanel` and `ServicesPanel`. Playground now
+  picks a KB rather than a vector-store descriptor.
+
+Saved queries and the adopt-existing-collection flow were retired
+in this phase — the new shape doesn't need them, and re-adding
+either would land cleaner under the new model than as a port.
+
 ## Phase 4+ — Chats, MCP
 
 Reserved for integrating:
 
-- A chat harness that runs against a workspace's catalogs.
+- A chat harness that runs against a workspace's knowledge bases.
 - An MCP server view of the workspace for external agents.
 
 Contracts will be defined as those phases approach.
