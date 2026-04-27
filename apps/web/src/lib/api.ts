@@ -12,6 +12,7 @@ import {
 	CreatedApiKeyResponseSchema,
 	type CreateEmbeddingServiceInput,
 	type CreateKnowledgeBaseInput,
+	type CreateKnowledgeFilterInput,
 	type CreateRerankingServiceInput,
 	type CreateWorkspaceInput,
 	type DocumentChunk,
@@ -28,6 +29,9 @@ import {
 	KnowledgeBasePageSchema,
 	type KnowledgeBaseRecord,
 	KnowledgeBaseRecordSchema,
+	KnowledgeFilterPageSchema,
+	type KnowledgeFilterRecord,
+	KnowledgeFilterRecordSchema,
 	RagDocumentPageSchema,
 	type RagDocumentRecord,
 	RerankingServicePageSchema,
@@ -38,6 +42,7 @@ import {
 	type TestConnectionResult,
 	TestConnectionResultSchema,
 	type UpdateKnowledgeBaseInput,
+	type UpdateKnowledgeFilterInput,
 	type UpdateWorkspaceInput,
 	type Workspace,
 	WorkspacePageSchema,
@@ -297,6 +302,74 @@ export const api = {
 			null,
 		),
 
+	listKnowledgeFilters: (
+		workspaceUid: string,
+		kbUid: string,
+	): Promise<KnowledgeFilterRecord[]> =>
+		request(
+			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/filters`,
+			{ method: "GET" },
+			KnowledgeFilterPageSchema,
+		).then((page) => page.items),
+
+	getKnowledgeFilter: (
+		workspaceUid: string,
+		kbUid: string,
+		filterUid: string,
+	): Promise<KnowledgeFilterRecord> =>
+		request(
+			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/filters/${filterUid}`,
+			{ method: "GET" },
+			KnowledgeFilterRecordSchema,
+		),
+
+	createKnowledgeFilter: (
+		workspaceUid: string,
+		kbUid: string,
+		input: CreateKnowledgeFilterInput,
+	): Promise<KnowledgeFilterRecord> =>
+		request(
+			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/filters`,
+			{
+				method: "POST",
+				body: JSON.stringify({
+					name: input.name,
+					description: input.description ? input.description : null,
+					filter: input.filter,
+				}),
+			},
+			KnowledgeFilterRecordSchema,
+		),
+
+	updateKnowledgeFilter: (
+		workspaceUid: string,
+		kbUid: string,
+		filterUid: string,
+		patch: UpdateKnowledgeFilterInput,
+	): Promise<KnowledgeFilterRecord> => {
+		const body: Record<string, unknown> = {};
+		if (patch.name !== undefined) body.name = patch.name;
+		if (patch.description !== undefined)
+			body.description = patch.description ? patch.description : null;
+		if (patch.filter !== undefined) body.filter = patch.filter;
+		return request(
+			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/filters/${filterUid}`,
+			{ method: "PUT", body: JSON.stringify(body) },
+			KnowledgeFilterRecordSchema,
+		);
+	},
+
+	deleteKnowledgeFilter: (
+		workspaceUid: string,
+		kbUid: string,
+		filterUid: string,
+	): Promise<void> =>
+		request(
+			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/filters/${filterUid}`,
+			{ method: "DELETE" },
+			null,
+		),
+
 	/* -------- Execution services -------- */
 
 	listChunkingServices: (
@@ -463,21 +536,20 @@ function normalizeCreate(input: CreateWorkspaceInput) {
 	return {
 		name: input.name,
 		kind: input.kind,
-		endpoint: input.endpoint ? input.endpoint : null,
-		keyspace: input.keyspace ? input.keyspace : null,
-		credentialsRef: pruneCredentials(input.credentialsRef),
+		url: input.url ? input.url : null,
+		namespace: input.namespace ? input.namespace : null,
+		credentials: pruneCredentials(input.credentials),
 	};
 }
 
 function normalizeUpdate(patch: UpdateWorkspaceInput) {
 	const out: Record<string, unknown> = {};
 	if (patch.name !== undefined) out.name = patch.name;
-	if (patch.endpoint !== undefined)
-		out.endpoint = patch.endpoint ? patch.endpoint : null;
-	if (patch.keyspace !== undefined)
-		out.keyspace = patch.keyspace ? patch.keyspace : null;
-	if (patch.credentialsRef !== undefined)
-		out.credentialsRef = pruneCredentials(patch.credentialsRef);
+	if (patch.url !== undefined) out.url = patch.url ? patch.url : null;
+	if (patch.namespace !== undefined)
+		out.namespace = patch.namespace ? patch.namespace : null;
+	if (patch.credentials !== undefined)
+		out.credentials = pruneCredentials(patch.credentials);
 	return out;
 }
 

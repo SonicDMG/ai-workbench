@@ -23,10 +23,10 @@ import {
 const WORKSPACE: WorkspaceRecord = {
 	uid: "11111111-1111-1111-1111-111111111111",
 	name: "test-workspace",
-	endpoint: null,
+	url: null,
 	kind: "mock",
-	credentialsRef: {},
-	keyspace: null,
+	credentials: {},
+	namespace: null,
 	createdAt: "2026-04-22T00:00:00.000Z",
 	updatedAt: "2026-04-22T00:00:00.000Z",
 };

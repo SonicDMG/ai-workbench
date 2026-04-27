@@ -83,17 +83,17 @@ orphan any KB collections already provisioned on the original backend
 doesn't try. Delete and recreate the workspace if the backend needs to
 change.
 
-### `name` and `endpoint`
+### `name` and `url`
 
 - `name` is a **human-readable label**. It is not unique — two
   workspaces can share a name (the UID is the identity). UIs should
   display the name but disambiguate by uid when needed.
-- `endpoint` is the **data-plane URL** for this workspace's backend.
+- `url` is the **data-plane URL** for this workspace's backend.
   For `astra` / `hcd` workspaces it's the Astra Data API endpoint
   the KB driver dials (`https://<db>-<region>.apps.astra.datastax.com`).
   Each Astra DB has its own endpoint — put one workspace per DB to
   route correctly.
-- `endpoint` accepts either a **literal URL** or a **SecretRef**
+- `url` accepts either a **literal URL** or a **SecretRef**
   (`env:ASTRA_DB_API_ENDPOINT`, `file:/path`). The driver detects
   refs by prefix-matching a registered
   [`SecretProvider`](configuration.md#secrets); literal URLs are
@@ -101,21 +101,22 @@ change.
   (value baked into `.env`) and prod (value injected via a K8s
   Secret mounted as an env var) without code changes.
 - `mock` / `openrag` workspaces don't dial anything and may leave
-  `endpoint: null`.
+  `url: null`.
 
 ### Credentials
 
 Credentials are never stored by value. A workspace may hold a
-`credentialsRef` map whose values are `SecretRef` pointers:
+`credentials` map whose values are `SecretRef` pointers:
 
 ```json
 {
   "name": "prod",
   "kind": "astra",
-  "credentialsRef": {
+  "url": "env:ASTRA_DB_API_ENDPOINT",
+  "credentials": {
     "token": "env:ASTRA_DB_APPLICATION_TOKEN"
   },
-  "keyspace": "default_keyspace"
+  "namespace": "default_keyspace"
 }
 ```
 

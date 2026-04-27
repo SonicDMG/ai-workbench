@@ -23,7 +23,14 @@ from starlette.responses import Response
 
 from workbench import __version__
 from workbench.errors import ApiError
-from workbench.routes import catalogs, documents, vector_stores, workspaces
+from workbench.routes import (
+    kb_data_plane,
+    kb_documents,
+    knowledge_bases,
+    knowledge_filters,
+    services,
+    workspaces,
+)
 
 REQUEST_ID_HEADER = "X-Request-Id"
 
@@ -93,13 +100,27 @@ def create_app() -> FastAPI:
     # --- API routes ---
 
     app.include_router(workspaces.router, prefix="/api/v1/workspaces", tags=["workspaces"])
-    app.include_router(catalogs.router, prefix="/api/v1/workspaces", tags=["catalogs"])
     app.include_router(
-        vector_stores.router,
+        knowledge_bases.router,
         prefix="/api/v1/workspaces",
-        tags=["vector-stores"],
+        tags=["knowledge-bases"],
     )
-    app.include_router(documents.router, prefix="/api/v1/workspaces", tags=["documents"])
+    app.include_router(
+        knowledge_filters.router,
+        prefix="/api/v1/workspaces",
+        tags=["knowledge-bases"],
+    )
+    app.include_router(services.router, prefix="/api/v1/workspaces", tags=["services"])
+    app.include_router(
+        kb_documents.router,
+        prefix="/api/v1/workspaces",
+        tags=["knowledge-bases"],
+    )
+    app.include_router(
+        kb_data_plane.router,
+        prefix="/api/v1/workspaces",
+        tags=["knowledge-bases"],
+    )
 
     # --- Error handling ---
 

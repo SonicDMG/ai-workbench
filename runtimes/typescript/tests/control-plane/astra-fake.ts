@@ -32,6 +32,7 @@ import type {
 	EmbeddingServiceRow,
 	JobRow,
 	KnowledgeBaseRow,
+	KnowledgeFilterRow,
 	LlmServiceRow,
 	McpToolRow,
 	MessageRow,
@@ -113,6 +114,7 @@ export function createFakeTablesBundle(): TablesBundle {
 		// Knowledge-base schema (issue #98).
 		configWorkspaces: new FakeTable<ConfigWorkspaceRow>(),
 		knowledgeBases: new FakeTable<KnowledgeBaseRow>(),
+		knowledgeFilters: new FakeTable<KnowledgeFilterRow>(),
 		chunkingServices: new FakeTable<ChunkingServiceRow>(),
 		embeddingServices: new FakeTable<EmbeddingServiceRow>(),
 		rerankingServices: new FakeTable<RerankingServiceRow>(),

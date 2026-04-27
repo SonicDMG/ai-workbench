@@ -24,6 +24,7 @@ import type {
 	KnowledgeBaseLanguage,
 	KnowledgeBaseRecord,
 	KnowledgeBaseStatus,
+	KnowledgeFilterRecord,
 	LexicalConfig,
 	RagDocumentRecord,
 	RerankingServiceRecord,
@@ -41,10 +42,10 @@ export interface CreateWorkspaceInput {
 	/** Optional — generated if omitted. */
 	readonly uid?: string;
 	readonly name: string;
-	readonly endpoint?: string | null;
+	readonly url?: string | null;
 	readonly kind: WorkspaceKind;
-	readonly credentialsRef?: Readonly<Record<string, SecretRef>>;
-	readonly keyspace?: string | null;
+	readonly credentials?: Readonly<Record<string, SecretRef>>;
+	readonly namespace?: string | null;
 }
 
 /**
@@ -55,9 +56,9 @@ export interface CreateWorkspaceInput {
  */
 export interface UpdateWorkspaceInput {
 	readonly name?: string;
-	readonly endpoint?: string | null;
-	readonly credentialsRef?: Readonly<Record<string, SecretRef>>;
-	readonly keyspace?: string | null;
+	readonly url?: string | null;
+	readonly credentials?: Readonly<Record<string, SecretRef>>;
+	readonly namespace?: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -132,6 +133,21 @@ export interface UpdateKnowledgeBaseInput {
 	readonly language?: KnowledgeBaseLanguage | null;
 	readonly lexical?: LexicalConfig;
 }
+
+/* ------------------------------------------------------------------ */
+/* Knowledge filters (issue #98)                                      */
+/* ------------------------------------------------------------------ */
+
+export interface CreateKnowledgeFilterInput {
+	readonly uid?: string;
+	readonly name: string;
+	readonly description?: string | null;
+	readonly filter: Readonly<Record<string, unknown>>;
+}
+
+export type UpdateKnowledgeFilterInput = Partial<
+	Omit<CreateKnowledgeFilterInput, "uid">
+>;
 
 /* ------------------------------------------------------------------ */
 /* Execution services (chunking, embedding, reranking)                */
@@ -298,6 +314,33 @@ export interface ControlPlaneStore {
 	): Promise<KnowledgeBaseRecord>;
 	deleteKnowledgeBase(
 		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }>;
+
+	/* Knowledge filters */
+	listKnowledgeFilters(
+		workspace: string,
+		knowledgeBase: string,
+	): Promise<readonly KnowledgeFilterRecord[]>;
+	getKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<KnowledgeFilterRecord | null>;
+	createKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		input: CreateKnowledgeFilterInput,
+	): Promise<KnowledgeFilterRecord>;
+	updateKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+		patch: UpdateKnowledgeFilterInput,
+	): Promise<KnowledgeFilterRecord>;
+	deleteKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
 		uid: string,
 	): Promise<{ deleted: boolean }>;
 

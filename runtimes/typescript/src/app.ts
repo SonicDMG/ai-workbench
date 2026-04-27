@@ -48,6 +48,7 @@ import { jobRoutes } from "./routes/api-v1/jobs.js";
 import { kbDataPlaneRoutes } from "./routes/api-v1/kb-data-plane.js";
 import { kbDocumentRoutes } from "./routes/api-v1/kb-documents.js";
 import { knowledgeBaseRoutes } from "./routes/api-v1/knowledge-bases.js";
+import { knowledgeFilterRoutes } from "./routes/api-v1/knowledge-filters.js";
 import { rerankingServiceRoutes } from "./routes/api-v1/reranking-services.js";
 import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
 import { authLoginRoutes } from "./routes/auth.js";
@@ -176,6 +177,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		"/api/v1/workspaces",
 		knowledgeBaseRoutes({ store: opts.store, drivers: opts.drivers }),
 	);
+	app.route("/api/v1/workspaces", knowledgeFilterRoutes(opts.store));
 	app.route("/api/v1/workspaces", chunkingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", embeddingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", rerankingServiceRoutes(opts.store));

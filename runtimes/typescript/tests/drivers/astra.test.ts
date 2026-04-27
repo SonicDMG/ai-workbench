@@ -32,8 +32,8 @@ runDriverContract("astra (fake Db)", async () => {
 				driver.createCollection({
 					workspace: {
 						...ctx.workspace,
-						endpoint: "https://fake.example",
-						credentialsRef: { token: "env:TEST_ASTRA_TOKEN" },
+						url: "https://fake.example",
+						credentials: { token: "env:TEST_ASTRA_TOKEN" },
 					},
 					descriptor: ctx.descriptor,
 				}),
@@ -41,8 +41,8 @@ runDriverContract("astra (fake Db)", async () => {
 				driver.dropCollection({
 					workspace: {
 						...ctx.workspace,
-						endpoint: "https://fake.example",
-						credentialsRef: { token: "env:TEST_ASTRA_TOKEN" },
+						url: "https://fake.example",
+						credentials: { token: "env:TEST_ASTRA_TOKEN" },
 					},
 					descriptor: ctx.descriptor,
 				}),
@@ -51,8 +51,8 @@ runDriverContract("astra (fake Db)", async () => {
 					{
 						workspace: {
 							...ctx.workspace,
-							endpoint: "https://fake.example",
-							credentialsRef: { token: "env:TEST_ASTRA_TOKEN" },
+							url: "https://fake.example",
+							credentials: { token: "env:TEST_ASTRA_TOKEN" },
 						},
 						descriptor: ctx.descriptor,
 					},
@@ -63,8 +63,8 @@ runDriverContract("astra (fake Db)", async () => {
 					{
 						workspace: {
 							...ctx.workspace,
-							endpoint: "https://fake.example",
-							credentialsRef: { token: "env:TEST_ASTRA_TOKEN" },
+							url: "https://fake.example",
+							credentials: { token: "env:TEST_ASTRA_TOKEN" },
 						},
 						descriptor: ctx.descriptor,
 					},
@@ -75,8 +75,8 @@ runDriverContract("astra (fake Db)", async () => {
 					{
 						workspace: {
 							...ctx.workspace,
-							endpoint: "https://fake.example",
-							credentialsRef: { token: "env:TEST_ASTRA_TOKEN" },
+							url: "https://fake.example",
+							credentials: { token: "env:TEST_ASTRA_TOKEN" },
 						},
 						descriptor: ctx.descriptor,
 					},
@@ -119,28 +119,28 @@ describe("AstraVectorStoreDriver endpoint resolution", () => {
 		updatedAt: "2026-04-23T00:00:00.000Z",
 	};
 
-	function makeWorkspace(endpoint: string | null): WorkspaceRecord {
+	function makeWorkspace(url: string | null): WorkspaceRecord {
 		return {
 			uid: "00000000-0000-0000-0000-000000000000",
 			name: "w",
-			endpoint,
+			url,
 			kind: "astra",
-			credentialsRef: { token: "env:TEST_ASTRA_TOKEN" },
-			keyspace: null,
+			credentials: { token: "env:TEST_ASTRA_TOKEN" },
+			namespace: null,
 			createdAt: "2026-04-23T00:00:00.000Z",
 			updatedAt: "2026-04-23T00:00:00.000Z",
 		};
 	}
 
-	test("literal URL endpoint is passed to the DbFactory as-is", async () => {
+	test("literal workspace URL is passed to the DbFactory as-is", async () => {
 		process.env.TEST_ASTRA_TOKEN = "t";
 		try {
 			const secrets = new SecretResolver({ env: new EnvSecretProvider() });
-			const seen: Array<{ endpoint: string; token: string }> = [];
+			const seen: Array<{ url: string; token: string }> = [];
 			const driver = new AstraVectorStoreDriver({
 				secrets,
 				dbFactory: (_ws, endpoint, token) => {
-					seen.push({ endpoint, token });
+					seen.push({ url: endpoint, token });
 					return new FakeDb();
 				},
 			});
@@ -148,24 +148,22 @@ describe("AstraVectorStoreDriver endpoint resolution", () => {
 				workspace: makeWorkspace("https://real.example.com"),
 				descriptor,
 			});
-			expect(seen).toEqual([
-				{ endpoint: "https://real.example.com", token: "t" },
-			]);
+			expect(seen).toEqual([{ url: "https://real.example.com", token: "t" }]);
 		} finally {
 			delete process.env.TEST_ASTRA_TOKEN;
 		}
 	});
 
-	test("env: ref endpoint is resolved before the DbFactory runs", async () => {
+	test("env: ref URL is resolved before the DbFactory runs", async () => {
 		process.env.TEST_ASTRA_TOKEN = "t";
 		process.env.TEST_ASTRA_ENDPOINT = "https://resolved.example.com";
 		try {
 			const secrets = new SecretResolver({ env: new EnvSecretProvider() });
-			const seen: Array<{ endpoint: string; token: string }> = [];
+			const seen: Array<{ url: string; token: string }> = [];
 			const driver = new AstraVectorStoreDriver({
 				secrets,
 				dbFactory: (_ws, endpoint, token) => {
-					seen.push({ endpoint, token });
+					seen.push({ url: endpoint, token });
 					return new FakeDb();
 				},
 			});
@@ -174,7 +172,7 @@ describe("AstraVectorStoreDriver endpoint resolution", () => {
 				descriptor,
 			});
 			expect(seen).toEqual([
-				{ endpoint: "https://resolved.example.com", token: "t" },
+				{ url: "https://resolved.example.com", token: "t" },
 			]);
 		} finally {
 			delete process.env.TEST_ASTRA_TOKEN;
@@ -182,7 +180,7 @@ describe("AstraVectorStoreDriver endpoint resolution", () => {
 		}
 	});
 
-	test("missing endpoint raises WorkspaceMisconfiguredError", async () => {
+	test("missing URL raises WorkspaceMisconfiguredError", async () => {
 		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
 		const driver = new AstraVectorStoreDriver({
 			secrets,
@@ -193,7 +191,7 @@ describe("AstraVectorStoreDriver endpoint resolution", () => {
 				workspace: makeWorkspace(null),
 				descriptor,
 			}),
-		).rejects.toThrow(/endpoint/);
+		).rejects.toThrow(/url/);
 	});
 
 	test("env: ref endpoint that fails to resolve raises CollectionUnavailable", async () => {
@@ -220,10 +218,10 @@ describe("AstraVectorStoreDriver hybrid + rerank", () => {
 	const workspace: WorkspaceRecord = {
 		uid: "00000000-0000-0000-0000-000000000000",
 		name: "w",
-		endpoint: "https://fake.example",
+		url: "https://fake.example",
 		kind: "astra",
-		credentialsRef: { token: "env:TEST_ASTRA_TOKEN" },
-		keyspace: null,
+		credentials: { token: "env:TEST_ASTRA_TOKEN" },
+		namespace: null,
 		createdAt: "2026-04-23T00:00:00.000Z",
 		updatedAt: "2026-04-23T00:00:00.000Z",
 	};

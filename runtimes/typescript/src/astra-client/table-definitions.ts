@@ -13,16 +13,16 @@
 
 import type { CreateTableDefinition } from "@datastax/astra-db-ts";
 
-/** `wb_workspaces` — top-level tenants. */
-export const WORKSPACES_TABLE = "wb_workspaces";
+/** `wb_config_workspaces` — top-level tenants. */
+export const WORKSPACES_TABLE = "wb_config_workspaces";
 export const WORKSPACES_DEFINITION = {
 	columns: {
 		uid: "uuid",
 		name: "text",
-		endpoint: "text",
+		url: "text",
 		kind: "text",
-		credentials_ref: { type: "map", keyType: "text", valueType: "text" },
-		keyspace: "text",
+		namespace: "text",
+		credentials: { type: "map", keyType: "text", valueType: "text" },
 		created_at: "timestamp",
 		updated_at: "timestamp",
 	},
@@ -86,21 +86,9 @@ export const API_KEY_LOOKUP_DEFINITION = {
 
 /* --------------------------- config layer ------------------------- */
 
-/** `wb_config_workspaces` — replaces `wb_workspaces`. */
-export const CONFIG_WORKSPACES_TABLE = "wb_config_workspaces";
-export const CONFIG_WORKSPACES_DEFINITION = {
-	columns: {
-		uid: "uuid",
-		name: "text",
-		url: "text",
-		kind: "text",
-		namespace: "text",
-		credentials: { type: "map", keyType: "text", valueType: "text" },
-		created_at: "timestamp",
-		updated_at: "timestamp",
-	},
-	primaryKey: "uid",
-} as const satisfies CreateTableDefinition;
+/** Backward-compatible aliases for older imports. */
+export const CONFIG_WORKSPACES_TABLE = WORKSPACES_TABLE;
+export const CONFIG_WORKSPACES_DEFINITION = WORKSPACES_DEFINITION;
 
 /**
  * `wb_config_knowledge_bases_by_workspace` — replaces
@@ -137,6 +125,26 @@ export const KNOWLEDGE_BASES_DEFINITION = {
 	primaryKey: {
 		partitionBy: ["workspace_id"],
 		partitionSort: { knowledge_base_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/** `wb_config_knowledge_filters_by_knowledge_base` — saved KB payload filters. */
+export const KNOWLEDGE_FILTERS_TABLE =
+	"wb_config_knowledge_filters_by_knowledge_base";
+export const KNOWLEDGE_FILTERS_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		knowledge_base_id: "uuid",
+		knowledge_filter_id: "uuid",
+		name: "text",
+		description: "text",
+		filter_json: "text",
+		created_at: "timestamp",
+		updated_at: "timestamp",
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id", "knowledge_base_id"],
+		partitionSort: { knowledge_filter_id: 1 },
 	},
 } as const satisfies CreateTableDefinition;
 

@@ -10,6 +10,6 @@ public record CreateWorkspaceInput(
     @NotBlank String name,
     String url,
     @NotNull WorkspaceKind kind,
-    Map<String, String> credentialsRef,
-    String keyspace
+    Map<String, String> credentials,
+    String namespace
 ) {}

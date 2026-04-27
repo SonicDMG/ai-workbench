@@ -10,10 +10,10 @@ import type {
 	AgentRecord,
 	ApiKeyRecord,
 	ChunkingServiceRecord,
-	ConfigWorkspaceRecord,
 	ConversationRecord,
 	EmbeddingServiceRecord,
 	KnowledgeBaseRecord,
+	KnowledgeFilterRecord,
 	LlmServiceRecord,
 	McpToolRecord,
 	MessageRecord,
@@ -27,10 +27,10 @@ import type {
 	AgentRow,
 	ApiKeyRow,
 	ChunkingServiceRow,
-	ConfigWorkspaceRow,
 	ConversationRow,
 	EmbeddingServiceRow,
 	KnowledgeBaseRow,
+	KnowledgeFilterRow,
 	LlmServiceRow,
 	McpToolRow,
 	MessageRow,
@@ -49,10 +49,10 @@ export function workspaceToRow(r: WorkspaceRecord): WorkspaceRow {
 	return {
 		uid: r.uid,
 		name: r.name,
-		endpoint: r.endpoint,
+		url: r.url,
 		kind: r.kind,
-		credentials_ref: { ...r.credentialsRef },
-		keyspace: r.keyspace,
+		namespace: r.namespace,
+		credentials: { ...r.credentials },
 		created_at: r.createdAt,
 		updated_at: r.updatedAt,
 	};
@@ -62,10 +62,10 @@ export function workspaceFromRow(row: WorkspaceRow): WorkspaceRecord {
 	return {
 		uid: row.uid,
 		name: row.name,
-		endpoint: row.endpoint,
+		url: row.url,
 		kind: row.kind,
-		credentialsRef: { ...(row.credentials_ref ?? {}) },
-		keyspace: row.keyspace,
+		namespace: row.namespace,
+		credentials: { ...(row.credentials ?? {}) },
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -143,37 +143,14 @@ function parseJsonObject(raw: string | null): Record<string, unknown> | null {
 	return parsed as Record<string, unknown>;
 }
 
+function stringifyJsonObject(value: Readonly<Record<string, unknown>>): string {
+	return JSON.stringify(value);
+}
+
 /* --------------------------- workspace ---------------------------- */
 
-export function configWorkspaceToRow(
-	r: ConfigWorkspaceRecord,
-): ConfigWorkspaceRow {
-	return {
-		uid: r.uid,
-		name: r.name,
-		url: r.url,
-		kind: r.kind,
-		namespace: r.namespace,
-		credentials: { ...r.credentials },
-		created_at: r.createdAt,
-		updated_at: r.updatedAt,
-	};
-}
-
-export function configWorkspaceFromRow(
-	row: ConfigWorkspaceRow,
-): ConfigWorkspaceRecord {
-	return {
-		uid: row.uid,
-		name: row.name,
-		url: row.url,
-		kind: row.kind,
-		namespace: row.namespace,
-		credentials: { ...(row.credentials ?? {}) },
-		createdAt: row.created_at,
-		updatedAt: row.updated_at,
-	};
-}
+export const configWorkspaceToRow = workspaceToRow;
+export const configWorkspaceFromRow = workspaceFromRow;
 
 /* ------------------------- knowledge base ------------------------- */
 
@@ -216,6 +193,38 @@ export function knowledgeBaseFromRow(
 			analyzer: row.lexical_analyzer,
 			options: { ...(row.lexical_options ?? {}) },
 		},
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
+	};
+}
+
+/* ------------------------ knowledge filter ------------------------ */
+
+export function knowledgeFilterToRow(
+	r: KnowledgeFilterRecord,
+): KnowledgeFilterRow {
+	return {
+		workspace_id: r.workspaceId,
+		knowledge_base_id: r.knowledgeBaseId,
+		knowledge_filter_id: r.knowledgeFilterId,
+		name: r.name,
+		description: r.description,
+		filter_json: stringifyJsonObject(r.filter),
+		created_at: r.createdAt,
+		updated_at: r.updatedAt,
+	};
+}
+
+export function knowledgeFilterFromRow(
+	row: KnowledgeFilterRow,
+): KnowledgeFilterRecord {
+	return {
+		workspaceId: row.workspace_id,
+		knowledgeBaseId: row.knowledge_base_id,
+		knowledgeFilterId: row.knowledge_filter_id,
+		name: row.name,
+		description: row.description,
+		filter: parseJsonObject(row.filter_json) ?? {},
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};

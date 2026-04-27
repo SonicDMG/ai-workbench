@@ -10,11 +10,7 @@ import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import type { ControlPlaneStore } from "../src/control-plane/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
-import {
-	MAX_API_JSON_BODY_BYTES,
-	MAX_INGEST_TEXT_CHARS,
-	MAX_QUERY_TEXT_CHARS,
-} from "../src/lib/limits.js";
+import { MAX_API_JSON_BODY_BYTES } from "../src/lib/limits.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
 import { SecretResolver } from "../src/secrets/provider.js";
 import { makeFakeEmbedderFactory } from "./helpers/embedder.js";
@@ -52,18 +48,6 @@ function makeApp(authOpts?: {
 const BASE_WORKSPACE = { name: "w1", kind: "astra" as const };
 /** For tests that exercise the data plane (need a registered driver). */
 const MOCK_WORKSPACE = { name: "w1-mock", kind: "mock" as const };
-
-const BASE_VECTOR_STORE = {
-	name: "vs",
-	vectorDimension: 1536,
-	embedding: {
-		provider: "openai",
-		model: "text-embedding-3-small",
-		endpoint: null,
-		dimension: 1536,
-		secretRef: "env:OPENAI_API_KEY",
-	},
-};
 
 describe("operational routes", () => {
 	test("GET / returns service banner", async () => {
@@ -396,7 +380,7 @@ describe("workspace routes", () => {
 		expect(body.error.requestId).toBeTruthy();
 	});
 
-	test("POST rejects credentialsRef values that aren't SecretRefs", async () => {
+	test("POST rejects credentials values that aren't SecretRefs", async () => {
 		const { app } = makeApp();
 		const res = await app.request("/api/v1/workspaces", {
 			method: "POST",
@@ -404,28 +388,28 @@ describe("workspace routes", () => {
 			body: JSON.stringify({
 				name: "prod",
 				kind: "astra",
-				credentialsRef: { token: "raw-token-here" }, // no `<provider>:<path>`
+				credentials: { token: "raw-token-here" }, // no `<provider>:<path>`
 			}),
 		});
 		expect(res.status).toBe(400);
 		const body = await json(res);
 		expect(body.error.code).toBe("validation_error");
-		expect(body.error.message).toMatch(/credentialsRef\.token/);
+		expect(body.error.message).toMatch(/credentials\.token/);
 	});
 
-	test("PUT accepts SecretRef-shaped credentialsRef values", async () => {
+	test("PUT accepts SecretRef-shaped credentials values", async () => {
 		const { app, store } = makeApp();
 		const ws = await store.createWorkspace(BASE_WORKSPACE);
 		const res = await app.request(`/api/v1/workspaces/${ws.uid}`, {
 			method: "PUT",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
-				credentialsRef: { token: "env:NEW_TOKEN" },
+				credentials: { token: "env:NEW_TOKEN" },
 			}),
 		});
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		expect(body.credentialsRef).toEqual({ token: "env:NEW_TOKEN" });
+		expect(body.credentials).toEqual({ token: "env:NEW_TOKEN" });
 	});
 
 	test("PUT rejects `kind` in the body with validation_error envelope", async () => {
@@ -529,7 +513,7 @@ describe("workspace test-connection", () => {
 			const ws = await store.createWorkspace({
 				name: "a",
 				kind: "astra",
-				credentialsRef: { token: "env:__TEST_ASTRA_TOKEN" },
+				credentials: { token: "env:__TEST_ASTRA_TOKEN" },
 			});
 			const res = await app.request(
 				`/api/v1/workspaces/${ws.uid}/test-connection`,
@@ -550,7 +534,7 @@ describe("workspace test-connection", () => {
 		const ws = await store.createWorkspace({
 			name: "a",
 			kind: "astra",
-			credentialsRef: { token: "env:__NEVER_SET_ENV_VAR_XYZZY" },
+			credentials: { token: "env:__NEVER_SET_ENV_VAR_XYZZY" },
 		});
 		const res = await app.request(
 			`/api/v1/workspaces/${ws.uid}/test-connection`,

@@ -55,5 +55,6 @@ async def test_openapi_doc_served(client: httpx.AsyncClient) -> None:
     paths = spec["paths"]
     assert "/api/v1/workspaces" in paths
     assert "/api/v1/workspaces/{workspace_id}" in paths
-    assert "/api/v1/workspaces/{workspace_id}/catalogs" in paths
-    assert "/api/v1/workspaces/{workspace_id}/vector-stores" in paths
+    assert "/api/v1/workspaces/{workspace_id}/knowledge-bases" in paths
+    assert "/api/v1/workspaces/{workspace_id}/embedding-services" in paths
+    assert "/api/v1/workspaces/{workspace_id}/knowledge-bases/{knowledge_base_id}/filters" in paths

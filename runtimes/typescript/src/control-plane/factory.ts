@@ -91,10 +91,10 @@ async function seedMemoryStore(
 		await store.createWorkspace({
 			uid: seed.uid,
 			name: seed.name,
-			endpoint: seed.endpoint ?? null,
+			url: seed.url ?? null,
 			kind: seed.kind,
-			credentialsRef: seed.credentialsRef ?? {},
-			keyspace: seed.keyspace ?? null,
+			credentials: seed.credentials ?? {},
+			namespace: seed.namespace ?? null,
 		});
 	}
 }

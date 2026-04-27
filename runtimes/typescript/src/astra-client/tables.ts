@@ -28,6 +28,7 @@ import type {
 	EmbeddingServiceRow,
 	JobRow,
 	KnowledgeBaseRow,
+	KnowledgeFilterRow,
 	LlmServiceRow,
 	McpToolRow,
 	MessageRow,
@@ -66,6 +67,7 @@ export interface TablesBundle {
 	/* ---- knowledge-base schema (issue #98) ---- */
 	readonly configWorkspaces: TableLike<ConfigWorkspaceRow>;
 	readonly knowledgeBases: TableLike<KnowledgeBaseRow>;
+	readonly knowledgeFilters: TableLike<KnowledgeFilterRow>;
 	readonly chunkingServices: TableLike<ChunkingServiceRow>;
 	readonly embeddingServices: TableLike<EmbeddingServiceRow>;
 	readonly rerankingServices: TableLike<RerankingServiceRow>;

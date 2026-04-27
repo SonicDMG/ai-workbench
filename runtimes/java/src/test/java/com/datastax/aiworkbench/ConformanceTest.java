@@ -28,18 +28,18 @@ class ConformanceTest {
     void workspaceCrudBasic() {}
 
     @Test
-    @Disabled("pending: implement catalog routes")
-    void catalogUnderWorkspace() {}
+    @Disabled("pending: implement knowledge-base routes")
+    void knowledgeBaseUnderWorkspace() {}
 
     @Test
-    @Disabled("pending: implement vector-store descriptor routes")
-    void vectorStoreDefinition() {}
+    @Disabled("pending: implement execution-service descriptor routes")
+    void executionServiceDefinition() {}
 
     @Test
-    @Disabled("pending: implement vector-store data plane (upsert, search, delete)")
-    void vectorStoreUpsertAndSearch() {}
+    @Disabled("pending: implement knowledge-base data plane (upsert, search, delete)")
+    void knowledgeBaseUpsertAndSearch() {}
 
     @Test
-    @Disabled("pending: implement document metadata CRUD")
-    void documentCrudBasic() {}
+    @Disabled("pending: implement Knowledge Base document metadata CRUD")
+    void kbDocumentCrudBasic() {}
 }

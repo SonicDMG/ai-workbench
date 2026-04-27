@@ -44,6 +44,7 @@ import type {
 	CreateChunkingServiceInput,
 	CreateEmbeddingServiceInput,
 	CreateKnowledgeBaseInput,
+	CreateKnowledgeFilterInput,
 	CreateRagDocumentInput,
 	CreateRerankingServiceInput,
 	CreateWorkspaceInput,
@@ -51,6 +52,7 @@ import type {
 	UpdateChunkingServiceInput,
 	UpdateEmbeddingServiceInput,
 	UpdateKnowledgeBaseInput,
+	UpdateKnowledgeFilterInput,
 	UpdateRagDocumentInput,
 	UpdateRerankingServiceInput,
 	UpdateWorkspaceInput,
@@ -60,6 +62,7 @@ import type {
 	ChunkingServiceRecord,
 	EmbeddingServiceRecord,
 	KnowledgeBaseRecord,
+	KnowledgeFilterRecord,
 	RagDocumentRecord,
 	RerankingServiceRecord,
 	WorkspaceRecord,
@@ -71,6 +74,7 @@ type Table =
 	| "api-keys"
 	// Knowledge-base schema (issue #98).
 	| "knowledge-bases"
+	| "knowledge-filters"
 	| "chunking-services"
 	| "embedding-services"
 	| "reranking-services"
@@ -80,6 +84,7 @@ const TABLE_FILES: Record<Table, string> = {
 	workspaces: "workspaces.json",
 	"api-keys": "api-keys.json",
 	"knowledge-bases": "knowledge-bases.json",
+	"knowledge-filters": "knowledge-filters.json",
 	"chunking-services": "chunking-services.json",
 	"embedding-services": "embedding-services.json",
 	"reranking-services": "reranking-services.json",
@@ -102,6 +107,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		workspaces: new Mutex(),
 		"api-keys": new Mutex(),
 		"knowledge-bases": new Mutex(),
+		"knowledge-filters": new Mutex(),
 		"chunking-services": new Mutex(),
 		"embedding-services": new Mutex(),
 		"reranking-services": new Mutex(),
@@ -140,10 +146,10 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			const record: WorkspaceRecord = {
 				uid,
 				name: input.name,
-				endpoint: input.endpoint ?? null,
+				url: input.url ?? null,
 				kind: input.kind,
-				credentialsRef: { ...(input.credentialsRef ?? {}) },
-				keyspace: input.keyspace ?? null,
+				credentials: { ...(input.credentials ?? {}) },
+				namespace: input.namespace ?? null,
 				createdAt: now,
 				updatedAt: now,
 			};
@@ -164,11 +170,11 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			const next: WorkspaceRecord = {
 				...existing,
 				...(patch.name !== undefined && { name: patch.name }),
-				...(patch.endpoint !== undefined && { endpoint: patch.endpoint }),
-				...(patch.credentialsRef !== undefined && {
-					credentialsRef: { ...patch.credentialsRef },
+				...(patch.url !== undefined && { url: patch.url }),
+				...(patch.credentials !== undefined && {
+					credentials: { ...patch.credentials },
 				}),
-				...(patch.keyspace !== undefined && { keyspace: patch.keyspace }),
+				...(patch.namespace !== undefined && { namespace: patch.namespace }),
 				updatedAt: nowIso(),
 			};
 			const nextRows = [...rows];
@@ -202,6 +208,13 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			rows: rows.filter((kb) => kb.workspaceId !== uid),
 			result: null,
 		}));
+		await this.mutate<"knowledge-filters", null>(
+			"knowledge-filters",
+			(rows) => ({
+				rows: rows.filter((f) => f.workspaceId !== uid),
+				result: null,
+			}),
+		);
 		await this.mutate<"chunking-services", null>(
 			"chunking-services",
 			(rows) => ({
@@ -458,7 +471,145 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			),
 			result: null,
 		}));
+		await this.mutate<"knowledge-filters", null>(
+			"knowledge-filters",
+			(rows) => ({
+				rows: rows.filter(
+					(f) => !(f.workspaceId === workspace && f.knowledgeBaseId === uid),
+				),
+				result: null,
+			}),
+		);
 		return res;
+	}
+
+	/* ---------------- Knowledge filters ---------------- */
+
+	async listKnowledgeFilters(
+		workspace: string,
+		knowledgeBase: string,
+	): Promise<readonly KnowledgeFilterRecord[]> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const all = await this.readAll<KnowledgeFilterRecord>("knowledge-filters");
+		return all.filter(
+			(f) => f.workspaceId === workspace && f.knowledgeBaseId === knowledgeBase,
+		);
+	}
+
+	async getKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<KnowledgeFilterRecord | null> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const all = await this.readAll<KnowledgeFilterRecord>("knowledge-filters");
+		return (
+			all.find(
+				(f) =>
+					f.workspaceId === workspace &&
+					f.knowledgeBaseId === knowledgeBase &&
+					f.knowledgeFilterId === uid,
+			) ?? null
+		);
+	}
+
+	async createKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		input: CreateKnowledgeFilterInput,
+	): Promise<KnowledgeFilterRecord> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		return this.mutate<"knowledge-filters", KnowledgeFilterRecord>(
+			"knowledge-filters",
+			(rows) => {
+				const uid = input.uid ?? randomUUID();
+				if (
+					rows.some(
+						(f) =>
+							f.workspaceId === workspace &&
+							f.knowledgeBaseId === knowledgeBase &&
+							f.knowledgeFilterId === uid,
+					)
+				) {
+					throw new ControlPlaneConflictError(
+						`knowledge filter with uid '${uid}' already exists in knowledge base '${knowledgeBase}'`,
+					);
+				}
+				const now = nowIso();
+				const record: KnowledgeFilterRecord = {
+					workspaceId: workspace,
+					knowledgeBaseId: knowledgeBase,
+					knowledgeFilterId: uid,
+					name: input.name,
+					description: input.description ?? null,
+					filter: { ...input.filter },
+					createdAt: now,
+					updatedAt: now,
+				};
+				return { rows: [...rows, record], result: record };
+			},
+		);
+	}
+
+	async updateKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+		patch: UpdateKnowledgeFilterInput,
+	): Promise<KnowledgeFilterRecord> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		return this.mutate<"knowledge-filters", KnowledgeFilterRecord>(
+			"knowledge-filters",
+			(rows) => {
+				const idx = rows.findIndex(
+					(f) =>
+						f.workspaceId === workspace &&
+						f.knowledgeBaseId === knowledgeBase &&
+						f.knowledgeFilterId === uid,
+				);
+				if (idx < 0) {
+					throw new ControlPlaneNotFoundError("knowledge filter", uid);
+				}
+				const existing = rows[idx] as KnowledgeFilterRecord;
+				const next: KnowledgeFilterRecord = {
+					...existing,
+					...(patch.name !== undefined && { name: patch.name }),
+					...(patch.description !== undefined && {
+						description: patch.description,
+					}),
+					...(patch.filter !== undefined && { filter: { ...patch.filter } }),
+					updatedAt: nowIso(),
+				};
+				const nextRows = [...rows];
+				nextRows[idx] = next;
+				return { rows: nextRows, result: next };
+			},
+		);
+	}
+
+	async deleteKnowledgeFilter(
+		workspace: string,
+		knowledgeBase: string,
+		uid: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		return this.mutate<"knowledge-filters", { deleted: boolean }>(
+			"knowledge-filters",
+			(rows) => {
+				const next = rows.filter(
+					(f) =>
+						!(
+							f.workspaceId === workspace &&
+							f.knowledgeBaseId === knowledgeBase &&
+							f.knowledgeFilterId === uid
+						),
+				);
+				return {
+					rows: next,
+					result: { deleted: next.length !== rows.length },
+				};
+			},
+		);
 	}
 
 	/* ---------------- RAG documents (KB-scoped) ---------------- */
@@ -1124,12 +1275,14 @@ type TableRow<K extends Table> = K extends "workspaces"
 		? ApiKeyRecord
 		: K extends "knowledge-bases"
 			? KnowledgeBaseRecord
-			: K extends "chunking-services"
-				? ChunkingServiceRecord
-				: K extends "embedding-services"
-					? EmbeddingServiceRecord
-					: K extends "reranking-services"
-						? RerankingServiceRecord
-						: K extends "rag-documents"
-							? RagDocumentRecord
-							: never;
+			: K extends "knowledge-filters"
+				? KnowledgeFilterRecord
+				: K extends "chunking-services"
+					? ChunkingServiceRecord
+					: K extends "embedding-services"
+						? EmbeddingServiceRecord
+						: K extends "reranking-services"
+							? RerankingServiceRecord
+							: K extends "rag-documents"
+								? RagDocumentRecord
+								: never;

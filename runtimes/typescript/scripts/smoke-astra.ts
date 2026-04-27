@@ -3,7 +3,7 @@
  * Real-Astra end-to-end smoke test.
  *
  * Boots the runtime in-process against a real Astra Data API, runs
- * the full workspace → vector-store → catalog → ingest → search
+ * the full workspace -> services -> knowledge-base -> ingest -> search
  * pipeline, then tears everything down.
  *
  * **Opt-in.** Skips silently with exit code 0 when the required
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
 	});
 
 	// Use the astra control plane so the wb_* tables get exercised.
-	// Workspaces / catalogs / vector stores / documents all round-trip
+	// Workspaces / services / knowledge bases / documents all round-trip
 	// through real Astra writes.
 	const config = {
 		version: 1 as const,
@@ -126,8 +126,9 @@ async function main(): Promise<void> {
 	});
 
 	let workspaceUid: string | null = null;
-	let vectorStoreUid: string | null = null;
-	let catalogUid: string | null = null;
+	let chunkingServiceUid: string | null = null;
+	let embeddingServiceUid: string | null = null;
+	let knowledgeBaseUid: string | null = null;
 
 	try {
 		// 1. Create workspace.
@@ -137,9 +138,9 @@ async function main(): Promise<void> {
 			body: JSON.stringify({
 				name: `smoke-${RUN_ID}`,
 				kind: "astra",
-				endpoint: ENDPOINT,
-				credentialsRef: { token: `env:${TOKEN_ENV}` },
-				keyspace: KEYSPACE,
+				url: ENDPOINT,
+				credentials: { token: `env:${TOKEN_ENV}` },
+				namespace: KEYSPACE,
 			}),
 		});
 		assertStatus(wsRes, 201, "workspace create");
@@ -147,56 +148,66 @@ async function main(): Promise<void> {
 		workspaceUid = ws.uid;
 		log("workspace created", workspaceUid);
 
-		// 2. Create vector store. Names must be ≤48 chars and start with
-		// a letter; use a shortened slug.
-		const vsName = `vs_${RUN_ID}`;
-		const vsRes = await app.request(
-			`/api/v1/workspaces/${workspaceUid}/vector-stores`,
+		// 2. Create execution services, then bind them into a KB.
+		const chunkRes = await app.request(
+			`/api/v1/workspaces/${workspaceUid}/chunking-services`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({
-					name: vsName,
-					vectorDimension: 4,
-					vectorSimilarity: "cosine",
-					embedding: {
-						provider: "mock",
-						model: "smoke-mock",
-						endpoint: null,
-						dimension: 4,
-						secretRef: null,
-					},
+					name: `chunk-${RUN_ID}`,
+					engine: "recursive-character",
+					strategy: "recursive-char",
 				}),
 			},
 		);
-		assertStatus(vsRes, 201, "vector-store create");
-		const vs = (await vsRes.json()) as { uid: string };
-		vectorStoreUid = vs.uid;
-		log("vector-store created", vectorStoreUid);
+		assertStatus(chunkRes, 201, "chunking-service create");
+		const chunk = (await chunkRes.json()) as { chunkingServiceId: string };
+		chunkingServiceUid = chunk.chunkingServiceId;
+		log("chunking service created", chunkingServiceUid);
 
-		// 3. Create catalog bound to the vector store.
-		const catRes = await app.request(
-			`/api/v1/workspaces/${workspaceUid}/catalogs`,
+		const embRes = await app.request(
+			`/api/v1/workspaces/${workspaceUid}/embedding-services`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({
-					name: `cat-${RUN_ID}`,
-					vectorStore: vectorStoreUid,
+					name: `emb-${RUN_ID}`,
+					provider: "mock",
+					modelName: "smoke-mock",
+					embeddingDimension: 4,
+					distanceMetric: "cosine",
 				}),
 			},
 		);
-		assertStatus(catRes, 201, "catalog create");
-		const cat = (await catRes.json()) as { uid: string };
-		catalogUid = cat.uid;
-		log("catalog created", catalogUid);
+		assertStatus(embRes, 201, "embedding-service create");
+		const emb = (await embRes.json()) as { embeddingServiceId: string };
+		embeddingServiceUid = emb.embeddingServiceId;
+		log("embedding service created", embeddingServiceUid);
+
+		const kbRes = await app.request(
+			`/api/v1/workspaces/${workspaceUid}/knowledge-bases`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: `kb-${RUN_ID}`,
+					embeddingServiceId: embeddingServiceUid,
+					chunkingServiceId: chunkingServiceUid,
+				}),
+			},
+		);
+		assertStatus(kbRes, 201, "knowledge-base create");
+		const kb = (await kbRes.json()) as { knowledgeBaseId: string };
+		knowledgeBaseUid = kb.knowledgeBaseId;
+		log("knowledge base created", knowledgeBaseUid);
 
 		// 4. Sync ingest. The mock embedder gives deterministic 4-dim
 		// vectors so we don't need an OpenAI key for this smoke.
 		const ingestText =
 			"Apples are red. Bananas are yellow. Cherries are red too. Dates are brown.";
 		const ingestRes = await app.request(
-			`/api/v1/workspaces/${workspaceUid}/catalogs/${catalogUid}/ingest`,
+			`/api/v1/workspaces/${workspaceUid}/knowledge-bases/${knowledgeBaseUid}/ingest`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -212,7 +223,7 @@ async function main(): Promise<void> {
 
 		// 5. Async ingest — opens a job, polls, waits for terminal.
 		const asyncRes = await app.request(
-			`/api/v1/workspaces/${workspaceUid}/catalogs/${catalogUid}/ingest?async=true`,
+			`/api/v1/workspaces/${workspaceUid}/knowledge-bases/${knowledgeBaseUid}/ingest?async=true`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -235,9 +246,9 @@ async function main(): Promise<void> {
 		}
 		log("async ingest succeeded", { processed: final.processed });
 
-		// 6. Catalog-scoped search.
+		// 6. KB-scoped search.
 		const searchRes = await app.request(
-			`/api/v1/workspaces/${workspaceUid}/catalogs/${catalogUid}/documents/search`,
+			`/api/v1/workspaces/${workspaceUid}/knowledge-bases/${knowledgeBaseUid}/search`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -253,8 +264,8 @@ async function main(): Promise<void> {
 
 		log("✅ smoke passed");
 	} finally {
-		// Cleanup: cascade workspace delete drops catalogs, documents,
-		// the vector-store collection, and the saved-queries rows. The
+		// Cleanup: cascade workspace delete drops KBs, documents,
+		// the backing vector collection, and service/config rows. The
 		// `wb_jobs_by_workspace` table is shared keyspace; orphan rows
 		// from this run age out via standard ops, no special cleanup.
 		if (workspaceUid) {

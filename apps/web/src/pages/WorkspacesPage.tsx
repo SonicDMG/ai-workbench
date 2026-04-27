@@ -82,7 +82,7 @@ export function WorkspacesPage() {
 						</span>
 					}
 					title="No workspaces yet"
-					description="Workspaces isolate your catalogs, vector stores, and documents — one per tenant, environment, or customer."
+					description="Workspaces isolate your knowledge bases, services, filters, and documents — one per tenant, environment, or customer."
 					actions={
 						<Button variant="brand" asChild>
 							<Link to="/onboarding">

@@ -47,16 +47,34 @@ async def test_scenario_workspace_crud_basic(client: httpx.AsyncClient) -> None:
     reason="Scaffold: routes return 501 until implementations land.",
     strict=True,
 )
-async def test_scenario_catalog_under_workspace(client: httpx.AsyncClient) -> None:
-    # Scenario 2 — catalog-under-workspace
+async def test_scenario_knowledge_base_under_workspace(client: httpx.AsyncClient) -> None:
+    # Scenario 2 — knowledge-base-under-workspace
     ws = (await client.post("/api/v1/workspaces", json={"name": "w", "kind": "astra"})).json()
-    c1 = (await client.post(f"/api/v1/workspaces/{ws['uid']}/catalogs", json={"name": "c1"})).json()
-    await client.post(f"/api/v1/workspaces/{ws['uid']}/catalogs", json={"name": "c2"})
-    catalogs = await client.get(f"/api/v1/workspaces/{ws['uid']}/catalogs")
-    assert catalogs.status_code == 200
-    assert len(catalogs.json()) == 2
+    kb1 = (
+        await client.post(
+            f"/api/v1/workspaces/{ws['uid']}/knowledge-bases",
+            json={
+                "name": "kb1",
+                "embeddingServiceId": "emb",
+                "chunkingServiceId": "chunk",
+            },
+        )
+    ).json()
+    await client.post(
+        f"/api/v1/workspaces/{ws['uid']}/knowledge-bases",
+        json={
+            "name": "kb2",
+            "embeddingServiceId": "emb",
+            "chunkingServiceId": "chunk",
+        },
+    )
+    knowledge_bases = await client.get(f"/api/v1/workspaces/{ws['uid']}/knowledge-bases")
+    assert knowledge_bases.status_code == 200
+    assert len(knowledge_bases.json()) == 2
 
-    deleted = await client.delete(f"/api/v1/workspaces/{ws['uid']}/catalogs/{c1['uid']}")
+    deleted = await client.delete(
+        f"/api/v1/workspaces/{ws['uid']}/knowledge-bases/{kb1['knowledgeBaseId']}"
+    )
     assert deleted.status_code == 204
 
 
@@ -64,27 +82,22 @@ async def test_scenario_catalog_under_workspace(client: httpx.AsyncClient) -> No
     reason="Scaffold: routes return 501 until implementations land.",
     strict=True,
 )
-async def test_scenario_vector_store_definition(client: httpx.AsyncClient) -> None:
-    # Scenario 3 — vector-store-definition
+async def test_scenario_execution_service_definition(client: httpx.AsyncClient) -> None:
+    # Scenario 3 — execution-service-definition
     ws = (await client.post("/api/v1/workspaces", json={"name": "w", "kind": "astra"})).json()
     created = await client.post(
-        f"/api/v1/workspaces/{ws['uid']}/vector-stores",
+        f"/api/v1/workspaces/{ws['uid']}/embedding-services",
         json={
-            "name": "vs",
-            "vectorDimension": 1536,
-            "embedding": {
-                "provider": "openai",
-                "model": "text-embedding-3-small",
-                "endpoint": None,
-                "dimension": 1536,
-                "secretRef": "env:OPENAI_API_KEY",
-            },
+            "name": "emb",
+            "provider": "openai",
+            "modelName": "text-embedding-3-small",
+            "embeddingDimension": 1536,
         },
     )
     assert created.status_code == 201
-    uid = created.json()["uid"]
+    uid = created.json()["embeddingServiceId"]
 
-    fetched = await client.get(f"/api/v1/workspaces/{ws['uid']}/vector-stores/{uid}")
+    fetched = await client.get(f"/api/v1/workspaces/{ws['uid']}/embedding-services/{uid}")
     assert fetched.status_code == 200
 
 

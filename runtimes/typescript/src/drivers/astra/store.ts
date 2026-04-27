@@ -302,10 +302,10 @@ export interface AstraVectorStoreDriverOptions {
 
 const defaultDbFactory: DbFactory = (workspace, endpoint, token) => {
 	const client = new DataAPIClient(token);
-	const keyspace = workspace.keyspace ?? undefined;
+	const namespace = workspace.namespace ?? undefined;
 	return client.db(
 		endpoint,
-		keyspace ? { keyspace } : {},
+		namespace ? { keyspace: namespace } : {},
 	) as unknown as AstraDbLike;
 };
 
@@ -715,20 +715,17 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 		const cached = this.dbs.get(workspace.uid);
 		if (cached) return cached;
 
-		if (!workspace.endpoint) {
-			throw new WorkspaceMisconfiguredError(workspace.uid, "endpoint");
+		if (!workspace.url) {
+			throw new WorkspaceMisconfiguredError(workspace.uid, "url");
 		}
-		const tokenRef = workspace.credentialsRef.token;
+		const tokenRef = workspace.credentials.token;
 		if (!tokenRef) {
-			throw new WorkspaceMisconfiguredError(
-				workspace.uid,
-				"credentialsRef.token",
-			);
+			throw new WorkspaceMisconfiguredError(workspace.uid, "credentials.token");
 		}
 
 		let endpoint: string;
 		try {
-			endpoint = await this.resolveMaybeRef(workspace.endpoint);
+			endpoint = await this.resolveMaybeRef(workspace.url);
 		} catch (err) {
 			throw new CollectionUnavailableError(
 				`failed to resolve Astra endpoint for workspace '${workspace.uid}': ${

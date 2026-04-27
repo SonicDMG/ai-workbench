@@ -28,10 +28,10 @@ import { FakeDb } from "../astra-fake.js";
 const WORKSPACE: WorkspaceRecord = {
 	uid: "00000000-0000-0000-0000-0000000000aa",
 	name: "w",
-	endpoint: "https://fake.astra.example",
+	url: "https://fake.astra.example",
 	kind: "astra",
-	credentialsRef: { token: "env:TEST_ASTRA_TOKEN" },
-	keyspace: null,
+	credentials: { token: "env:TEST_ASTRA_TOKEN" },
+	namespace: null,
 	createdAt: "2026-01-01T00:00:00Z",
 	updatedAt: "2026-01-01T00:00:00Z",
 };

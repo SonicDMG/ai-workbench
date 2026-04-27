@@ -27,10 +27,10 @@ function wrapper({ children }: { children: ReactNode }) {
 const fixture: Workspace = {
 	uid: "00000000-0000-4000-8000-000000000001",
 	name: "prod",
-	endpoint: "env:ASTRA_DB_API_ENDPOINT",
+	url: "env:ASTRA_DB_API_ENDPOINT",
 	kind: "astra",
-	credentialsRef: { token: "env:ASTRA_DB_APPLICATION_TOKEN" },
-	keyspace: "default_keyspace",
+	credentials: { token: "env:ASTRA_DB_APPLICATION_TOKEN" },
+	namespace: "default_namespace",
 	createdAt: "2026-04-22T10:11:12.345Z",
 	updatedAt: "2026-04-22T10:11:12.345Z",
 };

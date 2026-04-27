@@ -43,9 +43,8 @@ export function DeleteDialog({
 				<DialogHeader>
 					<DialogTitle>Delete this workspace?</DialogTitle>
 					<DialogDescription>
-						This cascades. All catalogs, vector-store descriptors (and their
-						underlying collections), and documents under this workspace will be
-						deleted. This can't be undone.
+						This cascades. All knowledge bases, services, filters, and documents
+						under this workspace will be deleted. This can't be undone.
 					</DialogDescription>
 				</DialogHeader>
 				<div className="flex flex-col gap-1.5">
