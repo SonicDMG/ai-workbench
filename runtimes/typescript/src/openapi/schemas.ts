@@ -105,7 +105,7 @@ const WorkspaceKind = z.enum(["astra", "hcd", "openrag", "mock"]);
 /** `<provider>:<path>` — e.g. `env:OPENAI_API_KEY`, `file:/etc/secret`. */
 const SecretRefSchema = z
 	.string()
-	.regex(/^[a-z][a-z0-9]*:.+/i, "expected '<provider>:<path>', e.g. 'env:FOO'")
+	.regex(/^[a-z][a-z0-9]*:.+$/, "expected '<provider>:<path>', e.g. 'env:FOO'")
 	.openapi("SecretRef", { example: "env:ASTRA_DB_APPLICATION_TOKEN" });
 const DateTimeSchema = z.string().datetime();
 const DocumentStatusSchema = z

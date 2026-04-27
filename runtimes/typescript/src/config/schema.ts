@@ -25,7 +25,10 @@ const Id = z
 
 const SecretRef = z
 	.string()
-	.regex(/^[a-z]+:[^\s]+$/i, "expected '<provider>:<path>', e.g. 'env:FOO'");
+	.regex(
+		/^[a-z][a-z0-9]*:[^\s]+$/,
+		"expected '<provider>:<path>', e.g. 'env:FOO'",
+	);
 
 const RuntimeSchema = z
 	.object({
@@ -129,11 +132,7 @@ const OidcClaimsSchema = z
  */
 const OidcClientSchema = z.object({
 	clientId: z.string().min(1),
-	clientSecretRef: z
-		.string()
-		.regex(/^[a-z]+:[^\s]+$/i, "expected '<provider>:<path>'")
-		.nullable()
-		.default(null),
+	clientSecretRef: SecretRef.nullable().default(null),
 	// URL the IdP redirects back to after login. Must be registered
 	// in the IdP's allowed redirect URIs. Absolute URL or a path that
 	// resolves against the request origin.
@@ -151,11 +150,7 @@ const OidcClientSchema = z.object({
 	sessionCookieName: z.string().min(1).default("wb_session"),
 	// SecretRef for the key that encrypts session cookies. When null,
 	// an ephemeral 32-byte key is generated at boot.
-	sessionSecretRef: z
-		.string()
-		.regex(/^[a-z]+:[^\s]+$/i, "expected '<provider>:<path>'")
-		.nullable()
-		.default(null),
+	sessionSecretRef: SecretRef.nullable().default(null),
 });
 
 const OidcSchema = z.object({

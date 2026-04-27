@@ -87,6 +87,28 @@ export interface AppOptions {
 	readonly replicaId?: string;
 }
 
+const OPENAPI_CONFIG = {
+	openapi: "3.1.0",
+	info: {
+		title: "AI Workbench",
+		version: VERSION,
+		description:
+			"Single-runtime, multi-workspace workbench for Astra DB and the Data API. This is the TypeScript green box; alternative language runtimes expose the same surface.",
+		license: { name: "TBD" },
+	},
+	servers: [{ url: "/" }],
+};
+
+const COMMON_API_ERROR_RESPONSES = {
+	400: "BadRequest",
+	401: "Unauthorized",
+	403: "Forbidden",
+	409: "Conflict",
+	422: "UnprocessableEntity",
+	429: "TooManyRequests",
+	500: "InternalServerError",
+} as const;
+
 export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
 	const jobsStore: JobStore = opts.jobs ?? new MemoryJobStore();
@@ -201,16 +223,10 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	);
 
 	registerCommonErrorResponses(app);
-	app.doc31("/api/v1/openapi.json", {
-		openapi: "3.1.0",
-		info: {
-			title: "AI Workbench",
-			version: VERSION,
-			description:
-				"Single-runtime, multi-workspace workbench for Astra DB and the Data API. This is the TypeScript green box; alternative language runtimes expose the same surface.",
-			license: { name: "TBD" },
-		},
-		servers: [{ url: "/" }],
+	registerSecuritySchemes(app);
+	app.get("/api/v1/openapi.json", (c) => {
+		const document = app.getOpenAPI31Document(OPENAPI_CONFIG);
+		return c.json(withApiContractDefaults(document));
 	});
 
 	app.get(
@@ -342,4 +358,56 @@ function registerCommonErrorResponses(app: OpenAPIHono<AppEnv>): void {
 		"InternalServerError",
 		errorResponse("Unexpected server error"),
 	);
+}
+
+function registerSecuritySchemes(app: OpenAPIHono<AppEnv>): void {
+	app.openAPIRegistry.registerComponent("securitySchemes", "WorkbenchApiKey", {
+		type: "http",
+		scheme: "bearer",
+		bearerFormat: "wb_live_*",
+		description:
+			"Workbench API key sent as `Authorization: Bearer wb_live_<prefix>_<secret>`.",
+	});
+	app.openAPIRegistry.registerComponent("securitySchemes", "OidcBearer", {
+		type: "http",
+		scheme: "bearer",
+		bearerFormat: "JWT",
+		description:
+			"OIDC access token sent as `Authorization: Bearer <jwt>` when OIDC auth is enabled.",
+	});
+}
+
+type OpenApiOperation = {
+	responses?: Record<string, unknown>;
+	security?: Array<Record<string, string[]>>;
+};
+
+function withApiContractDefaults<T extends { paths?: unknown }>(
+	document: T,
+): T {
+	if (!isRecord(document.paths)) return document;
+	for (const [path, methods] of Object.entries(document.paths)) {
+		if (!path.startsWith("/api/v1/workspaces")) continue;
+		if (!isRecord(methods)) continue;
+		for (const method of ["get", "post", "patch", "delete"] as const) {
+			const operation = methods[method];
+			if (!isOpenApiOperation(operation)) continue;
+			operation.responses ??= {};
+			for (const [status, name] of Object.entries(COMMON_API_ERROR_RESPONSES)) {
+				operation.responses[status] = {
+					$ref: `#/components/responses/${name}`,
+				};
+			}
+			operation.security = [{ WorkbenchApiKey: [] }, { OidcBearer: [] }];
+		}
+	}
+	return document;
+}
+
+function isOpenApiOperation(value: unknown): value is OpenApiOperation {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

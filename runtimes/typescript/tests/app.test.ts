@@ -22,6 +22,11 @@ async function json(res: Response): Promise<any> {
 	return (await res.json()) as any;
 }
 
+type OpenApiTestOperation = {
+	readonly security?: unknown;
+	readonly responses?: Readonly<Record<string, unknown>>;
+};
+
 function makeApp(authOpts?: {
 	mode?: AuthMode;
 	anonymousPolicy?: AnonymousPolicy;
@@ -602,6 +607,61 @@ describe("openapi", () => {
 		expect(body.components.schemas.KnowledgeBase).toBeDefined();
 		expect(body.components.schemas.RagDocument).toBeDefined();
 		expect(body.components.schemas.DocumentStatus).toBeDefined();
+	});
+
+	test("openapi doc exposes shared auth schemes and error responses", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/api/v1/openapi.json");
+		const body = await json(res);
+
+		expect(body.components.securitySchemes.WorkbenchApiKey).toMatchObject({
+			type: "http",
+			scheme: "bearer",
+			bearerFormat: "wb_live_*",
+		});
+		expect(body.components.securitySchemes.OidcBearer).toMatchObject({
+			type: "http",
+			scheme: "bearer",
+			bearerFormat: "JWT",
+		});
+
+		for (const [pathName, path] of Object.entries(body.paths)) {
+			if (!pathName.startsWith("/api/v1/workspaces")) continue;
+			const operations = path as Record<
+				string,
+				OpenApiTestOperation | undefined
+			>;
+			for (const method of ["get", "post", "patch", "delete"]) {
+				const operation = operations[method];
+				if (!operation) continue;
+				expect(operation.security).toEqual([
+					{ WorkbenchApiKey: [] },
+					{ OidcBearer: [] },
+				]);
+				for (const [status, name] of Object.entries({
+					400: "BadRequest",
+					401: "Unauthorized",
+					403: "Forbidden",
+					409: "Conflict",
+					422: "UnprocessableEntity",
+					429: "TooManyRequests",
+					500: "InternalServerError",
+				})) {
+					expect(operation.responses?.[status]).toEqual({
+						$ref: `#/components/responses/${name}`,
+					});
+				}
+			}
+		}
+	});
+
+	test("openapi doc uses a JSON Schema-compatible SecretRef pattern", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/api/v1/openapi.json");
+		const body = await json(res);
+		expect(body.components.schemas.SecretRef.pattern).toBe(
+			"^[a-z][a-z0-9]*:.+$",
+		);
 	});
 
 	test("GET /docs serves the Scalar reference UI", async () => {

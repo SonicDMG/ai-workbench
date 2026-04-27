@@ -10,7 +10,7 @@ export type WorkspaceKind = z.infer<typeof WorkspaceKindSchema>;
 
 export const SecretRefSchema = z
 	.string()
-	.regex(/^[a-z][a-z0-9]*:.+/i, "Expected '<provider>:<path>', e.g. 'env:FOO'");
+	.regex(/^[a-z][a-z0-9]*:.+$/, "Expected '<provider>:<path>', e.g. 'env:FOO'");
 
 const EndpointInputSchema = z
 	.union([z.string().url(), SecretRefSchema, z.literal("")])

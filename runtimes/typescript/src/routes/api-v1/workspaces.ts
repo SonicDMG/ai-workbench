@@ -101,7 +101,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 				},
 				409: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate uid",
+					description: "Duplicate workspaceId",
 				},
 			},
 		}),
