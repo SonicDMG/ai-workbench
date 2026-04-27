@@ -1,8 +1,9 @@
 # Workspaces
 
 A **workspace** is the unit of isolation in AI Workbench — a named
-tenant that owns its own catalogs, vector-store descriptors,
-documents, saved queries, and async-ingest jobs.
+tenant that owns its own knowledge bases, execution services
+(chunking / embedding / reranking), RAG documents, async-ingest jobs,
+and API keys.
 
 Workspaces are **runtime records**, not config. They're created via
 `POST /api/v1/workspaces`, fetched via `GET /api/v1/workspaces/{uid}`,
@@ -39,11 +40,11 @@ DELETE /api/v1/workspaces/{uid}        → cascade delete
 
 `DELETE` cascades to:
 
-- Every catalog under the workspace.
-- Every vector-store descriptor under the workspace, after dropping its
-  underlying collection through the workspace's driver.
-- Every document under any of those catalogs.
-- Every saved query under any of those catalogs.
+- Every knowledge base under the workspace, after dropping each KB's
+  underlying vector collection through the workspace's driver.
+- Every RAG document registered against any of those knowledge bases.
+- Every chunking, embedding, and reranking service definition under the
+  workspace.
 - Every async-ingest job record scoped to the workspace.
 - Every workspace API key issued from the workspace.
 
@@ -51,11 +52,11 @@ DELETE /api/v1/workspaces/{uid}        → cascade delete
 
 - A request carrying workspace UID `A` can never read or mutate
   resources in workspace `B`. Nested routes call
-  `ControlPlaneStore.listCatalogs(workspace)` / `…getCatalog(workspace,
-  uid)` etc. and the store asserts the workspace exists before
-  returning anything.
+  `ControlPlaneStore.listKnowledgeBases(workspace)` /
+  `…getKnowledgeBase(workspace, uid)` etc. and the store asserts the
+  workspace exists before returning anything.
 - Logs carry `requestId`. Structured OTel attributes (workspaceUid,
-  catalogUid, jobId) are on the cross-cutting observability
+  knowledgeBaseUid, jobId) are on the cross-cutting observability
   workstream — see [`roadmap.md`](roadmap.md).
 
 ### `kind`
@@ -77,10 +78,10 @@ service.
 
 **`kind` is immutable after creation.** `PUT /api/v1/workspaces/{uid}`
 rejects a `kind` field with `400`. Changing a workspace's kind would
-orphan any vector-store collections already provisioned on the
-original backend — there's no safe way to transparently migrate them,
-so the runtime doesn't try. Delete and recreate the workspace if the
-backend needs to change.
+orphan any KB collections already provisioned on the original backend
+— there's no safe way to transparently migrate them, so the runtime
+doesn't try. Delete and recreate the workspace if the backend needs to
+change.
 
 ### `name` and `endpoint`
 
@@ -89,7 +90,7 @@ backend needs to change.
   display the name but disambiguate by uid when needed.
 - `endpoint` is the **data-plane URL** for this workspace's backend.
   For `astra` / `hcd` workspaces it's the Astra Data API endpoint
-  the vector-store driver dials (`https://<db>-<region>.apps.astra.datastax.com`).
+  the KB driver dials (`https://<db>-<region>.apps.astra.datastax.com`).
   Each Astra DB has its own endpoint — put one workspace per DB to
   route correctly.
 - `endpoint` accepts either a **literal URL** or a **SecretRef**
@@ -123,37 +124,48 @@ Every value in the map must match the `<provider>:<path>` shape —
 `400`. The runtime resolves refs through its `SecretResolver` at the
 moment the workspace's backend needs to be contacted.
 
-## Catalogs and vector stores
+## Knowledge bases and execution services
 
 A workspace owns:
 
-- **Vector-store descriptors** — the `wb_vector_store_by_workspace`
-  rows. Each declares dimensions, similarity, embedding config,
-  lexical config, reranking config. These are *descriptors*, not the
-  vector data itself — the underlying Data API Collection is
-  provisioned transactionally by the workspace's vector-store driver
-  when the descriptor is created.
-- **Catalogs** — named document collections, each optionally
-  `vectorStore`-bound to one of the workspace's descriptors.
+- **Knowledge bases** — the `wb_config_knowledge_bases_by_workspace`
+  rows. Each KB pins an embedding service (which determines the
+  dimensions and similarity metric of its vector collection) and a
+  chunking service, and may optionally bind a reranking service. A
+  KB's underlying Astra collection (`wb_vectors_<kb_id>`) is
+  provisioned transactionally when the KB is created and dropped when
+  it is deleted.
+- **Execution services** — three families of `wb_config_*_service_by_workspace`
+  rows describing the chunking, embedding, and reranking
+  implementations available to KBs in this workspace.
 
-### Catalog ↔ vector-store binding (N:1)
+### Knowledge base ↔ service binding (N:1)
 
-**Multiple catalogs may share one vector store.** This was a
-deliberate relaxation from an earlier draft's strict 1:1 constraint.
+**Multiple knowledge bases may share one service definition.** A KB
+holds:
+
+- `embeddingServiceId` (required, **immutable** after KB create — the
+  vector collection's dimensions are pinned at provisioning time)
+- `chunkingServiceId` (required, immutable)
+- `rerankingServiceId` (optional, mutable — reranking is applied at
+  query time and can be added/removed without affecting stored
+  vectors)
+
 The store enforces:
 
-- A catalog's `vectorStore` field (if non-null) must reference a
-  vector store in the same workspace.
-- `DELETE` a vector store is blocked with `409 conflict` while any
-  catalog references it. Clear or move the catalog binding first, then
-  delete the vector store.
+- A KB's `embeddingServiceId` and `chunkingServiceId` must reference
+  services in the same workspace.
+- `DELETE` on an embedding or chunking service is blocked with
+  `409 conflict` while any KB references it. Reassign or delete the
+  KBs first, then delete the service.
 
 The relationship:
 
 ```
-workspace ──► catalog  ──► vector-store descriptor  (N:1)
-                │
-                └──► documents
+workspace ──► knowledge base  ──► chunking service   (N:1)
+                │              ──► embedding service  (N:1)
+                │              ──► reranking service  (N:1, optional)
+                └──► RAG documents
 ```
 
 ## Seeding workspaces for local dev
@@ -178,21 +190,35 @@ current count of workspaces, not a list. Listing is at `GET
 
 ## Example session
 
-Create a mock workspace, add a catalog, list:
+Create a mock workspace, register a chunking + embedding service,
+create a KB binding them, list:
 
 ```bash
 WS_BODY='{"name":"demo","kind":"mock"}'
 WS_UID=$(curl -s -X POST http://localhost:8080/api/v1/workspaces \
   -H "content-type: application/json" -d "$WS_BODY" | jq -r .uid)
 
-CAT_BODY='{"name":"support"}'
-curl -s -X POST http://localhost:8080/api/v1/workspaces/$WS_UID/catalogs \
-  -H "content-type: application/json" -d "$CAT_BODY"
+CHUNK_BODY='{"name":"default-chunker","provider":"mock"}'
+CHUNK_UID=$(curl -s -X POST \
+  http://localhost:8080/api/v1/workspaces/$WS_UID/chunking-services \
+  -H "content-type: application/json" -d "$CHUNK_BODY" | jq -r .uid)
 
-curl -s http://localhost:8080/api/v1/workspaces/$WS_UID/catalogs
+EMBED_BODY='{"name":"default-embedder","provider":"mock","dimensions":1536,"similarity":"cosine"}'
+EMBED_UID=$(curl -s -X POST \
+  http://localhost:8080/api/v1/workspaces/$WS_UID/embedding-services \
+  -H "content-type: application/json" -d "$EMBED_BODY" | jq -r .uid)
+
+KB_BODY=$(jq -n --arg c "$CHUNK_UID" --arg e "$EMBED_UID" \
+  '{name:"support",chunkingServiceId:$c,embeddingServiceId:$e}')
+curl -s -X POST \
+  http://localhost:8080/api/v1/workspaces/$WS_UID/knowledge-bases \
+  -H "content-type: application/json" -d "$KB_BODY"
+
+curl -s http://localhost:8080/api/v1/workspaces/$WS_UID/knowledge-bases
 ```
 
-Delete the workspace — the catalog goes with it:
+Delete the workspace — the KB, its collection, the services, and any
+documents go with it:
 
 ```bash
 curl -X DELETE http://localhost:8080/api/v1/workspaces/$WS_UID

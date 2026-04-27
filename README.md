@@ -2,8 +2,9 @@
 
 AI Workbench is a self-hosted product surface for building, inspecting,
 and operating retrieval-backed AI applications on **DataStax Astra**.
-It gives teams one place to manage workspaces, catalogs, vector stores,
-document ingest, saved queries, API keys, and retrieval experiments.
+It gives teams one place to manage workspaces, knowledge bases,
+chunking / embedding / reranking services, document ingest, API keys,
+and retrieval experiments.
 
 Under the product UI is a stable HTTP runtime. The default TypeScript
 runtime ships in the same Docker image as the UI; alternative
@@ -12,11 +13,15 @@ language-native runtimes ("green boxes") live under
 
 ## At a glance
 
-- **Workspace command center.** Workspaces isolate catalogs, vector
-  stores, documents, saved queries, jobs, credentials, and API keys.
-- **Knowledge operations.** Ingest raw text or files into catalogs,
-  track sync/async job state, and bind content to the vector store that
-  powers retrieval.
+- **Workspace command center.** Workspaces isolate knowledge bases,
+  execution services, documents, jobs, credentials, and API keys.
+- **Knowledge bases as first-class.** A KB owns its Astra collection
+  end-to-end and binds the chunking + embedding + (optional)
+  reranking services that produce its content. The collection is
+  auto-provisioned on create.
+- **Knowledge operations.** Ingest raw text or files into a KB,
+  track sync/async job state, and let the KB's bound services drive
+  chunking and embedding.
 - **Retrieval playground.** Run text, vector, hybrid, and rerank
   searches in the browser against real workspace data.
 - **Production-friendly controls.** Start in memory, switch to file
@@ -51,17 +56,21 @@ language-native runtimes ("green boxes") live under
             └──────────────── same HTTP contract ───────────────────┘
                                        │
                                        ▼ (per-runtime Astra SDK)
-                        ┌─────────────────────────────┐
-                        │   Astra Data API            │
-                        │     Tables (control plane): │
-                        │       wb_workspaces         │
-                        │       wb_catalog_by_ws      │
-                        │       wb_vector_store_by_ws │
-                        │       wb_documents_by_cat   │
-                        │     Collections (data       │
-                        │       plane): one per       │
-                        │       vector store          │
-                        └─────────────────────────────┘
+                        ┌──────────────────────────────────┐
+                        │   Astra Data API                 │
+                        │     Tables (control plane):      │
+                        │       wb_workspaces              │
+                        │       wb_config_knowledge_       │
+                        │         bases_by_workspace       │
+                        │       wb_config_chunking/        │
+                        │         embedding/reranking      │
+                        │         _service_by_workspace    │
+                        │       wb_rag_documents_          │
+                        │         by_knowledge_base        │
+                        │     Collections (data plane):    │
+                        │       wb_vectors_<kb_id>         │
+                        │       (one per knowledge base)   │
+                        └──────────────────────────────────┘
 ```
 
 See [`docs/architecture.md`](docs/architecture.md) for the full model.
@@ -109,26 +118,21 @@ All routes documented at `/docs` (Scalar UI) and
 | `GET / POST` | `/api/v1/workspaces` | List / create workspaces |
 | `GET / PUT / DELETE` | `/api/v1/workspaces/{w}` | Workspace CRUD (DELETE cascades) |
 | `POST` | `/api/v1/workspaces/{w}/test-connection` | Resolve configured workspace credential refs |
-| `GET / POST` | `/api/v1/workspaces/{w}/catalogs` | List / create catalogs |
-| `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/catalogs/{c}` | Catalog CRUD (DELETE cascades to documents + saved queries) |
-| `GET / POST` | `/api/v1/workspaces/{w}/catalogs/{c}/documents` | List / create document metadata |
-| `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/catalogs/{c}/documents/{d}` | Document metadata CRUD (DELETE cascades chunks via the bound vector store) |
-| `GET` | `/api/v1/workspaces/{w}/catalogs/{c}/documents/{d}/chunks` | List the chunks under a document (id, chunkIndex, text, payload) |
-| `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/documents/search` | Catalog-scoped search (vector / text, optional hybrid + rerank) |
-| `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/ingest` | Sync ingest (chunk → embed → upsert → register Document) |
-| `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/ingest?async=true` | Same pipeline, returns 202 + job pointer |
-| `GET / POST` | `/api/v1/workspaces/{w}/catalogs/{c}/queries` | List / create saved queries |
-| `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/catalogs/{c}/queries/{q}` | Saved-query CRUD |
-| `POST` | `/api/v1/workspaces/{w}/catalogs/{c}/queries/{q}/run` | Replay a saved query through catalog-scoped search |
+| `GET / POST` | `/api/v1/workspaces/{w}/knowledge-bases` | List / create knowledge bases (POST auto-provisions the underlying vector collection) |
+| `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}` | KB CRUD (DELETE drops the collection + cascades RAG documents) |
+| `GET / POST` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents` | List / register a document in a KB |
+| `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents/{d}` | Document metadata CRUD (DELETE cascades chunks in the KB's collection) |
+| `GET` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents/{d}/chunks` | List the chunks under a document |
+| `POST` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest` | Sync ingest (chunk → embed → upsert → register Document) |
+| `POST` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest?async=true` | Same pipeline, returns 202 + job pointer |
+| `POST` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records` | Upsert vector or text records (text → server-side `$vectorize` when supported, otherwise client-side embed) |
+| `DELETE` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records/{rid}` | Delete one |
+| `POST` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/search` | KB-scoped search (vector / text, optional hybrid + rerank) |
+| `GET / POST / DELETE` | `/api/v1/workspaces/{w}/chunking-services` | Chunking-service CRUD |
+| `GET / POST / DELETE` | `/api/v1/workspaces/{w}/embedding-services` | Embedding-service CRUD |
+| `GET / POST / DELETE` | `/api/v1/workspaces/{w}/reranking-services` | Reranking-service CRUD |
 | `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}` | Poll an async-ingest job |
 | `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}/events` | SSE stream of job updates until terminal state |
-| `GET / POST` | `/api/v1/workspaces/{w}/vector-stores` | List / create vector-store descriptors (POST provisions the collection too) |
-| `GET` | `/api/v1/workspaces/{w}/vector-stores/discoverable` | List data-plane collections not yet wrapped in a descriptor |
-| `POST` | `/api/v1/workspaces/{w}/vector-stores/adopt` | Wrap an existing collection in a descriptor without re-provisioning |
-| `GET / PUT / DELETE` | `/api/v1/workspaces/{w}/vector-stores/{v}` | Descriptor CRUD (DELETE drops the collection) |
-| `POST` | `/api/v1/workspaces/{w}/vector-stores/{v}/records` | Upsert vector or text records (text → server-side `$vectorize` when supported, otherwise client-side embed) |
-| `DELETE` | `/api/v1/workspaces/{w}/vector-stores/{v}/records/{rid}` | Delete one |
-| `POST` | `/api/v1/workspaces/{w}/vector-stores/{v}/search` | Vector or text search; supports `hybrid`, `lexicalWeight`, `rerank` |
 | `GET / POST` | `/api/v1/workspaces/{w}/api-keys` | List / issue workspace API keys |
 | `DELETE` | `/api/v1/workspaces/{w}/api-keys/{keyId}` | Revoke a workspace API key |
 

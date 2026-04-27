@@ -60,13 +60,14 @@ corresponds to one step in
 [`../../conformance/scenarios.md`](../../conformance/scenarios.md).
 Suggested order:
 
-1. `POST /api/v1/workspaces` — scenario 1 step 1. Add an `astra` package
-   that wraps `astra-db-java` for the `wb_*` tables, and wire it into
-   `WorkspaceController`.
-2. `GET` / `PUT` / `DELETE` for workspaces — completes scenario 1.
-3. Catalog routes — completes scenario 2.
-4. Vector-store descriptor routes — completes scenario 3.
-5. Vector-store data plane + documents — scenarios 4, 5.
+1. `POST /api/v1/workspaces` — scenario `workspace-crud-basic` step 1.
+   Add an `astra` package that wraps `astra-db-java` for the `wb_*`
+   tables, and wire it into `WorkspaceController`.
+2. `GET` / `PUT` / `DELETE` for workspaces — completes the workspace
+   scenarios.
+3. Chunking / embedding / reranking service CRUD.
+4. Knowledge-base CRUD with auto-provisioned vector collections.
+5. KB data plane + documents + ingest.
 
 Every time you flip a conformance test green, remove its `@Disabled`
 annotation in
@@ -151,11 +152,11 @@ runtimes/java/
 │   │   │   ├── web/
 │   │   │   │   └── RequestIdFilter.java                       ← X-Request-Id
 │   │   │   ├── model/                                         ← records mirroring TS types
-│   │   │   └── routes/
+│   │   │   └── routes/                                        ← scaffold; align with TS routes when implemented
 │   │   │       ├── OperationalController.java                 ← working: /healthz, /readyz, /version, /
 │   │   │       ├── WorkspaceController.java                   ← 501 stubs
-│   │   │       ├── CatalogController.java                     ← 501 stubs
-│   │   │       ├── VectorStoreController.java                 ← 501 stubs
+│   │   │       ├── ServicesController.java                    ← chunking/embedding/reranking — 501 stubs
+│   │   │       ├── KnowledgeBaseController.java               ← 501 stubs
 │   │   │       └── DocumentController.java                    ← 501 stubs
 │   │   └── resources/
 │   │       └── application.yml

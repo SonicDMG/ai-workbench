@@ -32,11 +32,11 @@ terminal state.
 ## Today's behavior
 
 The async-ingest path lives in
-[`runtimes/typescript/src/routes/api-v1/documents.ts`](../runtimes/typescript/src/routes/api-v1/documents.ts):
+[`runtimes/typescript/src/routes/api-v1/kb-documents.ts`](../runtimes/typescript/src/routes/api-v1/kb-documents.ts):
 
-1. `POST /catalogs/{c}/ingest?async=true` calls `jobs.create(...)`,
-   spawns `void runAsyncIngest({...})`, and returns 202 to the
-   caller with the job pointer.
+1. `POST /knowledge-bases/{kb}/ingest?async=true` calls
+   `jobs.create(...)`, spawns `void runAsyncIngest({...})`, and
+   returns 202 to the caller with the job pointer.
 2. The detached worker drives chunking → embedding → upsert,
    updating the job record via `jobsStore.update(...)` along the
    way. Failure modes flip the record to `failed` with a sanitized

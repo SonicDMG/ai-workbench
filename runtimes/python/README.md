@@ -69,12 +69,15 @@ step in
 [`../../conformance/scenarios.md`](../../conformance/scenarios.md).
 Suggested order:
 
-1. `POST /api/v1/workspaces` — scenario 1 step 1. Plumb astrapy into
-   [`workbench/astra.py`](./src/workbench/) (new file) and wire the
-   route in [`workbench/routes/workspaces.py`](./src/workbench/routes/workspaces.py).
-2. `GET` / `PUT` / `DELETE` for workspaces — completes scenario 1.
-3. Catalog routes — completes scenario 2.
-4. Vector-store descriptor routes — completes scenario 3.
+1. `POST /api/v1/workspaces` — scenario `workspace-crud-basic` step 1.
+   Plumb astrapy into [`workbench/astra.py`](./src/workbench/) (new
+   file) and wire the route in
+   [`workbench/routes/workspaces.py`](./src/workbench/routes/workspaces.py).
+2. `GET` / `PUT` / `DELETE` for workspaces — completes the workspace
+   scenarios.
+3. Chunking / embedding / reranking service CRUD.
+4. Knowledge-base CRUD with auto-provisioned vector collections.
+5. KB data plane — records, search, documents, ingest.
 
 Each time you flip a conformance test green, remove its
 `@pytest.mark.xfail` decorator in
@@ -157,10 +160,10 @@ runtimes/python/
 │   ├── config.py                   ← env-var resolution (ASTRA_*, WORKBENCH_*)
 │   ├── errors.py                   ← ApiError + subclasses + HTTP mapping
 │   ├── models.py                   ← Pydantic models mirroring TS types
-│   └── routes/
+│   └── routes/                    ← scaffold; align with TS routes when implemented
 │       ├── workspaces.py
-│       ├── catalogs.py
-│       ├── vector_stores.py
+│       ├── services.py            ← chunking / embedding / reranking
+│       ├── knowledge_bases.py
 │       └── documents.py
 └── tests/
     ├── conftest.py                 ← FastAPI + mock-astra wiring

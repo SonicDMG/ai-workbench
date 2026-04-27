@@ -24,9 +24,10 @@ conformance/
 ├── scenarios.md                ← narrative counterpart
 ├── fixtures/                   ← expected normalized responses
 │   ├── workspace-crud-basic.json
-│   ├── catalog-under-workspace.json
-│   ├── vector-store-definition.json
-│   └── vector-store-upsert-and-search.json
+│   ├── workspace-kind-is-immutable.json
+│   ├── workspace-credentials-must-be-secret-ref.json
+│   ├── workspace-test-connection-mock.json
+│   └── workspace-api-key-lifecycle.json
 ├── mock-astra/
 │   └── server.ts               ← stand-in Astra endpoint (Node)
 ├── normalize.mjs               ← shape-agnostic placeholder scrubber
@@ -71,38 +72,33 @@ Current scenarios:
 | Slug | Covers |
 |---|---|
 | `workspace-crud-basic` | Workspace POST / GET / PUT / DELETE lifecycle |
-| `catalog-under-workspace` | Catalogs scoped per workspace |
-| `vector-store-definition` | Vector-store descriptor create + read |
-| `vector-store-upsert-and-search` | Phase 1b data plane — upsert, search with payload filter, single-record delete (and re-delete noop) |
-| `catalog-vector-store-reference-integrity` | Catalog bindings must reference existing same-workspace vector stores; referenced vector stores delete with `409 conflict` |
-| `document-crud-basic` | Document metadata CRUD + cross-catalog isolation |
 | `workspace-kind-is-immutable` | Workspace `kind` cannot be changed after creation |
 | `workspace-credentials-must-be-secret-ref` | Raw credential values are rejected before reaching the SecretResolver |
 | `workspace-test-connection-mock` | Mock workspace connection probe response shape |
 | `workspace-api-key-lifecycle` | API-key issue, list, revoke, list lifecycle |
-| `catalog-ingest-basic` | Sync ingest — chunk + embed + upsert + Document row, plus `409 catalog_not_bound_to_vector_store` on an unbound catalog |
-| `catalog-scoped-document-search` | Search merges `catalogUid` into the filter; foreign-catalog records stay invisible; unbound catalogs return 409 |
-| `catalog-saved-queries` | Saved-query CRUD + post-delete 404 |
-| `vector-store-text-dispatch-mock` | Driver-native `searchByText` on a `mock` workspace with `embedding.provider: mock` |
-| `vector-store-hybrid-and-rerank-mock` | `hybrid: true` + `rerank: true` + `lexicalWeight` lanes; `400 validation_error` for hybrid with a vector body |
-| `catalog-async-ingest-202` | 202 wire shape for `?async=true` (job snapshot at creation time is deterministic; eventual completion stays in runtime tests) |
 
-The runtime additionally tests the following routes through its
-own Vitest suite (timing- or driver-method-dependent, so they
-don't fit the cross-runtime fixture model):
+The corpus shrank during the catalog → knowledge-base refactor: every
+prior catalog / vector-store fixture was retired, and the
+knowledge-base equivalents have not yet been authored. They will land
+back as the new fixture set bakes in. Until then, the runtime
+exercises every KB / services / ingest / search route through its
+Vitest suite (`tests/knowledge-bases.test.ts`, `tests/ingest/`,
+plus the route-level tests under `tests/`).
 
-- `GET /catalogs/{c}/documents/{d}/chunks` — driver-side
+Routes that stay runtime-only by design (timing- or
+driver-method-dependent):
+
+- `GET /knowledge-bases/{kb}/documents/{d}/chunks` — driver-side
   `listRecords` filtered by `documentUid`
-- `GET /vector-stores/discoverable` + `POST /vector-stores/adopt`
-  — driver-side `listAdoptable`, mocked
-- `DELETE /catalogs/{c}/documents/{d}` — chunk-cascade via
+- `DELETE /knowledge-bases/{kb}/documents/{d}` — chunk-cascade via
   driver `deleteRecords`
 
 These move into conformance once a second runtime starts
 implementing them and the fixture format proves stable across
 drivers.
 
-More land as chat and MCP routes ship.
+More land as KB scenarios are reauthored and as chat / MCP routes
+ship.
 
 ## Fixtures
 
@@ -246,7 +242,7 @@ The conformance harness above runs against the deterministic
 harness lives at
 [`runtimes/typescript/scripts/smoke-astra.ts`](../runtimes/typescript/scripts/smoke-astra.ts)
 that boots the runtime in-process against a **real** Astra Data API
-and exercises the full workspace → vector-store → catalog →
+and exercises the full workspace → services → knowledge-base →
 sync ingest → async ingest → search → cleanup pipeline. Run
 locally with:
 
