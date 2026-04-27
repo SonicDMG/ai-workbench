@@ -16,7 +16,7 @@
 					"createdAt": "{{TS}}",
 					"credentials": {},
 					"url": null,
-					"namespace": null,
+					"keyspace": null,
 					"kind": "mock",
 					"name": "w",
 					"uid": "{{UUID_1}}",

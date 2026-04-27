@@ -191,7 +191,7 @@ seedWorkspaces:
     url: env:ASTRA_DB_API_ENDPOINT
     credentials:
       token: env:ASTRA_DB_APPLICATION_TOKEN
-    namespace: workbench
+    keyspace: workbench
 ```
 
 | Field | Type | Required | Notes |
@@ -201,7 +201,7 @@ seedWorkspaces:
 | `uid` | UUID | no (auto-generated) | Only useful if other seeds reference it |
 | `url` | URL or SecretRef | no | Workspace-specific data-plane URL |
 | `credentials` | map<string, SecretRef> | no | Per-key secret pointers |
-| `namespace` | string | no | Workspace-specific namespace |
+| `keyspace` | string | no | Workspace-specific keyspace |
 
 Using `seedWorkspaces` with any driver other than `memory` is a
 validation error — workspaces already persist in the backend, so

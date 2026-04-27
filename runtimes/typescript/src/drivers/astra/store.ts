@@ -302,10 +302,10 @@ export interface AstraVectorStoreDriverOptions {
 
 const defaultDbFactory: DbFactory = (workspace, endpoint, token) => {
 	const client = new DataAPIClient(token);
-	const namespace = workspace.namespace ?? undefined;
+	const keyspace = workspace.keyspace ?? undefined;
 	return client.db(
 		endpoint,
-		namespace ? { keyspace: namespace } : {},
+		keyspace ? { keyspace } : {},
 	) as unknown as AstraDbLike;
 };
 

@@ -51,7 +51,7 @@ export function workspaceToRow(r: WorkspaceRecord): WorkspaceRow {
 		name: r.name,
 		url: r.url,
 		kind: r.kind,
-		namespace: r.namespace,
+		keyspace: r.keyspace,
 		credentials: { ...r.credentials },
 		created_at: r.createdAt,
 		updated_at: r.updatedAt,
@@ -59,7 +59,7 @@ export function workspaceToRow(r: WorkspaceRecord): WorkspaceRow {
 }
 
 export function workspaceFromRow(row: WorkspaceRow): WorkspaceRecord {
-	// Defensive `?? null` on url/namespace so rows written before those
+	// Defensive `?? null` on url/keyspace so rows written before those
 	// columns existed (or rows where the Astra driver decodes a missing
 	// column as undefined rather than null) come back through this
 	// converter as the typed `string | null` shape — matches the
@@ -72,7 +72,7 @@ export function workspaceFromRow(row: WorkspaceRow): WorkspaceRecord {
 		name: row.name,
 		url: row.url ?? null,
 		kind: row.kind,
-		namespace: row.namespace ?? null,
+		keyspace: row.keyspace ?? null,
 		credentials: { ...(row.credentials ?? {}) },
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,

@@ -133,9 +133,9 @@ export function WorkspaceDetailPage() {
 							<dt className="text-slate-500">Kind</dt>
 							<dd className="text-slate-900 font-mono text-xs">{data.kind}</dd>
 
-							<dt className="text-slate-500">Namespace</dt>
+							<dt className="text-slate-500">Keyspace</dt>
 							<dd className="text-slate-900 font-mono">
-								{data.namespace ?? <span className="text-slate-400">—</span>}
+								{data.keyspace ?? <span className="text-slate-400">—</span>}
 							</dd>
 
 							<dt className="text-slate-500">Url</dt>

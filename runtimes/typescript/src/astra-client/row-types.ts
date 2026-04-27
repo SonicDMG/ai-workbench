@@ -29,7 +29,7 @@ export interface WorkspaceRow {
 	name: string;
 	url: string | null;
 	kind: WorkspaceKind;
-	namespace: string | null;
+	keyspace: string | null;
 	credentials: Record<string, string>;
 	created_at: Iso;
 	updated_at: Iso;

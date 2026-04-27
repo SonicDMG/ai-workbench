@@ -30,7 +30,7 @@ const fixture: Workspace = {
 	url: "env:ASTRA_DB_API_ENDPOINT",
 	kind: "astra",
 	credentials: { token: "env:ASTRA_DB_APPLICATION_TOKEN" },
-	namespace: "default_namespace",
+	keyspace: "default_keyspace",
 	createdAt: "2026-04-22T10:11:12.345Z",
 	updatedAt: "2026-04-22T10:11:12.345Z",
 };

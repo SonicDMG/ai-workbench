@@ -53,7 +53,7 @@ class WorkspaceRecord(_Base):
     url: str | None
     kind: WorkspaceKind
     credentials: dict[str, SecretRef] = Field(default_factory=dict)
-    namespace: str | None
+    keyspace: str | None
     created_at: str
     updated_at: str
 
@@ -64,14 +64,14 @@ class CreateWorkspaceInput(_Base):
     url: str | None = None
     kind: WorkspaceKind
     credentials: dict[str, SecretRef] | None = None
-    namespace: str | None = None
+    keyspace: str | None = None
 
 
 class UpdateWorkspaceInput(_Base):
     name: str | None = None
     url: str | None = None
     credentials: dict[str, SecretRef] | None = None
-    namespace: str | None = None
+    keyspace: str | None = None
 
 
 # ---- Knowledge bases ---- #

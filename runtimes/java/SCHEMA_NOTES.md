@@ -23,7 +23,7 @@ Three new layers, all `snake_case` table names:
 Decisions worth carrying over when the routes are implemented here:
 
 1. **`wb_config_workspaces`** replaces `wb_workspaces`. Renames:
-   `endpoint → url`, `keyspace → namespace`, `credentials_ref → credentials`.
+   `endpoint → url`, `credentials_ref → credentials`.
 2. **Knowledge Base** replaces "catalog". The KB row binds an
    embedding service, a chunking service, and an optional reranking
    service by id. The vector collection is auto-provisioned on KB

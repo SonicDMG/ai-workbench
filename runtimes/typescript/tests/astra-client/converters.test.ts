@@ -16,7 +16,7 @@ const WS: WorkspaceRecord = {
 	url: "https://prod.example",
 	kind: "astra",
 	credentials: { token: "env:ASTRA_TOKEN", scb: "file:/etc/scb.zip" },
-	namespace: "workbench",
+	keyspace: "workbench",
 	createdAt: "2026-04-22T00:00:00.000Z",
 	updatedAt: "2026-04-22T00:00:01.000Z",
 };
@@ -88,8 +88,8 @@ describe("converters — null/undefined handling", () => {
 		expect(ragDocumentFromRow(row).metadata).toEqual({});
 	});
 
-	test("workspace with missing url/namespace coerces to null on fromRow", () => {
-		// Simulates a row written before the url/namespace columns
+	test("workspace with missing url/keyspace coerces to null on fromRow", () => {
+		// Simulates a row written before the url/keyspace columns
 		// existed (or where the Astra driver returns them as undefined
 		// rather than null). Without coercion the WorkspaceRecord
 		// would carry `undefined`, which JSON.stringify drops, which
@@ -98,10 +98,10 @@ describe("converters — null/undefined handling", () => {
 		// @ts-expect-error — simulate a row returned by Astra without these columns
 		row.url = undefined;
 		// @ts-expect-error
-		row.namespace = undefined;
+		row.keyspace = undefined;
 		const record = workspaceFromRow(row);
 		expect(record.url).toBeNull();
-		expect(record.namespace).toBeNull();
+		expect(record.keyspace).toBeNull();
 	});
 
 	test("workspace with missing credentials map defaults to empty on fromRow", () => {

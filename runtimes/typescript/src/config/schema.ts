@@ -269,7 +269,7 @@ const SeedWorkspaceSchema = z.object({
 	name: z.string().min(1),
 	url: z.union([z.string().url(), SecretRef]).nullable().optional(),
 	kind: z.enum(["astra", "hcd", "openrag", "mock"]),
-	namespace: z.string().nullable().optional(),
+	keyspace: z.string().nullable().optional(),
 	credentials: z.record(z.string(), SecretRef).optional(),
 });
 

@@ -21,7 +21,7 @@ export const WORKSPACES_DEFINITION = {
 		name: "text",
 		url: "text",
 		kind: "text",
-		namespace: "text",
+		keyspace: "text",
 		credentials: { type: "map", keyType: "text", valueType: "text" },
 		created_at: "timestamp",
 		updated_at: "timestamp",

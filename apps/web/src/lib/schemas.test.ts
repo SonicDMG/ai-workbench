@@ -7,7 +7,7 @@ const FULL = {
 	url: "https://prod.example",
 	kind: "astra" as const,
 	credentials: { token: "env:ASTRA_TOKEN" },
-	namespace: "workbench",
+	keyspace: "workbench",
 	createdAt: "2026-04-22T00:00:00.000Z",
 	updatedAt: "2026-04-22T00:00:01.000Z",
 };
@@ -16,19 +16,19 @@ describe("WorkspaceRecordSchema", () => {
 	test("parses a fully populated record", () => {
 		const parsed = WorkspaceRecordSchema.parse(FULL);
 		expect(parsed.url).toBe("https://prod.example");
-		expect(parsed.namespace).toBe("workbench");
+		expect(parsed.keyspace).toBe("workbench");
 		expect(parsed.credentials).toEqual({ token: "env:ASTRA_TOKEN" });
 	});
 
-	test("treats missing url/namespace as null (defensive against runtime variance)", () => {
-		// Astra rows written before url/namespace existed serialize
+	test("treats missing url/keyspace as null (defensive against runtime variance)", () => {
+		// Astra rows written before url/keyspace existed serialize
 		// these fields as undefined. JSON drops them, the UI receives
 		// `{}` for those keys. Schema should accept that and normalize
 		// to null so downstream UI can treat null/missing the same.
-		const { url: _u, namespace: _n, ...minimal } = FULL;
+		const { url: _u, keyspace: _n, ...minimal } = FULL;
 		const parsed = WorkspaceRecordSchema.parse(minimal);
 		expect(parsed.url).toBeNull();
-		expect(parsed.namespace).toBeNull();
+		expect(parsed.keyspace).toBeNull();
 	});
 
 	test("treats missing credentials as empty record", () => {
@@ -43,7 +43,7 @@ describe("WorkspaceRecordSchema", () => {
 
 	test("page schema parses an items array of mixed-shape rows", () => {
 		// One legacy row (missing optional fields), one fully populated.
-		const { url: _u, namespace: _n, credentials: _c, ...legacy } = FULL;
+		const { url: _u, keyspace: _n, credentials: _c, ...legacy } = FULL;
 		const page = {
 			items: [legacy, FULL],
 			nextCursor: null,

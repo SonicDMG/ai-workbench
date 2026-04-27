@@ -31,7 +31,7 @@ const WORKSPACE: WorkspaceRecord = {
 	url: "https://fake.astra.example",
 	kind: "astra",
 	credentials: { token: "env:TEST_ASTRA_TOKEN" },
-	namespace: null,
+	keyspace: null,
 	createdAt: "2026-01-01T00:00:00Z",
 	updatedAt: "2026-01-01T00:00:00Z",
 };

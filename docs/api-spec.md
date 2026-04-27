@@ -105,7 +105,7 @@ human-readable and may change. Currently emitted:
 | 400 | `dimension_mismatch` | Supplied vector length doesn't match the KB's bound embedding service |
 | 400 | `embedding_unavailable` | Text search/upsert fallback could not build an embedder for the KB's bound embedding service |
 | 400 | `embedding_dimension_mismatch` | Embedder output dimension doesn't match the bound embedding service |
-| 422 | `workspace_misconfigured` | Workspace is missing url, token, namespace, or similar driver-required config |
+| 422 | `workspace_misconfigured` | Workspace is missing url, token, keyspace, or similar driver-required config |
 | 500 | `internal_error` | Unhandled exception |
 | 503 | `control_plane_unavailable` | Backing store is unreachable |
 | 503 | `collection_unavailable` | Underlying vector collection is unreachable or missing |
@@ -233,7 +233,7 @@ ordering so UI renders are deterministic.
       "url": "env:ASTRA_DB_API_ENDPOINT",
       "kind": "astra",
       "credentials": { "token": "env:ASTRA_DB_APPLICATION_TOKEN" },
-      "namespace": "default_keyspace",
+      "keyspace": "default_keyspace",
       "createdAt": "2026-04-22T10:11:12.345Z",
       "updatedAt": "2026-04-22T10:11:12.345Z"
     }
@@ -255,7 +255,7 @@ omitted.
   "kind": "astra",
   "url": "env:ASTRA_DB_API_ENDPOINT",
   "credentials": { "token": "env:ASTRA_DB_APPLICATION_TOKEN" },
-  "namespace": "default_keyspace"
+  "keyspace": "default_keyspace"
 }
 ```
 
@@ -286,7 +286,7 @@ Fetch a single workspace.
 ### `PUT /api/v1/workspaces/{workspaceUid}`
 
 Patch one or more of `name`, `url`, `credentials`,
-`namespace`. Every field is optional; omitted fields are preserved.
+`keyspace`. Every field is optional; omitted fields are preserved.
 
 `kind` and `uid` are immutable after creation and are rejected with
 `400`. Unknown fields are likewise rejected (strict body).

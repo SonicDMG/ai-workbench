@@ -537,7 +537,7 @@ function normalizeCreate(input: CreateWorkspaceInput) {
 		name: input.name,
 		kind: input.kind,
 		url: input.url ? input.url : null,
-		namespace: input.namespace ? input.namespace : null,
+		keyspace: input.keyspace ? input.keyspace : null,
 		credentials: pruneCredentials(input.credentials),
 	};
 }
@@ -546,8 +546,8 @@ function normalizeUpdate(patch: UpdateWorkspaceInput) {
 	const out: Record<string, unknown> = {};
 	if (patch.name !== undefined) out.name = patch.name;
 	if (patch.url !== undefined) out.url = patch.url ? patch.url : null;
-	if (patch.namespace !== undefined)
-		out.namespace = patch.namespace ? patch.namespace : null;
+	if (patch.keyspace !== undefined)
+		out.keyspace = patch.keyspace ? patch.keyspace : null;
 	if (patch.credentials !== undefined)
 		out.credentials = pruneCredentials(patch.credentials);
 	return out;

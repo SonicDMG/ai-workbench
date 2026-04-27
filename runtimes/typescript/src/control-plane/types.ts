@@ -58,8 +58,8 @@ export interface WorkspaceRecord {
 	readonly kind: WorkspaceKind;
 	/** Map of credential name → secret ref. Never holds raw secrets. */
 	readonly credentials: Readonly<Record<string, SecretRef>>;
-	/** Astra/HCD namespace targeted by the workspace. */
-	readonly namespace: string | null;
+	/** Astra/HCD keyspace targeted by the workspace. */
+	readonly keyspace: string | null;
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }

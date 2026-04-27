@@ -29,9 +29,9 @@ export function WorkspaceCard({ workspace }: { workspace: Workspace }) {
 			</CardHeader>
 			<CardContent>
 				<dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-					<dt className="text-slate-500">Namespace</dt>
+					<dt className="text-slate-500">Keyspace</dt>
 					<dd className="text-slate-800 font-mono truncate">
-						{workspace.namespace ?? "—"}
+						{workspace.keyspace ?? "—"}
 					</dd>
 					<dt className="text-slate-500">Created</dt>
 					<dd className="text-slate-800">{formatDate(workspace.createdAt)}</dd>

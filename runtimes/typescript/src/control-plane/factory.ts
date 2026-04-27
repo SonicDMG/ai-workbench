@@ -95,7 +95,7 @@ async function seedMemoryStore(
 			url: seed.url ?? null,
 			kind: seed.kind,
 			credentials: seed.credentials ?? {},
-			namespace: seed.namespace ?? null,
+			keyspace: seed.keyspace ?? null,
 		});
 		await seedDefaultServices(store, ws.uid);
 	}

@@ -126,7 +126,7 @@ describe("AstraVectorStoreDriver endpoint resolution", () => {
 			url,
 			kind: "astra",
 			credentials: { token: "env:TEST_ASTRA_TOKEN" },
-			namespace: null,
+			keyspace: null,
 			createdAt: "2026-04-23T00:00:00.000Z",
 			updatedAt: "2026-04-23T00:00:00.000Z",
 		};
@@ -221,7 +221,7 @@ describe("AstraVectorStoreDriver hybrid + rerank", () => {
 		url: "https://fake.example",
 		kind: "astra",
 		credentials: { token: "env:TEST_ASTRA_TOKEN" },
-		namespace: null,
+		keyspace: null,
 		createdAt: "2026-04-23T00:00:00.000Z",
 		updatedAt: "2026-04-23T00:00:00.000Z",
 	};

@@ -18,7 +18,7 @@ const EndpointInputSchema = z
 	.optional();
 
 // `nullish()` and `default({})` are deliberate: older runtime rows
-// (Astra control plane in particular) sometimes omit url/namespace
+// (Astra control plane in particular) sometimes omit url/keyspace
 // or credentials entirely, and JSON serialization drops `undefined`,
 // so the UI sees the field missing. Treat missing the same as null
 // here — the runtime test pins what the runtime *should* send,
@@ -32,7 +32,7 @@ export const WorkspaceRecordSchema = z.object({
 		.transform((v) => v ?? null),
 	kind: WorkspaceKindSchema,
 	credentials: z.record(z.string(), z.string()).default({}),
-	namespace: z
+	keyspace: z
 		.string()
 		.nullish()
 		.transform((v) => v ?? null),
@@ -46,7 +46,7 @@ export const CreateWorkspaceSchema = z.object({
 	name: z.string().min(1, "Name is required"),
 	kind: WorkspaceKindSchema,
 	url: EndpointInputSchema,
-	namespace: z.string().or(z.literal("")).nullable().optional(),
+	keyspace: z.string().or(z.literal("")).nullable().optional(),
 	credentials: z.record(z.string(), SecretRefSchema).optional(),
 });
 export type CreateWorkspaceInput = z.infer<typeof CreateWorkspaceSchema>;
@@ -54,7 +54,7 @@ export type CreateWorkspaceInput = z.infer<typeof CreateWorkspaceSchema>;
 export const UpdateWorkspaceSchema = z.object({
 	name: z.string().min(1, "Name is required").optional(),
 	url: EndpointInputSchema,
-	namespace: z.string().or(z.literal("")).nullable().optional(),
+	keyspace: z.string().or(z.literal("")).nullable().optional(),
 	credentials: z.record(z.string(), SecretRefSchema).optional(),
 });
 export type UpdateWorkspaceInput = z.infer<typeof UpdateWorkspaceSchema>;

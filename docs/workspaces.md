@@ -116,7 +116,7 @@ Credentials are never stored by value. A workspace may hold a
   "credentials": {
     "token": "env:ASTRA_DB_APPLICATION_TOKEN"
   },
-  "namespace": "default_keyspace"
+  "keyspace": "default_keyspace"
 }
 ```
 

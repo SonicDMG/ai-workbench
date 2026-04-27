@@ -14,5 +14,5 @@ public record UpdateWorkspaceInput(
     String name,
     String url,
     Map<String, String> credentials,
-    String namespace
+    String keyspace
 ) {}

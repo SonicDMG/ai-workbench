@@ -150,7 +150,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 			url: input.url ?? null,
 			kind: input.kind,
 			credentials: freezeCredentials(input.credentials),
-			namespace: input.namespace ?? null,
+			keyspace: input.keyspace ?? null,
 			createdAt: now,
 			updatedAt: now,
 		};
@@ -173,7 +173,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 			...(patch.credentials !== undefined && {
 				credentials: freezeCredentials(patch.credentials),
 			}),
-			...(patch.namespace !== undefined && { namespace: patch.namespace }),
+			...(patch.keyspace !== undefined && { keyspace: patch.keyspace }),
 			updatedAt: nowIso(),
 		};
 		this.workspaces.set(uid, next);

@@ -11,5 +11,5 @@ public record CreateWorkspaceInput(
     String url,
     @NotNull WorkspaceKind kind,
     Map<String, String> credentials,
-    String namespace
+    String keyspace
 ) {}

@@ -74,13 +74,13 @@ export function WorkspaceForm(
 					name: "",
 					kind,
 					url: DEFAULT_ENDPOINT[kind],
-					namespace: "",
+					keyspace: "",
 					credentials: { ...DEFAULT_CREDENTIALS[kind] },
 				}
 			: {
 					name: props.workspace.name,
 					url: props.workspace.url ?? "",
-					namespace: props.workspace.namespace ?? "",
+					keyspace: props.workspace.keyspace ?? "",
 					credentials: { ...props.workspace.credentials },
 				};
 
@@ -154,14 +154,14 @@ export function WorkspaceForm(
 
 			{astraLike ? (
 				<div className="flex flex-col gap-1.5">
-					<Label htmlFor="namespace">Namespace</Label>
+					<Label htmlFor="keyspace">Keyspace</Label>
 					<Input
-						id="namespace"
-						placeholder="default_namespace"
-						{...register("namespace")}
+						id="keyspace"
+						placeholder="default_keyspace"
+						{...register("keyspace")}
 					/>
 					<p className="text-xs text-slate-500">
-						The Astra namespace this workspace targets. Leave empty to use the
+						The Astra keyspace this workspace targets. Leave empty to use the
 						default.
 					</p>
 				</div>

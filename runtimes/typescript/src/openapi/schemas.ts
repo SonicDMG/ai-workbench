@@ -128,7 +128,7 @@ export const WorkspaceRecordSchema = z
 		name: z.string(),
 		url: z.string().nullable(),
 		kind: WorkspaceKind,
-		namespace: z.string().nullable(),
+		keyspace: z.string().nullable(),
 		credentials: z.record(z.string(), SecretRefSchema),
 		createdAt: z.string(),
 		updatedAt: z.string(),
@@ -146,7 +146,7 @@ export const CreateWorkspaceInputSchema = z
 		name: z.string().min(1),
 		url: EndpointSchema.nullable().optional(),
 		kind: WorkspaceKind,
-		namespace: z.string().nullable().optional(),
+		keyspace: z.string().nullable().optional(),
 		credentials: z.record(z.string(), SecretRefSchema).optional(),
 	})
 	.openapi("CreateWorkspaceInput");
@@ -159,7 +159,7 @@ export const UpdateWorkspaceInputSchema = z
 	.object({
 		name: z.string().min(1).optional(),
 		url: EndpointSchema.nullable().optional(),
-		namespace: z.string().nullable().optional(),
+		keyspace: z.string().nullable().optional(),
 		credentials: z.record(z.string(), SecretRefSchema).optional(),
 	})
 	.strict()

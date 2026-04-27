@@ -149,7 +149,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				url: input.url ?? null,
 				kind: input.kind,
 				credentials: { ...(input.credentials ?? {}) },
-				namespace: input.namespace ?? null,
+				keyspace: input.keyspace ?? null,
 				createdAt: now,
 				updatedAt: now,
 			};
@@ -174,7 +174,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				...(patch.credentials !== undefined && {
 					credentials: { ...patch.credentials },
 				}),
-				...(patch.namespace !== undefined && { namespace: patch.namespace }),
+				...(patch.keyspace !== undefined && { keyspace: patch.keyspace }),
 				updatedAt: nowIso(),
 			};
 			const nextRows = [...rows];

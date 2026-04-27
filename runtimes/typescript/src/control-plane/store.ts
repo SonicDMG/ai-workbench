@@ -45,7 +45,7 @@ export interface CreateWorkspaceInput {
 	readonly url?: string | null;
 	readonly kind: WorkspaceKind;
 	readonly credentials?: Readonly<Record<string, SecretRef>>;
-	readonly namespace?: string | null;
+	readonly keyspace?: string | null;
 }
 
 /**
@@ -58,7 +58,7 @@ export interface UpdateWorkspaceInput {
 	readonly name?: string;
 	readonly url?: string | null;
 	readonly credentials?: Readonly<Record<string, SecretRef>>;
-	readonly namespace?: string | null;
+	readonly keyspace?: string | null;
 }
 
 /* ------------------------------------------------------------------ */

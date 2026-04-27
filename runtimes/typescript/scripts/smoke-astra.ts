@@ -140,7 +140,7 @@ async function main(): Promise<void> {
 				kind: "astra",
 				url: ENDPOINT,
 				credentials: { token: `env:${TOKEN_ENV}` },
-				namespace: KEYSPACE,
+				keyspace: KEYSPACE,
 			}),
 		});
 		assertStatus(wsRes, 201, "workspace create");
