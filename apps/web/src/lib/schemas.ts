@@ -17,13 +17,25 @@ const EndpointInputSchema = z
 	.nullable()
 	.optional();
 
+// `nullish()` and `default({})` are deliberate: older runtime rows
+// (Astra control plane in particular) sometimes omit url/namespace
+// or credentials entirely, and JSON serialization drops `undefined`,
+// so the UI sees the field missing. Treat missing the same as null
+// here — the runtime test pins what the runtime *should* send,
+// while the UI is robust to anything in the wild.
 export const WorkspaceRecordSchema = z.object({
 	uid: z.string().uuid(),
 	name: z.string(),
-	url: z.string().nullable(),
+	url: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? null),
 	kind: WorkspaceKindSchema,
-	credentials: z.record(z.string(), z.string()),
-	namespace: z.string().nullable(),
+	credentials: z.record(z.string(), z.string()).default({}),
+	namespace: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? null),
 	createdAt: z.string(),
 	updatedAt: z.string(),
 });

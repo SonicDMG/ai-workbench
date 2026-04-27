@@ -59,12 +59,20 @@ export function workspaceToRow(r: WorkspaceRecord): WorkspaceRow {
 }
 
 export function workspaceFromRow(row: WorkspaceRow): WorkspaceRecord {
+	// Defensive `?? null` on url/namespace so rows written before those
+	// columns existed (or rows where the Astra driver decodes a missing
+	// column as undefined rather than null) come back through this
+	// converter as the typed `string | null` shape — matches the
+	// memory/file stores and keeps the WorkspaceRecord wire format
+	// honest. Without this, a missing field reaches the JSON
+	// serializer as `undefined` and gets stripped, which fails the
+	// UI's schema validation downstream.
 	return {
 		uid: row.uid,
 		name: row.name,
-		url: row.url,
+		url: row.url ?? null,
 		kind: row.kind,
-		namespace: row.namespace,
+		namespace: row.namespace ?? null,
 		credentials: { ...(row.credentials ?? {}) },
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
