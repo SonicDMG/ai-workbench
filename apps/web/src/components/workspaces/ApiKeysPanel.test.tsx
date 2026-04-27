@@ -39,7 +39,7 @@ let rows: ApiKeyRecord[] = [];
 
 function key(overrides: Partial<ApiKeyRecord> = {}): ApiKeyRecord {
 	return {
-		workspace: "00000000-0000-4000-8000-000000000001",
+		workspaceId: "00000000-0000-4000-8000-000000000001",
 		keyId: "00000000-0000-4000-8000-000000000002",
 		prefix: "abcdefghijkl",
 		label: "ci",
