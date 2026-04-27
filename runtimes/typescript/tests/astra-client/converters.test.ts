@@ -87,4 +87,27 @@ describe("converters — null/undefined handling", () => {
 		row.metadata = undefined;
 		expect(ragDocumentFromRow(row).metadata).toEqual({});
 	});
+
+	test("workspace with missing url/namespace coerces to null on fromRow", () => {
+		// Simulates a row written before the url/namespace columns
+		// existed (or where the Astra driver returns them as undefined
+		// rather than null). Without coercion the WorkspaceRecord
+		// would carry `undefined`, which JSON.stringify drops, which
+		// then fails the UI's WorkspaceRecordSchema downstream.
+		const row = workspaceToRow(WS);
+		// @ts-expect-error — simulate a row returned by Astra without these columns
+		row.url = undefined;
+		// @ts-expect-error
+		row.namespace = undefined;
+		const record = workspaceFromRow(row);
+		expect(record.url).toBeNull();
+		expect(record.namespace).toBeNull();
+	});
+
+	test("workspace with missing credentials map defaults to empty on fromRow", () => {
+		const row = workspaceToRow(WS);
+		// @ts-expect-error — simulate a row returned by Astra without the map column
+		row.credentials = undefined;
+		expect(workspaceFromRow(row).credentials).toEqual({});
+	});
 });
