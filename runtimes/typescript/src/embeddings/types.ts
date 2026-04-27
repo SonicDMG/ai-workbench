@@ -8,9 +8,9 @@
  * check against a vector store's configured dimension before
  * dispatching.
  *
- * Concrete impls wrap the Vercel AI SDK (`embeddings/vercel.ts`)
- * so swapping providers is a provider-key change, not an
- * integration rewrite.
+ * Concrete impls wrap LangChain JS embedding packages
+ * (`embeddings/langchain.ts`) so swapping providers is a
+ * provider-key change, not an integration rewrite.
  */
 
 export interface Embedder {

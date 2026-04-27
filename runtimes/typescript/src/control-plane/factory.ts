@@ -21,6 +21,7 @@ import type {
 } from "../config/schema.js";
 import type { SecretResolver } from "../secrets/provider.js";
 import { AstraControlPlaneStore } from "./astra/store.js";
+import { DEFAULT_SERVICES } from "./default-services.js";
 import { FileControlPlaneStore } from "./file/store.js";
 import { MemoryControlPlaneStore } from "./memory/store.js";
 import type { ControlPlaneStore } from "./store.js";
@@ -88,7 +89,7 @@ async function seedMemoryStore(
 	seeds: readonly SeedWorkspace[],
 ): Promise<void> {
 	for (const seed of seeds) {
-		await store.createWorkspace({
+		const ws = await store.createWorkspace({
 			uid: seed.uid,
 			name: seed.name,
 			url: seed.url ?? null,
@@ -96,6 +97,33 @@ async function seedMemoryStore(
 			credentials: seed.credentials ?? {},
 			namespace: seed.namespace ?? null,
 		});
+		await seedDefaultServices(store, ws.uid);
+	}
+}
+
+/**
+ * Populate a workspace with the canonical built-in chunking and
+ * embedding services. Idempotent in spirit — duplicate-name collisions
+ * surface as the underlying store's own error and are caught here so a
+ * second seed pass on a workspace that already has them is a no-op.
+ */
+async function seedDefaultServices(
+	store: MemoryControlPlaneStore,
+	workspaceUid: string,
+): Promise<void> {
+	for (const chunk of DEFAULT_SERVICES.chunking) {
+		try {
+			await store.createChunkingService(workspaceUid, chunk);
+		} catch {
+			// Already present — leave operator's edits alone.
+		}
+	}
+	for (const emb of DEFAULT_SERVICES.embedding) {
+		try {
+			await store.createEmbeddingService(workspaceUid, emb);
+		} catch {
+			// Already present — leave operator's edits alone.
+		}
 	}
 }
 
