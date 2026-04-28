@@ -273,11 +273,13 @@ describe("loadAstraFromCli", () => {
 			{ args: ["config", "list"], result: ok(singleProfileJson) },
 			{ args: ["db", "list"], result: ok(singleDbJson) },
 		);
+		const writes: string[] = [];
 		const result = await loadAstraFromCli({
 			env,
 			runner,
 			prompt: rejectingPrompt(),
 			interactive: true,
+			write: (c) => writes.push(c),
 		});
 		expect(result.status).toBe("loaded");
 		if (result.status !== "loaded") return;
@@ -287,6 +289,35 @@ describe("loadAstraFromCli", () => {
 		expect(env.ASTRA_DB_API_ENDPOINT).toBe(
 			"https://db-uuid-only-eu-west-1.apps.astra.datastax.com",
 		);
+		const banner = writes.join("");
+		expect(banner).toContain('[astra-cli] using profile "only"');
+		expect(banner).toContain("database: only-db");
+		expect(banner).toContain("region:   eu-west-1");
+		expect(banner).toContain(
+			"endpoint: https://db-uuid-only-eu-west-1.apps.astra.datastax.com",
+		);
+		expect(banner).toContain("keyspace: default_keyspace");
+		expect(banner).not.toContain(FAKE_TOKEN);
+	});
+
+	test("banner reports preset endpoint when env var was already set", async () => {
+		const env: NodeJS.ProcessEnv = { ASTRA_DB_API_ENDPOINT: "preset-endpoint" };
+		const runner = scriptedRunner(
+			versionCall,
+			{ args: ["config", "list"], result: ok(singleProfileJson) },
+			{ args: ["db", "list"], result: ok(singleDbJson) },
+		);
+		const writes: string[] = [];
+		const result = await loadAstraFromCli({
+			env,
+			runner,
+			prompt: rejectingPrompt(),
+			interactive: true,
+			write: (c) => writes.push(c),
+		});
+		expect(result.status).toBe("loaded");
+		const banner = writes.join("");
+		expect(banner).toContain("(overridden by ASTRA_DB_API_ENDPOINT)");
 	});
 
 	test("uses ASTRA_PROFILE to skip the profile prompt", async () => {

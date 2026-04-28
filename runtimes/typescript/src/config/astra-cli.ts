@@ -87,6 +87,7 @@ export interface AstraCliLoadOptions {
 	readonly prompt?: AstraCliPrompt;
 	readonly interactive?: boolean;
 	readonly logger?: AstraCliLogger;
+	readonly write?: (chunk: string) => void;
 }
 
 export type AstraCliRunner = (
@@ -117,6 +118,8 @@ export async function loadAstraFromCli(
 ): Promise<AstraCliResult> {
 	const env = options.env ?? process.env;
 	const log = options.logger ?? {};
+	const write =
+		options.write ?? ((chunk: string) => process.stdout.write(chunk));
 
 	if (env[DISABLE_ENV] === "1" || env[DISABLE_ENV] === "true") {
 		return { status: "skipped", reason: "disabled" };
@@ -192,10 +195,12 @@ export async function loadAstraFromCli(
 		return { status: "skipped", reason: "user-aborted" };
 	}
 
-	if (!env[TOKEN_ENV]) {
+	const tokenAlreadySet = Boolean(env[TOKEN_ENV]);
+	const endpointAlreadySet = Boolean(env[ENDPOINT_ENV]);
+	if (!tokenAlreadySet) {
 		env[TOKEN_ENV] = profile.token;
 	}
-	if (!env[ENDPOINT_ENV]) {
+	if (!endpointAlreadySet) {
 		env[ENDPOINT_ENV] = database.endpoint;
 	}
 
@@ -207,7 +212,39 @@ export async function loadAstraFromCli(
 		endpoint: database.endpoint,
 	});
 
+	writeSelectionBanner(write, {
+		profile: profile.name,
+		database,
+		tokenSource: tokenAlreadySet ? "preset" : "astra-cli",
+		endpointSource: endpointAlreadySet ? "preset" : "astra-cli",
+	});
+
 	return { status: "loaded", profile: profile.name, database };
+}
+
+interface BannerInput {
+	readonly profile: string;
+	readonly database: AstraCliDatabase;
+	readonly tokenSource: "astra-cli" | "preset";
+	readonly endpointSource: "astra-cli" | "preset";
+}
+
+function writeSelectionBanner(
+	write: (chunk: string) => void,
+	input: BannerInput,
+): void {
+	const { profile, database, tokenSource, endpointSource } = input;
+	const lines = [
+		"",
+		`[astra-cli] using profile "${profile}"`,
+		`  database: ${database.name}  (id: ${database.id})`,
+		`  region:   ${database.region}`,
+		`  endpoint: ${database.endpoint}${endpointSource === "preset" ? "  (overridden by ASTRA_DB_API_ENDPOINT)" : ""}`,
+		`  keyspace: ${database.keyspace ?? "<unset>"}`,
+		`  token:    ${tokenSource === "preset" ? "ASTRA_DB_APPLICATION_TOKEN (preset)" : `from profile "${profile}"`}`,
+		"",
+	];
+	write(`${lines.join("\n")}`);
 }
 
 async function pickProfile(
@@ -233,7 +270,7 @@ async function pickProfile(
 	}
 
 	const chosen = await prompt.choose<AstraCliProfile>(
-		"Select an Astra CLI profile:",
+		"[astra-cli] Select a profile to source ASTRA_DB_APPLICATION_TOKEN from:",
 		profiles.map((p) => ({
 			label: p.name,
 			value: p,
@@ -265,7 +302,7 @@ async function pickDatabase(
 	}
 
 	const chosen = await prompt.choose<AstraCliDatabase>(
-		"Select an Astra database:",
+		"[astra-cli] Select a database to use as ASTRA_DB_API_ENDPOINT:",
 		databases.map((d) => ({
 			label: d.name,
 			value: d,

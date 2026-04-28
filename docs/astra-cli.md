@@ -78,16 +78,31 @@ The runtime applies each rule in order; first match wins.
 | `ASTRA_DB` | Skip the database prompt by selecting a database by name or id. |
 | `WORKBENCH_DISABLE_ASTRA_CLI` | `1`/`true` → never consult the CLI. |
 
-## What gets logged
+## What gets shown
 
-On a successful auto-config, the runtime emits:
+On a successful auto-config, the runtime prints a banner to stdout
+*before* the rest of startup, so the selection is impossible to miss:
 
 ```
-astra-cli credentials applied profile=<name> database=<name> region=<region>
+[astra-cli] using profile "Eric Hare"
+  database: mydb  (id: c933e7fc-4996-4dcd-bb87-4f282fe1e7ef)
+  region:   us-east-2
+  endpoint: https://c933e7fc-4996-4dcd-bb87-4f282fe1e7ef-us-east-2.apps.astra.datastax.com
+  keyspace: default_keyspace
+  token:    from profile "Eric Hare"
 ```
 
-Tokens are **never** logged. Only profile name, database name/id,
-and region.
+If `ASTRA_DB_API_ENDPOINT` was already set in the environment when
+the integration ran, the endpoint line is annotated:
+
+```
+  endpoint: https://...  (overridden by ASTRA_DB_API_ENDPOINT)
+```
+
+The same fields are also emitted as a structured `info` log line so
+production deployments can scrape them. Tokens are **never** logged
+or printed — only profile name, database name/id, region, and
+keyspace.
 
 ## Troubleshooting
 
