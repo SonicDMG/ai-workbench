@@ -9,6 +9,7 @@
 
 import { z } from "@hono/zod-openapi";
 import {
+	MAX_CHAT_MESSAGE_CHARS,
 	MAX_INGEST_TEXT_CHARS,
 	MAX_QUERY_TEXT_CHARS,
 	MAX_VECTOR_RECORD_TEXT_CHARS,
@@ -786,6 +787,95 @@ export const ChunkingServiceIdParamSchema = z
 		param: { name: "chunkingServiceId", in: "path" },
 		example: "11111111-2222-3333-4444-555555555555",
 	});
+
+export const ChatIdParamSchema = z
+	.string()
+	.uuid()
+	.openapi({
+		param: { name: "chatId", in: "path" },
+		example: "11111111-2222-3333-4444-555555555555",
+	});
+
+export const ChatMessageIdParamSchema = z
+	.string()
+	.uuid()
+	.openapi({
+		param: { name: "messageId", in: "path" },
+		example: "11111111-2222-3333-4444-555555555555",
+	});
+
+/* ---------- Chat (workspace-scoped) ---------- */
+
+/**
+ * Wire-shape for a chat conversation. Backed by the
+ * `wb_agentic_conversations_by_agent` table; routes never expose the
+ * agent_id since v0 has exactly one agent per workspace (Bobbie) and
+ * surfacing it would invite premature agent-management UX.
+ */
+export const ChatRecordSchema = z
+	.object({
+		workspaceId: z.string().uuid(),
+		chatId: z.string().uuid(),
+		title: z.string().nullable(),
+		knowledgeBaseIds: z.array(z.string().uuid()),
+		createdAt: DateTimeSchema,
+	})
+	.openapi("Chat");
+
+export const ChatPageSchema = pageSchema("ChatPage", ChatRecordSchema);
+
+export const CreateChatInputSchema = z
+	.object({
+		chatId: z.string().uuid().optional(),
+		title: z.string().min(1).nullable().optional(),
+		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+	})
+	.openapi("CreateChatInput");
+
+export const UpdateChatInputSchema = z
+	.object({
+		title: z.string().min(1).nullable().optional(),
+		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+	})
+	.strict()
+	.openapi("UpdateChatInput");
+
+/**
+ * Wire-shape for a chat message. Mirrors `MessageRecord` minus the
+ * Stage-2 tool fields that aren't used in the v0 chat surface (Bobbie
+ * doesn't have tools yet). RAG provenance lives in `metadata.context_document_ids`
+ * as a comma-separated string for v0; future rev can promote it to
+ * a typed array.
+ */
+export const ChatMessageRecordSchema = z
+	.object({
+		workspaceId: z.string().uuid(),
+		chatId: z.string().uuid(),
+		messageId: z.string().uuid(),
+		messageTs: DateTimeSchema,
+		role: z.enum(["user", "agent", "system"]),
+		content: z.string().nullable(),
+		tokenCount: z.number().int().nullable(),
+		metadata: z.record(z.string(), z.string()),
+	})
+	.openapi("ChatMessage");
+
+export const ChatMessagePageSchema = pageSchema(
+	"ChatMessagePage",
+	ChatMessageRecordSchema,
+);
+
+/**
+ * Body of `POST .../chats/{chatId}/messages`. v0 only accepts user
+ * messages — assistant turns will be authored by the runtime when HF
+ * + streaming land. We still keep `role` on the wire for symmetry
+ * with future surfaces.
+ */
+export const SendChatMessageInputSchema = z
+	.object({
+		content: z.string().min(1).max(MAX_CHAT_MESSAGE_CHARS),
+	})
+	.openapi("SendChatMessageInput");
 
 export const EmbeddingServiceIdParamSchema = z
 	.string()

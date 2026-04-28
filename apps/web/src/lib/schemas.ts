@@ -447,6 +447,54 @@ export const KbAsyncIngestResponseSchema = z.object({
 });
 export type KbAsyncIngestResponse = z.infer<typeof KbAsyncIngestResponseSchema>;
 
+/* ---------------- Chat (workspace-scoped, Bobbie) ---------------- */
+
+export const ChatRecordSchema = z.object({
+	workspaceId: z.string().uuid(),
+	chatId: z.string().uuid(),
+	title: z.string().nullable(),
+	knowledgeBaseIds: z.array(z.string().uuid()),
+	createdAt: z.string(),
+});
+export type Chat = z.infer<typeof ChatRecordSchema>;
+export const ChatPageSchema = paginatedSchema(ChatRecordSchema);
+
+export const ChatMessageRoleSchema = z.enum(["user", "agent", "system"]);
+export type ChatMessageRole = z.infer<typeof ChatMessageRoleSchema>;
+
+export const ChatMessageRecordSchema = z.object({
+	workspaceId: z.string().uuid(),
+	chatId: z.string().uuid(),
+	messageId: z.string().uuid(),
+	messageTs: z.string(),
+	role: ChatMessageRoleSchema,
+	content: z.string().nullable(),
+	tokenCount: z.number().int().nullable(),
+	metadata: z.record(z.string(), z.string()).default({}),
+});
+export type ChatMessage = z.infer<typeof ChatMessageRecordSchema>;
+export const ChatMessagePageSchema = paginatedSchema(ChatMessageRecordSchema);
+
+export const CreateChatSchema = z.object({
+	chatId: z.string().uuid().optional(),
+	title: z.string().min(1).nullable().optional(),
+	knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+});
+export type CreateChatInput = z.infer<typeof CreateChatSchema>;
+
+export const UpdateChatSchema = z
+	.object({
+		title: z.string().min(1).nullable().optional(),
+		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+	})
+	.strict();
+export type UpdateChatInput = z.infer<typeof UpdateChatSchema>;
+
+export const SendChatMessageSchema = z.object({
+	content: z.string().min(1, "Type a message"),
+});
+export type SendChatMessageInput = z.infer<typeof SendChatMessageSchema>;
+
 /* ---------------- astra-cli auto-detection ---------------- */
 
 export const AstraCliInfoSchema = z.discriminatedUnion("detected", [

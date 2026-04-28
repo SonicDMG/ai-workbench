@@ -21,4 +21,11 @@ export const keys = {
 		all: ["workspaces"] as const,
 		detail: (uid: string) => ["workspaces", uid] as const,
 	},
+	chats: {
+		all: (workspaceUid: string) => ["chats", workspaceUid] as const,
+		detail: (workspaceUid: string, chatId: string) =>
+			["chats", workspaceUid, chatId] as const,
+		messages: (workspaceUid: string, chatId: string) =>
+			["chats", workspaceUid, chatId, "messages"] as const,
+	},
 };

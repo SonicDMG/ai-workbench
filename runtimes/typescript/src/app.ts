@@ -13,6 +13,8 @@
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/search`              vector / hybrid / rerank
  *   `/api/v1/workspaces/{w}/{chunking,embedding,reranking}-services`  service CRUD
  *   `/api/v1/workspaces/{w}/jobs/{jobId}`                             job poll + SSE
+ *   `/api/v1/workspaces/{w}/chats`                                    Bobbie chat CRUD
+ *   `/api/v1/workspaces/{w}/chats/{chatId}/messages`                  chat message append + history
  *   `/api/v1/openapi.json`                                            generated OpenAPI doc
  *   `/docs`                                                           Scalar-rendered docs
  */
@@ -43,6 +45,7 @@ import { requestId } from "./lib/request-id.js";
 import { SCALAR_CDN_PINNED, securityHeaders } from "./lib/security-headers.js";
 import type { AppEnv } from "./lib/types.js";
 import { apiKeyRoutes } from "./routes/api-v1/api-keys.js";
+import { chatRoutes } from "./routes/api-v1/chats.js";
 import { chunkingServiceRoutes } from "./routes/api-v1/chunking-services.js";
 import { embeddingServiceRoutes } from "./routes/api-v1/embedding-services.js";
 import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
@@ -283,6 +286,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		knowledgeBaseRoutes({ store: opts.store, drivers: opts.drivers }),
 	);
 	app.route("/api/v1/workspaces", knowledgeFilterRoutes(opts.store));
+	app.route("/api/v1/workspaces", chatRoutes(opts.store));
 	app.route("/api/v1/workspaces", chunkingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", embeddingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", rerankingServiceRoutes(opts.store));
