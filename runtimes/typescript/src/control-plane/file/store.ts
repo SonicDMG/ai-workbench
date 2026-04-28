@@ -25,6 +25,9 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+	BOBBIE_AGENT_NAME,
+	BOBBIE_SYSTEM_PROMPT,
+	bobbieAgentId,
 	byCreatedAtThenKeyId,
 	byCreatedAtThenUid,
 	DEFAULT_AUTH_TYPE,
@@ -40,7 +43,9 @@ import {
 	ControlPlaneNotFoundError,
 } from "../errors.js";
 import type {
+	AppendChatMessageInput,
 	ControlPlaneStore,
+	CreateChatInput,
 	CreateChunkingServiceInput,
 	CreateEmbeddingServiceInput,
 	CreateKnowledgeBaseInput,
@@ -49,6 +54,8 @@ import type {
 	CreateRerankingServiceInput,
 	CreateWorkspaceInput,
 	PersistApiKeyInput,
+	UpdateChatInput,
+	UpdateChatMessageInput,
 	UpdateChunkingServiceInput,
 	UpdateEmbeddingServiceInput,
 	UpdateKnowledgeBaseInput,
@@ -58,11 +65,14 @@ import type {
 	UpdateWorkspaceInput,
 } from "../store.js";
 import type {
+	AgentRecord,
 	ApiKeyRecord,
 	ChunkingServiceRecord,
+	ConversationRecord,
 	EmbeddingServiceRecord,
 	KnowledgeBaseRecord,
 	KnowledgeFilterRecord,
+	MessageRecord,
 	RagDocumentRecord,
 	RerankingServiceRecord,
 	WorkspaceRecord,
@@ -78,7 +88,11 @@ type Table =
 	| "chunking-services"
 	| "embedding-services"
 	| "reranking-services"
-	| "rag-documents";
+	| "rag-documents"
+	// Chat (workspace-scoped, agentic-tables-backed).
+	| "agents"
+	| "conversations"
+	| "messages";
 
 const TABLE_FILES: Record<Table, string> = {
 	workspaces: "workspaces.json",
@@ -89,12 +103,60 @@ const TABLE_FILES: Record<Table, string> = {
 	"embedding-services": "embedding-services.json",
 	"reranking-services": "reranking-services.json",
 	"rag-documents": "rag-documents.json",
+	agents: "agents.json",
+	conversations: "conversations.json",
+	messages: "messages.json",
 };
 
 function freezeStringSet(
 	value: ReadonlySet<string> | readonly string[] | undefined,
 ): readonly string[] {
 	return Object.freeze([...new Set(value ?? [])].sort());
+}
+
+/**
+ * Newest-first sort for chat conversations, matching the Astra
+ * `created_at DESC` cluster ordering. Tie-break by conversation_id
+ * for total ordering across same-tick creates.
+ */
+function byCreatedAtDescConv(
+	a: ConversationRecord,
+	b: ConversationRecord,
+): number {
+	if (a.createdAt > b.createdAt) return -1;
+	if (a.createdAt < b.createdAt) return 1;
+	if (a.conversationId < b.conversationId) return -1;
+	if (a.conversationId > b.conversationId) return 1;
+	return 0;
+}
+
+/**
+ * Oldest-first sort for chat messages, matching the Astra
+ * `message_ts ASC` cluster ordering. UI flips for display.
+ */
+function byMessageTsAsc(a: MessageRecord, b: MessageRecord): number {
+	if (a.messageTs < b.messageTs) return -1;
+	if (a.messageTs > b.messageTs) return 1;
+	if (a.messageId < b.messageId) return -1;
+	if (a.messageId > b.messageId) return 1;
+	return 0;
+}
+
+/**
+ * Merge a message metadata patch into the existing map.
+ * `undefined`-valued patch entries drop the corresponding key
+ * (matches the {@link UpdateChatMessageInput} contract).
+ */
+function mergeMessageMetadata(
+	existing: Readonly<Record<string, string>>,
+	patch: Readonly<Record<string, string | undefined>>,
+): Readonly<Record<string, string>> {
+	const next: Record<string, string> = { ...existing };
+	for (const [k, v] of Object.entries(patch)) {
+		if (v === undefined) delete next[k];
+		else next[k] = v;
+	}
+	return Object.freeze(next);
 }
 
 export interface FileControlPlaneOptions {
@@ -112,6 +174,9 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		"embedding-services": new Mutex(),
 		"reranking-services": new Mutex(),
 		"rag-documents": new Mutex(),
+		agents: new Mutex(),
+		conversations: new Mutex(),
+		messages: new Mutex(),
 	};
 
 	constructor(opts: FileControlPlaneOptions) {
@@ -238,6 +303,20 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		);
 		await this.mutate<"rag-documents", null>("rag-documents", (rows) => ({
 			rows: rows.filter((d) => d.workspaceId !== uid),
+			result: null,
+		}));
+
+		// Chat cascade: agents → conversations → messages.
+		await this.mutate<"agents", null>("agents", (rows) => ({
+			rows: rows.filter((a) => a.workspaceId !== uid),
+			result: null,
+		}));
+		await this.mutate<"conversations", null>("conversations", (rows) => ({
+			rows: rows.filter((c) => c.workspaceId !== uid),
+			result: null,
+		}));
+		await this.mutate<"messages", null>("messages", (rows) => ({
+			rows: rows.filter((m) => m.workspaceId !== uid),
 			result: null,
 		}));
 
@@ -480,6 +559,22 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				result: null,
 			}),
 		);
+		// Eager cascade into chat: drop the KB id from any conversation's
+		// RAG-grounding set so retrievals don't try to query a no-longer-
+		// existing KB. No-op if no conversation referenced the KB.
+		await this.mutate<"conversations", null>("conversations", (rows) => ({
+			rows: rows.map((c) =>
+				c.workspaceId === workspace && c.knowledgeBaseIds.includes(uid)
+					? {
+							...c,
+							knowledgeBaseIds: Object.freeze(
+								c.knowledgeBaseIds.filter((id) => id !== uid),
+							),
+						}
+					: c,
+			),
+			result: null,
+		}));
 		return res;
 	}
 
@@ -1142,6 +1237,267 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		);
 	}
 
+	/* ---------------- Chat (workspace-scoped) ---------------- */
+
+	async ensureBobbieAgent(workspaceId: string): Promise<AgentRecord> {
+		await this.assertWorkspace(workspaceId);
+		const agentId = bobbieAgentId(workspaceId);
+		return this.mutate<"agents", AgentRecord>("agents", (rows) => {
+			const existing = rows.find(
+				(a) => a.workspaceId === workspaceId && a.agentId === agentId,
+			);
+			if (existing) return { rows: [...rows], result: existing };
+			const now = nowIso();
+			const record: AgentRecord = {
+				workspaceId,
+				agentId,
+				name: BOBBIE_AGENT_NAME,
+				description: null,
+				systemPrompt: BOBBIE_SYSTEM_PROMPT,
+				userPrompt: null,
+				toolIds: Object.freeze([]),
+				ragEnabled: true,
+				knowledgeBaseIds: Object.freeze([]),
+				ragMaxResults: null,
+				ragMinScore: null,
+				rerankEnabled: false,
+				rerankingServiceId: null,
+				rerankMaxResults: null,
+				createdAt: now,
+				updatedAt: now,
+			};
+			return { rows: [...rows, record], result: record };
+		});
+	}
+
+	async listChats(workspaceId: string): Promise<readonly ConversationRecord[]> {
+		await this.assertWorkspace(workspaceId);
+		const agentId = bobbieAgentId(workspaceId);
+		const all = await this.readAll<ConversationRecord>("conversations");
+		return all
+			.filter((c) => c.workspaceId === workspaceId && c.agentId === agentId)
+			.sort(byCreatedAtDescConv);
+	}
+
+	async getChat(
+		workspaceId: string,
+		chatId: string,
+	): Promise<ConversationRecord | null> {
+		await this.assertWorkspace(workspaceId);
+		const agentId = bobbieAgentId(workspaceId);
+		const all = await this.readAll<ConversationRecord>("conversations");
+		return (
+			all.find(
+				(c) =>
+					c.workspaceId === workspaceId &&
+					c.agentId === agentId &&
+					c.conversationId === chatId,
+			) ?? null
+		);
+	}
+
+	async createChat(
+		workspaceId: string,
+		input: CreateChatInput,
+	): Promise<ConversationRecord> {
+		await this.ensureBobbieAgent(workspaceId);
+		const agentId = bobbieAgentId(workspaceId);
+		return this.mutate<"conversations", ConversationRecord>(
+			"conversations",
+			(rows) => {
+				const chatId = input.chatId ?? randomUUID();
+				if (
+					rows.some(
+						(c) =>
+							c.workspaceId === workspaceId &&
+							c.agentId === agentId &&
+							c.conversationId === chatId,
+					)
+				) {
+					throw new ControlPlaneConflictError(
+						`chat with id '${chatId}' already exists`,
+					);
+				}
+				const record: ConversationRecord = {
+					workspaceId,
+					agentId,
+					conversationId: chatId,
+					createdAt: nowIso(),
+					title: input.title ?? null,
+					knowledgeBaseIds: Object.freeze(
+						[...new Set(input.knowledgeBaseIds ?? [])].sort(),
+					),
+				};
+				return { rows: [...rows, record], result: record };
+			},
+		);
+	}
+
+	async updateChat(
+		workspaceId: string,
+		chatId: string,
+		patch: UpdateChatInput,
+	): Promise<ConversationRecord> {
+		await this.assertWorkspace(workspaceId);
+		const agentId = bobbieAgentId(workspaceId);
+		return this.mutate<"conversations", ConversationRecord>(
+			"conversations",
+			(rows) => {
+				const idx = rows.findIndex(
+					(c) =>
+						c.workspaceId === workspaceId &&
+						c.agentId === agentId &&
+						c.conversationId === chatId,
+				);
+				if (idx < 0) {
+					throw new ControlPlaneNotFoundError("chat", chatId);
+				}
+				const existing = rows[idx] as ConversationRecord;
+				const next: ConversationRecord = {
+					...existing,
+					...(patch.title !== undefined && { title: patch.title }),
+					...(patch.knowledgeBaseIds !== undefined && {
+						knowledgeBaseIds: Object.freeze(
+							[...new Set(patch.knowledgeBaseIds)].sort(),
+						),
+					}),
+				};
+				const nextRows = [...rows];
+				nextRows[idx] = next;
+				return { rows: nextRows, result: next };
+			},
+		);
+	}
+
+	async deleteChat(
+		workspaceId: string,
+		chatId: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspaceId);
+		const agentId = bobbieAgentId(workspaceId);
+		const res = await this.mutate<"conversations", { deleted: boolean }>(
+			"conversations",
+			(rows) => {
+				const next = rows.filter(
+					(c) =>
+						!(
+							c.workspaceId === workspaceId &&
+							c.agentId === agentId &&
+							c.conversationId === chatId
+						),
+				);
+				return {
+					rows: next,
+					result: { deleted: next.length !== rows.length },
+				};
+			},
+		);
+		if (res.deleted) {
+			await this.mutate<"messages", null>("messages", (rows) => ({
+				rows: rows.filter(
+					(m) =>
+						!(m.workspaceId === workspaceId && m.conversationId === chatId),
+				),
+				result: null,
+			}));
+		}
+		return res;
+	}
+
+	async listChatMessages(
+		workspaceId: string,
+		chatId: string,
+	): Promise<readonly MessageRecord[]> {
+		await this.assertChat(workspaceId, chatId);
+		const all = await this.readAll<MessageRecord>("messages");
+		return all
+			.filter(
+				(m) => m.workspaceId === workspaceId && m.conversationId === chatId,
+			)
+			.sort(byMessageTsAsc);
+	}
+
+	async appendChatMessage(
+		workspaceId: string,
+		chatId: string,
+		input: AppendChatMessageInput,
+	): Promise<MessageRecord> {
+		await this.assertChat(workspaceId, chatId);
+		return this.mutate<"messages", MessageRecord>("messages", (rows) => {
+			const messageId = input.messageId ?? randomUUID();
+			if (
+				rows.some(
+					(m) =>
+						m.workspaceId === workspaceId &&
+						m.conversationId === chatId &&
+						m.messageId === messageId,
+				)
+			) {
+				throw new ControlPlaneConflictError(
+					`message with id '${messageId}' already exists`,
+				);
+			}
+			const record: MessageRecord = {
+				workspaceId,
+				conversationId: chatId,
+				messageTs: input.messageTs ?? nowIso(),
+				messageId,
+				role: input.role,
+				authorId: input.authorId ?? null,
+				content: input.content ?? null,
+				toolId: input.toolId ?? null,
+				toolCallPayload: input.toolCallPayload
+					? Object.freeze({ ...input.toolCallPayload })
+					: null,
+				toolResponse: input.toolResponse
+					? Object.freeze({ ...input.toolResponse })
+					: null,
+				tokenCount: input.tokenCount ?? null,
+				metadata: Object.freeze({ ...(input.metadata ?? {}) }),
+			};
+			return { rows: [...rows, record], result: record };
+		});
+	}
+
+	async updateChatMessage(
+		workspaceId: string,
+		chatId: string,
+		messageId: string,
+		patch: UpdateChatMessageInput,
+	): Promise<MessageRecord> {
+		await this.assertChat(workspaceId, chatId);
+		return this.mutate<"messages", MessageRecord>("messages", (rows) => {
+			const idx = rows.findIndex(
+				(m) =>
+					m.workspaceId === workspaceId &&
+					m.conversationId === chatId &&
+					m.messageId === messageId,
+			);
+			if (idx < 0) {
+				throw new ControlPlaneNotFoundError("chat message", messageId);
+			}
+			const existing = rows[idx] as MessageRecord;
+			const next: MessageRecord = {
+				...existing,
+				...(patch.content !== undefined && { content: patch.content }),
+				...(patch.tokenCount !== undefined && { tokenCount: patch.tokenCount }),
+				...(patch.metadata !== undefined && {
+					metadata: mergeMessageMetadata(existing.metadata, patch.metadata),
+				}),
+			};
+			const nextRows = [...rows];
+			nextRows[idx] = next;
+			return { rows: nextRows, result: next };
+		});
+	}
+
+	private async assertChat(workspaceId: string, chatId: string): Promise<void> {
+		const chat = await this.getChat(workspaceId, chatId);
+		if (!chat) {
+			throw new ControlPlaneNotFoundError("chat", chatId);
+		}
+	}
+
 	/* ---------------- Plumbing ---------------- */
 
 	private async readAll<T>(table: Table): Promise<T[]> {
@@ -1285,4 +1641,10 @@ type TableRow<K extends Table> = K extends "workspaces"
 							? RerankingServiceRecord
 							: K extends "rag-documents"
 								? RagDocumentRecord
-								: never;
+								: K extends "agents"
+									? AgentRecord
+									: K extends "conversations"
+										? ConversationRecord
+										: K extends "messages"
+											? MessageRecord
+											: never;

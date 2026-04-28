@@ -15,9 +15,12 @@
  */
 
 import type {
+	AgentRecord,
+	AgentRole,
 	ApiKeyRecord,
 	AuthType,
 	ChunkingServiceRecord,
+	ConversationRecord,
 	DistanceMetric,
 	DocumentStatus,
 	EmbeddingServiceRecord,
@@ -26,6 +29,7 @@ import type {
 	KnowledgeBaseStatus,
 	KnowledgeFilterRecord,
 	LexicalConfig,
+	MessageRecord,
 	RagDocumentRecord,
 	RerankingServiceRecord,
 	SecretRef,
@@ -229,6 +233,71 @@ export type UpdateRerankingServiceInput = Partial<
 >;
 
 /* ------------------------------------------------------------------ */
+/* Chat (workspace-scoped, backed by the agentic tables)              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Input for {@link ControlPlaneStore.createChat}. The owning agent
+ * (Bobbie) is implicit — `ensureBobbieAgent` is called inside the
+ * store, so callers don't need to worry about agent management.
+ *
+ * `knowledgeBaseIds` is the per-conversation RAG-grounding set.
+ * Empty / omitted = the chat draws from all KBs in the workspace
+ * at retrieval time. Populated = restricted to those KBs (must
+ * exist; the store does **not** validate KB existence here — the
+ * route layer does, so deleted KBs eventually disappear from the
+ * set via {@link ControlPlaneStore.deleteKnowledgeBase}'s cascade).
+ */
+export interface CreateChatInput {
+	readonly chatId?: string;
+	readonly title?: string | null;
+	readonly knowledgeBaseIds?: readonly string[];
+}
+
+export interface UpdateChatInput {
+	readonly title?: string | null;
+	readonly knowledgeBaseIds?: readonly string[];
+}
+
+/**
+ * Input for {@link ControlPlaneStore.appendChatMessage}. `messageTs`
+ * is server-stamped if omitted — callers should generally let the
+ * store stamp it so chronological cluster ordering is monotonic.
+ *
+ * `metadata` is a free-form string map; it carries RAG provenance
+ * (`context_document_ids`), HF model, finish reason, and any error
+ * detail for streaming finalization. Stringly-typed for v0.
+ */
+export interface AppendChatMessageInput {
+	readonly messageId?: string;
+	readonly messageTs?: string;
+	readonly role: AgentRole;
+	readonly authorId?: string | null;
+	readonly content?: string | null;
+	readonly toolId?: string | null;
+	readonly toolCallPayload?: Readonly<Record<string, unknown>> | null;
+	readonly toolResponse?: Readonly<Record<string, unknown>> | null;
+	readonly tokenCount?: number | null;
+	readonly metadata?: Readonly<Record<string, string>>;
+}
+
+/**
+ * Patch a previously-appended message. The streaming flow inserts an
+ * empty assistant placeholder at stream start, then patches `content`
+ * + `metadata` (finish reason etc.) when the stream completes.
+ *
+ * `metadata` is **merged** key-by-key into the existing map (not
+ * replaced) so callers can update individual provenance fields
+ * without re-sending everything. Pass an explicit `undefined` value
+ * to drop a key. `null` patch fields clear the corresponding column.
+ */
+export interface UpdateChatMessageInput {
+	readonly content?: string | null;
+	readonly tokenCount?: number | null;
+	readonly metadata?: Readonly<Record<string, string | undefined>>;
+}
+
+/* ------------------------------------------------------------------ */
 /* Store                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -409,6 +478,73 @@ export interface ControlPlaneStore {
 		workspace: string,
 		uid: string,
 	): Promise<{ deleted: boolean }>;
+
+	/* Chat (workspace-scoped, agentic-tables-backed). The store owns
+	 * the singleton "Bobbie" agent: callers never construct or manage
+	 * agent rows directly. Multi-conversation per workspace; KB
+	 * grounding is per-conversation via knowledgeBaseIds. */
+
+	/**
+	 * Idempotently ensure a singleton "Bobbie" agent row exists for
+	 * the workspace and return it. Deterministic agent_id derived
+	 * from the workspace, so concurrent first-use calls converge on
+	 * one row. Throws {@link ControlPlaneNotFoundError} if the
+	 * workspace itself doesn't exist.
+	 */
+	ensureBobbieAgent(workspaceId: string): Promise<AgentRecord>;
+
+	listChats(workspaceId: string): Promise<readonly ConversationRecord[]>;
+	getChat(
+		workspaceId: string,
+		chatId: string,
+	): Promise<ConversationRecord | null>;
+	createChat(
+		workspaceId: string,
+		input: CreateChatInput,
+	): Promise<ConversationRecord>;
+	updateChat(
+		workspaceId: string,
+		chatId: string,
+		patch: UpdateChatInput,
+	): Promise<ConversationRecord>;
+	deleteChat(
+		workspaceId: string,
+		chatId: string,
+	): Promise<{ deleted: boolean }>;
+
+	/**
+	 * Chronologically-ordered message history for a chat. Returns
+	 * messages oldest-first (matching the underlying table's
+	 * `message_ts ASC` cluster key); the UI flips for display.
+	 */
+	listChatMessages(
+		workspaceId: string,
+		chatId: string,
+	): Promise<readonly MessageRecord[]>;
+
+	/**
+	 * Append a turn. Throws {@link ControlPlaneNotFoundError} if the
+	 * chat doesn't exist. Stamps `messageId` (random UUID) and
+	 * `messageTs` (now) when omitted.
+	 */
+	appendChatMessage(
+		workspaceId: string,
+		chatId: string,
+		input: AppendChatMessageInput,
+	): Promise<MessageRecord>;
+
+	/**
+	 * Patch a previously-appended message. Used by the streaming flow
+	 * to finalize an assistant placeholder once the model emits a
+	 * terminal event. Throws {@link ControlPlaneNotFoundError} if the
+	 * message isn't found.
+	 */
+	updateChatMessage(
+		workspaceId: string,
+		chatId: string,
+		messageId: string,
+		patch: UpdateChatMessageInput,
+	): Promise<MessageRecord>;
 
 	/** Optional: run migrations, open connections, etc. Idempotent. */
 	init?(): Promise<void>;

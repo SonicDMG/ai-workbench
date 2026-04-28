@@ -22,16 +22,22 @@
 
 import { randomUUID } from "node:crypto";
 import {
+	agentFromRow,
+	agentToRow,
 	apiKeyFromRow,
 	apiKeyToRow,
 	chunkingServiceFromRow,
 	chunkingServiceToRow,
+	conversationFromRow,
+	conversationToRow,
 	embeddingServiceFromRow,
 	embeddingServiceToRow,
 	knowledgeBaseFromRow,
 	knowledgeBaseToRow,
 	knowledgeFilterFromRow,
 	knowledgeFilterToRow,
+	messageFromRow,
+	messageToRow,
 	ragDocumentByHashToRow,
 	ragDocumentByStatusToRow,
 	ragDocumentFromRow,
@@ -43,6 +49,9 @@ import {
 } from "../../astra-client/converters.js";
 import type { TablesBundle } from "../../astra-client/tables.js";
 import {
+	BOBBIE_AGENT_NAME,
+	BOBBIE_SYSTEM_PROMPT,
+	bobbieAgentId,
 	byCreatedAtThenKeyId,
 	byCreatedAtThenUid,
 	DEFAULT_AUTH_TYPE,
@@ -58,7 +67,9 @@ import {
 	ControlPlaneNotFoundError,
 } from "../errors.js";
 import type {
+	AppendChatMessageInput,
 	ControlPlaneStore,
+	CreateChatInput,
 	CreateChunkingServiceInput,
 	CreateEmbeddingServiceInput,
 	CreateKnowledgeBaseInput,
@@ -67,6 +78,8 @@ import type {
 	CreateRerankingServiceInput,
 	CreateWorkspaceInput,
 	PersistApiKeyInput,
+	UpdateChatInput,
+	UpdateChatMessageInput,
 	UpdateChunkingServiceInput,
 	UpdateEmbeddingServiceInput,
 	UpdateKnowledgeBaseInput,
@@ -76,11 +89,14 @@ import type {
 	UpdateWorkspaceInput,
 } from "../store.js";
 import type {
+	AgentRecord,
 	ApiKeyRecord,
 	ChunkingServiceRecord,
+	ConversationRecord,
 	EmbeddingServiceRecord,
 	KnowledgeBaseRecord,
 	KnowledgeFilterRecord,
+	MessageRecord,
 	RagDocumentRecord,
 	RerankingServiceRecord,
 	WorkspaceRecord,
@@ -90,6 +106,46 @@ function freezeStringSet(
 	value: ReadonlySet<string> | readonly string[] | undefined,
 ): readonly string[] {
 	return Object.freeze([...new Set(value ?? [])].sort());
+}
+
+/**
+ * Newest-first sort for chat conversations. Mirrors the table's
+ * `created_at DESC` cluster ordering so list output is deterministic
+ * even when the underlying transport (real Astra vs the test fake)
+ * doesn't preserve cluster order.
+ */
+function byCreatedAtDescConv(
+	a: ConversationRecord,
+	b: ConversationRecord,
+): number {
+	if (a.createdAt > b.createdAt) return -1;
+	if (a.createdAt < b.createdAt) return 1;
+	if (a.conversationId < b.conversationId) return -1;
+	if (a.conversationId > b.conversationId) return 1;
+	return 0;
+}
+
+/**
+ * Oldest-first sort for chat messages. Mirrors `message_ts ASC`.
+ */
+function byMessageTsAsc(a: MessageRecord, b: MessageRecord): number {
+	if (a.messageTs < b.messageTs) return -1;
+	if (a.messageTs > b.messageTs) return 1;
+	if (a.messageId < b.messageId) return -1;
+	if (a.messageId > b.messageId) return 1;
+	return 0;
+}
+
+function mergeMessageMetadata(
+	existing: Readonly<Record<string, string>>,
+	patch: Readonly<Record<string, string | undefined>>,
+): Readonly<Record<string, string>> {
+	const next: Record<string, string> = { ...existing };
+	for (const [k, v] of Object.entries(patch)) {
+		if (v === undefined) delete next[k];
+		else next[k] = v;
+	}
+	return Object.freeze(next);
 }
 
 export class AstraControlPlaneStore implements ControlPlaneStore {
@@ -174,6 +230,10 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			this.tables.rerankingServices.deleteMany({ workspace_id: uid }),
 			this.tables.ragDocuments.deleteMany({ workspace_id: uid }),
 			this.tables.ragDocumentsByStatus.deleteMany({ workspace_id: uid }),
+			// Chat cascade: agents → conversations → messages.
+			this.tables.agents.deleteMany({ workspace_id: uid }),
+			this.tables.conversations.deleteMany({ workspace_id: uid }),
+			this.tables.messages.deleteMany({ workspace_id: uid }),
 		]);
 		return { deleted: true };
 	}
@@ -410,6 +470,31 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 				knowledge_base_id: uid,
 			}),
 		]);
+		// Eager cascade into chat: rewrite any conversation row whose
+		// `knowledge_base_ids` set contained the deleted KB. We can't
+		// do this server-side (no SET-element delete on the wire), so
+		// we read back the workspace's conversations, filter, and
+		// patch each affected row. v0 expects O(handful) chats per
+		// workspace; if that grows we'll add a `_by_kb` secondary
+		// index on conversations.
+		const convRows = await this.tables.conversations
+			.find({ workspace_id: workspace })
+			.toArray();
+		for (const row of convRows) {
+			const kbs = row.knowledge_base_ids;
+			if (!kbs?.has(uid)) continue;
+			const next = new Set(kbs);
+			next.delete(uid);
+			await this.tables.conversations.updateOne(
+				{
+					workspace_id: workspace,
+					agent_id: row.agent_id,
+					created_at: row.created_at,
+					conversation_id: row.conversation_id,
+				},
+				{ $set: { knowledge_base_ids: next.size > 0 ? next : null } },
+			);
+		}
 		return { deleted: true };
 	}
 
@@ -1111,6 +1196,271 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			reranking_service_id: uid,
 		});
 		return { deleted: true };
+	}
+
+	/* ---------------- Chat (workspace-scoped) ---------------- */
+
+	async ensureBobbieAgent(workspaceId: string): Promise<AgentRecord> {
+		await this.assertWorkspace(workspaceId);
+		const agentId = bobbieAgentId(workspaceId);
+		const existingRow = await this.tables.agents.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+		});
+		if (existingRow) return agentFromRow(existingRow);
+		const now = nowIso();
+		const record: AgentRecord = {
+			workspaceId,
+			agentId,
+			name: BOBBIE_AGENT_NAME,
+			description: null,
+			systemPrompt: BOBBIE_SYSTEM_PROMPT,
+			userPrompt: null,
+			toolIds: Object.freeze([]),
+			ragEnabled: true,
+			knowledgeBaseIds: Object.freeze([]),
+			ragMaxResults: null,
+			ragMinScore: null,
+			rerankEnabled: false,
+			rerankingServiceId: null,
+			rerankMaxResults: null,
+			createdAt: now,
+			updatedAt: now,
+		};
+		try {
+			await this.tables.agents.insertOne(agentToRow(record));
+		} catch (err) {
+			// Concurrent ensure() callers race on the deterministic id.
+			// Re-read; whichever insert won is fine.
+			const raced = await this.tables.agents.findOne({
+				workspace_id: workspaceId,
+				agent_id: agentId,
+			});
+			if (raced) return agentFromRow(raced);
+			throw err;
+		}
+		return record;
+	}
+
+	async listChats(workspaceId: string): Promise<readonly ConversationRecord[]> {
+		await this.assertWorkspace(workspaceId);
+		const agentId = bobbieAgentId(workspaceId);
+		const rows = await this.tables.conversations
+			.find({ workspace_id: workspaceId, agent_id: agentId })
+			.toArray();
+		// Astra's `created_at DESC` cluster ordering is enforced server-
+		// side, but the fake bundle in tests doesn't honor cluster keys.
+		// Sort defensively so tests and prod agree.
+		return rows.map(conversationFromRow).sort(byCreatedAtDescConv);
+	}
+
+	async getChat(
+		workspaceId: string,
+		chatId: string,
+	): Promise<ConversationRecord | null> {
+		await this.assertWorkspace(workspaceId);
+		const agentId = bobbieAgentId(workspaceId);
+		const row = await this.tables.conversations.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+			conversation_id: chatId,
+		});
+		return row ? conversationFromRow(row) : null;
+	}
+
+	async createChat(
+		workspaceId: string,
+		input: CreateChatInput,
+	): Promise<ConversationRecord> {
+		await this.ensureBobbieAgent(workspaceId);
+		const agentId = bobbieAgentId(workspaceId);
+		const chatId = input.chatId ?? randomUUID();
+		const existing = await this.tables.conversations.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+			conversation_id: chatId,
+		});
+		if (existing) {
+			throw new ControlPlaneConflictError(
+				`chat with id '${chatId}' already exists`,
+			);
+		}
+		const record: ConversationRecord = {
+			workspaceId,
+			agentId,
+			conversationId: chatId,
+			createdAt: nowIso(),
+			title: input.title ?? null,
+			knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
+		};
+		await this.tables.conversations.insertOne(conversationToRow(record));
+		return record;
+	}
+
+	async updateChat(
+		workspaceId: string,
+		chatId: string,
+		patch: UpdateChatInput,
+	): Promise<ConversationRecord> {
+		await this.assertWorkspace(workspaceId);
+		const agentId = bobbieAgentId(workspaceId);
+		const existingRow = await this.tables.conversations.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+			conversation_id: chatId,
+		});
+		if (!existingRow) {
+			throw new ControlPlaneNotFoundError("chat", chatId);
+		}
+		const existing = conversationFromRow(existingRow);
+		const next: ConversationRecord = {
+			...existing,
+			...(patch.title !== undefined && { title: patch.title }),
+			...(patch.knowledgeBaseIds !== undefined && {
+				knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
+			}),
+		};
+		const nextRow = conversationToRow(next);
+		await this.tables.conversations.updateOne(
+			{
+				workspace_id: workspaceId,
+				agent_id: agentId,
+				created_at: existingRow.created_at,
+				conversation_id: chatId,
+			},
+			{
+				$set: {
+					title: nextRow.title,
+					knowledge_base_ids: nextRow.knowledge_base_ids,
+				},
+			},
+		);
+		return next;
+	}
+
+	async deleteChat(
+		workspaceId: string,
+		chatId: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspaceId);
+		const agentId = bobbieAgentId(workspaceId);
+		const existing = await this.tables.conversations.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+			conversation_id: chatId,
+		});
+		if (!existing) return { deleted: false };
+		await this.tables.conversations.deleteOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+			created_at: existing.created_at,
+			conversation_id: chatId,
+		});
+		await this.tables.messages.deleteMany({
+			workspace_id: workspaceId,
+			conversation_id: chatId,
+		});
+		return { deleted: true };
+	}
+
+	async listChatMessages(
+		workspaceId: string,
+		chatId: string,
+	): Promise<readonly MessageRecord[]> {
+		await this.assertChat(workspaceId, chatId);
+		const rows = await this.tables.messages
+			.find({ workspace_id: workspaceId, conversation_id: chatId })
+			.toArray();
+		return rows.map(messageFromRow).sort(byMessageTsAsc);
+	}
+
+	async appendChatMessage(
+		workspaceId: string,
+		chatId: string,
+		input: AppendChatMessageInput,
+	): Promise<MessageRecord> {
+		await this.assertChat(workspaceId, chatId);
+		const messageId = input.messageId ?? randomUUID();
+		const record: MessageRecord = {
+			workspaceId,
+			conversationId: chatId,
+			messageTs: input.messageTs ?? nowIso(),
+			messageId,
+			role: input.role,
+			authorId: input.authorId ?? null,
+			content: input.content ?? null,
+			toolId: input.toolId ?? null,
+			toolCallPayload: input.toolCallPayload
+				? Object.freeze({ ...input.toolCallPayload })
+				: null,
+			toolResponse: input.toolResponse
+				? Object.freeze({ ...input.toolResponse })
+				: null,
+			tokenCount: input.tokenCount ?? null,
+			metadata: Object.freeze({ ...(input.metadata ?? {}) }),
+		};
+		// Cluster key is `(message_ts ASC)`. We don't probe for an
+		// existing row first (`message_id` isn't part of the key, so a
+		// `findOne` filter on it isn't a partition lookup) — Astra
+		// allows multiple rows in the same partition with different
+		// timestamps, and the contract is "callers either let the store
+		// stamp or supply a unique pair." If a duplicate (workspace,
+		// chat, ts, id) ever does happen, the second insertOne becomes
+		// an upsert; acceptable for v0.
+		await this.tables.messages.insertOne(messageToRow(record));
+		return record;
+	}
+
+	async updateChatMessage(
+		workspaceId: string,
+		chatId: string,
+		messageId: string,
+		patch: UpdateChatMessageInput,
+	): Promise<MessageRecord> {
+		await this.assertChat(workspaceId, chatId);
+		// `message_id` isn't part of the cluster key, so we read the
+		// matching partition and find by id client-side. v0 chats are
+		// bounded; if message lists grow large we'll add a `_by_id`
+		// secondary index.
+		const rows = await this.tables.messages
+			.find({ workspace_id: workspaceId, conversation_id: chatId })
+			.toArray();
+		const existingRow = rows.find((r) => r.message_id === messageId);
+		if (!existingRow) {
+			throw new ControlPlaneNotFoundError("chat message", messageId);
+		}
+		const existing = messageFromRow(existingRow);
+		const next: MessageRecord = {
+			...existing,
+			...(patch.content !== undefined && { content: patch.content }),
+			...(patch.tokenCount !== undefined && { tokenCount: patch.tokenCount }),
+			...(patch.metadata !== undefined && {
+				metadata: mergeMessageMetadata(existing.metadata, patch.metadata),
+			}),
+		};
+		const nextRow = messageToRow(next);
+		await this.tables.messages.updateOne(
+			{
+				workspace_id: workspaceId,
+				conversation_id: chatId,
+				message_ts: existingRow.message_ts,
+			},
+			{
+				$set: {
+					content: nextRow.content,
+					token_count: nextRow.token_count,
+					metadata: nextRow.metadata,
+				},
+			},
+		);
+		return next;
+	}
+
+	private async assertChat(workspaceId: string, chatId: string): Promise<void> {
+		const chat = await this.getChat(workspaceId, chatId);
+		if (!chat) {
+			throw new ControlPlaneNotFoundError("chat", chatId);
+		}
 	}
 
 	/* ---------------- Helpers ---------------- */

@@ -4,6 +4,7 @@
  * all produce structurally identical records for identical input.
  */
 
+import { createHash } from "node:crypto";
 import type {
 	AuthType,
 	DistanceMetric,
@@ -48,6 +49,60 @@ export const DEFAULT_RERANKING: RerankingConfig = Object.freeze({
 
 export function nowIso(): string {
 	return new Date().toISOString();
+}
+
+/* ---- Chat (workspace-scoped, agentic-tables-backed) defaults ---- */
+
+/**
+ * Built-in name for the singleton chat agent.
+ *
+ * Backed by `wb_agentic_agents_by_workspace`. Future user-defined
+ * agents will live in the same table with their own (random) UUIDs;
+ * Bobbie's deterministic UUID (see {@link bobbieAgentId}) keeps the
+ * two namespaces from colliding.
+ */
+export const BOBBIE_AGENT_NAME = "Bobbie";
+
+/**
+ * Default system prompt for Bobbie. Persisted on the agent row so a
+ * single-source-of-truth prompt is auditable per-workspace; can be
+ * overridden by ops via runtime config in a later phase.
+ */
+export const BOBBIE_SYSTEM_PROMPT =
+	"You are Bobbie, an assistant grounded in the user's knowledge bases. " +
+	"Use the provided context to answer. When you draw on a context " +
+	"passage, cite it inline as `[chunkId]`. If the answer is not in the " +
+	"context, say so honestly rather than inventing it.";
+
+/**
+ * Deterministic agent_id for the singleton Bobbie agent in a given
+ * workspace. Same workspace always yields the same id, so concurrent
+ * first-use callers converge on a single row instead of racing to
+ * insert duplicates.
+ *
+ * Implementation: SHA-256 of `bobbie:${workspaceId}` formatted as a
+ * UUIDv4-shaped string. Not actually a UUIDv5 (would need SHA-1 +
+ * a registered namespace UUID), but UUID-shaped is all the column
+ * type requires and the high entropy avoids collision with random
+ * UUIDs from user-created agents.
+ */
+export function bobbieAgentId(workspaceId: string): string {
+	const hex = createHash("sha256")
+		.update(`bobbie:${workspaceId}`)
+		.digest("hex");
+	// Force the version nibble to '4' and the variant to '8/9/a/b'
+	// so the result satisfies UUIDv4 regexes used in zod schemas.
+	const variant = (
+		(Number.parseInt(hex.slice(16, 17), 16) & 0x3) |
+		0x8
+	).toString(16);
+	return [
+		hex.slice(0, 8),
+		hex.slice(8, 12),
+		`4${hex.slice(13, 16)}`,
+		`${variant}${hex.slice(17, 20)}`,
+		hex.slice(20, 32),
+	].join("-");
 }
 
 /**
