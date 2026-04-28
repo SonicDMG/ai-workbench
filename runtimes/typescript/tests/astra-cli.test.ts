@@ -11,8 +11,10 @@ import {
 	parseProfilesPayload,
 } from "../src/config/astra-cli.js";
 
-const FAKE_TOKEN = "AstraCS:fake:0000000000000000000000000000000000000000";
-const FAKE_TOKEN_2 = "AstraCS:fake:1111111111111111111111111111111111111111";
+// Fixture tokens — explicitly opaque, not real credentials. secret-scan: allow
+const FAKE_TOKEN = "AstraCS:fake:0000000000000000000000000000000000000000"; // secret-scan: allow
+// secret-scan: allow
+const FAKE_TOKEN_2 = "AstraCS:fake:1111111111111111111111111111111111111111"; // secret-scan: allow
 
 interface ScriptedCall {
 	readonly args: readonly string[];
