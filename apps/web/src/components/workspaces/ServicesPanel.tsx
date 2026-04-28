@@ -18,8 +18,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
 	Select,
 	SelectContent,
@@ -239,6 +239,7 @@ function EmbeddingSubpanel({ workspace }: { workspace: string }) {
 					<div className="flex flex-col gap-3">
 						<PresetPicker
 							id="emb-preset"
+							help="Presets fill in the common provider, model, dimension, and credential reference values. Choose custom when connecting a provider not listed here."
 							value={presetId}
 							onChange={applyPreset}
 							options={EMBEDDING_PRESETS.map((p) => ({
@@ -249,12 +250,14 @@ function EmbeddingSubpanel({ workspace }: { workspace: string }) {
 						/>
 						<Field
 							label="Name"
+							help="A recognizable name for this embedding service. Knowledge bases show this name when you choose how documents should be embedded."
 							id="emb-name"
 							value={draft.name}
 							onChange={(v) => setDraft((d) => ({ ...d, name: v }))}
 						/>
 						<SelectWithCustom
 							label="Provider"
+							help="The embedding provider the runtime will call, such as OpenAI or Cohere. The provider controls which model names and credentials are valid."
 							id="emb-provider"
 							value={draft.provider}
 							custom={providerCustom}
@@ -267,6 +270,7 @@ function EmbeddingSubpanel({ workspace }: { workspace: string }) {
 						/>
 						<SelectWithCustom
 							label="Model"
+							help="The embedding model to use. Its native vector dimension must match the dimension stored on this service."
 							id="emb-model"
 							value={draft.modelName}
 							custom={modelCustom}
@@ -281,6 +285,7 @@ function EmbeddingSubpanel({ workspace }: { workspace: string }) {
 						/>
 						<Field
 							label="Dimension"
+							help="The number of floats each embedding returns. This must match the model and the vector collection dimension."
 							id="emb-dim"
 							value={String(draft.embeddingDimension)}
 							onChange={(v) =>
@@ -293,6 +298,7 @@ function EmbeddingSubpanel({ workspace }: { workspace: string }) {
 						/>
 						<Field
 							label="Secret ref"
+							help="Where the runtime reads the provider credential, for example env:OPENAI_API_KEY. Keep raw API keys out of this field."
 							id="emb-secret-ref"
 							value={draft.credentialRef ?? ""}
 							onChange={(v) =>
@@ -447,6 +453,7 @@ function ChunkingSubpanel({ workspace }: { workspace: string }) {
 					<div className="flex flex-col gap-3">
 						<PresetPicker
 							id="chunk-preset"
+							help="Presets choose a supported LangChainTS-style strategy and chunk sizes. Start here unless you need a custom chunker."
 							value={presetId}
 							onChange={applyPreset}
 							options={CHUNKING_PRESETS.map((p) => ({
@@ -457,12 +464,14 @@ function ChunkingSubpanel({ workspace }: { workspace: string }) {
 						/>
 						<Field
 							label="Name"
+							help="A recognizable name for this chunking service. Knowledge bases show this name when choosing how documents are split."
 							id="chunk-name"
 							value={draft.name}
 							onChange={(v) => setDraft((d) => ({ ...d, name: v }))}
 						/>
 						<SelectWithCustom
 							label="Engine"
+							help="The chunking family. langchain_ts uses the built-in recursive and line-based splitters; docling is reserved for layout-aware extraction."
 							id="chunk-engine"
 							value={draft.engine}
 							custom={engineCustom}
@@ -475,6 +484,7 @@ function ChunkingSubpanel({ workspace }: { workspace: string }) {
 						/>
 						<SelectWithCustom
 							label="Strategy"
+							help="The splitting behavior inside the selected engine. Recursive is best for prose and markdown; line-based is best for CSV, JSONL, and logs."
 							id="chunk-strategy"
 							value={draft.strategy ?? ""}
 							custom={strategyCustom}
@@ -636,6 +646,7 @@ function RerankingSubpanel({ workspace }: { workspace: string }) {
 					<div className="flex flex-col gap-3">
 						<PresetPicker
 							id="rer-preset"
+							help="Presets fill in common reranking providers and models. Reranking is optional for a knowledge base."
 							value={presetId}
 							onChange={applyPreset}
 							options={RERANKING_PRESETS.map((p) => ({
@@ -646,12 +657,14 @@ function RerankingSubpanel({ workspace }: { workspace: string }) {
 						/>
 						<Field
 							label="Name"
+							help="A recognizable name for this reranking service. Knowledge bases show this name when selecting an optional reranker."
 							id="rer-name"
 							value={draft.name}
 							onChange={(v) => setDraft((d) => ({ ...d, name: v }))}
 						/>
 						<SelectWithCustom
 							label="Provider"
+							help="The service that will rerank retrieved candidates after vector search returns them."
 							id="rer-provider"
 							value={draft.provider}
 							custom={providerCustom}
@@ -664,6 +677,7 @@ function RerankingSubpanel({ workspace }: { workspace: string }) {
 						/>
 						<SelectWithCustom
 							label="Model"
+							help="The reranking model name to send to the provider."
 							id="rer-model"
 							value={draft.modelName}
 							custom={modelCustom}
@@ -701,11 +715,13 @@ interface PresetOption {
 
 function PresetPicker({
 	id,
+	help,
 	value,
 	onChange,
 	options,
 }: {
 	id: string;
+	help?: string;
 	value: string;
 	onChange: (v: string) => void;
 	options: readonly PresetOption[];
@@ -713,7 +729,9 @@ function PresetPicker({
 	const selected = options.find((o) => o.value === value);
 	return (
 		<div className="flex flex-col gap-1.5">
-			<Label htmlFor={id}>Preset</Label>
+			<FieldLabel htmlFor={id} help={help}>
+				Preset
+			</FieldLabel>
 			<Select value={value} onValueChange={onChange}>
 				<SelectTrigger id={id}>
 					<SelectValue placeholder="Pick a preset (or fill in below)" />
@@ -741,6 +759,7 @@ interface SelectOption {
 
 function SelectWithCustom({
 	label,
+	help,
 	id,
 	value,
 	custom,
@@ -751,6 +770,7 @@ function SelectWithCustom({
 	disabled,
 }: {
 	label: string;
+	help?: string;
 	id: string;
 	value: string;
 	custom: boolean;
@@ -773,7 +793,9 @@ function SelectWithCustom({
 			: "";
 	return (
 		<div className="flex flex-col gap-1.5">
-			<Label htmlFor={id}>{label}</Label>
+			<FieldLabel htmlFor={id} help={help}>
+				{label}
+			</FieldLabel>
 			<Select
 				value={selectValue}
 				onValueChange={onChange}
@@ -905,6 +927,7 @@ function ServiceRow({
 
 function Field({
 	label,
+	help,
 	id,
 	value,
 	onChange,
@@ -912,6 +935,7 @@ function Field({
 	type,
 }: {
 	label: string;
+	help?: string;
 	id: string;
 	value: string;
 	onChange: (v: string) => void;
@@ -920,7 +944,9 @@ function Field({
 }) {
 	return (
 		<div className="flex flex-col gap-1.5">
-			<Label htmlFor={id}>{label}</Label>
+			<FieldLabel htmlFor={id} help={help}>
+				{label}
+			</FieldLabel>
 			<Input
 				id={id}
 				value={value}

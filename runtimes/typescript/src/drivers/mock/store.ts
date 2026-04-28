@@ -121,6 +121,13 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 	 * do not appear here and score 0 on lexical. */
 	private readonly texts = new Map<Key, Map<string, string>>();
 
+	async testConnection(): Promise<{ ok: boolean; details: string }> {
+		return {
+			ok: true,
+			details: "Mock backend is always reachable. No credentials required.",
+		};
+	}
+
 	async createCollection(ctx: VectorStoreDriverContext): Promise<void> {
 		// Idempotent: if it already exists, leave it alone.
 		const k = keyOf(ctx);

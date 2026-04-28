@@ -309,20 +309,18 @@ through the workspace's driver.
 
 ### `POST /api/v1/workspaces/{workspaceId}/test-connection`
 
-Probe the workspace's credentials. Resolves every value in
-`credentials` via the runtime's `SecretResolver` and reports the
-first failure. For `mock` workspaces, always returns `ok: true`
-without touching any secrets. Verifies refs only — does NOT dial the
-backend or validate a resolved token against the remote service.
+Run a live workspace connection check. For `mock` workspaces, this
+always returns `ok: true`. Remote backends resolve their configured
+connection details and ask the driver to make a data-plane call.
 
-**Response 200** — always 200 regardless of probe outcome; the
+**Response 200** — always 200 regardless of check outcome; the
 `ok` field distinguishes success from failure:
 
 ```json
 {
   "ok": true,
   "kind": "astra",
-  "details": "1 credential resolved. Note: this verifies refs only, not the backend token against the remote service."
+  "details": "Astra Data API responded to listCollections."
 }
 ```
 

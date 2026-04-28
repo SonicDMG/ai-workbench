@@ -14,7 +14,7 @@ import {
 import { KindPicker } from "@/components/workspaces/KindPicker";
 import { WorkspaceForm } from "@/components/workspaces/WorkspaceForm";
 import { useCreateWorkspace, useWorkspaces } from "@/hooks/useWorkspaces";
-import { formatApiError } from "@/lib/api";
+import { api, formatApiError } from "@/lib/api";
 import type { WorkspaceKind } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +26,7 @@ export function OnboardingPage() {
 	const create = useCreateWorkspace();
 	const [step, setStep] = useState<Step>("kind");
 	const [kind, setKind] = useState<WorkspaceKind | null>(null);
+	const [checkingConnection, setCheckingConnection] = useState(false);
 
 	const isFirstRun = !workspaces || workspaces.length === 0;
 
@@ -141,15 +142,36 @@ export function OnboardingPage() {
 						<WorkspaceForm
 							mode="create"
 							kind={kind}
-							submitting={create.isPending}
+							submitting={create.isPending || checkingConnection}
 							submitLabel="Create workspace"
 							onCancel={() => setStep("kind")}
 							onSubmit={async (input) => {
 								try {
 									const ws = await create.mutateAsync(input);
-									toast.success(`Workspace '${ws.name}' created`);
+									setCheckingConnection(true);
+									try {
+										const probe = await api.testConnection(ws.workspaceId);
+										if (probe.ok) {
+											toast.success(`Workspace '${ws.name}' created`, {
+												description: probe.details,
+											});
+										} else {
+											toast.warning(
+												`Workspace '${ws.name}' created, but the connection check failed`,
+												{ description: probe.details },
+											);
+										}
+									} catch (err) {
+										toast.warning(
+											`Workspace '${ws.name}' created, but the connection check could not run`,
+											{ description: formatApiError(err) },
+										);
+									} finally {
+										setCheckingConnection(false);
+									}
 									navigate(`/workspaces/${ws.workspaceId}`);
 								} catch (err) {
+									setCheckingConnection(false);
 									toast.error("Couldn't create workspace", {
 										description: formatApiError(err),
 									});

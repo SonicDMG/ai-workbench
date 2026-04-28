@@ -16,13 +16,11 @@ import { queryClient } from "@/lib/query";
 import { PlaygroundPage } from "@/pages/PlaygroundPage";
 import { WorkspacesPage } from "@/pages/WorkspacesPage";
 
-// Workspaces is the landing route; Playground is one of two top-level
-// nav targets and needs to swap in cleanly when the user clicks its
-// tab — keeping it eager eliminates a Suspense boundary from the
-// navigation path that was making URL-changes-but-content-stuck reports
-// reproducible. The two heavier flow pages stay lazy because they
-// pull in react-hook-form + zod, which is what the bundle-split work
-// (#36/#37) was actually trying to keep off first paint.
+// Workspaces is the landing route; Playground stays eager because it is
+// part of the KB workflow and should swap in cleanly from the explorer.
+// The two heavier flow pages stay lazy because they pull in react-hook-form
+// + zod, which is what the bundle-split work (#36/#37) was actually trying
+// to keep off first paint.
 const OnboardingPage = lazy(() =>
 	import("@/pages/OnboardingPage").then((m) => ({ default: m.OnboardingPage })),
 );
@@ -86,6 +84,10 @@ function RoutedView() {
 					<Route
 						path="/workspaces/:workspaceUid/knowledge-bases/:knowledgeBaseUid"
 						element={<KnowledgeBaseExplorerPage />}
+					/>
+					<Route
+						path="/workspaces/:workspaceUid/knowledge-bases/:knowledgeBaseUid/playground"
+						element={<PlaygroundPage />}
 					/>
 					<Route path="/playground" element={<PlaygroundPage />} />
 					<Route path="*" element={<Navigate to="/" replace />} />

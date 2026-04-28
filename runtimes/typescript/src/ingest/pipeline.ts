@@ -15,6 +15,7 @@
 
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type {
+	ChunkingServiceRecord,
 	KnowledgeBaseRecord,
 	VectorStoreRecord,
 	WorkspaceRecord,
@@ -23,7 +24,8 @@ import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
 import { safeErrorMessage } from "../lib/safe-error.js";
 import { dispatchUpsert } from "../routes/api-v1/upsert-dispatch.js";
-import type { ChunkerOptions } from "./chunker.js";
+import type { Chunker, ChunkerOptions } from "./chunker.js";
+import { LineChunker } from "./line-chunker.js";
 import {
 	CHUNK_INDEX_KEY,
 	CHUNK_TEXT_KEY,
@@ -81,7 +83,16 @@ export async function runKbIngest(
 	const { workspace, knowledgeBase, descriptor, documentUid } = ctx;
 	const kbId = knowledgeBase.knowledgeBaseId;
 
-	const chunker = new RecursiveCharacterChunker(input.chunker);
+	const chunkingService = await store.getChunkingService(
+		workspace.uid,
+		knowledgeBase.chunkingServiceId,
+	);
+	if (!chunkingService) {
+		throw new Error(
+			`chunking service '${knowledgeBase.chunkingServiceId}' not found`,
+		);
+	}
+	const chunker = buildChunker(chunkingService, input.chunker);
 	const chunks = chunker.chunk({
 		text: input.text,
 		metadata: input.metadata,
@@ -128,4 +139,45 @@ export async function runKbIngest(
 			.catch(() => undefined);
 		throw err;
 	}
+}
+
+function buildChunker(
+	service: ChunkingServiceRecord,
+	override?: ChunkerOptions,
+): Chunker {
+	const options: ChunkerOptions = {
+		...chunkerOptionsFromService(service),
+		...override,
+	};
+	if (service.engine !== "langchain_ts") {
+		throw new Error(
+			`chunking service '${service.name}' uses unsupported engine '${service.engine}'`,
+		);
+	}
+	switch (service.strategy ?? "recursive") {
+		case "recursive":
+			return new RecursiveCharacterChunker(options);
+		case "line":
+			return new LineChunker(options);
+		default:
+			throw new Error(
+				`chunking service '${service.name}' uses unsupported strategy '${service.strategy}'`,
+			);
+	}
+}
+
+function chunkerOptionsFromService(
+	service: ChunkingServiceRecord,
+): ChunkerOptions {
+	return {
+		...(service.maxChunkSize !== null
+			? { maxChars: service.maxChunkSize }
+			: {}),
+		...(service.minChunkSize !== null
+			? { minChars: service.minChunkSize }
+			: {}),
+		...(service.overlapSize !== null
+			? { overlapChars: service.overlapSize }
+			: {}),
+	};
 }

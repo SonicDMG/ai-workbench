@@ -88,7 +88,6 @@ export const CHUNKING_STRATEGIES: Readonly<
 	langchain_ts: [
 		{ value: "recursive", label: "Recursive character" },
 		{ value: "line", label: "Line-based" },
-		{ value: "semantic", label: "Semantic" },
 	],
 	docling: [{ value: "layout", label: "Layout-aware" }],
 };
@@ -178,6 +177,83 @@ export const CHUNKING_PRESETS: readonly ChunkingPreset[] = [
 			minChunkSize: 100,
 			overlapSize: 150,
 			overlapUnit: "characters",
+			preserveStructure: true,
+		},
+	},
+	{
+		id: "recursive-char-500",
+		label: "Recursive character (500 chars / 75 overlap)",
+		description:
+			"Small chunks for short notes and precise retrieval. Honors paragraph, sentence, and word boundaries.",
+		input: {
+			name: "recursive-char-500",
+			description:
+				"Small recursive character splitter (500 chars / 75 overlap) honoring paragraph, sentence, and word boundaries.",
+			engine: "langchain_ts",
+			strategy: "recursive",
+			chunkUnit: "characters",
+			maxChunkSize: 500,
+			minChunkSize: 50,
+			overlapSize: 75,
+			overlapUnit: "characters",
+			preserveStructure: true,
+		},
+	},
+	{
+		id: "recursive-char-2000",
+		label: "Recursive character (2000 chars / 250 overlap)",
+		description:
+			"Larger chunks for long-form documentation and reports. Honors paragraph, sentence, and word boundaries.",
+		input: {
+			name: "recursive-char-2000",
+			description:
+				"Large recursive character splitter (2000 chars / 250 overlap) honoring paragraph, sentence, and word boundaries.",
+			engine: "langchain_ts",
+			strategy: "recursive",
+			chunkUnit: "characters",
+			maxChunkSize: 2000,
+			minChunkSize: 150,
+			overlapSize: 250,
+			overlapUnit: "characters",
+			preserveStructure: true,
+		},
+	},
+	{
+		id: "recursive-char-4000",
+		label: "Recursive character (4000 chars / 400 overlap)",
+		description:
+			"Extra-large chunks for broad context retrieval. Honors paragraph, sentence, and word boundaries.",
+		input: {
+			name: "recursive-char-4000",
+			description:
+				"Extra-large recursive character splitter (4000 chars / 400 overlap) honoring paragraph, sentence, and word boundaries.",
+			engine: "langchain_ts",
+			strategy: "recursive",
+			chunkUnit: "characters",
+			maxChunkSize: 4000,
+			minChunkSize: 250,
+			overlapSize: 400,
+			overlapUnit: "characters",
+			preserveStructure: true,
+		},
+	},
+	{
+		id: "line-1000",
+		label: "Line-based (1000 chars, snaps to \\n)",
+		description:
+			"Small newline-delimited chunks for compact CSV, JSONL, and logs where rows should stay intact.",
+		input: {
+			name: "line-1000",
+			description:
+				"Small line-based splitter (1000 chars per chunk, snaps to `\\n` boundaries).",
+			engine: "langchain_ts",
+			strategy: "line",
+			chunkUnit: "characters",
+			maxChunkSize: 1000,
+			minChunkSize: 0,
+			overlapSize: 0,
+			overlapUnit: "characters",
+			preserveStructure: true,
 		},
 	},
 	{
@@ -196,6 +272,26 @@ export const CHUNKING_PRESETS: readonly ChunkingPreset[] = [
 			minChunkSize: 0,
 			overlapSize: 0,
 			overlapUnit: "characters",
+			preserveStructure: true,
+		},
+	},
+	{
+		id: "line-5000",
+		label: "Line-based (5000 chars, snaps to \\n)",
+		description:
+			"Large newline-delimited chunks for wider CSV rows, JSONL payloads, and verbose logs.",
+		input: {
+			name: "line-5000",
+			description:
+				"Large line-based splitter (5000 chars per chunk, snaps to `\\n` boundaries).",
+			engine: "langchain_ts",
+			strategy: "line",
+			chunkUnit: "characters",
+			maxChunkSize: 5000,
+			minChunkSize: 0,
+			overlapSize: 0,
+			overlapUnit: "characters",
+			preserveStructure: true,
 		},
 	},
 ];

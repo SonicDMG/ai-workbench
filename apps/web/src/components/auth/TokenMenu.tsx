@@ -11,8 +11,8 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
+import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { previewToken, setAuthToken } from "@/lib/authToken";
 
@@ -93,7 +93,12 @@ export function TokenMenu() {
 					</DialogDescription>
 				</DialogHeader>
 				<div className="flex flex-col gap-1.5">
-					<Label htmlFor="auth-token">Bearer token</Label>
+					<FieldLabel
+						htmlFor="auth-token"
+						help="Paste a workspace-scoped API key here. It is stored only in this browser's localStorage and sent as the Authorization bearer token."
+					>
+						Bearer token
+					</FieldLabel>
 					<Input
 						id="auth-token"
 						placeholder="wb_live_…"

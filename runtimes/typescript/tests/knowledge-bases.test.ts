@@ -503,7 +503,8 @@ async function makeReadyKb(app: ReturnType<typeof makeApp>): Promise<{
 	});
 	const chunkId = await createService(app, ws, "chunking-services", {
 		name: "c",
-		engine: "docling",
+		engine: "langchain_ts",
+		strategy: "recursive",
 	});
 	const create = await app.request(`/api/v1/workspaces/${ws}/knowledge-bases`, {
 		method: "POST",

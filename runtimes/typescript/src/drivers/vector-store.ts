@@ -111,6 +111,10 @@ export interface SearchHit {
 
 /** The contract every backend implements. */
 export interface VectorStoreDriver {
+	testConnection?(
+		workspace: WorkspaceRecord,
+	): Promise<{ ok: boolean; details: string }>;
+
 	createCollection(ctx: VectorStoreDriverContext): Promise<void>;
 	dropCollection(ctx: VectorStoreDriverContext): Promise<void>;
 

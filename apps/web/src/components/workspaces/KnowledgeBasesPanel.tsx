@@ -4,6 +4,7 @@ import {
 	Loader2,
 	Plus,
 	RefreshCw,
+	Sparkles,
 	Trash2,
 	Upload,
 } from "lucide-react";
@@ -202,6 +203,17 @@ function KnowledgeBaseRow({
 					</span>
 				</button>
 				<div className="shrink-0 flex items-center gap-1">
+					<Button variant="secondary" size="sm" onClick={onIngest}>
+						<Upload className="h-4 w-4" /> Ingest
+					</Button>
+					<Button variant="secondary" size="sm" asChild>
+						<Link
+							to={`/workspaces/${workspace}/knowledge-bases/${kb.knowledgeBaseId}/playground`}
+							title="Open the playground for this knowledge base"
+						>
+							<Sparkles className="h-4 w-4" /> Playground
+						</Link>
+					</Button>
 					<Button variant="ghost" size="sm" asChild>
 						<Link
 							to={`/workspaces/${workspace}/knowledge-bases/${kb.knowledgeBaseId}`}
@@ -209,9 +221,6 @@ function KnowledgeBaseRow({
 						>
 							Open <ArrowUpRight className="h-3.5 w-3.5" />
 						</Link>
-					</Button>
-					<Button variant="secondary" size="sm" onClick={onIngest}>
-						<Upload className="h-4 w-4" /> Ingest
 					</Button>
 					<Button
 						variant="ghost"

@@ -179,8 +179,7 @@ export const TestConnectionResponseSchema = z
 		ok: z.boolean(),
 		kind: WorkspaceKind,
 		details: z.string().openapi({
-			example:
-				"2 credentials resolved; this verifies refs only, not the backend token.",
+			example: "Astra Data API responded to listCollections.",
 		}),
 	})
 	.openapi("TestConnectionResponse");

@@ -37,8 +37,24 @@ export interface DefaultServices {
 	readonly embedding: readonly CreateEmbeddingServiceInput[];
 }
 
+/** Recursive-character chunker — small, tighter chunks for precise retrieval. */
+const RECURSIVE_CHAR_SMALL: CreateChunkingServiceInput = {
+	name: "recursive-char-500",
+	description:
+		"Small recursive character splitter (500 chars / 75 overlap) honoring paragraph, sentence, and word boundaries. Good for short notes and precise retrieval.",
+	status: "active",
+	engine: "langchain_ts",
+	strategy: "recursive",
+	chunkUnit: "characters",
+	maxChunkSize: 500,
+	minChunkSize: 50,
+	overlapSize: 75,
+	overlapUnit: "characters",
+	preserveStructure: true,
+};
+
 /** Recursive-character chunker — the runtime default. */
-const RECURSIVE_CHAR: CreateChunkingServiceInput = {
+const RECURSIVE_CHAR_DEFAULT: CreateChunkingServiceInput = {
 	name: "recursive-char-1000",
 	description:
 		"Default. Recursive character splitter (1000 chars / 150 overlap) honoring paragraph, sentence, and word boundaries. Good for prose, markdown, mixed content.",
@@ -53,8 +69,56 @@ const RECURSIVE_CHAR: CreateChunkingServiceInput = {
 	preserveStructure: true,
 };
 
+/** Recursive-character chunker — larger chunks for long-form prose. */
+const RECURSIVE_CHAR_LARGE: CreateChunkingServiceInput = {
+	name: "recursive-char-2000",
+	description:
+		"Large recursive character splitter (2000 chars / 250 overlap) honoring paragraph, sentence, and word boundaries. Good for long-form documentation and reports.",
+	status: "active",
+	engine: "langchain_ts",
+	strategy: "recursive",
+	chunkUnit: "characters",
+	maxChunkSize: 2000,
+	minChunkSize: 150,
+	overlapSize: 250,
+	overlapUnit: "characters",
+	preserveStructure: true,
+};
+
+/** Recursive-character chunker — broad context windows for high-context retrieval. */
+const RECURSIVE_CHAR_XL: CreateChunkingServiceInput = {
+	name: "recursive-char-4000",
+	description:
+		"Extra-large recursive character splitter (4000 chars / 400 overlap) honoring paragraph, sentence, and word boundaries. Good when retrieval needs broad context.",
+	status: "active",
+	engine: "langchain_ts",
+	strategy: "recursive",
+	chunkUnit: "characters",
+	maxChunkSize: 4000,
+	minChunkSize: 250,
+	overlapSize: 400,
+	overlapUnit: "characters",
+	preserveStructure: true,
+};
+
+/** Line-based chunker — tighter chunks for newline-delimited records. */
+const LINE_BASED_SMALL: CreateChunkingServiceInput = {
+	name: "line-1000",
+	description:
+		"Small line-based splitter (1000 chars per chunk, snaps to `\\n` boundaries). Good for compact CSV, JSONL, and logs where rows must stay intact.",
+	status: "active",
+	engine: "langchain_ts",
+	strategy: "line",
+	chunkUnit: "characters",
+	maxChunkSize: 1000,
+	minChunkSize: 0,
+	overlapSize: 0,
+	overlapUnit: "characters",
+	preserveStructure: true,
+};
+
 /** Line-based chunker — default for newline-delimited content (CSV, JSONL, logs). */
-const LINE_BASED: CreateChunkingServiceInput = {
+const LINE_BASED_DEFAULT: CreateChunkingServiceInput = {
 	name: "line-2000",
 	description:
 		"Line-based splitter (2000 chars per chunk, snaps to `\\n` boundaries). Default for CSV, JSONL, and other newline-delimited content where rows must stay intact.",
@@ -63,6 +127,22 @@ const LINE_BASED: CreateChunkingServiceInput = {
 	strategy: "line",
 	chunkUnit: "characters",
 	maxChunkSize: 2000,
+	minChunkSize: 0,
+	overlapSize: 0,
+	overlapUnit: "characters",
+	preserveStructure: true,
+};
+
+/** Line-based chunker — larger rows/log events. */
+const LINE_BASED_LARGE: CreateChunkingServiceInput = {
+	name: "line-5000",
+	description:
+		"Large line-based splitter (5000 chars per chunk, snaps to `\\n` boundaries). Good for wider CSV rows, JSONL payloads, and verbose logs.",
+	status: "active",
+	engine: "langchain_ts",
+	strategy: "line",
+	chunkUnit: "characters",
+	maxChunkSize: 5000,
 	minChunkSize: 0,
 	overlapSize: 0,
 	overlapUnit: "characters",
@@ -124,6 +204,14 @@ const COHERE_MULTILINGUAL: CreateEmbeddingServiceInput = {
 };
 
 export const DEFAULT_SERVICES: DefaultServices = {
-	chunking: [RECURSIVE_CHAR, LINE_BASED],
+	chunking: [
+		RECURSIVE_CHAR_DEFAULT,
+		RECURSIVE_CHAR_SMALL,
+		RECURSIVE_CHAR_LARGE,
+		RECURSIVE_CHAR_XL,
+		LINE_BASED_DEFAULT,
+		LINE_BASED_SMALL,
+		LINE_BASED_LARGE,
+	],
 	embedding: [OPENAI_SMALL, OPENAI_LARGE, COHERE_MULTILINGUAL],
 };

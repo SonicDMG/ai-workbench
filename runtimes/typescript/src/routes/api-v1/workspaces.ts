@@ -44,7 +44,7 @@ export interface WorkspaceRouteDeps {
 }
 
 export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
-	const { store, secrets, drivers } = deps;
+	const { store, drivers } = deps;
 	const app = makeOpenApi();
 
 	app.openapi(
@@ -231,9 +231,9 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			method: "post",
 			path: "/{workspaceId}/test-connection",
 			tags: ["workspaces"],
-			summary: "Verify the workspace's credential refs can be resolved",
+			summary: "Run a live workspace connection check",
 			description:
-				"For `mock` workspaces, always returns `{ok: true}` (no credentials). For other kinds, resolves every value in `credentials` via the runtime's SecretResolver and reports the first failure. This verifies refs only — it does NOT dial the backend or validate the resolved token against the remote service.",
+				"For `mock` workspaces, always returns `{ok: true}`. For remote backends, resolves the workspace connection details and asks the driver to make a live data-plane call.",
 			request: { params: z.object({ workspaceId: WorkspaceIdParamSchema }) },
 			responses: {
 				200: {
@@ -241,7 +241,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 						"application/json": { schema: TestConnectionResponseSchema },
 					},
 					description:
-						"Connection probe result. `ok: true` means every credential ref resolved cleanly (or the workspace has no credentials). `ok: false` means at least one ref failed; `details` names which one and why.",
+						"Connection check result. `ok: true` means the driver completed its live check. `ok: false` means the driver could not reach or authenticate with the backend.",
 				},
 				404: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
@@ -255,39 +255,32 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			const ws = await store.getWorkspace(workspaceId);
 			if (!ws) throw new ControlPlaneNotFoundError("workspace", workspaceId);
 
-			if (ws.kind === "mock") {
+			try {
+				const driver = drivers.for(ws);
+				const live = driver.testConnection
+					? await driver.testConnection(ws)
+					: {
+							ok: false,
+							details: `driver for workspace kind '${ws.kind}' does not implement a live connection check`,
+						};
 				return c.json(
 					{
-						ok: true,
+						ok: live.ok,
 						kind: ws.kind,
-						details:
-							"Mock backend is always reachable. No credentials required.",
+						details: live.details,
+					},
+					200,
+				);
+			} catch (err) {
+				return c.json(
+					{
+						ok: false,
+						kind: ws.kind,
+						details: safeErrorMessage(err, "connection check failed"),
 					},
 					200,
 				);
 			}
-
-			const entries = Object.entries(ws.credentials);
-			for (const [name, ref] of entries) {
-				try {
-					await secrets.resolve(ref);
-				} catch (err) {
-					return c.json(
-						{
-							ok: false,
-							kind: ws.kind,
-							details: `credential '${name}' could not be resolved: ${safeErrorMessage(err, "secret resolution failed")}`,
-						},
-						200,
-					);
-				}
-			}
-
-			const summary =
-				entries.length === 0
-					? "No credentials configured. Nothing to verify yet — add a credentials entry to enable probing."
-					: `${entries.length} ${entries.length === 1 ? "credential" : "credentials"} resolved. Note: this verifies refs only, not the backend token against the remote service.`;
-			return c.json({ ok: true, kind: ws.kind, details: summary }, 200);
 		},
 	);
 

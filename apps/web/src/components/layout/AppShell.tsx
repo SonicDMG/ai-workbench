@@ -1,48 +1,21 @@
 import type { ReactNode } from "react";
-import { Link, NavLink, type NavLinkProps } from "react-router-dom";
+import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { BrandMark } from "@/components/brand/BrandMark";
-
-/**
- * Header-level tab. NavLink with a visible active state that reads
- * as selected at a glance.
- *
- * Active treatment is purely className-driven (no children-as-render-
- * prop) — combining the two NavLink render-prop signatures was
- * suspected of contributing to a "URL changes but content stays"
- * report on tab clicks; this keeps the component's render path
- * minimal.
- */
-function NavTab({
-	to,
-	end,
-	children,
-}: {
-	to: NavLinkProps["to"];
-	end?: boolean;
-	children: ReactNode;
-}) {
-	return (
-		<NavLink
-			to={to}
-			end={end}
-			className={({ isActive }) =>
-				[
-					"relative rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-					"max-sm:px-2 max-sm:text-[13px]",
-					"after:pointer-events-none after:absolute after:inset-x-3 after:-bottom-px after:h-[2px] after:transition-opacity",
-					isActive
-						? "text-[#161616] bg-[#e0e0e0] after:bg-[var(--color-brand-500)] after:opacity-100"
-						: "text-[#525252] hover:bg-[#f4f4f4] hover:text-[#161616] after:opacity-0",
-				].join(" ")
-			}
-		>
-			{children}
-		</NavLink>
-	);
-}
+import { Button } from "@/components/ui/button";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { useWorkspaces } from "@/hooks/useWorkspaces";
 
 export function AppShell({ children }: { children: ReactNode }) {
+	const { pathname } = useLocation();
+	const currentWorkspaceUid = currentWorkspaceUidFromPath(pathname);
+
 	return (
 		<div className="min-h-full flex flex-col bg-[#f4f4f4] text-[#161616]">
 			<header className="sticky top-0 z-30 border-b border-[#c6c6c6] bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/88">
@@ -65,12 +38,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 							</span>
 						</div>
 					</Link>
+					<WorkspaceSwitcher currentWorkspaceUid={currentWorkspaceUid} />
 					<nav className="flex shrink-0 items-center gap-1 text-sm">
-						<NavTab to="/" end>
-							Workspaces
-						</NavTab>
-						<NavTab to="/playground">Playground</NavTab>
-						<span className="mx-1 h-5 w-px bg-[#c6c6c6]" aria-hidden />
 						<UserMenu />
 						<a
 							href="/docs"
@@ -104,4 +73,77 @@ export function AppShell({ children }: { children: ReactNode }) {
 			</footer>
 		</div>
 	);
+}
+
+function WorkspaceSwitcher({
+	currentWorkspaceUid,
+}: {
+	currentWorkspaceUid: string | undefined;
+}) {
+	const navigate = useNavigate();
+	const workspaces = useWorkspaces();
+	const currentWorkspace = workspaces.data?.find(
+		(w) => w.workspaceId === currentWorkspaceUid,
+	);
+
+	if (workspaces.isLoading) {
+		return (
+			<div className="flex min-w-0 flex-1 items-center">
+				<span className="h-9 w-full max-w-xs rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400">
+					Loading workspaces…
+				</span>
+			</div>
+		);
+	}
+
+	const rows = workspaces.data ?? [];
+
+	return (
+		<div className="flex min-w-0 flex-1 items-center gap-2">
+			<Select
+				value={currentWorkspaceUid ?? ""}
+				onValueChange={(uid) => navigate(`/workspaces/${uid}`)}
+				disabled={rows.length === 0}
+			>
+				<SelectTrigger
+					aria-label="Workspace"
+					className="max-w-xs border-slate-200 bg-slate-50 shadow-none"
+				>
+					<SelectValue
+						placeholder={
+							currentWorkspace?.name ??
+							(rows.length === 0 ? "No workspaces" : "Select workspace")
+						}
+					/>
+				</SelectTrigger>
+				<SelectContent>
+					{rows.map((workspace) => (
+						<SelectItem
+							key={workspace.workspaceId}
+							value={workspace.workspaceId}
+						>
+							<span className="flex min-w-0 items-baseline gap-2">
+								<span className="truncate">{workspace.name}</span>
+								<span className="font-mono text-xs text-slate-500">
+									{workspace.kind}
+								</span>
+							</span>
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
+			{rows.length === 0 ? (
+				<Button variant="secondary" size="sm" asChild>
+					<Link to="/onboarding">New</Link>
+				</Button>
+			) : null}
+		</div>
+	);
+}
+
+function currentWorkspaceUidFromPath(pathname: string): string | undefined {
+	const match =
+		matchPath({ path: "/workspaces/:workspaceUid", end: true }, pathname) ??
+		matchPath({ path: "/workspaces/:workspaceUid/*", end: false }, pathname);
+	return match?.params.workspaceUid;
 }

@@ -1,8 +1,8 @@
 import { Play } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import type { PlaygroundSearchInput } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -125,7 +125,12 @@ export function QueryForm({
 
 			{tab === "text" ? (
 				<div className="flex flex-col gap-1.5">
-					<Label htmlFor="pg-text">Query</Label>
+					<FieldLabel
+						htmlFor="pg-text"
+						help="Natural-language search text. The playground embeds this through the knowledge base's configured embedding service when needed."
+					>
+						Query
+					</FieldLabel>
 					<textarea
 						id="pg-text"
 						className="min-h-[96px] rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:border-[var(--color-brand-500)]"
@@ -141,9 +146,12 @@ export function QueryForm({
 				</div>
 			) : (
 				<div className="flex flex-col gap-1.5">
-					<Label htmlFor="pg-vec">
+					<FieldLabel
+						htmlFor="pg-vec"
+						help={`Raw vector search input. Paste a JSON array of numbers with exactly ${target.vectorDimension} values.`}
+					>
 						Vector ({target.vectorDimension} floats)
-					</Label>
+					</FieldLabel>
 					<textarea
 						id="pg-vec"
 						className="min-h-[96px] rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:border-[var(--color-brand-500)]"
@@ -156,7 +164,12 @@ export function QueryForm({
 
 			<div className="grid gap-4 sm:grid-cols-2">
 				<div className="flex flex-col gap-1.5">
-					<Label htmlFor="pg-topk">Top-K ({topK})</Label>
+					<FieldLabel
+						htmlFor="pg-topk"
+						help="The maximum number of candidate matches to return. Higher values explore more results but can add latency."
+					>
+						Top-K ({topK})
+					</FieldLabel>
 					<Input
 						id="pg-topk"
 						type="range"
@@ -167,7 +180,12 @@ export function QueryForm({
 					/>
 				</div>
 				<div className="flex flex-col gap-1.5">
-					<Label htmlFor="pg-filter">Filter (JSON object, optional)</Label>
+					<FieldLabel
+						htmlFor="pg-filter"
+						help='Optional metadata filter as a JSON object, for example {"category":"apparel"}. Empty means no filter.'
+					>
+						Filter (JSON object, optional)
+					</FieldLabel>
 					<textarea
 						id="pg-filter"
 						className="min-h-[64px] rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:border-[var(--color-brand-500)]"
@@ -207,9 +225,12 @@ export function QueryForm({
 				{hybrid ? (
 					<div className="flex flex-col gap-1.5 pl-6">
 						<div className="flex items-baseline justify-between">
-							<Label htmlFor="pg-lexweight">
+							<FieldLabel
+								htmlFor="pg-lexweight"
+								help="Controls the hybrid blend. 0 favors vector similarity, 1 favors lexical matching, and 0.5 balances both."
+							>
 								Lexical weight ({lexicalWeight.toFixed(2)})
-							</Label>
+							</FieldLabel>
 							<span className="text-xs text-slate-400">
 								{lexicalWeight === 0
 									? "vector-only"

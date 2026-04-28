@@ -575,7 +575,7 @@ describe("workspace test-connection", () => {
 		expect(body.details).toMatch(/mock backend/i);
 	});
 
-	test("astra workspace with no credentials returns ok with a hint", async () => {
+	test("workspace without a registered driver reports ok: false", async () => {
 		const { app, store } = makeApp();
 		const ws = await store.createWorkspace({ name: "a", kind: "astra" });
 		const res = await app.request(
@@ -584,40 +584,40 @@ describe("workspace test-connection", () => {
 		);
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		expect(body.ok).toBe(true);
-		expect(body.details).toMatch(/no credentials/i);
+		expect(body).toMatchObject({ ok: false, kind: "astra" });
+		expect(body.details).toMatch(/no vector-store driver/i);
 	});
 
-	test("astra workspace reports ok when every credential ref resolves", async () => {
-		const prev = process.env.__TEST_ASTRA_TOKEN;
-		process.env.__TEST_ASTRA_TOKEN = "present";
-		try {
-			const { app, store } = makeApp();
-			const ws = await store.createWorkspace({
-				name: "a",
-				kind: "astra",
-				credentials: { token: "env:__TEST_ASTRA_TOKEN" },
-			});
-			const res = await app.request(
-				`/api/v1/workspaces/${ws.uid}/test-connection`,
-				{ method: "POST" },
-			);
-			expect(res.status).toBe(200);
-			const body = await json(res);
-			expect(body.ok).toBe(true);
-			expect(body.details).toMatch(/resolved/i);
-		} finally {
-			if (prev === undefined) delete process.env.__TEST_ASTRA_TOKEN;
-			else process.env.__TEST_ASTRA_TOKEN = prev;
+	test("reports ok: false when the live driver check fails", async () => {
+		const store = new MemoryControlPlaneStore();
+		class FailingDriver extends MockVectorStoreDriver {
+			override async testConnection(): Promise<{
+				ok: boolean;
+				details: string;
+			}> {
+				throw new Error("remote rejected token");
+			}
 		}
-	});
-
-	test("reports ok: false when a credential ref can't be resolved", async () => {
-		const { app, store } = makeApp();
+		const drivers = new VectorStoreDriverRegistry(
+			new Map([["astra", new FailingDriver()]]),
+		);
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const auth = new AuthResolver({
+			mode: "disabled",
+			anonymousPolicy: "allow",
+			verifiers: [],
+		});
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory(),
+		});
 		const ws = await store.createWorkspace({
 			name: "a",
 			kind: "astra",
-			credentials: { token: "env:__NEVER_SET_ENV_VAR_XYZZY" },
+			credentials: { token: "env:__TEST_ASTRA_TOKEN" },
 		});
 		const res = await app.request(
 			`/api/v1/workspaces/${ws.uid}/test-connection`,
@@ -626,8 +626,7 @@ describe("workspace test-connection", () => {
 		expect(res.status).toBe(200);
 		const body = await json(res);
 		expect(body).toMatchObject({ ok: false, kind: "astra" });
-		expect(body.details).toMatch(/token/);
-		expect(body.details).toMatch(/__NEVER_SET_ENV_VAR_XYZZY/);
+		expect(body.details).toMatch(/remote rejected token/);
 	});
 
 	test("404 for unknown workspace", async () => {

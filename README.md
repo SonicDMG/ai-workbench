@@ -117,7 +117,7 @@ All routes documented at `/docs` (Scalar UI) and
 |---|---|---|
 | `GET / POST` | `/api/v1/workspaces` | List / create workspaces |
 | `GET / PATCH / DELETE` | `/api/v1/workspaces/{w}` | Workspace CRUD (DELETE cascades) |
-| `POST` | `/api/v1/workspaces/{w}/test-connection` | Resolve configured workspace credential refs |
+| `POST` | `/api/v1/workspaces/{w}/test-connection` | Run a live workspace connection check |
 | `GET / POST` | `/api/v1/workspaces/{w}/knowledge-bases` | List / create knowledge bases (POST auto-provisions the underlying vector collection) |
 | `GET / PATCH / DELETE` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}` | KB CRUD (DELETE drops the collection + cascades RAG documents) |
 | `GET / POST` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents` | List / register a document in a KB |

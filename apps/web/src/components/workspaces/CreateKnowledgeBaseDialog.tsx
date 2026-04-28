@@ -11,8 +11,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
 	Select,
 	SelectContent,
@@ -125,7 +125,12 @@ export function CreateKnowledgeBaseDialog({
 					className="flex flex-col gap-4"
 				>
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="kb-name">Name</Label>
+						<FieldLabel
+							htmlFor="kb-name"
+							help="The collection-facing name for this knowledge base, for example support-docs or product-catalog. Pick something stable and easy to recognize."
+						>
+							Name
+						</FieldLabel>
 						<Input
 							id="kb-name"
 							placeholder="support-docs"
@@ -138,7 +143,12 @@ export function CreateKnowledgeBaseDialog({
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="kb-description">Description (optional)</Label>
+						<FieldLabel
+							htmlFor="kb-description"
+							help="Optional context for teammates. It does not affect ingestion or retrieval."
+						>
+							Description (optional)
+						</FieldLabel>
 						<Input
 							id="kb-description"
 							placeholder="Customer support knowledge base"
@@ -147,7 +157,12 @@ export function CreateKnowledgeBaseDialog({
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="kb-emb">Embedding service</Label>
+						<FieldLabel
+							htmlFor="kb-emb"
+							help="The model/service used to convert chunks and text queries into vectors. Its dimension determines the vector collection shape."
+						>
+							Embedding service
+						</FieldLabel>
 						<Select
 							value={form.watch("embeddingServiceId") ?? ""}
 							onValueChange={(v) => form.setValue("embeddingServiceId", v)}
@@ -184,7 +199,12 @@ export function CreateKnowledgeBaseDialog({
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="kb-chunk">Chunking service</Label>
+						<FieldLabel
+							htmlFor="kb-chunk"
+							help="Controls how documents are split before embedding. Smaller chunks improve precision; larger chunks preserve more surrounding context."
+						>
+							Chunking service
+						</FieldLabel>
 						<Select
 							value={form.watch("chunkingServiceId") ?? ""}
 							onValueChange={(v) => form.setValue("chunkingServiceId", v)}
@@ -221,7 +241,12 @@ export function CreateKnowledgeBaseDialog({
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="kb-rerank">Reranking service (optional)</Label>
+						<FieldLabel
+							htmlFor="kb-rerank"
+							help="Optional second-pass ranking that can reorder retrieved matches after the vector search returns candidates."
+						>
+							Reranking service (optional)
+						</FieldLabel>
 						<Select
 							value={form.watch("rerankingServiceId") ?? ""}
 							onValueChange={(v) =>
@@ -250,7 +275,12 @@ export function CreateKnowledgeBaseDialog({
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="kb-lang">Language (optional)</Label>
+						<FieldLabel
+							htmlFor="kb-lang"
+							help="Optional language hint such as en or multi. Leave it empty when the corpus is mixed or unknown."
+						>
+							Language (optional)
+						</FieldLabel>
 						<Input
 							id="kb-lang"
 							placeholder="en"

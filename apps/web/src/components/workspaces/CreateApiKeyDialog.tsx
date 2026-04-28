@@ -11,6 +11,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCreateApiKey } from "@/hooks/useApiKeys";
@@ -76,7 +77,12 @@ export function CreateApiKeyDialog({
 							</DialogDescription>
 						</DialogHeader>
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="key-label">Label</Label>
+							<FieldLabel
+								htmlFor="key-label"
+								help="A human-readable label for the key, such as ci, python-notebook, or a teammate's laptop. It helps operators tell active keys apart later."
+							>
+								Label
+							</FieldLabel>
 							<Input
 								id="key-label"
 								placeholder="e.g. ci, python-notebook, bob-laptop"

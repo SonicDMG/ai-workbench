@@ -1,8 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { type FormEvent, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
+import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
 	type CreateWorkspaceInput,
 	CreateWorkspaceSchema,
@@ -59,6 +60,14 @@ export type WorkspaceFormMode =
 			onSubmit: (v: UpdateWorkspaceInput) => void;
 	  };
 
+type WorkspaceFormValues = {
+	name: string;
+	kind?: WorkspaceKind;
+	url: string | null;
+	keyspace: string | null;
+	credentials: Record<string, string>;
+};
+
 export function WorkspaceForm(
 	props: WorkspaceFormMode & {
 		submitting?: boolean;
@@ -68,7 +77,7 @@ export function WorkspaceForm(
 ) {
 	const kind = props.mode === "create" ? props.kind : props.workspace.kind;
 
-	const defaultValues =
+	const defaultValues: WorkspaceFormValues =
 		props.mode === "create"
 			? {
 					name: "",
@@ -92,14 +101,16 @@ export function WorkspaceForm(
 		handleSubmit,
 		control,
 		formState: { errors },
-	} = useForm({
+	} = useForm<WorkspaceFormValues>({
 		// biome-ignore lint/suspicious/noExplicitAny: Zod discriminates by mode; resolver generics can't see through
 		resolver: zodResolver(schema as any),
 		defaultValues,
 		mode: "onBlur",
 	});
+	const [submitError, setSubmitError] = useState<string | null>(null);
 
-	function onValid(data: typeof defaultValues) {
+	function onValid(data: WorkspaceFormValues) {
+		setSubmitError(null);
 		if (props.mode === "create") {
 			props.onSubmit({ ...data, kind });
 		} else {
@@ -107,16 +118,30 @@ export function WorkspaceForm(
 		}
 	}
 
+	function onInvalid(formErrors: unknown) {
+		setSubmitError(firstValidationMessage(formErrors));
+	}
+
+	function onSubmit(event: FormEvent<HTMLFormElement>) {
+		void handleSubmit(
+			onValid,
+			onInvalid,
+		)(event).catch((err: unknown) => {
+			setSubmitError(firstValidationMessage(err));
+		});
+	}
+
 	const astraLike = kind === "astra" || kind === "hcd";
 
 	return (
-		<form
-			// biome-ignore lint/suspicious/noExplicitAny: same reason as above
-			onSubmit={handleSubmit(onValid as any)}
-			className="flex flex-col gap-5"
-		>
+		<form onSubmit={onSubmit} className="flex flex-col gap-5">
 			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="name">Name</Label>
+				<FieldLabel
+					htmlFor="name"
+					help="A friendly label for this workspace, such as production, staging, or demo. It does not need to be globally unique."
+				>
+					Name
+				</FieldLabel>
 				<Input
 					id="name"
 					placeholder="e.g. production, staging, demo"
@@ -137,7 +162,9 @@ export function WorkspaceForm(
 
 			<div className="flex flex-col gap-1.5">
 				<div className="flex items-baseline justify-between">
-					<Label>Kind</Label>
+					<FieldLabel help="The backend this workspace connects to. This is chosen during creation and cannot be changed later because it controls driver behavior.">
+						Kind
+					</FieldLabel>
 					{props.mode === "edit" ? (
 						<span className="text-xs text-slate-500">
 							Read-only — immutable after creation
@@ -155,7 +182,12 @@ export function WorkspaceForm(
 
 			{astraLike ? (
 				<div className="flex flex-col gap-1.5">
-					<Label htmlFor="keyspace">Keyspace</Label>
+					<FieldLabel
+						htmlFor="keyspace"
+						help="The Astra keyspace the workspace will use. Leave it empty to let the runtime use the default keyspace for the database."
+					>
+						Keyspace
+					</FieldLabel>
 					<Input
 						id="keyspace"
 						placeholder="default_keyspace"
@@ -169,7 +201,16 @@ export function WorkspaceForm(
 			) : null}
 
 			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="url">{astraLike ? "Data API url" : "Url"}</Label>
+				<FieldLabel
+					htmlFor="url"
+					help={
+						astraLike
+							? "The Data API endpoint for this Astra database. You can paste the URL directly or use a SecretRef such as env:ASTRA_DB_API_ENDPOINT."
+							: "The data-plane endpoint for this workspace. Use a URL directly or a SecretRef such as env:WORKSPACE_URL."
+					}
+				>
+					{astraLike ? "Data API url" : "Url"}
+				</FieldLabel>
 				<Input
 					id="url"
 					placeholder={
@@ -210,6 +251,12 @@ export function WorkspaceForm(
 				/>
 			) : null}
 
+			{submitError ? (
+				<p className="text-sm text-red-600" role="alert" aria-live="polite">
+					{submitError}
+				</p>
+			) : null}
+
 			<div className="flex items-center justify-end gap-2 pt-2">
 				{props.onCancel ? (
 					<Button
@@ -230,4 +277,36 @@ export function WorkspaceForm(
 			</div>
 		</form>
 	);
+}
+
+function firstValidationMessage(errors: unknown): string {
+	return (
+		findValidationMessage(errors) ??
+		"Check the highlighted fields and try again."
+	);
+}
+
+function findValidationMessage(value: unknown): string | null {
+	if (!value || typeof value !== "object") return null;
+
+	const issues = (value as { issues?: unknown }).issues;
+	if (Array.isArray(issues)) {
+		for (const issue of issues) {
+			const found = findValidationMessage(issue);
+			if (found) return found;
+		}
+	}
+
+	const candidate = value as { message?: unknown };
+	if (typeof candidate.message === "string" && candidate.message.length > 0) {
+		return candidate.message;
+	}
+
+	for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+		if (key === "ref") continue;
+		const found = findValidationMessage(child);
+		if (found) return found;
+	}
+
+	return null;
 }

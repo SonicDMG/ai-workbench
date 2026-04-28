@@ -271,6 +271,7 @@ export const CreateChunkingServiceInputSchema = z.object({
 	chunkUnit: z.string().or(z.literal("")).nullable().optional(),
 	overlapSize: z.number().int().nonnegative().nullable().optional(),
 	overlapUnit: z.string().or(z.literal("")).nullable().optional(),
+	preserveStructure: z.boolean().nullable().optional(),
 	language: z.string().or(z.literal("")).nullable().optional(),
 });
 export type CreateChunkingServiceInput = z.infer<

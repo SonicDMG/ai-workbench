@@ -6,11 +6,8 @@ import type { TestConnectionResult } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 
 /**
- * Button + inline result banner for
- * `POST /workspaces/{uid}/test-connection`. Stays collapsed until
- * the user clicks it; on success, shows a green confirmation; on
- * failure, shows the server's `details` so the user can act on it
- * (missing env var, malformed ref, etc.).
+ * Compact button + inline result for
+ * `POST /workspaces/{uid}/test-connection`.
  */
 export function TestConnectionPanel({ uid }: { uid: string }) {
 	const probe = useTestConnection(uid);
@@ -18,24 +15,15 @@ export function TestConnectionPanel({ uid }: { uid: string }) {
 	const runtimeError = probe.error ? formatApiError(probe.error) : null;
 
 	return (
-		<div className="flex flex-col gap-3">
-			<div className="flex items-center justify-between gap-3 flex-wrap">
-				<div>
-					<p className="text-sm font-medium text-slate-900">Connection probe</p>
-					<p className="text-xs text-slate-500 leading-relaxed mt-0.5">
-						Verifies each credential ref resolves through the runtime's
-						SecretResolver. Does not dial the backend.
-					</p>
-				</div>
-				<Button
-					variant="secondary"
-					onClick={() => probe.mutate()}
-					disabled={probe.isPending}
-				>
-					<PlugZap className="h-4 w-4" />
-					{probe.isPending ? "Testing…" : "Test connection"}
-				</Button>
-			</div>
+		<div className="flex flex-col items-end gap-2">
+			<Button
+				variant="secondary"
+				onClick={() => probe.mutate()}
+				disabled={probe.isPending}
+			>
+				<PlugZap className="h-4 w-4" />
+				{probe.isPending ? "Testing…" : "Test"}
+			</Button>
 			{runtimeError ? (
 				<ResultBanner tone="error" title="Probe failed to run">
 					{runtimeError}
@@ -50,7 +38,7 @@ function ResultFromBody({ result }: { result: TestConnectionResult }) {
 	return (
 		<ResultBanner
 			tone={result.ok ? "success" : "warning"}
-			title={result.ok ? "Credentials look good" : "Credentials can't resolve"}
+			title={result.ok ? "Connection passed" : "Connection failed"}
 		>
 			{result.details}
 		</ResultBanner>
@@ -89,12 +77,12 @@ function ResultBanner({
 		<div
 			role="status"
 			className={cn(
-				"flex items-start gap-3 rounded-lg border p-3",
+				"flex max-w-md items-start gap-2 rounded-md border px-3 py-2",
 				styles[tone],
 			)}
 		>
-			<Icon className={cn("h-5 w-5 shrink-0 mt-0.5", iconStyles[tone])} />
-			<div className="min-w-0 flex flex-col gap-0.5 text-sm">
+			<Icon className={cn("h-4 w-4 shrink-0 mt-0.5", iconStyles[tone])} />
+			<div className="min-w-0 flex flex-col gap-0.5 text-xs">
 				<span className="font-semibold">{title}</span>
 				<span className="break-words leading-relaxed">{children}</span>
 			</div>

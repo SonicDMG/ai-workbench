@@ -1,8 +1,8 @@
 import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 /**
  * Lightweight key/value editor for the `credentials` map.
@@ -52,7 +52,9 @@ export function CredentialsEditor({
 	return (
 		<div className="flex flex-col gap-2">
 			<div className="flex items-baseline justify-between">
-				<Label>Credentials</Label>
+				<FieldLabel help="Credential values are SecretRefs such as env:ASTRA_DB_APPLICATION_TOKEN or file:/path/to/token. The left side is the credential name the driver expects, usually token.">
+					Credentials
+				</FieldLabel>
 				<p className="text-xs text-slate-500">
 					Values must be <code className="font-mono">provider:path</code> — e.g.{" "}
 					<code className="font-mono">env:ASTRA_TOKEN</code>

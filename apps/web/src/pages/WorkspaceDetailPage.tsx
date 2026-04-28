@@ -76,22 +76,25 @@ export function WorkspaceDetailPage() {
 						<CopyButton value={data.workspaceId} label="Copy workspace id" />
 					</div>
 				</div>
-				<div className="flex items-center gap-2 shrink-0">
-					{editing ? (
-						<Button variant="ghost" onClick={() => setEditing(false)}>
-							<X className="h-4 w-4" />
-							Cancel edit
+				<div className="flex shrink-0 flex-col items-end gap-2">
+					<div className="flex items-center gap-2">
+						{!editing ? <TestConnectionPanel uid={data.workspaceId} /> : null}
+						{editing ? (
+							<Button variant="ghost" onClick={() => setEditing(false)}>
+								<X className="h-4 w-4" />
+								Cancel edit
+							</Button>
+						) : (
+							<Button variant="secondary" onClick={() => setEditing(true)}>
+								<Pencil className="h-4 w-4" />
+								Edit
+							</Button>
+						)}
+						<Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+							<Trash2 className="h-4 w-4" />
+							Delete
 						</Button>
-					) : (
-						<Button variant="secondary" onClick={() => setEditing(true)}>
-							<Pencil className="h-4 w-4" />
-							Edit
-						</Button>
-					)}
-					<Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-						<Trash2 className="h-4 w-4" />
-						Delete
-					</Button>
+					</div>
 				</div>
 			</div>
 
@@ -199,11 +202,6 @@ export function WorkspaceDetailPage() {
 
 			{!editing ? (
 				<>
-					<Card>
-						<CardContent className="pt-5">
-							<TestConnectionPanel uid={data.workspaceId} />
-						</CardContent>
-					</Card>
 					<Card>
 						<CardContent className="pt-5">
 							<ServicesPanel workspace={data.workspaceId} />

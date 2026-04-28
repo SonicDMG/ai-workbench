@@ -320,6 +320,24 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 		this.dbFactory = opts.dbFactory ?? defaultDbFactory;
 	}
 
+	async testConnection(
+		workspace: WorkspaceRecord,
+	): Promise<{ ok: boolean; details: string }> {
+		const db = await this.getDb(workspace);
+		if (typeof db.listCollections !== "function") {
+			return {
+				ok: false,
+				details:
+					"Astra driver cannot run a live check because listCollections is unavailable.",
+			};
+		}
+		await db.listCollections({ nameOnly: false });
+		return {
+			ok: true,
+			details: "Astra Data API responded to listCollections.",
+		};
+	}
+
 	async createCollection(ctx: VectorStoreDriverContext): Promise<void> {
 		const db = await this.getDb(ctx.workspace);
 		const service = resolveVectorizeService(ctx.descriptor.embedding);
