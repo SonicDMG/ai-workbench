@@ -91,6 +91,12 @@ async function main(): Promise<void> {
 		login,
 		readiness,
 		requestIdHeader: config.runtime.requestIdHeader,
+		rateLimit: {
+			enabled: config.runtime.rateLimit.enabled,
+			capacity: config.runtime.rateLimit.capacity,
+			windowMs: config.runtime.rateLimit.windowMs,
+			trustProxyHeaders: config.runtime.trustProxyHeaders,
+		},
 		replicaId,
 	});
 

@@ -30,6 +30,24 @@ const SecretRef = z
 		"expected '<provider>:<path>', e.g. 'env:FOO'",
 	);
 
+/**
+ * In-process rate limiter for `/api/v1/*` and `/auth/*`. Defense-in-
+ * depth, not a substitute for an upstream WAF — buckets are per-
+ * replica, so distributed deployments still need a network-level
+ * limiter for accurate aggregate ceilings. Defaults are conservative
+ * enough that normal clients won't notice.
+ */
+const RateLimitSchema = z
+	.object({
+		enabled: z.boolean().default(true),
+		// Keep the API ceiling well above realistic browser/CLI usage
+		// (10 req/sec sustained) but low enough to throttle a runaway
+		// loop or naive scanner.
+		capacity: z.number().int().min(1).max(1_000_000).default(600),
+		windowMs: z.number().int().min(1_000).max(3_600_000).default(60_000),
+	})
+	.default({ enabled: true, capacity: 600, windowMs: 60_000 });
+
 const RuntimeSchema = z
 	.object({
 		// `development` preserves the local-friendly defaults. Set
@@ -61,6 +79,9 @@ const RuntimeSchema = z
 		// and secure-cookie decisions. Keep false unless the runtime sits
 		// behind a trusted reverse proxy that overwrites these headers.
 		trustProxyHeaders: z.boolean().default(false),
+		// In-process rate limiter for `/api/v1/*` and `/auth/*`. On by
+		// default; tune capacity/windowMs or disable entirely.
+		rateLimit: RateLimitSchema,
 	})
 	.default({
 		environment: "development",
@@ -71,6 +92,7 @@ const RuntimeSchema = z
 		replicaId: null,
 		publicOrigin: null,
 		trustProxyHeaders: false,
+		rateLimit: { enabled: true, capacity: 600, windowMs: 60_000 },
 	});
 
 /**

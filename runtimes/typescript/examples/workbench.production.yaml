@@ -19,7 +19,15 @@ runtime:
   publicOrigin: https://workbench.example.com
   # Leave false unless a trusted reverse proxy overwrites incoming
   # X-Forwarded-* headers. publicOrigin is preferred for browser auth.
+  # When true the rate limiter also keys off X-Forwarded-For / X-Real-IP.
   trustProxyHeaders: false
+  # Per-IP rate limiter for /api/v1/* (capacity below) and /auth/*
+  # (fixed at 30/window). Defense-in-depth — multi-replica deploys
+  # should still sit behind a WAF for accurate aggregate ceilings.
+  rateLimit:
+    enabled: true
+    capacity: 600
+    windowMs: 60000
 
 controlPlane:
   driver: astra

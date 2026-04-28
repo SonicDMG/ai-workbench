@@ -48,8 +48,13 @@ Out of scope:
 - **DataStax Astra itself** — see DataStax's own security disclosure
   program.
 - **Denial-of-service** that requires volumes this runtime was never
-  designed to handle. AI Workbench is pre-alpha; we don't claim
-  DoS resistance yet.
+  designed to handle. AI Workbench ships an in-process per-IP rate
+  limiter on `/api/v1/*` (default 600 req/min) and `/auth/*` (30
+  req/min) as a defense-in-depth layer — see
+  [`docs/configuration.md`](./docs/configuration.md#rate-limiting)
+  for tuning. Buckets are not shared across replicas, so multi-
+  replica deployments should still front the runtime with an
+  upstream WAF or API gateway for accurate aggregate ceilings.
 
 ## Secrets handling
 

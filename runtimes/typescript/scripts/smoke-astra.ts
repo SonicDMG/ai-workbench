@@ -90,6 +90,7 @@ async function main(): Promise<void> {
 			replicaId: `smoke-${RUN_ID}`,
 			publicOrigin: null,
 			trustProxyHeaders: false,
+			rateLimit: { enabled: false, capacity: 600, windowMs: 60_000 },
 		},
 		controlPlane: {
 			driver: "astra" as const,

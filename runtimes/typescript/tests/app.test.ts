@@ -122,7 +122,7 @@ describe("operational routes", () => {
 		expect(res.headers.get("X-Request-Id")).toBeTruthy();
 	});
 
-	test("responses carry browser security headers", async () => {
+	test("responses carry browser security headers with a strict default CSP", async () => {
 		const { app } = makeApp();
 		const res = await app.request("/healthz");
 		expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
@@ -130,13 +130,93 @@ describe("operational routes", () => {
 		expect(res.headers.get("Referrer-Policy")).toBe(
 			"strict-origin-when-cross-origin",
 		);
-		expect(res.headers.get("Content-Security-Policy")).toContain(
-			"frame-ancestors 'none'",
-		);
-		expect(res.headers.get("Content-Security-Policy")).toContain(
-			"https://cdn.jsdelivr.net",
-		);
+		const csp = res.headers.get("Content-Security-Policy") ?? "";
+		expect(csp).toContain("frame-ancestors 'none'");
+		// The default CSP must NOT permit jsdelivr or `unsafe-inline`
+		// scripts — those exemptions are scoped to `/docs` only.
+		expect(csp).not.toContain("https://cdn.jsdelivr.net");
+		expect(csp).toMatch(/script-src 'self'(?:;|$)/);
+		// Google Fonts is whitelisted for the SPA shell.
+		expect(csp).toContain("https://fonts.googleapis.com");
+		expect(csp).toContain("https://fonts.gstatic.com");
 		expect(res.headers.get("Permissions-Policy")).toContain("camera=()");
+	});
+
+	test("/docs gets a relaxed CSP that pins jsdelivr and allows Scalar's inline bootstrap", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/docs");
+		const csp = res.headers.get("Content-Security-Policy") ?? "";
+		expect(csp).toContain("https://cdn.jsdelivr.net");
+		expect(csp).toContain("'unsafe-inline'");
+		// The pinned bundle URL must appear in the rendered HTML.
+		const html = await res.text();
+		expect(html).toContain(
+			"https://cdn.jsdelivr.net/npm/@scalar/api-reference@",
+		);
+	});
+
+	test("rate limiter rejects bursts beyond capacity on /api/v1/*", async () => {
+		const store = new MemoryControlPlaneStore();
+		const drivers = new VectorStoreDriverRegistry(
+			new Map([["mock", new MockVectorStoreDriver()]]),
+		);
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const auth = new AuthResolver({
+			mode: "disabled",
+			anonymousPolicy: "allow",
+			verifiers: [],
+		});
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory(),
+			rateLimit: { enabled: true, capacity: 2, windowMs: 60_000 },
+		});
+
+		// Burn the quota.
+		const first = await app.request("/api/v1/workspaces");
+		expect(first.status).toBe(200);
+		expect(first.headers.get("X-RateLimit-Limit")).toBe("2");
+		expect(first.headers.get("X-RateLimit-Remaining")).toBe("1");
+		const second = await app.request("/api/v1/workspaces");
+		expect(second.status).toBe(200);
+		expect(second.headers.get("X-RateLimit-Remaining")).toBe("0");
+		const blocked = await app.request("/api/v1/workspaces");
+		expect(blocked.status).toBe(429);
+		expect(blocked.headers.get("Retry-After")).toBeTruthy();
+		const body = await json(blocked);
+		expect(body.error.code).toBe("rate_limited");
+		expect(body.error.requestId).toBeTruthy();
+		// Operational endpoints must not share the same bucket.
+		expect((await app.request("/healthz")).status).toBe(200);
+	});
+
+	test("rate limiter can be disabled", async () => {
+		const store = new MemoryControlPlaneStore();
+		const drivers = new VectorStoreDriverRegistry(
+			new Map([["mock", new MockVectorStoreDriver()]]),
+		);
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const auth = new AuthResolver({
+			mode: "disabled",
+			anonymousPolicy: "allow",
+			verifiers: [],
+		});
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory(),
+			rateLimit: { enabled: false, capacity: 1, windowMs: 60_000 },
+		});
+		// Capacity=1 would block the second call if the limiter were on.
+		expect((await app.request("/api/v1/workspaces")).status).toBe(200);
+		const second = await app.request("/api/v1/workspaces");
+		expect(second.status).toBe(200);
+		expect(second.headers.get("X-RateLimit-Limit")).toBeNull();
 	});
 
 	test("echoes client-provided request id", async () => {

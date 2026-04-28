@@ -37,8 +37,9 @@ import { ApiError, errorEnvelope } from "./lib/errors.js";
 import { MAX_API_JSON_BODY_BYTES } from "./lib/limits.js";
 import { logger } from "./lib/logger.js";
 import { makeOpenApi } from "./lib/openapi.js";
+import { rateLimit } from "./lib/rate-limit.js";
 import { requestId } from "./lib/request-id.js";
-import { securityHeaders } from "./lib/security-headers.js";
+import { SCALAR_CDN_PINNED, securityHeaders } from "./lib/security-headers.js";
 import type { AppEnv } from "./lib/types.js";
 import { apiKeyRoutes } from "./routes/api-v1/api-keys.js";
 import { chunkingServiceRoutes } from "./routes/api-v1/chunking-services.js";
@@ -68,6 +69,20 @@ export interface AppLoginOptions {
 	readonly trustProxyHeaders: boolean;
 }
 
+export interface RateLimitOptions {
+	/** Toggle the in-process limiter. Defaults to `true`. */
+	readonly enabled?: boolean;
+	/** Max requests per window per client key (IP). */
+	readonly capacity: number;
+	/** Window length in milliseconds. */
+	readonly windowMs: number;
+	/**
+	 * Honor `X-Forwarded-For` / `X-Real-IP` when computing the client
+	 * key. Mirror this from `runtime.trustProxyHeaders`.
+	 */
+	readonly trustProxyHeaders?: boolean;
+}
+
 export interface AppOptions {
 	readonly store: ControlPlaneStore;
 	readonly drivers: VectorStoreDriverRegistry;
@@ -80,12 +95,29 @@ export interface AppOptions {
 	readonly login?: AppLoginOptions | null;
 	readonly readiness?: ReadinessSignal;
 	readonly requestIdHeader?: string;
+	/**
+	 * In-process rate limiter applied to `/api/v1/*` and `/auth/*`.
+	 * Defaults are conservative (600 req/min/IP for API, 30 req/min/IP
+	 * for auth); set `enabled: false` to disable, or override capacity
+	 * for high-throughput tenants. Distributed deployments should
+	 * still front the runtime with a network-level limiter.
+	 */
+	readonly rateLimit?: RateLimitOptions | null;
 	/** Identifier this replica writes into job leases. Defaults to a
 	 * fresh `wb-<short-uuid>` per app instance — fine for single-
 	 * replica deployments and tests; set explicitly for clustered
 	 * runs so the orphan-sweeper can tell whose lease is whose. */
 	readonly replicaId?: string;
 }
+
+const DEFAULT_API_RATE_LIMIT: Required<
+	Omit<RateLimitOptions, "trustProxyHeaders" | "enabled">
+> = {
+	capacity: 600,
+	windowMs: 60_000,
+};
+
+const DEFAULT_AUTH_RATE_LIMIT_CAPACITY = 30;
 
 const OPENAPI_CONFIG = {
 	openapi: "3.1.0",
@@ -115,7 +147,47 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const replicaId = opts.replicaId ?? generateReplicaId();
 
 	app.use("*", requestId(opts.requestIdHeader));
+	// Loosen the CSP for the Scalar `/docs` page only — see
+	// `lib/security-headers.ts` for the rationale (Scalar emits an
+	// inline bootstrap script and loads its bundle from a pinned CDN).
+	// Register BEFORE the wildcard default so the docs middleware
+	// is the outer wrapper: Hono runs post-`next()` writes outer→last,
+	// so the outer handler's `c.header(...)` wins on overlapping paths.
+	app.use("/docs", securityHeaders({ scope: "docs" }));
+	app.use("/docs/*", securityHeaders({ scope: "docs" }));
 	app.use("*", securityHeaders());
+
+	const rateLimitCfg = opts.rateLimit;
+	const rateLimitEnabled = rateLimitCfg?.enabled !== false;
+	if (rateLimitEnabled) {
+		const apiCapacity =
+			rateLimitCfg?.capacity ?? DEFAULT_API_RATE_LIMIT.capacity;
+		const apiWindowMs =
+			rateLimitCfg?.windowMs ?? DEFAULT_API_RATE_LIMIT.windowMs;
+		const trustProxyHeaders = rateLimitCfg?.trustProxyHeaders ?? false;
+		// API surface: generous default (600/min) keeps normal clients
+		// nowhere near the limit while still throttling runaway loops
+		// and brute-force scans.
+		app.use(
+			"/api/v1/*",
+			rateLimit({
+				capacity: apiCapacity,
+				windowMs: apiWindowMs,
+				trustProxyHeaders,
+			}),
+		);
+		// Auth flows get a tighter limit — login attempts, callback
+		// reentries, and `/auth/me` probes shouldn't burst.
+		app.use(
+			"/auth/*",
+			rateLimit({
+				capacity: DEFAULT_AUTH_RATE_LIMIT_CAPACITY,
+				windowMs: apiWindowMs,
+				trustProxyHeaders,
+			}),
+		);
+	}
+
 	app.use(
 		"/api/v1/workspaces/*",
 		bodyLimit({
@@ -235,6 +307,9 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			url: "/api/v1/openapi.json",
 			theme: "default",
 			pageTitle: "AI Workbench API",
+			// Pin the Scalar bundle to a vetted version so the CSP
+			// allow-list and the runtime's docs UI stay in lockstep.
+			cdn: SCALAR_CDN_PINNED,
 		}),
 	);
 

@@ -76,10 +76,41 @@ unknown version.
 | `uiDir` | string \| null | `null` | Directory of pre-built UI assets to serve from `/` (with SPA fallback). `null` auto-detects `/app/public` → `${cwd}/public` → `${cwd}/apps/web/dist`. The `UI_DIR` env var also works as an override. The official Docker image sets this up automatically. |
 | `replicaId` | string \| null | `null` | Identifier this replica writes into job leases (used by the cross-replica orphan sweeper to tell whose lease is whose). `null` auto-generates `${HOSTNAME or "wb"}-<short-uuid>` at boot — fine for single-replica deployments and tests; set explicitly for clustered runs if you want the lease holder to be deterministic. |
 | `publicOrigin` | URL \| null | `null` | Externally visible browser origin, e.g. `https://workbench.example.com`. Used for OIDC redirect URI construction and secure-cookie decisions. Required for production OIDC browser login. |
-| `trustProxyHeaders` | boolean | `false` | Trust `X-Forwarded-Proto` / `X-Forwarded-Host` when `publicOrigin` is not set. Enable only behind a trusted proxy that overwrites those headers. |
+| `trustProxyHeaders` | boolean | `false` | Trust `X-Forwarded-Proto` / `X-Forwarded-Host` when `publicOrigin` is not set. Also extends to the rate limiter (`X-Forwarded-For` / `X-Real-IP`). Enable only behind a trusted proxy that overwrites those headers. |
+| `rateLimit` | object | (defaults below) | In-process per-IP rate limiter. See [§ Rate limiting](#rate-limiting). |
 
 Production deployments should start from
 [`runtimes/typescript/examples/workbench.production.yaml`](../runtimes/typescript/examples/workbench.production.yaml).
+
+#### Rate limiting
+
+Defense-in-depth limiter applied to `/api/v1/*` (capacity from
+config) and `/auth/*` (a tighter fixed cap of 30 req/window — login
+flows shouldn't burst). Per-IP, per-replica fixed window. Distributed
+deployments should still front the runtime with an upstream WAF /
+API gateway for accurate aggregate ceilings; this layer protects
+against runaway clients and naive scanners.
+
+```yaml
+runtime:
+  rateLimit:
+    enabled: true        # default
+    capacity: 600        # max requests per window per IP for /api/v1/*
+    windowMs: 60000      # window length, ms
+```
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `enabled` | bool | `true` | Set `false` to skip the limiter entirely. |
+| `capacity` | int (1–1_000_000) | `600` | Per-IP requests per window for `/api/v1/*`. The auth surface uses a fixed `30`. |
+| `windowMs` | int (1000–3_600_000) | `60000` | Window length in milliseconds. |
+
+Rejected requests get `429 Too Many Requests` with the canonical
+error envelope, a `Retry-After` header (seconds), and
+`X-RateLimit-{Limit,Remaining,Reset}` headers on every response.
+Client IP is derived from the socket; set
+`runtime.trustProxyHeaders: true` to honor `X-Forwarded-For` /
+`X-Real-IP` instead.
 
 ### `controlPlane`
 
