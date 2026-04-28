@@ -8,7 +8,11 @@ import {
 } from "./auth/oidc/login/cookie.js";
 import { fetchOidcEndpoints } from "./auth/oidc/login/discovery.js";
 import { MemoryPendingLoginStore } from "./auth/oidc/login/pending.js";
-import { loadAstraFromCli } from "./config/astra-cli.js";
+import {
+	type AstraCliInfo,
+	loadAstraFromCli,
+	toAstraCliInfo,
+} from "./config/astra-cli.js";
 import { loadDotEnv } from "./config/env-file.js";
 import { loadConfig, resolveConfigPath } from "./config/loader.js";
 import type { AuthConfig } from "./config/schema.js";
@@ -38,23 +42,24 @@ async function main(): Promise<void> {
 	// from the developer's astra-cli profile when those env vars aren't
 	// already set. No-op when the CLI isn't installed or both variables
 	// are already present.
-	const astraCli = await loadAstraFromCli({
+	const astraCliResult = await loadAstraFromCli({
 		logger: {
 			info: (msg, fields) => logger.info(fields ?? {}, msg),
 			warn: (msg, fields) => logger.warn(fields ?? {}, msg),
 			debug: (msg, fields) => logger.debug(fields ?? {}, msg),
 		},
 	});
-	if (astraCli.status === "loaded") {
+	if (astraCliResult.status === "loaded") {
 		logger.info(
 			{
-				profile: astraCli.profile,
-				database: astraCli.database.name,
-				region: astraCli.database.region,
+				profile: astraCliResult.profile,
+				database: astraCliResult.database.name,
+				region: astraCliResult.database.region,
 			},
 			"astra-cli credentials applied",
 		);
 	}
+	const astraCli: AstraCliInfo = toAstraCliInfo(astraCliResult);
 
 	const configPath = resolveConfigPath();
 	logger.info({ configPath }, "loading config");
@@ -113,6 +118,7 @@ async function main(): Promise<void> {
 		ui,
 		login,
 		readiness,
+		astraCli,
 		requestIdHeader: config.runtime.requestIdHeader,
 		rateLimit: {
 			enabled: config.runtime.rateLimit.enabled,

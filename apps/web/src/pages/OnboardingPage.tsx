@@ -11,8 +11,10 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { AstraCliDetectionCard } from "@/components/workspaces/AstraCliDetectionCard";
 import { KindPicker } from "@/components/workspaces/KindPicker";
 import { WorkspaceForm } from "@/components/workspaces/WorkspaceForm";
+import { useAstraCliInfo } from "@/hooks/useAstraCliInfo";
 import { useCreateWorkspace, useWorkspaces } from "@/hooks/useWorkspaces";
 import { api, formatApiError } from "@/lib/api";
 import type { WorkspaceKind } from "@/lib/schemas";
@@ -23,12 +25,17 @@ type Step = "kind" | "details";
 export function OnboardingPage() {
 	const navigate = useNavigate();
 	const { data: workspaces } = useWorkspaces();
+	const { data: astraCli } = useAstraCliInfo();
 	const create = useCreateWorkspace();
 	const [step, setStep] = useState<Step>("kind");
 	const [kind, setKind] = useState<WorkspaceKind | null>(null);
 	const [checkingConnection, setCheckingConnection] = useState(false);
 
 	const isFirstRun = !workspaces || workspaces.length === 0;
+	const astraCliDetected =
+		astraCli?.detected === true && (kind === "astra" || kind === "hcd")
+			? astraCli
+			: null;
 
 	return (
 		<div className="mx-auto max-w-2xl">
@@ -116,70 +123,91 @@ export function OnboardingPage() {
 			) : null}
 
 			{step === "details" && kind ? (
-				<Card>
-					<CardHeader>
-						<CardTitle>Workspace details</CardTitle>
-						<CardDescription>
-							{kind === "mock" ? (
-								"Mock workspaces run entirely in memory — no credentials needed."
-							) : kind === "astra" || kind === "hcd" ? (
-								<>
-									Credentials are stored as{" "}
-									<code className="font-mono">provider:path</code> references,
-									never raw values. We've pre-filled the two env-var refs
-									Astra's SDK docs use by convention (
-									<code className="font-mono">ASTRA_DB_APPLICATION_TOKEN</code>{" "}
-									and <code className="font-mono">ASTRA_DB_API_ENDPOINT</code>)
-									— set them in your <code className="font-mono">.env</code> or
-									shell and the Test-connection probe will pick them up.
-								</>
-							) : (
-								"Credentials are stored as references (env:VAR / file:/path), never raw values."
-							)}
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<WorkspaceForm
-							mode="create"
-							kind={kind}
-							submitting={create.isPending || checkingConnection}
-							submitLabel="Create workspace"
-							onCancel={() => setStep("kind")}
-							onSubmit={async (input) => {
-								try {
-									const ws = await create.mutateAsync(input);
-									setCheckingConnection(true);
-									try {
-										const probe = await api.testConnection(ws.workspaceId);
-										if (probe.ok) {
-											toast.success(`Workspace '${ws.name}' created`, {
-												description: probe.details,
-											});
-										} else {
-											toast.warning(
-												`Workspace '${ws.name}' created, but the connection check failed`,
-												{ description: probe.details },
-											);
-										}
-									} catch (err) {
-										toast.warning(
-											`Workspace '${ws.name}' created, but the connection check could not run`,
-											{ description: formatApiError(err) },
-										);
-									} finally {
-										setCheckingConnection(false);
-									}
-									navigate(`/workspaces/${ws.workspaceId}`);
-								} catch (err) {
-									setCheckingConnection(false);
-									toast.error("Couldn't create workspace", {
-										description: formatApiError(err),
-									});
+				<>
+					{astraCliDetected ? (
+						<AstraCliDetectionCard info={astraCliDetected} />
+					) : null}
+					<Card>
+						<CardHeader>
+							<CardTitle>Workspace details</CardTitle>
+							<CardDescription>
+								{kind === "mock" ? (
+									"Mock workspaces run entirely in memory — no credentials needed."
+								) : kind === "astra" || kind === "hcd" ? (
+									<>
+										Credentials are stored as{" "}
+										<code className="font-mono">provider:path</code> references,
+										never raw values. We've pre-filled the two env-var refs
+										Astra's SDK docs use by convention (
+										<code className="font-mono">
+											ASTRA_DB_APPLICATION_TOKEN
+										</code>{" "}
+										and <code className="font-mono">ASTRA_DB_API_ENDPOINT</code>
+										) — set them in your <code className="font-mono">.env</code>{" "}
+										or shell and the Test-connection probe will pick them up.
+									</>
+								) : (
+									"Credentials are stored as references (env:VAR / file:/path), never raw values."
+								)}
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<WorkspaceForm
+								mode="create"
+								kind={kind}
+								key={
+									astraCliDetected
+										? `prefill-${astraCliDetected.database.id}`
+										: "no-prefill"
 								}
-							}}
-						/>
-					</CardContent>
-				</Card>
+								prefill={
+									astraCliDetected
+										? {
+												name: astraCliDetected.database.name,
+												keyspace:
+													astraCliDetected.database.keyspace ?? undefined,
+											}
+										: undefined
+								}
+								submitting={create.isPending || checkingConnection}
+								submitLabel="Create workspace"
+								onCancel={() => setStep("kind")}
+								onSubmit={async (input) => {
+									try {
+										const ws = await create.mutateAsync(input);
+										setCheckingConnection(true);
+										try {
+											const probe = await api.testConnection(ws.workspaceId);
+											if (probe.ok) {
+												toast.success(`Workspace '${ws.name}' created`, {
+													description: probe.details,
+												});
+											} else {
+												toast.warning(
+													`Workspace '${ws.name}' created, but the connection check failed`,
+													{ description: probe.details },
+												);
+											}
+										} catch (err) {
+											toast.warning(
+												`Workspace '${ws.name}' created, but the connection check could not run`,
+												{ description: formatApiError(err) },
+											);
+										} finally {
+											setCheckingConnection(false);
+										}
+										navigate(`/workspaces/${ws.workspaceId}`);
+									} catch (err) {
+										setCheckingConnection(false);
+										toast.error("Couldn't create workspace", {
+											description: formatApiError(err),
+										});
+									}
+								}}
+							/>
+						</CardContent>
+					</Card>
+				</>
 			) : null}
 		</div>
 	);

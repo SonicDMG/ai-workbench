@@ -69,6 +69,30 @@ export type AstraCliResult =
 	  }
 	| { readonly status: "skipped"; readonly reason: AstraCliSkipReason };
 
+/**
+ * Public surface of an {@link AstraCliResult} — the same fields the
+ * runtime is willing to expose to the web UI on the `/astra-cli`
+ * discovery endpoint. The token is **not** part of this type.
+ */
+export type AstraCliInfo =
+	| {
+			readonly detected: true;
+			readonly profile: string;
+			readonly database: AstraCliDatabase;
+	  }
+	| { readonly detected: false; readonly reason: AstraCliSkipReason };
+
+export function toAstraCliInfo(result: AstraCliResult): AstraCliInfo {
+	if (result.status === "loaded") {
+		return {
+			detected: true,
+			profile: result.profile,
+			database: result.database,
+		};
+	}
+	return { detected: false, reason: result.reason };
+}
+
 export type AstraCliSkipReason =
 	| "already-configured"
 	| "disabled"

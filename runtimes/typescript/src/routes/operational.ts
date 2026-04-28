@@ -1,9 +1,11 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+import type { AstraCliInfo } from "../config/astra-cli.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import { errorEnvelope } from "../lib/errors.js";
 import { makeOpenApi } from "../lib/openapi.js";
 import type { AppEnv } from "../lib/types.js";
 import {
+	AstraCliInfoSchema,
 	BannerSchema,
 	ErrorEnvelopeSchema,
 	HealthSchema,
@@ -26,6 +28,7 @@ export interface ReadinessSignal {
 export function operationalRoutes(
 	store: ControlPlaneStore,
 	readiness?: ReadinessSignal,
+	astraCli: AstraCliInfo | null = null,
 ): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
 
@@ -104,6 +107,30 @@ export function operationalRoutes(
 				{ status: "ready" as const, workspaces: workspaces.length },
 				200,
 			);
+		},
+	);
+
+	app.openapi(
+		createRoute({
+			method: "get",
+			path: "/astra-cli",
+			tags: ["operational"],
+			summary: "astra-cli auto-detection status",
+			description:
+				"Reports whether the runtime resolved an Astra database from a configured `astra` CLI profile at startup, and if so which one. Tokens are never exposed. The web UI uses this to suggest defaults in the workspace onboarding form.",
+			responses: {
+				200: {
+					content: { "application/json": { schema: AstraCliInfoSchema } },
+					description: "astra-cli detection status",
+				},
+			},
+		}),
+		(c) => {
+			const body: AstraCliInfo = astraCli ?? {
+				detected: false,
+				reason: "binary-not-found",
+			};
+			return c.json(body, 200);
 		},
 	);
 

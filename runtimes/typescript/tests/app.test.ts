@@ -88,6 +88,62 @@ describe("operational routes", () => {
 		expect(body.node).toBe(process.version);
 	});
 
+	test("GET /astra-cli reports detected:false when astra-cli was not consulted", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/astra-cli");
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.detected).toBe(false);
+		expect(typeof body.reason).toBe("string");
+	});
+
+	test("GET /astra-cli surfaces a detected database without leaking the token", async () => {
+		const store = new MemoryControlPlaneStore();
+		const driver = new MockVectorStoreDriver();
+		const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const auth = new AuthResolver({
+			mode: "disabled",
+			anonymousPolicy: "allow",
+			verifiers: [],
+		});
+		const embedders = makeFakeEmbedderFactory();
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders,
+			astraCli: {
+				detected: true,
+				profile: "Eric Hare",
+				database: {
+					id: "db-uuid-1",
+					name: "mydb",
+					region: "us-east-2",
+					endpoint: "https://db-uuid-1-us-east-2.apps.astra.datastax.com",
+					keyspace: "default_keyspace",
+				},
+			},
+		});
+		const res = await app.request("/astra-cli");
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body).toEqual({
+			detected: true,
+			profile: "Eric Hare",
+			database: {
+				id: "db-uuid-1",
+				name: "mydb",
+				region: "us-east-2",
+				endpoint: "https://db-uuid-1-us-east-2.apps.astra.datastax.com",
+				keyspace: "default_keyspace",
+			},
+		});
+		expect(JSON.stringify(body)).not.toContain("AstraCS:");
+		expect(JSON.stringify(body)).not.toContain("token");
+	});
+
 	test("unhandled errors return a generic envelope", async () => {
 		const { app } = makeApp();
 		app.get("/boom", () => {

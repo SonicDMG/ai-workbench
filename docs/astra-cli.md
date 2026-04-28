@@ -80,6 +80,8 @@ The runtime applies each rule in order; first match wins.
 
 ## What gets shown
 
+### Terminal banner
+
 On a successful auto-config, the runtime prints a banner to stdout
 *before* the rest of startup, so the selection is impossible to miss:
 
@@ -103,6 +105,50 @@ The same fields are also emitted as a structured `info` log line so
 production deployments can scrape them. Tokens are **never** logged
 or printed — only profile name, database name/id, region, and
 keyspace.
+
+### Onboarding page
+
+The web UI exposes the same detection on the workspace onboarding
+page. After picking the **Astra** (or **HCD**) backend, the user
+sees a green confirmation card showing the resolved profile,
+database, region, endpoint, and keyspace. The workspace `name` and
+`keyspace` fields below it are pre-filled from the detected
+database, so the happy path is one click — `Create workspace`. The
+existing `env:ASTRA_DB_APPLICATION_TOKEN` and
+`env:ASTRA_DB_API_ENDPOINT` references already point at the
+auto-injected values, so no copy-paste is required.
+
+If `astra-cli` wasn't consulted (rules 1–4 above), the card is
+hidden and the form falls back to its previous unprefilled state.
+
+### Discovery endpoint
+
+The runtime exposes the resolved info (token-redacted) on
+`GET /astra-cli`. This is what the onboarding card reads. Schema:
+
+```json
+{
+  "detected": true,
+  "profile": "Eric Hare",
+  "database": {
+    "id": "c933e7fc-4996-4dcd-bb87-4f282fe1e7ef",
+    "name": "mydb",
+    "region": "us-east-2",
+    "endpoint": "https://c933e7fc-4996-4dcd-bb87-4f282fe1e7ef-us-east-2.apps.astra.datastax.com",
+    "keyspace": "default_keyspace"
+  }
+}
+```
+
+When detection didn't run or skipped, the response is:
+
+```json
+{ "detected": false, "reason": "binary-not-found" }
+```
+
+The endpoint is open (no auth) — same as `/healthz` / `/version` —
+so the onboarding page can read it before the user has any
+workspaces or auth set up. Tokens are never part of the response.
 
 ## Troubleshooting
 

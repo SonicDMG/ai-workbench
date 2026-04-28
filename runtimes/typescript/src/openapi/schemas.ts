@@ -50,6 +50,51 @@ export const VersionSchema = z
 	})
 	.openapi("Version");
 
+/**
+ * Public shape of `astra-cli` auto-detection at runtime startup.
+ * Whether the runtime resolved a profile/database from the `astra`
+ * CLI, and which one. The token is never exposed on the wire — the
+ * UI uses this to suggest sensible defaults in the workspace
+ * onboarding form, and to confirm to the user that the env vars
+ * they're about to use point at a real database.
+ */
+export const AstraCliDatabaseInfoSchema = z
+	.object({
+		id: z.string().openapi({ example: "c933e7fc-4996-4dcd-bb87-4f282fe1e7ef" }),
+		name: z.string().openapi({ example: "mydb" }),
+		region: z.string().openapi({ example: "us-east-2" }),
+		endpoint: z.string().url().openapi({
+			example:
+				"https://c933e7fc-4996-4dcd-bb87-4f282fe1e7ef-us-east-2.apps.astra.datastax.com",
+		}),
+		keyspace: z.string().nullable().openapi({ example: "default_keyspace" }),
+	})
+	.openapi("AstraCliDatabaseInfo");
+
+export const AstraCliInfoSchema = z
+	.discriminatedUnion("detected", [
+		z.object({
+			detected: z.literal(true),
+			profile: z.string().openapi({ example: "Eric Hare" }),
+			database: AstraCliDatabaseInfoSchema,
+		}),
+		z.object({
+			detected: z.literal(false),
+			reason: z.enum([
+				"already-configured",
+				"disabled",
+				"binary-not-found",
+				"no-profiles",
+				"no-databases",
+				"ambiguous-profile-non-interactive",
+				"ambiguous-database-non-interactive",
+				"user-aborted",
+				"cli-error",
+			]),
+		}),
+	])
+	.openapi("AstraCliInfo");
+
 /* ---------------- Errors ---------------- */
 
 export const ErrorEnvelopeSchema = z

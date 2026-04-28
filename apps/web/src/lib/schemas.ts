@@ -447,6 +447,27 @@ export const KbAsyncIngestResponseSchema = z.object({
 });
 export type KbAsyncIngestResponse = z.infer<typeof KbAsyncIngestResponseSchema>;
 
+/* ---------------- astra-cli auto-detection ---------------- */
+
+export const AstraCliInfoSchema = z.discriminatedUnion("detected", [
+	z.object({
+		detected: z.literal(true),
+		profile: z.string(),
+		database: z.object({
+			id: z.string(),
+			name: z.string(),
+			region: z.string(),
+			endpoint: z.string().url(),
+			keyspace: z.string().nullable(),
+		}),
+	}),
+	z.object({
+		detected: z.literal(false),
+		reason: z.string(),
+	}),
+]);
+export type AstraCliInfo = z.infer<typeof AstraCliInfoSchema>;
+
 export const KIND_LABELS: Record<WorkspaceKind, string> = {
 	astra: "Astra DB",
 	hcd: "Hyper-Converged Database",
