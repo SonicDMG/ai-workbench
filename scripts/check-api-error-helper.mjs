@@ -35,6 +35,10 @@ const WEB_SRC = resolve(REPO_ROOT, "apps/web/src");
 const ALLOWLIST = new Set([
 	resolve(WEB_SRC, "lib/api.ts"),
 	resolve(WEB_SRC, "pages/WorkspaceDetailPage.tsx"),
+	// ChatPage uses the same `workspace_not_found` short-circuit as
+	// WorkspaceDetailPage so deep links to a deleted workspace's chat
+	// surface a friendly empty state instead of the generic error.
+	resolve(WEB_SRC, "pages/ChatPage.tsx"),
 ]);
 
 const PATTERN = /instanceof\s+ApiError\b/;
