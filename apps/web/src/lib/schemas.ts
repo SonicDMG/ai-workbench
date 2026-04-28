@@ -495,6 +495,15 @@ export const SendChatMessageSchema = z.object({
 });
 export type SendChatMessageInput = z.infer<typeof SendChatMessageSchema>;
 
+/** Response shape: both turns persisted by the runtime. */
+export const SendChatMessageResponseSchema = z.object({
+	user: ChatMessageRecordSchema,
+	assistant: ChatMessageRecordSchema,
+});
+export type SendChatMessageResponse = z.infer<
+	typeof SendChatMessageResponseSchema
+>;
+
 /* ---------------- astra-cli auto-detection ---------------- */
 
 export const AstraCliInfoSchema = z.discriminatedUnion("detected", [

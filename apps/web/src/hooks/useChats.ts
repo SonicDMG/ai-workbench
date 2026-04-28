@@ -12,6 +12,7 @@ import type {
 	ChatMessage,
 	CreateChatInput,
 	SendChatMessageInput,
+	SendChatMessageResponse,
 	UpdateChatInput,
 } from "@/lib/schemas";
 
@@ -101,23 +102,24 @@ export function useDeleteChat(
 }
 
 /**
- * Send a user message. v0 only persists the user turn — Bobbie's
- * reply lands in a follow-up phase that wires HuggingFace + SSE
- * streaming. The hook optimistically appends the new user message
- * to the cached message list so the UI feels instant.
+ * Send a user message and append both turns (user + Bobbie's reply)
+ * to the cached message list. Phase 5 will swap this for an
+ * EventSource-backed streaming variant that emits tokens as they
+ * arrive; the UI reducer will be the same shape so the swap is
+ * invisible to consumers.
  */
 export function useSendChatMessage(
 	workspaceUid: string,
 	chatId: string,
-): UseMutationResult<ChatMessage, Error, SendChatMessageInput> {
+): UseMutationResult<SendChatMessageResponse, Error, SendChatMessageInput> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (input: SendChatMessageInput) =>
 			api.sendChatMessage(workspaceUid, chatId, input),
-		onSuccess: (message) => {
+		onSuccess: (response) => {
 			qc.setQueryData<ChatMessage[]>(
 				keys.chats.messages(workspaceUid, chatId),
-				(previous) => [...(previous ?? []), message],
+				(previous) => [...(previous ?? []), response.user, response.assistant],
 			);
 		},
 	});

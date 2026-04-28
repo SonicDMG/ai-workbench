@@ -866,16 +866,30 @@ export const ChatMessagePageSchema = pageSchema(
 );
 
 /**
- * Body of `POST .../chats/{chatId}/messages`. v0 only accepts user
- * messages — assistant turns will be authored by the runtime when HF
- * + streaming land. We still keep `role` on the wire for symmetry
- * with future surfaces.
+ * Body of `POST .../chats/{chatId}/messages`. The runtime always
+ * authors the assistant turn (Bobbie); the only thing the caller
+ * supplies is the user-typed content.
  */
 export const SendChatMessageInputSchema = z
 	.object({
 		content: z.string().min(1).max(MAX_CHAT_MESSAGE_CHARS),
 	})
 	.openapi("SendChatMessageInput");
+
+/**
+ * Response of `POST .../chats/{chatId}/messages`. Both turns are
+ * returned so the UI can replace any optimistic user-message stub
+ * with the canonical persisted version, and append Bobbie's reply
+ * in one render pass. When the model errors, `assistant.metadata`
+ * contains `finish_reason: "error"` and the body is the human-
+ * readable failure message.
+ */
+export const SendChatMessageResponseSchema = z
+	.object({
+		user: ChatMessageRecordSchema,
+		assistant: ChatMessageRecordSchema,
+	})
+	.openapi("SendChatMessageResponse");
 
 export const EmbeddingServiceIdParamSchema = z
 	.string()

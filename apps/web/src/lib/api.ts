@@ -8,7 +8,6 @@ import {
 	type Chat,
 	type ChatMessage,
 	ChatMessagePageSchema,
-	ChatMessageRecordSchema,
 	ChatPageSchema,
 	ChatRecordSchema,
 	ChunkingServicePageSchema,
@@ -49,6 +48,8 @@ import {
 	type SearchHit,
 	SearchHitSchema,
 	type SendChatMessageInput,
+	type SendChatMessageResponse,
+	SendChatMessageResponseSchema,
 	type TestConnectionResult,
 	TestConnectionResultSchema,
 	type UpdateChatInput,
@@ -548,11 +549,11 @@ export const api = {
 		workspaceUid: string,
 		chatId: string,
 		input: SendChatMessageInput,
-	): Promise<ChatMessage> =>
+	): Promise<SendChatMessageResponse> =>
 		request(
 			`/workspaces/${workspaceUid}/chats/${chatId}/messages`,
 			{ method: "POST", body: JSON.stringify(input) },
-			ChatMessageRecordSchema,
+			SendChatMessageResponseSchema,
 		),
 
 	/* -------- KB documents -------- */

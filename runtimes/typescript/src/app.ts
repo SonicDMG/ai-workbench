@@ -29,8 +29,9 @@ import type { CookieSigner } from "./auth/oidc/login/cookie.js";
 import type { OidcEndpoints } from "./auth/oidc/login/discovery.js";
 import type { PendingLoginStore } from "./auth/oidc/login/pending.js";
 import type { AuthResolver } from "./auth/resolver.js";
+import type { ChatService } from "./chat/types.js";
 import type { AstraCliInfo } from "./config/astra-cli.js";
-import type { AuthConfig } from "./config/schema.js";
+import type { AuthConfig, ChatConfig } from "./config/schema.js";
 import type { ControlPlaneStore } from "./control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "./drivers/registry.js";
 import type { EmbedderFactory } from "./embeddings/factory.js";
@@ -119,6 +120,15 @@ export interface AppOptions {
 	 * `null` means the detection step never ran (e.g. tests).
 	 */
 	readonly astraCli?: AstraCliInfo | null;
+	/**
+	 * Chat-completion service for chat-with-Bobbie. `null` (or
+	 * undefined) means the runtime was booted without a `chat` block in
+	 * `workbench.yaml`; chat routes still serve CRUD but POST messages
+	 * returns `503 chat_disabled`.
+	 */
+	readonly chatService?: ChatService | null;
+	/** Mirrors the parsed `chat` config block; needed for retrieval defaults. */
+	readonly chatConfig?: ChatConfig | null;
 }
 
 const DEFAULT_API_RATE_LIMIT: Required<
@@ -286,7 +296,16 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		knowledgeBaseRoutes({ store: opts.store, drivers: opts.drivers }),
 	);
 	app.route("/api/v1/workspaces", knowledgeFilterRoutes(opts.store));
-	app.route("/api/v1/workspaces", chatRoutes(opts.store));
+	app.route(
+		"/api/v1/workspaces",
+		chatRoutes({
+			store: opts.store,
+			drivers: opts.drivers,
+			embedders: opts.embedders,
+			chatService: opts.chatService ?? null,
+			chatConfig: opts.chatConfig ?? null,
+		}),
+	);
 	app.route("/api/v1/workspaces", chunkingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", embeddingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", rerankingServiceRoutes(opts.store));
