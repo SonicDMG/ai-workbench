@@ -3,6 +3,8 @@ import { getAuthToken } from "./authToken";
 import {
 	ApiKeyPageSchema,
 	type ApiKeyRecord,
+	type AstraCliInfo,
+	AstraCliInfoSchema,
 	ChunkingServicePageSchema,
 	type ChunkingServiceRecord,
 	ChunkingServiceRecordSchema,
@@ -170,6 +172,27 @@ async function maybeRedirectToLogin(): Promise<void> {
 }
 
 export const api = {
+	/**
+	 * Discovery endpoint — reports whether the runtime resolved an
+	 * Astra database from a configured `astra` CLI profile at startup.
+	 * Lives at `/astra-cli` (not `/api/v1/astra-cli`) so the onboarding
+	 * page can call it before the user has any workspaces or auth set up.
+	 */
+	getAstraCliInfo: async (): Promise<AstraCliInfo | null> => {
+		try {
+			const res = await fetch("/astra-cli", {
+				credentials: "include",
+				headers: { accept: "application/json" },
+			});
+			if (!res.ok) return null;
+			const body = (await res.json()) as unknown;
+			const parsed = AstraCliInfoSchema.safeParse(body);
+			return parsed.success ? parsed.data : null;
+		} catch {
+			return null;
+		}
+	},
+
 	listWorkspaces: (): Promise<Workspace[]> =>
 		request("/workspaces", { method: "GET" }, WorkspacePageSchema).then(
 			(page) => page.items,

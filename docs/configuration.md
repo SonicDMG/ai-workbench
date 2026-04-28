@@ -159,6 +159,14 @@ controlPlane:
 Astra Data API Tables via `@datastax/astra-db-ts`. Production-grade,
 multi-writer-safe.
 
+> **Tip — astra-cli auto-config.** If you have the
+> [`astra` CLI](https://github.com/datastax/astra-cli) installed and a
+> profile configured, you can leave `ASTRA_DB_APPLICATION_TOKEN` and
+> `ASTRA_DB_API_ENDPOINT` unset locally — the runtime will pick them
+> up from the CLI at startup. Production deployments inject them from
+> a secret manager and the CLI integration is automatically inert.
+> See [`astra-cli.md`](astra-cli.md).
+
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `endpoint` | URL | yes | Astra Data API endpoint |

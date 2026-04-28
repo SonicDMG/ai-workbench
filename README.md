@@ -94,7 +94,11 @@ The `npm run *` scripts at root delegate into
 into that directory and work there directly.
 
 Switching to an Astra-backed control plane is a YAML change —
-see [`docs/configuration.md`](docs/configuration.md).
+see [`docs/configuration.md`](docs/configuration.md). If you have
+the [`astra` CLI](https://github.com/datastax/astra-cli) installed
+and a profile configured, the runtime can auto-fill
+`ASTRA_DB_APPLICATION_TOKEN` / `ASTRA_DB_API_ENDPOINT` at startup —
+see [`docs/astra-cli.md`](docs/astra-cli.md).
 
 ## Current HTTP surface
 

@@ -44,6 +44,17 @@ const DEFAULT_ENDPOINT: Record<WorkspaceKind, string> = {
 };
 
 /**
+ * Optional defaults the parent can push into create-mode fields. The
+ * onboarding wizard uses this to prefill `name` + `keyspace` from the
+ * `astra-cli` auto-detection result; pass a stable `key` on the form
+ * to force a clean remount when these values change.
+ */
+export interface WorkspaceFormPrefill {
+	readonly name?: string;
+	readonly keyspace?: string;
+}
+
+/**
  * Reusable form for create + edit. In create mode, `kind` is baked in
  * by the parent (the onboarding flow picks it first). In edit mode,
  * `kind` is shown read-only — it's immutable after creation.
@@ -53,6 +64,7 @@ export type WorkspaceFormMode =
 			mode: "create";
 			kind: WorkspaceKind;
 			onSubmit: (v: CreateWorkspaceInput) => void;
+			prefill?: WorkspaceFormPrefill;
 	  }
 	| {
 			mode: "edit";
@@ -80,10 +92,10 @@ export function WorkspaceForm(
 	const defaultValues: WorkspaceFormValues =
 		props.mode === "create"
 			? {
-					name: "",
+					name: props.prefill?.name ?? "",
 					kind,
 					url: DEFAULT_ENDPOINT[kind],
-					keyspace: "",
+					keyspace: props.prefill?.keyspace ?? "",
 					credentials: { ...DEFAULT_CREDENTIALS[kind] },
 				}
 			: {

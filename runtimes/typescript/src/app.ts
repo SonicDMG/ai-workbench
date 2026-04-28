@@ -27,6 +27,7 @@ import type { CookieSigner } from "./auth/oidc/login/cookie.js";
 import type { OidcEndpoints } from "./auth/oidc/login/discovery.js";
 import type { PendingLoginStore } from "./auth/oidc/login/pending.js";
 import type { AuthResolver } from "./auth/resolver.js";
+import type { AstraCliInfo } from "./config/astra-cli.js";
 import type { AuthConfig } from "./config/schema.js";
 import type { ControlPlaneStore } from "./control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "./drivers/registry.js";
@@ -108,6 +109,13 @@ export interface AppOptions {
 	 * replica deployments and tests; set explicitly for clustered
 	 * runs so the orphan-sweeper can tell whose lease is whose. */
 	readonly replicaId?: string;
+	/**
+	 * Result of the optional `astra-cli` auto-detection that runs
+	 * during startup, exposed verbatim on `GET /astra-cli`. The web UI
+	 * reads this to suggest defaults in the workspace onboarding form.
+	 * `null` means the detection step never ran (e.g. tests).
+	 */
+	readonly astraCli?: AstraCliInfo | null;
 }
 
 const DEFAULT_API_RATE_LIMIT: Required<
@@ -238,7 +246,10 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		authMiddleware({ resolver: opts.auth, cookie: cookieMiddlewareCfg }),
 	);
 
-	app.route("/", operationalRoutes(opts.store, opts.readiness));
+	app.route(
+		"/",
+		operationalRoutes(opts.store, opts.readiness, opts.astraCli ?? null),
+	);
 
 	if (opts.login) {
 		app.route(
