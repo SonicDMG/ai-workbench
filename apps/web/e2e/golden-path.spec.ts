@@ -17,10 +17,10 @@ import { expect, test } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
 
-test("golden path: onboard → services → knowledge base → upsert → run query", async (
-	{ page, request },
-	testInfo,
-) => {
+test("golden path: onboard → services → knowledge base → upsert → run query", async ({
+	page,
+	request,
+}, testInfo) => {
 	const workspaceName = `e2e-golden-${testInfo.workerIndex}-${Date.now()}`;
 
 	// 1. Start the onboarding flow directly. Local runs may reuse an
