@@ -39,7 +39,7 @@ controlPlane:
 #
 # chat:
 #   tokenRef: env:HUGGINGFACE_API_KEY
-#   model: mistralai/Mistral-7B-Instruct-v0.3
+#   model: Qwen/Qwen2.5-7B-Instruct
 #   maxOutputTokens: 1024
 #   retrievalK: 6
 #   # Override Bobbie's persona (null = built-in default):

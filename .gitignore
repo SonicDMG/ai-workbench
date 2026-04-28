@@ -13,3 +13,4 @@ coverage/
 # plane here. Per-developer state, never committed.
 .workbench-data/
 test-results/
+runtimes/typescript/workbench.yaml
