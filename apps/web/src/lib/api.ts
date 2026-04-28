@@ -5,10 +5,17 @@ import {
 	type ApiKeyRecord,
 	type AstraCliInfo,
 	AstraCliInfoSchema,
+	type Chat,
+	type ChatMessage,
+	ChatMessagePageSchema,
+	ChatMessageRecordSchema,
+	ChatPageSchema,
+	ChatRecordSchema,
 	ChunkingServicePageSchema,
 	type ChunkingServiceRecord,
 	ChunkingServiceRecordSchema,
 	type CreateApiKeyInput,
+	type CreateChatInput,
 	type CreateChunkingServiceInput,
 	type CreatedApiKeyResponse,
 	CreatedApiKeyResponseSchema,
@@ -41,8 +48,10 @@ import {
 	RerankingServiceRecordSchema,
 	type SearchHit,
 	SearchHitSchema,
+	type SendChatMessageInput,
 	type TestConnectionResult,
 	TestConnectionResultSchema,
+	type UpdateChatInput,
 	type UpdateKnowledgeBaseInput,
 	type UpdateKnowledgeFilterInput,
 	type UpdateWorkspaceInput,
@@ -471,6 +480,79 @@ export const api = {
 			`/workspaces/${workspaceUid}/reranking-services/${uid}`,
 			{ method: "DELETE" },
 			null,
+		),
+
+	/* -------- Chat (Bobbie) -------- */
+
+	listChats: (workspaceUid: string): Promise<Chat[]> =>
+		request(
+			`/workspaces/${workspaceUid}/chats`,
+			{ method: "GET" },
+			ChatPageSchema,
+		).then((page) => page.items),
+
+	getChat: (workspaceUid: string, chatId: string): Promise<Chat> =>
+		request(
+			`/workspaces/${workspaceUid}/chats/${chatId}`,
+			{ method: "GET" },
+			ChatRecordSchema,
+		),
+
+	createChat: (workspaceUid: string, input: CreateChatInput): Promise<Chat> => {
+		const body: Record<string, unknown> = {};
+		if (input.chatId !== undefined) body.chatId = input.chatId;
+		if (input.title !== undefined) body.title = input.title;
+		if (input.knowledgeBaseIds !== undefined)
+			body.knowledgeBaseIds = input.knowledgeBaseIds;
+		return request(
+			`/workspaces/${workspaceUid}/chats`,
+			{ method: "POST", body: JSON.stringify(body) },
+			ChatRecordSchema,
+		);
+	},
+
+	updateChat: (
+		workspaceUid: string,
+		chatId: string,
+		patch: UpdateChatInput,
+	): Promise<Chat> => {
+		const body: Record<string, unknown> = {};
+		if (patch.title !== undefined) body.title = patch.title;
+		if (patch.knowledgeBaseIds !== undefined)
+			body.knowledgeBaseIds = patch.knowledgeBaseIds;
+		return request(
+			`/workspaces/${workspaceUid}/chats/${chatId}`,
+			{ method: "PATCH", body: JSON.stringify(body) },
+			ChatRecordSchema,
+		);
+	},
+
+	deleteChat: (workspaceUid: string, chatId: string): Promise<void> =>
+		request(
+			`/workspaces/${workspaceUid}/chats/${chatId}`,
+			{ method: "DELETE" },
+			null,
+		),
+
+	listChatMessages: (
+		workspaceUid: string,
+		chatId: string,
+	): Promise<ChatMessage[]> =>
+		request(
+			`/workspaces/${workspaceUid}/chats/${chatId}/messages`,
+			{ method: "GET" },
+			ChatMessagePageSchema,
+		).then((page) => page.items),
+
+	sendChatMessage: (
+		workspaceUid: string,
+		chatId: string,
+		input: SendChatMessageInput,
+	): Promise<ChatMessage> =>
+		request(
+			`/workspaces/${workspaceUid}/chats/${chatId}/messages`,
+			{ method: "POST", body: JSON.stringify(input) },
+			ChatMessageRecordSchema,
 		),
 
 	/* -------- KB documents -------- */

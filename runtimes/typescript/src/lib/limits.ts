@@ -17,3 +17,6 @@ export const MAX_VECTOR_RECORD_TEXT_CHARS = 16_384;
 
 /** Maximum vector array length in search/upsert requests. */
 export const MAX_VECTOR_VALUES = 16_384;
+
+/** Maximum chat message body length (user-typed prompt or persisted assistant turn). */
+export const MAX_CHAT_MESSAGE_CHARS = 32_000;
