@@ -423,6 +423,15 @@ export const AGENTS_DEFINITION = {
  * Clustered by `created_at DESC` so list endpoints get newest-first
  * for free. `conversation_id` is part of the cluster key so two
  * conversations with identical timestamps don't collide.
+ *
+ * `knowledge_base_ids` is the per-conversation RAG-grounding set
+ * (chat-with-Bobbie feature). Empty / null = the agent draws from
+ * all KBs in the workspace; populated = restricted to those KBs.
+ * Stored on the conversation rather than the agent so a single
+ * agent can host multiple conversations with different KB scopes.
+ * Additive column — `CREATE TABLE IF NOT EXISTS` is idempotent on
+ * the column set; existing tables get this column added on next
+ * boot (same pattern as the JOBS_TABLE lease columns above).
  */
 export const CONVERSATIONS_TABLE = "wb_agentic_conversations_by_agent";
 export const CONVERSATIONS_DEFINITION = {
@@ -432,6 +441,7 @@ export const CONVERSATIONS_DEFINITION = {
 		conversation_id: "uuid",
 		created_at: "timestamp",
 		title: "text",
+		knowledge_base_ids: { type: "set", valueType: "uuid" },
 	},
 	primaryKey: {
 		partitionBy: ["workspace_id", "agent_id"],

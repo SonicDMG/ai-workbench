@@ -671,6 +671,11 @@ export function conversationToRow(r: ConversationRecord): ConversationRow {
 		conversation_id: r.conversationId,
 		created_at: r.createdAt,
 		title: r.title,
+		// `null` and the empty set both mean "no KB filter — draw from
+		// all KBs in the workspace." We send `null` to keep the wire
+		// representation compact; reads coalesce both back to `[]`.
+		knowledge_base_ids:
+			r.knowledgeBaseIds.length > 0 ? arrayToSet(r.knowledgeBaseIds) : null,
 	};
 }
 
@@ -681,6 +686,7 @@ export function conversationFromRow(row: ConversationRow): ConversationRecord {
 		conversationId: row.conversation_id,
 		createdAt: row.created_at,
 		title: row.title,
+		knowledgeBaseIds: setToSortedArray(row.knowledge_base_ids),
 	};
 }
 

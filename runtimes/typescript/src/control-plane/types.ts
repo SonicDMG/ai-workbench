@@ -393,6 +393,12 @@ export interface ConversationRecord {
 	readonly conversationId: string;
 	readonly createdAt: string;
 	readonly title: string | null;
+	/**
+	 * Per-conversation RAG-grounding set. Empty = the conversation's
+	 * agent draws from all KBs in the workspace; populated = restricted
+	 * to those KBs. Sorted for stable wire output and equality.
+	 */
+	readonly knowledgeBaseIds: readonly string[];
 }
 
 /** A single message in a conversation. */

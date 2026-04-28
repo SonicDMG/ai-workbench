@@ -274,6 +274,12 @@ export interface ConversationRow {
 	conversation_id: Uuid;
 	created_at: Iso;
 	title: string | null;
+	/**
+	 * Per-conversation RAG-grounding set. `null` or empty = the
+	 * conversation's agent draws from all KBs in the workspace.
+	 * Populated = restricted to those KBs.
+	 */
+	knowledge_base_ids: Set<Uuid> | null;
 }
 
 export interface MessageRow {

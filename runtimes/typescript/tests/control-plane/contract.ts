@@ -623,5 +623,293 @@ export function runContract(name: string, factory: ContractFactory): void {
 				await cleanup?.();
 			}
 		});
+
+		/* ---------------- Chat (workspace-scoped) ---------------- */
+
+		test("ensureBobbieAgent is idempotent and converges on one row", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const a1 = await store.ensureBobbieAgent(ws.uid);
+				const a2 = await store.ensureBobbieAgent(ws.uid);
+				expect(a1.agentId).toBe(a2.agentId);
+				expect(a1.workspaceId).toBe(ws.uid);
+				expect(a1.name).toBe("Bobbie");
+				expect(a1.systemPrompt).toContain("Bobbie");
+				expect(a1.ragEnabled).toBe(true);
+				expect(a1.knowledgeBaseIds).toEqual([]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("ensureBobbieAgent throws on unknown workspace", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				await expect(
+					store.ensureBobbieAgent("00000000-0000-0000-0000-000000000099"),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("createChat persists title + KB filter; listChats returns it", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const before = await store.listChats(ws.uid);
+				expect(before).toEqual([]);
+				const chat = await store.createChat(ws.uid, {
+					title: "First chat",
+					knowledgeBaseIds: ["kb-2", "kb-1", "kb-2"],
+				});
+				expect(chat.title).toBe("First chat");
+				// Sorted, deduped by the store contract.
+				expect(chat.knowledgeBaseIds).toEqual(["kb-1", "kb-2"]);
+				expect(chat.workspaceId).toBe(ws.uid);
+
+				const list = await store.listChats(ws.uid);
+				expect(list).toHaveLength(1);
+				expect(list[0]?.conversationId).toBe(chat.conversationId);
+
+				const fetched = await store.getChat(ws.uid, chat.conversationId);
+				expect(fetched).toEqual(chat);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("multiple chats per workspace coexist", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await store.createChat(ws.uid, { title: "A" });
+				await new Promise((r) => setTimeout(r, 5));
+				await store.createChat(ws.uid, { title: "B" });
+				const list = await store.listChats(ws.uid);
+				expect(list).toHaveLength(2);
+				// Newest-first matches the table cluster ordering.
+				expect(list[0]?.title).toBe("B");
+				expect(list[1]?.title).toBe("A");
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("updateChat patches title and knowledgeBaseIds independently", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const chat = await store.createChat(ws.uid, {
+					title: "old",
+					knowledgeBaseIds: ["kb-1"],
+				});
+				const renamed = await store.updateChat(ws.uid, chat.conversationId, {
+					title: "new",
+				});
+				expect(renamed.title).toBe("new");
+				expect(renamed.knowledgeBaseIds).toEqual(["kb-1"]);
+				const refiltered = await store.updateChat(ws.uid, chat.conversationId, {
+					knowledgeBaseIds: ["kb-1", "kb-2"],
+				});
+				expect(refiltered.title).toBe("new");
+				expect(refiltered.knowledgeBaseIds).toEqual(["kb-1", "kb-2"]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("appendChatMessage and listChatMessages round-trip", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const chat = await store.createChat(ws.uid, { title: "t" });
+				const u = await store.appendChatMessage(ws.uid, chat.conversationId, {
+					role: "user",
+					content: "hello",
+				});
+				await new Promise((r) => setTimeout(r, 5));
+				const a = await store.appendChatMessage(ws.uid, chat.conversationId, {
+					role: "agent",
+					content: "hi there",
+					metadata: {
+						context_document_ids: "doc-1,doc-2",
+						model: "test-model",
+						finish_reason: "stop",
+					},
+				});
+				const msgs = await store.listChatMessages(ws.uid, chat.conversationId);
+				expect(msgs).toHaveLength(2);
+				// Oldest-first matches the table cluster ordering.
+				expect(msgs[0]?.messageId).toBe(u.messageId);
+				expect(msgs[0]?.content).toBe("hello");
+				expect(msgs[1]?.messageId).toBe(a.messageId);
+				expect(msgs[1]?.metadata.finish_reason).toBe("stop");
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("updateChatMessage merges metadata key-by-key", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const chat = await store.createChat(ws.uid, { title: "t" });
+				const placeholder = await store.appendChatMessage(
+					ws.uid,
+					chat.conversationId,
+					{ role: "agent", content: "", metadata: { model: "test-model" } },
+				);
+				const finalized = await store.updateChatMessage(
+					ws.uid,
+					chat.conversationId,
+					placeholder.messageId,
+					{
+						content: "complete answer",
+						metadata: { finish_reason: "stop" },
+					},
+				);
+				expect(finalized.content).toBe("complete answer");
+				// Original key preserved, new key added.
+				expect(finalized.metadata).toEqual({
+					model: "test-model",
+					finish_reason: "stop",
+				});
+
+				// `undefined` values drop a metadata key.
+				const dropped = await store.updateChatMessage(
+					ws.uid,
+					chat.conversationId,
+					placeholder.messageId,
+					{ metadata: { model: undefined } },
+				);
+				expect(dropped.metadata).toEqual({ finish_reason: "stop" });
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("appendChatMessage / listChatMessages reject unknown chat", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await expect(
+					store.listChatMessages(
+						ws.uid,
+						"00000000-0000-0000-0000-0000000000ff",
+					),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+				await expect(
+					store.appendChatMessage(
+						ws.uid,
+						"00000000-0000-0000-0000-0000000000ff",
+						{ role: "user", content: "x" },
+					),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("createChat rejects duplicate explicit chatId", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const chatId = "00000000-0000-0000-0000-0000000000c1";
+				await store.createChat(ws.uid, { chatId });
+				await expect(
+					store.createChat(ws.uid, { chatId }),
+				).rejects.toBeInstanceOf(ControlPlaneConflictError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteChat cascades to its messages", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const chat = await store.createChat(ws.uid, { title: "t" });
+				await store.appendChatMessage(ws.uid, chat.conversationId, {
+					role: "user",
+					content: "hello",
+				});
+				const { deleted } = await store.deleteChat(ws.uid, chat.conversationId);
+				expect(deleted).toBe(true);
+				expect(await store.getChat(ws.uid, chat.conversationId)).toBeNull();
+				// Re-creating a chat with the same id starts clean.
+				await store.createChat(ws.uid, {
+					chatId: chat.conversationId,
+					title: "fresh",
+				});
+				const msgs = await store.listChatMessages(ws.uid, chat.conversationId);
+				expect(msgs).toEqual([]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteWorkspace cascades to chats and messages", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const chat = await store.createChat(ws.uid, { title: "t" });
+				await store.appendChatMessage(ws.uid, chat.conversationId, {
+					role: "user",
+					content: "hi",
+				});
+				await store.deleteWorkspace(ws.uid);
+
+				// Re-create the workspace with the same uid; chats should be
+				// gone, not visible from the previous incarnation.
+				const reborn = await store.createWorkspace({
+					uid: ws.uid,
+					name: "w",
+					kind: "mock",
+				});
+				const list = await store.listChats(reborn.uid);
+				expect(list).toEqual([]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteKnowledgeBase removes the kb id from chat KB filters", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				// Make real KBs so deleteKnowledgeBase can actually run.
+				const chunk = await store.createChunkingService(ws.uid, {
+					name: "c",
+					engine: "fixed",
+				});
+				const embed = await store.createEmbeddingService(ws.uid, {
+					name: "e",
+					provider: "fake",
+					modelName: "m",
+					embeddingDimension: 4,
+				});
+				const kbA = await store.createKnowledgeBase(ws.uid, {
+					name: "A",
+					chunkingServiceId: chunk.chunkingServiceId,
+					embeddingServiceId: embed.embeddingServiceId,
+				});
+				const kbB = await store.createKnowledgeBase(ws.uid, {
+					name: "B",
+					chunkingServiceId: chunk.chunkingServiceId,
+					embeddingServiceId: embed.embeddingServiceId,
+				});
+				const chat = await store.createChat(ws.uid, {
+					title: "t",
+					knowledgeBaseIds: [kbA.knowledgeBaseId, kbB.knowledgeBaseId],
+				});
+				await store.deleteKnowledgeBase(ws.uid, kbA.knowledgeBaseId);
+				const after = await store.getChat(ws.uid, chat.conversationId);
+				expect(after?.knowledgeBaseIds).toEqual([kbB.knowledgeBaseId]);
+			} finally {
+				await cleanup?.();
+			}
+		});
 	});
 }
