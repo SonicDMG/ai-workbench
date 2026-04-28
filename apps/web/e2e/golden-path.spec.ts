@@ -17,15 +17,18 @@ import { expect, test } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
 
-test("golden path: onboard → services → knowledge base → upsert → run query", async ({
-	page,
-	request,
-}) => {
-	// 1. Visit root. With no workspaces, redirects to /onboarding.
-	await page.goto("/");
-	await expect(page).toHaveURL(/\/onboarding/);
+test("golden path: onboard → services → knowledge base → upsert → run query", async (
+	{ page, request },
+	testInfo,
+) => {
+	const workspaceName = `e2e-golden-${testInfo.workerIndex}-${Date.now()}`;
+
+	// 1. Start the onboarding flow directly. Local runs may reuse an
+	//    already-running dev server with existing workspaces, so `/`
+	//    is not guaranteed to be a first-run redirect.
+	await page.goto("/onboarding");
 	await expect(
-		page.getByRole("heading", { name: /Manage AI-ready data at scale/ }),
+		page.getByRole("heading", { name: "Choose a backend" }),
 	).toBeVisible();
 
 	// 2. Pick Mock, then proceed to details.
@@ -36,13 +39,15 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	).toBeVisible();
 
 	// 3. Fill workspace details. Mock kind needs no credentials.
-	await page.getByLabel("Name").fill("e2e-golden");
+	await page.getByLabel("Name").fill(workspaceName);
 	await page.getByRole("button", { name: "Create workspace" }).click();
 
 	// 4. Land on workspace detail; capture UID for API calls.
 	await expect(page).toHaveURL(/\/workspaces\/[0-9a-f-]{36}/);
 	const workspaceUid = page.url().split("/").pop() as string;
-	await expect(page.getByRole("heading", { name: "e2e-golden" })).toBeVisible();
+	await expect(
+		page.getByRole("heading", { name: workspaceName }),
+	).toBeVisible();
 
 	// 5. Create the chunking + embedding services + knowledge base via
 	//    API. The UI flow for these is a multi-dialog walk that's
@@ -107,27 +112,21 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	);
 	expect(upsert.ok()).toBe(true);
 
-	// 7. Navigate to playground via a fresh load. We deliberately use
-	//    `page.goto` instead of clicking the nav link: the React Query
-	//    cache from WorkspaceDetailPage already populated
-	//    `useKnowledgeBases(workspaceUid)` with an empty list (the
-	//    services + KB were created via the `request` fixture, which is
-	//    invisible to the page). A SPA-style nav would read stale data;
-	//    a hard load remounts the cache.
-	await page.goto("/playground");
+	// 7. Navigate to the KB-scoped playground via a fresh load. We
+	//    deliberately use `page.goto` instead of clicking through the
+	//    UI: the services + KB were created via the `request` fixture,
+	//    which is invisible to the page's React Query cache until a
+	//    hard load remounts the route.
+	await page.goto(
+		`/workspaces/${workspaceUid}/knowledge-bases/${knowledgeBaseUid}/playground`,
+	);
 	await expect(page.getByRole("heading", { name: "Playground" })).toBeVisible();
 
-	// 8. Pick workspace + KB from the two Radix selects.
-	await page.getByLabel("Workspace").click();
-	await page.getByRole("option", { name: /e2e-golden/ }).click();
-	await page.getByLabel("Knowledge base").click();
-	await page.getByRole("option", { name: /kb/ }).click();
-
-	// 9. Switch to the Vector tab and paste a matching vector.
+	// 8. Switch to the Vector tab and paste a matching vector.
 	await page.getByRole("button", { name: "Vector", exact: true }).click();
 	await page.getByLabel(/Vector \(/).fill("[1, 0, 0, 0]");
 
-	// 10. Run the query — both rows visible.
+	// 9. Run the query — both rows visible.
 	await page.getByRole("button", { name: /Run query/ }).click();
 	await expect(page.getByText(/alpha/, { exact: false })).toBeVisible();
 	await expect(page.getByText(/bravo/, { exact: false })).toBeVisible();
