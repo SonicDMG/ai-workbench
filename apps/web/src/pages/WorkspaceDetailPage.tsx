@@ -1,4 +1,11 @@
-import { ArrowLeft, ExternalLink, Pencil, Trash2, X } from "lucide-react";
+import {
+	ArrowLeft,
+	ExternalLink,
+	MessageSquare,
+	Pencil,
+	Trash2,
+	X,
+} from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -79,6 +86,14 @@ export function WorkspaceDetailPage() {
 				<div className="flex shrink-0 flex-col items-end gap-2">
 					<div className="flex items-center gap-2">
 						{!editing ? <TestConnectionPanel uid={data.workspaceId} /> : null}
+						{!editing ? (
+							<Button variant="secondary" asChild>
+								<Link to={`/workspaces/${data.workspaceId}/chat`}>
+									<MessageSquare className="h-4 w-4" />
+									Chat with Bobbie
+								</Link>
+							</Button>
+						) : null}
 						{editing ? (
 							<Button variant="ghost" onClick={() => setEditing(false)}>
 								<X className="h-4 w-4" />
