@@ -8,6 +8,7 @@ import {
 } from "./auth/oidc/login/cookie.js";
 import { fetchOidcEndpoints } from "./auth/oidc/login/discovery.js";
 import { MemoryPendingLoginStore } from "./auth/oidc/login/pending.js";
+import { buildChatService } from "./chat/factory.js";
 import {
 	type AstraCliInfo,
 	loadAstraFromCli,
@@ -108,6 +109,19 @@ async function main(): Promise<void> {
 		`${process.env.HOSTNAME?.trim() || "wb"}-${randomUUID()
 			.replace(/-/g, "")
 			.slice(0, 8)}`;
+
+	const chatService = await buildChatService({
+		config: config.chat ?? null,
+		secrets,
+	});
+	if (chatService) {
+		logger.info({ model: chatService.modelId }, "chat service initialized");
+	} else {
+		logger.info(
+			"chat service not configured — POST /chats/{id}/messages will return 503 chat_disabled until a `chat` block is added to workbench.yaml",
+		);
+	}
+
 	const app = createApp({
 		store,
 		drivers,
@@ -119,6 +133,8 @@ async function main(): Promise<void> {
 		login,
 		readiness,
 		astraCli,
+		chatService,
+		chatConfig: config.chat ?? null,
 		requestIdHeader: config.runtime.requestIdHeader,
 		rateLimit: {
 			enabled: config.runtime.rateLimit.enabled,

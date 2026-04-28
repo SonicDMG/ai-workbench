@@ -290,6 +290,34 @@ const SeedWorkspaceSchema = z.object({
 	credentials: z.record(z.string(), SecretRef).optional(),
 });
 
+/**
+ * Chat-with-Bobbie configuration. When unset the chat surface still
+ * accepts user messages but answers with a `chat_disabled` response —
+ * the runtime stays usable for everything else.
+ *
+ * `tokenRef` resolves to the HuggingFace inference API token at
+ * request time; the resolver caches the result for the lifetime of
+ * the chat service. Default model is one of the most reliable hosted
+ * instruction-tuned chat models on the HF Inference API.
+ */
+const ChatSchema = z.object({
+	tokenRef: SecretRef,
+	model: z.string().min(1).default("mistralai/Mistral-7B-Instruct-v0.3"),
+	maxOutputTokens: z.number().int().positive().max(8_192).default(1_024),
+	/**
+	 * Top-K KB chunks to retrieve **per knowledge base** when assembling
+	 * the prompt. Multi-KB chats fan out and then merge by score; the
+	 * cap on total context lives in the chat service.
+	 */
+	retrievalK: z.number().int().positive().max(64).default(6),
+	/**
+	 * Override Bobbie's built-in persona. `null` keeps the default
+	 * (defined alongside the `bobbieAgentId` deterministic id in
+	 * control-plane/defaults.ts).
+	 */
+	systemPrompt: z.string().min(1).nullable().default(null),
+});
+
 export const ConfigSchema = z
 	.object({
 		version: z.literal(1),
@@ -297,6 +325,7 @@ export const ConfigSchema = z
 		controlPlane: ControlPlaneSchema.default({ driver: "memory" }),
 		auth: AuthSchema,
 		seedWorkspaces: z.array(SeedWorkspaceSchema).default([]),
+		chat: ChatSchema.optional(),
 	})
 	.superRefine((cfg, ctx) => {
 		if (cfg.runtime.environment === "production") {
@@ -380,6 +409,7 @@ export type AuthConfig = Config["auth"];
 export type OidcConfig = z.infer<typeof OidcSchema>;
 export type OidcClientConfig = z.infer<typeof OidcClientSchema>;
 export type SeedWorkspace = z.infer<typeof SeedWorkspaceSchema>;
+export type ChatConfig = z.infer<typeof ChatSchema>;
 
 // Lightweight alias to keep `Id` reachable for callers that want the
 // same validator applied elsewhere (e.g. request validation).

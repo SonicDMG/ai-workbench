@@ -145,18 +145,33 @@ describe("ChatPage", () => {
 		expect(screen.getByTestId("chat-empty-messages")).toBeInTheDocument();
 	});
 
-	it("renders message history and sends new messages", async () => {
+	it("renders message history and sends new messages with Bobbie's reply", async () => {
 		vi.mocked(api.getWorkspace).mockResolvedValue(workspace);
 		vi.mocked(api.listChats).mockResolvedValue([chatA]);
 		vi.mocked(api.getChat).mockResolvedValue(chatA);
 		vi.mocked(api.listChatMessages).mockResolvedValue([userMessage]);
-		const sentMessage: ChatMessage = {
+		const echoedUser: ChatMessage = {
 			...userMessage,
 			messageId: "44444444-5555-4666-8777-000000000002",
 			messageTs: "2026-04-22T10:11:13.000Z",
 			content: "another one",
 		};
-		vi.mocked(api.sendChatMessage).mockResolvedValue(sentMessage);
+		const bobbieReply: ChatMessage = {
+			...userMessage,
+			messageId: "44444444-5555-4666-8777-000000000003",
+			messageTs: "2026-04-22T10:11:14.000Z",
+			role: "agent",
+			content: "Here is what I think.",
+			metadata: {
+				model: "fake-test-model",
+				finish_reason: "stop",
+				context_document_ids: "chunk-1,chunk-2",
+			},
+		};
+		vi.mocked(api.sendChatMessage).mockResolvedValue({
+			user: echoedUser,
+			assistant: bobbieReply,
+		});
 
 		const user = userEvent.setup();
 		renderAt(`/workspaces/${workspace.workspaceId}/chat?id=${chatA.chatId}`);
@@ -164,8 +179,6 @@ describe("ChatPage", () => {
 		await waitFor(() =>
 			expect(screen.getByText("hello bobbie")).toBeInTheDocument(),
 		);
-		// Bobbie's "coming soon" reassurance is visible to set expectations.
-		expect(screen.getByTestId("bobbie-coming-soon")).toBeInTheDocument();
 
 		const composer = screen.getByRole("textbox", { name: /message/i });
 		await user.type(composer, "another one");
@@ -178,10 +191,44 @@ describe("ChatPage", () => {
 				{ content: "another one" },
 			);
 		});
-		// The optimistic update appends the new message to the list.
+		// Both the user echo and Bobbie's reply land in the cache.
 		await waitFor(() =>
 			expect(screen.getByText("another one")).toBeInTheDocument(),
 		);
+		expect(screen.getByText("Here is what I think.")).toBeInTheDocument();
+		// Source-citation disclosure renders the chunk IDs.
+		expect(screen.getByText(/2 sources/i)).toBeInTheDocument();
+	});
+
+	it("renders an error styling when Bobbie's reply has finish_reason=error", async () => {
+		vi.mocked(api.getWorkspace).mockResolvedValue(workspace);
+		vi.mocked(api.listChats).mockResolvedValue([chatA]);
+		vi.mocked(api.getChat).mockResolvedValue(chatA);
+		const erroredReply: ChatMessage = {
+			...userMessage,
+			messageId: "44444444-5555-4666-8777-000000000010",
+			messageTs: "2026-04-22T10:11:14.000Z",
+			role: "agent",
+			content: "HuggingFace inference failed: rate limit",
+			metadata: {
+				model: "fake",
+				finish_reason: "error",
+				error_message: "rate limit",
+			},
+		};
+		vi.mocked(api.listChatMessages).mockResolvedValue([
+			userMessage,
+			erroredReply,
+		]);
+
+		renderAt(`/workspaces/${workspace.workspaceId}/chat?id=${chatA.chatId}`);
+
+		await waitFor(() =>
+			expect(
+				screen.getByText(/HuggingFace inference failed/),
+			).toBeInTheDocument(),
+		);
+		expect(screen.getByTestId("bobbie-error")).toBeInTheDocument();
 	});
 
 	it("creates a chat from the empty pane and selects it", async () => {

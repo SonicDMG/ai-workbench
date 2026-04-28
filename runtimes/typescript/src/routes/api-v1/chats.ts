@@ -21,28 +21,50 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { assertWorkspaceAccess } from "../../auth/authz.js";
+import { assemblePrompt } from "../../chat/prompt.js";
+import { retrieveContext } from "../../chat/retrieval.js";
+import type { ChatService } from "../../chat/types.js";
+import type { ChatConfig } from "../../config/schema.js";
+import {
+	BOBBIE_SYSTEM_PROMPT,
+	bobbieAgentId,
+} from "../../control-plane/defaults.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type {
 	ConversationRecord,
 	MessageRecord,
 } from "../../control-plane/types.js";
+import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
+import type { EmbedderFactory } from "../../embeddings/factory.js";
+import { ApiError } from "../../lib/errors.js";
+import { logger } from "../../lib/logger.js";
 import { makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	ChatIdParamSchema,
 	ChatMessagePageSchema,
-	ChatMessageRecordSchema,
 	ChatPageSchema,
 	ChatRecordSchema,
 	CreateChatInputSchema,
 	ErrorEnvelopeSchema,
 	PaginationQuerySchema,
 	SendChatMessageInputSchema,
+	SendChatMessageResponseSchema,
 	UpdateChatInputSchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
+
+export interface ChatRouteDeps {
+	readonly store: ControlPlaneStore;
+	readonly drivers: VectorStoreDriverRegistry;
+	readonly embedders: EmbedderFactory;
+	/** `null` when the runtime was booted without a `chat` config block. */
+	readonly chatService: ChatService | null;
+	/** Mirrors the runtime config; controls retrieval / persona behavior. */
+	readonly chatConfig: ChatConfig | null;
+}
 
 interface ChatWire {
 	workspaceId: string;
@@ -91,7 +113,8 @@ function toChatMessageWire(record: MessageRecord): ChatMessageWire {
 	};
 }
 
-export function chatRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
+export function chatRoutes(deps: ChatRouteDeps): OpenAPIHono<AppEnv> {
+	const { store, drivers, embedders, chatService, chatConfig } = deps;
 	const app = makeOpenApi();
 
 	app.openapi(
@@ -306,9 +329,9 @@ export function chatRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 			method: "post",
 			path: "/{workspaceId}/chats/{chatId}/messages",
 			tags: ["chats"],
-			summary: "Send a user message",
+			summary: "Send a user message and get Bobbie's reply",
 			description:
-				"Persists a user turn and echoes it back. v0 does not run the model — Bobbie's reply will land in a follow-up phase that wires HuggingFace + SSE streaming.",
+				"Persists the user turn, retrieves grounding context from the conversation's knowledge bases, calls the configured chat-completion model, and persists the assistant turn. Returns both messages so the UI can replace any optimistic stub. Phase 5 will convert this to a token-by-token SSE stream.",
 			request: {
 				params: z.object({
 					workspaceId: WorkspaceIdParamSchema,
@@ -323,27 +346,137 @@ export function chatRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 			responses: {
 				201: {
 					content: {
-						"application/json": { schema: ChatMessageRecordSchema },
+						"application/json": { schema: SendChatMessageResponseSchema },
 					},
-					description: "User message persisted",
+					description: "User and assistant messages persisted",
 				},
 				404: {
 					content: { "application/json": { schema: ErrorEnvelopeSchema } },
 					description: "Workspace or chat not found",
+				},
+				503: {
+					content: { "application/json": { schema: ErrorEnvelopeSchema } },
+					description:
+						"Chat is not configured on this runtime (no `chat` block in workbench.yaml).",
 				},
 			},
 		}),
 		async (c) => {
 			const { workspaceId, chatId } = c.req.valid("param");
 			assertWorkspaceAccess(c, workspaceId);
+			if (!chatService || !chatConfig) {
+				throw new ApiError(
+					"chat_disabled",
+					"chat is not configured on this runtime; set the `chat` block in workbench.yaml",
+					503,
+				);
+			}
 			const body = c.req.valid("json");
-			const record = await store.appendChatMessage(workspaceId, chatId, {
+
+			// Resolve the conversation up front so retrieval and history
+			// pulls share the same view; also surfaces a clean 404 if the
+			// chat doesn't exist before we spend retrieval cycles.
+			const chat = await store.getChat(workspaceId, chatId);
+			if (!chat) {
+				throw new ControlPlaneNotFoundError("chat", chatId);
+			}
+
+			// 1) Persist the user turn.
+			const userRecord = await store.appendChatMessage(workspaceId, chatId, {
 				role: "user",
 				content: body.content,
 			});
-			return c.json(toChatMessageWire(record), 201);
+
+			// 2) Retrieve grounding context. Failures inside individual
+			// KBs are swallowed by retrieveContext (logged + skipped), so
+			// at worst Bobbie answers without grounding.
+			const chunks = await retrieveContext(
+				{ store, drivers, embedders, logger },
+				{
+					workspaceId,
+					knowledgeBaseIds: chat.knowledgeBaseIds,
+					query: body.content,
+					retrievalK: chatConfig.retrievalK,
+				},
+			);
+
+			// 3) Build the model-facing prompt from history + new turn.
+			const history = await store.listChatMessages(workspaceId, chatId);
+			// Filter out the just-appended user turn so the prompt-
+			// assembler doesn't double-count it (history.userTurn is
+			// still passed separately as the new user role at the end).
+			const priorHistory = history.filter(
+				(m) => m.messageId !== userRecord.messageId,
+			);
+			const prompt = assemblePrompt({
+				systemPrompt: chatConfig.systemPrompt ?? BOBBIE_SYSTEM_PROMPT,
+				chunks,
+				history: priorHistory,
+				userTurn: body.content,
+			});
+
+			// 4) Call the model. The service is responsible for converting
+			// transport errors into a `finishReason: "error"` outcome —
+			// we don't try/catch here because we still want to persist the
+			// failure as an assistant row.
+			const completion = await chatService.complete({ messages: prompt });
+
+			// 5) Persist the assistant turn with provenance. Force its
+			// `messageTs` strictly after the user's so the cluster-key
+			// ordering is unambiguous — the column has ms resolution
+			// and a fast model can finish within the same millisecond
+			// the user was stamped, which would otherwise leave the
+			// turn order to a random-UUID tiebreaker.
+			const userTs = Date.parse(userRecord.messageTs);
+			const assistantTs = new Date(
+				Math.max(userTs + 1, Date.now()),
+			).toISOString();
+			const assistantRecord = await store.appendChatMessage(
+				workspaceId,
+				chatId,
+				{
+					role: "agent",
+					authorId: bobbieAgentId(workspaceId),
+					messageTs: assistantTs,
+					content:
+						completion.finishReason === "error"
+							? (completion.errorMessage ?? "Bobbie couldn't answer this turn.")
+							: completion.content,
+					tokenCount: completion.tokenCount,
+					metadata: buildMetadata(chunks, chatService.modelId, completion),
+				},
+			);
+
+			return c.json(
+				{
+					user: toChatMessageWire(userRecord),
+					assistant: toChatMessageWire(assistantRecord),
+				},
+				201,
+			);
 		},
 	);
 
 	return app;
+}
+
+function buildMetadata(
+	chunks: readonly { chunkId: string }[],
+	model: string,
+	completion: {
+		finishReason: "stop" | "length" | "error";
+		errorMessage: string | null;
+	},
+): Record<string, string> {
+	const metadata: Record<string, string> = {
+		model,
+		finish_reason: completion.finishReason,
+	};
+	if (chunks.length > 0) {
+		metadata.context_document_ids = chunks.map((c) => c.chunkId).join(",");
+	}
+	if (completion.errorMessage) {
+		metadata.error_message = completion.errorMessage;
+	}
+	return metadata;
 }

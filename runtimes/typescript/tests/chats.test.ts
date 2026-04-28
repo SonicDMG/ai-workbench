@@ -12,11 +12,17 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.js";
 import { AuthResolver } from "../src/auth/resolver.js";
+import type { ChatService } from "../src/chat/types.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
 import { SecretResolver } from "../src/secrets/provider.js";
+import {
+	type FakeChatService,
+	makeFakeChatService,
+	TEST_CHAT_CONFIG,
+} from "./helpers/chat.js";
 import { makeFakeEmbedderFactory } from "./helpers/embedder.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: test helper returns untyped JSON
@@ -25,7 +31,14 @@ async function json(res: Response): Promise<any> {
 	return (await res.json()) as any;
 }
 
-function makeApp() {
+interface MakeAppOptions {
+	readonly chatService?: ChatService | null;
+}
+
+function makeApp(opts: MakeAppOptions = {}): {
+	app: ReturnType<typeof createApp>;
+	chatService: FakeChatService | null;
+} {
 	const store = new MemoryControlPlaneStore();
 	const driver = new MockVectorStoreDriver();
 	const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
@@ -36,12 +49,31 @@ function makeApp() {
 		verifiers: [],
 	});
 	const embedders = makeFakeEmbedderFactory();
-	return createApp({ store, drivers, secrets, auth, embedders });
+	// Default to a fake chat service so message-sending tests work. Tests
+	// that want to exercise the chat_disabled path pass `chatService: null`.
+	const fake =
+		opts.chatService === null
+			? null
+			: ((opts.chatService as FakeChatService | undefined) ??
+				makeFakeChatService());
+	const app = createApp({
+		store,
+		drivers,
+		secrets,
+		auth,
+		embedders,
+		chatService: fake,
+		chatConfig: fake ? TEST_CHAT_CONFIG : null,
+	});
+	return {
+		app,
+		chatService: (fake as FakeChatService | null) ?? null,
+	};
 }
 
-async function createWorkspace(
-	app: ReturnType<typeof makeApp>,
-): Promise<string> {
+type AppHandle = ReturnType<typeof makeApp>["app"];
+
+async function createWorkspace(app: AppHandle): Promise<string> {
 	const res = await app.request("/api/v1/workspaces", {
 		method: "POST",
 		headers: { "content-type": "application/json" },
@@ -52,7 +84,7 @@ async function createWorkspace(
 }
 
 async function createChat(
-	app: ReturnType<typeof makeApp>,
+	app: AppHandle,
 	workspaceId: string,
 	body: Record<string, unknown> = {},
 ): Promise<string> {
@@ -67,7 +99,7 @@ async function createChat(
 
 describe("chat routes", () => {
 	test("POST creates a chat; GET list returns it; GET detail echoes", async () => {
-		const app = makeApp();
+		const { app } = makeApp();
 		const ws = await createWorkspace(app);
 
 		const created = await app.request(`/api/v1/workspaces/${ws}/chats`, {
@@ -108,7 +140,7 @@ describe("chat routes", () => {
 	});
 
 	test("creating with explicit chatId is idempotent on the wire (409 on duplicate)", async () => {
-		const app = makeApp();
+		const { app } = makeApp();
 		const ws = await createWorkspace(app);
 		const chatId = randomUUID();
 		const ok = await app.request(`/api/v1/workspaces/${ws}/chats`, {
@@ -128,7 +160,7 @@ describe("chat routes", () => {
 	});
 
 	test("PATCH updates title and KB filter independently", async () => {
-		const app = makeApp();
+		const { app } = makeApp();
 		const ws = await createWorkspace(app);
 		const chatId = await createChat(app, ws, {
 			title: "old",
@@ -173,7 +205,7 @@ describe("chat routes", () => {
 	});
 
 	test("DELETE drops chat + cascades messages", async () => {
-		const app = makeApp();
+		const { app } = makeApp();
 		const ws = await createWorkspace(app);
 		const chatId = await createChat(app, ws, { title: "t" });
 
@@ -210,7 +242,7 @@ describe("chat routes", () => {
 	});
 
 	test("404s on unknown workspace / chat", async () => {
-		const app = makeApp();
+		const { app } = makeApp();
 		const ws = await createWorkspace(app);
 		const ghost = "99999999-9999-4999-8999-999999999999";
 
@@ -233,8 +265,8 @@ describe("chat routes", () => {
 		expect(noChatPatch.status).toBe(404);
 	});
 
-	test("POST /messages persists a user turn; GET returns history oldest-first", async () => {
-		const app = makeApp();
+	test("POST /messages persists user + assistant turns; history is oldest-first", async () => {
+		const { app } = makeApp();
 		const ws = await createWorkspace(app);
 		const chatId = await createChat(app, ws, { title: "t" });
 
@@ -247,11 +279,16 @@ describe("chat routes", () => {
 			},
 		);
 		expect(send1.status).toBe(201);
-		const m1 = await json(send1);
-		expect(m1.role).toBe("user");
-		expect(m1.content).toBe("first");
-		expect(m1.chatId).toBe(chatId);
-		expect(typeof m1.messageId).toBe("string");
+		const r1 = await json(send1);
+		expect(r1.user.role).toBe("user");
+		expect(r1.user.content).toBe("first");
+		expect(r1.user.chatId).toBe(chatId);
+		expect(typeof r1.user.messageId).toBe("string");
+		// Assistant turn from the fake chat service: deterministic echo.
+		expect(r1.assistant.role).toBe("agent");
+		expect(r1.assistant.content).toBe("echo: first");
+		expect(r1.assistant.metadata.model).toBe("fake-test-model");
+		expect(r1.assistant.metadata.finish_reason).toBe("stop");
 
 		await new Promise((r) => setTimeout(r, 5));
 		const send2 = await app.request(
@@ -268,15 +305,27 @@ describe("chat routes", () => {
 			`/api/v1/workspaces/${ws}/chats/${chatId}/messages`,
 		);
 		expect(list.status).toBe(200);
-		const items = (await json(list)).items as Array<{ content: string }>;
-		expect(items).toHaveLength(2);
-		// Oldest-first per the table cluster ordering.
-		expect(items[0]?.content).toBe("first");
-		expect(items[1]?.content).toBe("second");
+		const items = (await json(list)).items as Array<{
+			role: string;
+			content: string;
+		}>;
+		// Two user turns + two assistant turns. Ordering inside the
+		// same millisecond is non-deterministic (cluster-key timestamps
+		// have ms resolution, tied entries fall back to UUID
+		// comparison), so we assert on the multiset rather than the
+		// exact sequence.
+		expect(items).toHaveLength(4);
+		const sigs = items.map((m) => `${m.role}:${m.content}`).sort();
+		expect(sigs).toEqual([
+			"agent:echo: first",
+			"agent:echo: second",
+			"user:first",
+			"user:second",
+		]);
 	});
 
 	test("POST /messages rejects an empty body", async () => {
-		const app = makeApp();
+		const { app } = makeApp();
 		const ws = await createWorkspace(app);
 		const chatId = await createChat(app, ws, { title: "t" });
 
@@ -292,8 +341,93 @@ describe("chat routes", () => {
 		expect(res.status).toBe(400);
 	});
 
+	test("POST /messages returns 503 chat_disabled when no chat service is configured", async () => {
+		const { app } = makeApp({ chatService: null });
+		const ws = await createWorkspace(app);
+		const chatId = await createChat(app, ws, { title: "t" });
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/chats/${chatId}/messages`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ content: "hi" }),
+			},
+		);
+		expect(res.status).toBe(503);
+		const eBody = await json(res);
+		expect(eBody.error.code).toBe("chat_disabled");
+	});
+
+	test("POST /messages forwards history + user turn to the chat service", async () => {
+		const fake = makeFakeChatService();
+		const { app } = makeApp({ chatService: fake });
+		const ws = await createWorkspace(app);
+		const chatId = await createChat(app, ws, { title: "t" });
+
+		await app.request(`/api/v1/workspaces/${ws}/chats/${chatId}/messages`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ content: "first" }),
+		});
+		await new Promise((r) => setTimeout(r, 5));
+		await app.request(`/api/v1/workspaces/${ws}/chats/${chatId}/messages`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ content: "second" }),
+		});
+
+		// The fake records every call. The first call sees no prior
+		// history; the second sees the first user+assistant turns.
+		expect(fake.calls).toHaveLength(2);
+		const first = fake.calls[0];
+		if (!first) throw new Error("missing first call");
+		expect(first.messages[0]?.role).toBe("system");
+		expect(first.messages[first.messages.length - 1]?.content).toBe("first");
+
+		const second = fake.calls[1];
+		if (!second) throw new Error("missing second call");
+		const roles = second.messages.map((m) => m.role);
+		expect(roles[0]).toBe("system");
+		// system + user(first) + assistant(echo: first) + user(second)
+		expect(roles).toEqual(["system", "user", "assistant", "user"]);
+		expect(second.messages[1]?.content).toBe("first");
+		expect(second.messages[2]?.content).toBe("echo: first");
+		expect(second.messages[second.messages.length - 1]?.content).toBe("second");
+	});
+
+	test("POST /messages persists an error assistant turn when the model fails", async () => {
+		const fake = makeFakeChatService({
+			reply: () => ({
+				content: "",
+				finishReason: "error",
+				tokenCount: null,
+				errorMessage: "simulated provider failure",
+			}),
+		});
+		const { app } = makeApp({ chatService: fake });
+		const ws = await createWorkspace(app);
+		const chatId = await createChat(app, ws, { title: "t" });
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/chats/${chatId}/messages`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ content: "hello" }),
+			},
+		);
+		expect(res.status).toBe(201);
+		const body = await json(res);
+		expect(body.assistant.metadata.finish_reason).toBe("error");
+		expect(body.assistant.metadata.error_message).toBe(
+			"simulated provider failure",
+		);
+		// Body falls back to the error message so the user sees something.
+		expect(body.assistant.content).toContain("simulated provider failure");
+	});
+
 	test("auth scope: scoped subject can't read another workspace's chats", async () => {
-		const app = makeApp();
+		const { app } = makeApp();
 		const wsA = await createWorkspace(app);
 		const wsB = await createWorkspace(app);
 		const chatId = await createChat(app, wsA, { title: "secret" });

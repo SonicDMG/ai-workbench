@@ -31,3 +31,16 @@ controlPlane:
 # seedWorkspaces:
 #   - name: demo
 #     kind: mock
+
+# Optional — wires up the chat-with-Bobbie surface. Set
+# HUGGINGFACE_API_KEY in your .env (https://huggingface.co/settings/tokens)
+# and uncomment the block below. Without `chat`, POST .../messages
+# returns 503 chat_disabled (the rest of the runtime works fine).
+#
+# chat:
+#   tokenRef: env:HUGGINGFACE_API_KEY
+#   model: mistralai/Mistral-7B-Instruct-v0.3
+#   maxOutputTokens: 1024
+#   retrievalK: 6
+#   # Override Bobbie's persona (null = built-in default):
+#   # systemPrompt: null

@@ -397,7 +397,7 @@ function ChatThread({ workspaceUid, chatId, onDeleted }: ChatThreadProps) {
 							{messagesQuery.data?.map((m) => (
 								<MessageBubble key={m.messageId} message={m} />
 							))}
-							<BobbieComingSoon />
+							{send.isPending ? <BobbieThinking /> : null}
 						</ul>
 					)}
 				</div>
@@ -453,9 +453,9 @@ function EmptyMessages() {
 			</div>
 			<p className="text-sm text-slate-700">No messages yet — say hi!</p>
 			<p className="text-xs text-slate-500 max-w-sm">
-				Bobbie's reply will arrive in a follow-up release once the HuggingFace
-				integration ships. Your messages persist now so the conversation will
-				pick up where you left off.
+				Bobbie answers grounded in this workspace's knowledge bases. Replies
+				arrive after the model finishes generating; phase 5 will stream them
+				token by token.
 			</p>
 		</div>
 	);
@@ -463,6 +463,8 @@ function EmptyMessages() {
 
 function MessageBubble({ message }: { message: ChatMessage }) {
 	const isUser = message.role === "user";
+	const isError = message.metadata.finish_reason === "error";
+	const sources = parseSources(message.metadata.context_document_ids);
 	return (
 		<li
 			className={cn(
@@ -481,23 +483,48 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 					"max-w-[80%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm",
 					isUser
 						? "bg-[var(--color-brand-600)] text-white"
-						: "bg-slate-100 text-slate-900",
+						: isError
+							? "border border-red-200 bg-red-50 text-red-900"
+							: "bg-slate-100 text-slate-900",
 				)}
+				data-testid={isError ? "bobbie-error" : undefined}
 			>
 				{message.content ?? ""}
 			</div>
+			{!isUser && sources.length > 0 ? (
+				<details className="self-start text-xs text-slate-500">
+					<summary className="cursor-pointer hover:text-slate-700">
+						{sources.length} source{sources.length === 1 ? "" : "s"}
+					</summary>
+					<ul className="mt-1 flex flex-col gap-0.5 pl-2">
+						{sources.map((id) => (
+							<li key={id} className="font-mono text-[11px] text-slate-400">
+								{id}
+							</li>
+						))}
+					</ul>
+				</details>
+			) : null}
 		</li>
 	);
 }
 
-function BobbieComingSoon() {
+function BobbieThinking() {
 	return (
 		<li
-			className="flex items-center gap-2 self-start rounded-md bg-amber-50 px-3 py-1.5 text-xs text-amber-800"
-			data-testid="bobbie-coming-soon"
+			className="flex items-center gap-2 self-start rounded-md bg-slate-100 px-3 py-1.5 text-xs text-slate-600"
+			data-testid="bobbie-thinking"
 		>
-			<Sparkles className="h-3 w-3" aria-hidden="true" />
-			Bobbie's reply is on the way — connecting the model in the next release.
+			<Sparkles className="h-3 w-3 animate-pulse" aria-hidden="true" />
+			Bobbie is thinking…
 		</li>
 	);
+}
+
+function parseSources(value: string | undefined): readonly string[] {
+	if (!value) return [];
+	return value
+		.split(",")
+		.map((id) => id.trim())
+		.filter((id) => id.length > 0);
 }
