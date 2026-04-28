@@ -8,6 +8,7 @@ import {
 } from "./auth/oidc/login/cookie.js";
 import { fetchOidcEndpoints } from "./auth/oidc/login/discovery.js";
 import { MemoryPendingLoginStore } from "./auth/oidc/login/pending.js";
+import { loadAstraFromCli } from "./config/astra-cli.js";
 import { loadDotEnv } from "./config/env-file.js";
 import { loadConfig, resolveConfigPath } from "./config/loader.js";
 import type { AuthConfig } from "./config/schema.js";
@@ -30,6 +31,28 @@ async function main(): Promise<void> {
 		logger.info(
 			{ envFile: envFile.path, source: envFile.source },
 			"loaded env file",
+		);
+	}
+
+	// Optionally fill in ASTRA_DB_API_ENDPOINT / ASTRA_DB_APPLICATION_TOKEN
+	// from the developer's astra-cli profile when those env vars aren't
+	// already set. No-op when the CLI isn't installed or both variables
+	// are already present.
+	const astraCli = await loadAstraFromCli({
+		logger: {
+			info: (msg, fields) => logger.info(fields ?? {}, msg),
+			warn: (msg, fields) => logger.warn(fields ?? {}, msg),
+			debug: (msg, fields) => logger.debug(fields ?? {}, msg),
+		},
+	});
+	if (astraCli.status === "loaded") {
+		logger.info(
+			{
+				profile: astraCli.profile,
+				database: astraCli.database.name,
+				region: astraCli.database.region,
+			},
+			"astra-cli credentials applied",
 		);
 	}
 
