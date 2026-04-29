@@ -45,6 +45,10 @@ contract first, then the runtime architecture behind them.
 - [`cross-replica-jobs.md`](cross-replica-jobs.md) — shipped design
   for cross-replica job pub/sub, lease reclaim, and in-flight ingest
   resume.
+- [`route-plugins.md`](route-plugins.md) — proposed in-runtime plugin
+  registry so adding a new resource module never edits `app.ts`.
+  Scaffold (interface + registry + tests) shipped; route migrations
+  follow.
 - [`astra-cli.md`](astra-cli.md) — optional integration that
   auto-fills `ASTRA_DB_APPLICATION_TOKEN` / `ASTRA_DB_API_ENDPOINT`
   from a configured DataStax `astra` CLI profile at startup.

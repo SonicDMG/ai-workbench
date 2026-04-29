@@ -190,6 +190,7 @@ phases.
 | [`docs/astra-cli.md`](docs/astra-cli.md) | astra-cli auto-detection of Astra credentials at runtime startup |
 | [`docs/conformance.md`](docs/conformance.md) | Cross-runtime contract testing |
 | [`docs/cross-replica-jobs.md`](docs/cross-replica-jobs.md) | Design note for cross-replica job pub/sub + in-flight resume (proposed) |
+| [`docs/route-plugins.md`](docs/route-plugins.md) | Design note for the in-runtime route-plugin registry (scaffold shipped) |
 | [`docs/roadmap.md`](docs/roadmap.md) | Phased delivery plan and open questions |
 | [`docs/examples/workbench.yaml`](docs/examples/workbench.yaml) | Annotated sample config |
 | [`apps/web/README.md`](apps/web/README.md) | Web UI quickstart, bundle layout, test commands |
