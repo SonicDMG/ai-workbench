@@ -5,13 +5,13 @@ import { AstraCliDetectionCard } from "./AstraCliDetectionCard";
 
 const detected: AstraCliInfo = {
 	detected: true,
-	profile: "Eric Hare",
+	profile: "workbench-dev",
 	database: {
-		id: "c933e7fc-4996-4dcd-bb87-4f282fe1e7ef",
+		id: "00000000-0000-0000-0000-000000000000",
 		name: "mydb",
 		region: "us-east-2",
 		endpoint:
-			"https://c933e7fc-4996-4dcd-bb87-4f282fe1e7ef-us-east-2.apps.astra.datastax.com",
+			"https://00000000-0000-0000-0000-000000000000-us-east-2.apps.astra.datastax.com",
 		keyspace: "default_keyspace",
 	},
 };
@@ -21,12 +21,12 @@ describe("AstraCliDetectionCard", () => {
 		render(<AstraCliDetectionCard info={detected} />);
 		expect(screen.getByTestId("astra-cli-detection-card")).toBeInTheDocument();
 		expect(screen.getByText(/Astra CLI profile detected/i)).toBeInTheDocument();
-		expect(screen.getByText(/"Eric Hare"/)).toBeInTheDocument();
+		expect(screen.getByText(/"workbench-dev"/)).toBeInTheDocument();
 		expect(screen.getByText("mydb")).toBeInTheDocument();
 		expect(screen.getByText("us-east-2")).toBeInTheDocument();
 		expect(
 			screen.getByText(
-				"https://c933e7fc-4996-4dcd-bb87-4f282fe1e7ef-us-east-2.apps.astra.datastax.com",
+				"https://00000000-0000-0000-0000-000000000000-us-east-2.apps.astra.datastax.com",
 			),
 		).toBeInTheDocument();
 		expect(screen.getByText("default_keyspace")).toBeInTheDocument();

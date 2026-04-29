@@ -61,12 +61,12 @@ export const VersionSchema = z
  */
 export const AstraCliDatabaseInfoSchema = z
 	.object({
-		id: z.string().openapi({ example: "c933e7fc-4996-4dcd-bb87-4f282fe1e7ef" }),
+		id: z.string().openapi({ example: "00000000-0000-0000-0000-000000000000" }),
 		name: z.string().openapi({ example: "mydb" }),
 		region: z.string().openapi({ example: "us-east-2" }),
 		endpoint: z.string().url().openapi({
 			example:
-				"https://c933e7fc-4996-4dcd-bb87-4f282fe1e7ef-us-east-2.apps.astra.datastax.com",
+				"https://00000000-0000-0000-0000-000000000000-us-east-2.apps.astra.datastax.com",
 		}),
 		keyspace: z.string().nullable().openapi({ example: "default_keyspace" }),
 	})
@@ -76,7 +76,7 @@ export const AstraCliInfoSchema = z
 	.discriminatedUnion("detected", [
 		z.object({
 			detected: z.literal(true),
-			profile: z.string().openapi({ example: "Eric Hare" }),
+			profile: z.string().openapi({ example: "workbench-dev" }),
 			database: AstraCliDatabaseInfoSchema,
 		}),
 		z.object({

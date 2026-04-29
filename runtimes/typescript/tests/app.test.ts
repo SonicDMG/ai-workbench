@@ -116,7 +116,7 @@ describe("operational routes", () => {
 			embedders,
 			astraCli: {
 				detected: true,
-				profile: "Eric Hare",
+				profile: "workbench-dev",
 				database: {
 					id: "db-uuid-1",
 					name: "mydb",
@@ -131,7 +131,7 @@ describe("operational routes", () => {
 		const body = await json(res);
 		expect(body).toEqual({
 			detected: true,
-			profile: "Eric Hare",
+			profile: "workbench-dev",
 			database: {
 				id: "db-uuid-1",
 				name: "mydb",
