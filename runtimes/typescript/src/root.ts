@@ -129,6 +129,7 @@ async function main(): Promise<void> {
 		secrets,
 		auth,
 		embedders,
+		environment: config.runtime.environment,
 		jobs,
 		ui,
 		login,

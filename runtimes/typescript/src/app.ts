@@ -98,6 +98,13 @@ export interface AppOptions {
 	readonly secrets: SecretResolver;
 	readonly auth: AuthResolver;
 	readonly embedders: EmbedderFactory;
+	/**
+	 * Mirrors `runtime.environment` from `workbench.yaml`. Drives
+	 * production-only browser hardening — currently the
+	 * `Strict-Transport-Security` header. Defaults to `"development"`
+	 * so tests get the dev posture out of the box.
+	 */
+	readonly environment?: "development" | "production";
 	/** Optional — a {@link MemoryJobStore} is constructed if absent. */
 	readonly jobs?: JobStore;
 	readonly ui?: UiAssets | null;
@@ -178,15 +185,20 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const replicaId = opts.replicaId ?? generateReplicaId();
 
 	app.use("*", requestId(opts.requestIdHeader));
+	// HSTS is a deployment posture, not a default: only emit it when the
+	// operator has declared this is a production runtime. Plaintext-HTTP
+	// dev servers don't benefit, and stale HSTS pins are painful to
+	// recover from.
+	const hsts = opts.environment === "production";
 	// Loosen the CSP for the Scalar `/docs` page only — see
 	// `lib/security-headers.ts` for the rationale (Scalar emits an
 	// inline bootstrap script and loads its bundle from a pinned CDN).
 	// Register BEFORE the wildcard default so the docs middleware
 	// is the outer wrapper: Hono runs post-`next()` writes outer→last,
 	// so the outer handler's `c.header(...)` wins on overlapping paths.
-	app.use("/docs", securityHeaders({ scope: "docs" }));
-	app.use("/docs/*", securityHeaders({ scope: "docs" }));
-	app.use("*", securityHeaders());
+	app.use("/docs", securityHeaders({ scope: "docs", hsts }));
+	app.use("/docs/*", securityHeaders({ scope: "docs", hsts }));
+	app.use("*", securityHeaders({ hsts }));
 
 	const rateLimitCfg = opts.rateLimit;
 	const rateLimitEnabled = rateLimitCfg?.enabled !== false;

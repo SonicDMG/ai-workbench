@@ -186,6 +186,7 @@ describe("operational routes", () => {
 		expect(res.headers.get("Referrer-Policy")).toBe(
 			"strict-origin-when-cross-origin",
 		);
+		expect(res.headers.get("Cross-Origin-Opener-Policy")).toBe("same-origin");
 		const csp = res.headers.get("Content-Security-Policy") ?? "";
 		expect(csp).toContain("frame-ancestors 'none'");
 		// The default CSP must NOT permit jsdelivr or `unsafe-inline`
@@ -195,7 +196,69 @@ describe("operational routes", () => {
 		// Google Fonts is whitelisted for the SPA shell.
 		expect(csp).toContain("https://fonts.googleapis.com");
 		expect(csp).toContain("https://fonts.gstatic.com");
-		expect(res.headers.get("Permissions-Policy")).toContain("camera=()");
+		const permissionsPolicy = res.headers.get("Permissions-Policy") ?? "";
+		// Each opt-out must be the empty allowlist `()` so embedders /
+		// browsers can't enable these surfaces by default.
+		for (const directive of [
+			"camera=()",
+			"geolocation=()",
+			"microphone=()",
+			"payment=()",
+			"usb=()",
+		]) {
+			expect(permissionsPolicy).toContain(directive);
+		}
+	});
+
+	test("development builds do NOT emit Strict-Transport-Security", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/healthz");
+		// Plaintext-HTTP dev servers shouldn't pin browsers to HTTPS.
+		expect(res.headers.get("Strict-Transport-Security")).toBeNull();
+	});
+
+	test("production builds emit Strict-Transport-Security with includeSubDomains", async () => {
+		const store = new MemoryControlPlaneStore();
+		const drivers = new VectorStoreDriverRegistry(
+			new Map([["mock", new MockVectorStoreDriver()]]),
+		);
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const auth = new AuthResolver({
+			mode: "disabled",
+			anonymousPolicy: "allow",
+			verifiers: [],
+		});
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory(),
+			environment: "production",
+		});
+		const res = await app.request("/healthz");
+		const hsts = res.headers.get("Strict-Transport-Security") ?? "";
+		expect(hsts).toMatch(/max-age=\d+/);
+		expect(hsts).toContain("includeSubDomains");
+		// `preload` is intentionally omitted — that's a deployment-side
+		// commitment to the HSTS preload list, not a runtime default.
+		expect(hsts).not.toContain("preload");
+
+		// HSTS must apply to the relaxed `/docs` posture too — the
+		// loosened CSP doesn't excuse that response from transport
+		// hardening.
+		const docsRes = await app.request("/docs");
+		expect(docsRes.headers.get("Strict-Transport-Security")).toBe(hsts);
+	});
+
+	test("responses do NOT advertise Access-Control-Allow-Origin (no-CORS posture)", async () => {
+		// The bundled UI is same-origin with the API by design. Any
+		// third-party browser origin should be rejected by the browser
+		// preflight; we never opt into CORS at the runtime level.
+		const { app } = makeApp();
+		const res = await app.request("/healthz");
+		expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+		expect(res.headers.get("Access-Control-Allow-Credentials")).toBeNull();
 	});
 
 	test("/docs gets a relaxed CSP that pins jsdelivr and allows Scalar's inline bootstrap", async () => {

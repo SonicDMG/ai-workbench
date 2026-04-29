@@ -63,12 +63,29 @@ const DOCS_CSP_DIRECTIVES = [
 const DEFAULT_CSP = DEFAULT_CSP_DIRECTIVES.join("; ");
 const DOCS_CSP = DOCS_CSP_DIRECTIVES.join("; ");
 
+/**
+ * `Strict-Transport-Security` value emitted when `hsts: true`. 180 days
+ * is the conservative middle ground IETF / OWASP both recommend: long
+ * enough to be effective, short enough that an HTTPS misconfiguration
+ * recovers within a release cycle. We do **not** emit `preload` —
+ * preload list submissions are an explicit deployment-side decision,
+ * not something the runtime should opt into on the operator's behalf.
+ */
+const HSTS_VALUE = "max-age=15552000; includeSubDomains";
+
 export interface SecurityHeadersOptions {
 	/**
 	 * `"default"` — strict CSP for the SPA, JSON API, and operational
 	 * endpoints. `"docs"` — relaxed CSP for Scalar's reference UI.
 	 */
 	readonly scope?: "default" | "docs";
+	/**
+	 * Emit `Strict-Transport-Security` on every response. Wire this from
+	 * `runtime.environment === "production"` at the app boundary —
+	 * operators running over plaintext HTTP in development don't need
+	 * (and shouldn't get) HSTS.
+	 */
+	readonly hsts?: boolean;
 }
 
 /**
@@ -76,11 +93,18 @@ export interface SecurityHeadersOptions {
  * one middleware so tests can assert the runtime's default web posture
  * without coupling to individual routes. Pass `{ scope: "docs" }` for
  * the Scalar route only.
+ *
+ * No `Access-Control-Allow-Origin` header is set anywhere: the bundled
+ * UI is same-origin with the API by design, and the runtime is not
+ * meant to be called by third-party browser origins. Multi-origin
+ * deployments must front the runtime with a reverse proxy that owns
+ * the CORS contract — see `SECURITY.md`.
  */
 export function securityHeaders(
 	options: SecurityHeadersOptions = {},
 ): MiddlewareHandler<AppEnv> {
 	const csp = options.scope === "docs" ? DOCS_CSP : DEFAULT_CSP;
+	const hsts = options.hsts === true;
 	return async (c, next) => {
 		await next();
 		c.header("Content-Security-Policy", csp);
@@ -92,5 +116,8 @@ export function securityHeaders(
 			"Permissions-Policy",
 			"camera=(), geolocation=(), microphone=(), payment=(), usb=()",
 		);
+		if (hsts) {
+			c.header("Strict-Transport-Security", HSTS_VALUE);
+		}
 	};
 }
