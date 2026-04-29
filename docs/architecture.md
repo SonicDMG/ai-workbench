@@ -57,14 +57,18 @@ Every green box:
 - Runs as a standalone HTTP server (a Docker container in production).
 
 The UI picks which green box to target via the `BACKEND_URL`
-environment variable at deploy time. The default shipping path is
-**UI + TypeScript runtime in one container**, so `BACKEND_URL` is
-same-origin; alternative deployments point it at a Python or Java
-green box.
+environment variable at deploy time. The shipping path is **UI +
+TypeScript runtime in one container**, so `BACKEND_URL` is
+same-origin. The Python (FastAPI) and Java (Spring Boot) green boxes
+are **preview scaffolds**: they boot, serve operational endpoints,
+and answer every `/api/v1/*` route with HTTP 501 until handlers are
+implemented. The cross-runtime contract and conformance harness exist
+specifically so those handlers can land incrementally without
+breaking parity guarantees.
 
 See [`green-boxes.md`](green-boxes.md) for the full model, and
-[`runtimes/README.md`](../runtimes/README.md) for the list of current
-runtimes.
+[`runtimes/README.md`](../runtimes/README.md) for the per-runtime
+status table.
 
 ## Components
 

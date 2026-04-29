@@ -6,10 +6,17 @@ It gives teams one place to manage workspaces, knowledge bases,
 chunking / embedding / reranking services, document ingest, API keys,
 and retrieval experiments.
 
-Under the product UI is a stable HTTP runtime. The default TypeScript
-runtime ships in the same Docker image as the UI; alternative
-language-native runtimes ("green boxes") live under
-[`runtimes/`](runtimes/) and expose the same `/api/v1/*` contract.
+Under the product UI is a stable HTTP runtime. The **TypeScript
+runtime is the production ship path** — it bundles with the UI in one
+Docker image and is the only runtime that implements the full
+`/api/v1/*` contract today. Language-native "green box" runtimes for
+**Python (FastAPI) and Java (Spring Boot) are preview scaffolds**:
+they boot, serve operational endpoints, and answer every `/api/v1/*`
+route with HTTP 501 until handlers are implemented. They live under
+[`runtimes/`](runtimes/) so the cross-runtime contract is testable
+end-to-end as the implementations land. See
+[`runtimes/README.md`](runtimes/README.md) for the per-runtime status
+table.
 
 ## At a glance
 
@@ -27,9 +34,10 @@ language-native runtimes ("green boxes") live under
 - **Production-friendly controls.** Start in memory, switch to file
   storage for single-node deployments, or use Astra Data API tables for
   a durable control plane.
-- **Technical spine intact.** One `/api/v1/*` contract, language-native
-  runtimes, direct Astra SDK usage, secrets by reference, and
-  fixture-enforced conformance.
+- **Technical spine intact.** One `/api/v1/*` contract, direct Astra
+  SDK usage, secrets by reference, and fixture-enforced conformance.
+  The TypeScript runtime ships today; Python and Java runtimes are
+  preview scaffolds working toward parity.
 
 ## Architecture
 
@@ -45,10 +53,10 @@ language-native runtimes ("green boxes") live under
             ┌────────────────────────────┼────────────────────────────┐
             ▼                            ▼                            ▼
    ┌──────────────────┐       ┌──────────────────┐         ┌──────────────────┐
-   │  TS runtime      │       │  Python runtime  │   …     │  Other language  │
-   │  (default,       │       │  (FastAPI)       │         │  runtimes        │
-   │   embedded       │       │                  │         │                  │
-   │   with UI)       │       │                  │         │                  │
+   │  TS runtime      │       │  Python runtime  │         │  Java runtime    │
+   │  (production,    │       │  (preview        │         │  (preview        │
+   │   embedded       │       │   scaffold —     │         │   scaffold —     │
+   │   with UI)       │       │   FastAPI, 501s) │         │   Boot, 501s)    │
    │                  │       │                  │         │                  │
    │  /api/v1/*       │       │  /api/v1/*       │         │  /api/v1/*       │
    └────────┬─────────┘       └────────┬─────────┘         └────────┬─────────┘

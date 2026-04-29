@@ -22,13 +22,15 @@ Astra Data API (via language-native SDK: astrapy, astra-db-ts, …)
 
 | Runtime | Path | Status | Astra SDK |
 |---|---|---|---|
-| TypeScript | [`typescript/`](./typescript/) | Operational through Phase 3 + auth (UI, playground, API keys, OIDC login + silent refresh, knowledge bases with auto-provisioned collections, chunking / embedding / reranking services, vector/text search, hybrid + rerank, sync/async ingest with pipeline resume after orphan reclaim, durable JobStore with cross-replica subscription polling + lease/heartbeat + orphan sweeper, chunks listing, document delete cascade) | `@datastax/astra-db-ts` |
-| Python | [`python/`](./python/) | Scaffold — routes return 501 until implemented | `astrapy` (pending) |
-| Java | [`java/`](./java/) | Scaffold (Spring Boot) — routes return 501 until implemented | `astra-db-java` (pending) |
+| **TypeScript** | [`typescript/`](./typescript/) | **Production** — operational through Phase 3 + auth (UI, playground, API keys, OIDC login + silent refresh, knowledge bases with auto-provisioned collections, chunking / embedding / reranking services, vector/text search, hybrid + rerank, sync/async ingest with pipeline resume after orphan reclaim, durable JobStore with cross-replica subscription polling + lease/heartbeat + orphan sweeper, chunks listing, document delete cascade, structured audit events) | `@datastax/astra-db-ts` |
+| Python | [`python/`](./python/) | **Preview scaffold** — FastAPI app boots and exposes every route, but every `/api/v1/*` handler returns HTTP 501 until implemented. Not production-ready. | `astrapy` (pending) |
+| Java | [`java/`](./java/) | **Preview scaffold** — Spring Boot app boots and exposes every route, but every `/api/v1/*` handler returns HTTP 501 until implemented. Not production-ready. | `astra-db-java` (pending) |
 
-The TypeScript runtime is the **default ship path** — it gets bundled
-with the UI into one Docker image. Alternative-language runtimes
-deploy as separate containers.
+The TypeScript runtime is the **only production ship path** — it
+bundles with the UI into one Docker image. The Python and Java
+runtimes exist so the cross-runtime contract is testable
+end-to-end as their handlers land incrementally; deploying them
+today means every workspace API call returns 501.
 
 ## Shared infrastructure
 
