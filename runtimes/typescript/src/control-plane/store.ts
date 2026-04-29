@@ -236,6 +236,57 @@ export type UpdateRerankingServiceInput = Partial<
 /* Chat (workspace-scoped, backed by the agentic tables)              */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Agents (workspace-scoped, agentic-tables-backed)                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Input for {@link ControlPlaneStore.createAgent}. Custom agents
+ * coexist with the built-in Bobbie singleton. Bobbie's `agent_id`
+ * is deterministic (sha256 of workspaceId); user-defined agents
+ * use random UUIDs, so the namespaces don't collide.
+ *
+ * `knowledgeBaseIds` here is the **agent's default** — at chat
+ * time the conversation row's per-conversation
+ * `knowledgeBaseIds` filter takes precedence. Today the chat
+ * routes pull from the conversation, not the agent; the agent
+ * field is metadata for future per-agent retrieval defaults.
+ */
+export interface CreateAgentInput {
+	readonly agentId?: string;
+	readonly name: string;
+	readonly description?: string | null;
+	readonly systemPrompt?: string | null;
+	readonly userPrompt?: string | null;
+	readonly knowledgeBaseIds?: readonly string[];
+	readonly ragEnabled?: boolean;
+	readonly ragMaxResults?: number | null;
+	readonly ragMinScore?: number | null;
+	readonly rerankEnabled?: boolean;
+	readonly rerankingServiceId?: string | null;
+	readonly rerankMaxResults?: number | null;
+}
+
+export type UpdateAgentInput = Partial<Omit<CreateAgentInput, "agentId">>;
+
+/**
+ * Input for {@link ControlPlaneStore.createConversation} — the
+ * agent-aware generalization of {@link CreateChatInput}.
+ * `/chats` callers continue to use {@link CreateChatInput}; the
+ * store implements `createChat` as an alias of `createConversation`
+ * with the Bobbie agent id supplied.
+ */
+export interface CreateConversationInput {
+	readonly conversationId?: string;
+	readonly title?: string | null;
+	readonly knowledgeBaseIds?: readonly string[];
+}
+
+export interface UpdateConversationInput {
+	readonly title?: string | null;
+	readonly knowledgeBaseIds?: readonly string[];
+}
+
 /**
  * Input for {@link ControlPlaneStore.createChat}. The owning agent
  * (Bobbie) is implicit — `ensureBobbieAgent` is called inside the
@@ -479,10 +530,63 @@ export interface ControlPlaneStore {
 		uid: string,
 	): Promise<{ deleted: boolean }>;
 
+	/* Agents (workspace-scoped). User-defined agents coexist with the
+	 * singleton Bobbie row. Listing returns Bobbie + any user agents.
+	 * `deleteAgent` cascades the agent's conversations + messages.
+	 * Deleting the deterministic Bobbie agent is allowed — the next
+	 * `ensureBobbieAgent` call (or a chat send through `/chats`)
+	 * recreates it. */
+	listAgents(workspaceId: string): Promise<readonly AgentRecord[]>;
+	getAgent(workspaceId: string, agentId: string): Promise<AgentRecord | null>;
+	createAgent(
+		workspaceId: string,
+		input: CreateAgentInput,
+	): Promise<AgentRecord>;
+	updateAgent(
+		workspaceId: string,
+		agentId: string,
+		patch: UpdateAgentInput,
+	): Promise<AgentRecord>;
+	deleteAgent(
+		workspaceId: string,
+		agentId: string,
+	): Promise<{ deleted: boolean }>;
+
+	/* Conversations (agent-scoped). The agent-aware generalization of
+	 * the chat methods below. The chat methods stay as a Bobbie alias
+	 * for the existing /chats route layer. */
+	listConversations(
+		workspaceId: string,
+		agentId: string,
+	): Promise<readonly ConversationRecord[]>;
+	getConversation(
+		workspaceId: string,
+		agentId: string,
+		conversationId: string,
+	): Promise<ConversationRecord | null>;
+	createConversation(
+		workspaceId: string,
+		agentId: string,
+		input: CreateConversationInput,
+	): Promise<ConversationRecord>;
+	updateConversation(
+		workspaceId: string,
+		agentId: string,
+		conversationId: string,
+		patch: UpdateConversationInput,
+	): Promise<ConversationRecord>;
+	deleteConversation(
+		workspaceId: string,
+		agentId: string,
+		conversationId: string,
+	): Promise<{ deleted: boolean }>;
+
 	/* Chat (workspace-scoped, agentic-tables-backed). The store owns
 	 * the singleton "Bobbie" agent: callers never construct or manage
 	 * agent rows directly. Multi-conversation per workspace; KB
-	 * grounding is per-conversation via knowledgeBaseIds. */
+	 * grounding is per-conversation via knowledgeBaseIds. These are
+	 * thin aliases of the agent-aware methods above with the Bobbie
+	 * agent id supplied automatically. */
 
 	/**
 	 * Idempotently ensure a singleton "Bobbie" agent row exists for

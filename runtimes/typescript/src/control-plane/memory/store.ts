@@ -36,8 +36,10 @@ import {
 import type {
 	AppendChatMessageInput,
 	ControlPlaneStore,
+	CreateAgentInput,
 	CreateChatInput,
 	CreateChunkingServiceInput,
+	CreateConversationInput,
 	CreateEmbeddingServiceInput,
 	CreateKnowledgeBaseInput,
 	CreateKnowledgeFilterInput,
@@ -45,9 +47,11 @@ import type {
 	CreateRerankingServiceInput,
 	CreateWorkspaceInput,
 	PersistApiKeyInput,
+	UpdateAgentInput,
 	UpdateChatInput,
 	UpdateChatMessageInput,
 	UpdateChunkingServiceInput,
+	UpdateConversationInput,
 	UpdateEmbeddingServiceInput,
 	UpdateKnowledgeBaseInput,
 	UpdateKnowledgeFilterInput,
@@ -130,6 +134,51 @@ function byMessageTsAsc<
 	if (a.messageId < b.messageId) return -1;
 	if (a.messageId > b.messageId) return 1;
 	return 0;
+}
+
+/**
+ * Oldest-first sort for agent rows. Agent listing uses creation order
+ * so Bobbie (the earliest agent) sits at the top of the list.
+ */
+function byCreatedAtAscAgent<
+	T extends { readonly createdAt: string; readonly agentId: string },
+>(a: T, b: T): number {
+	if (a.createdAt < b.createdAt) return -1;
+	if (a.createdAt > b.createdAt) return 1;
+	if (a.agentId < b.agentId) return -1;
+	if (a.agentId > b.agentId) return 1;
+	return 0;
+}
+
+/**
+ * Build a fresh {@link AgentRecord} from {@link CreateAgentInput}.
+ * Centralised so memory/file/astra all default the same fields the
+ * same way, mirroring the pattern used for KBs and services.
+ */
+function buildAgentRecord(
+	workspaceId: string,
+	agentId: string,
+	input: CreateAgentInput,
+): AgentRecord {
+	const now = nowIso();
+	return {
+		workspaceId,
+		agentId,
+		name: input.name,
+		description: input.description ?? null,
+		systemPrompt: input.systemPrompt ?? null,
+		userPrompt: input.userPrompt ?? null,
+		toolIds: freezeStringSet([]),
+		ragEnabled: input.ragEnabled ?? false,
+		knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
+		ragMaxResults: input.ragMaxResults ?? null,
+		ragMinScore: input.ragMinScore ?? null,
+		rerankEnabled: input.rerankEnabled ?? false,
+		rerankingServiceId: input.rerankingServiceId ?? null,
+		rerankMaxResults: input.rerankMaxResults ?? null,
+		createdAt: now,
+		updatedAt: now,
+	};
 }
 
 /**
@@ -1082,7 +1131,201 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		};
 	}
 
-	/* ---------------- Chat (workspace-scoped) ---------------- */
+	/* ---------------- Agents ---------------- */
+
+	async listAgents(workspaceId: string): Promise<readonly AgentRecord[]> {
+		await this.assertWorkspace(workspaceId);
+		const byAgent = this.agents.get(workspaceId);
+		if (!byAgent) return [];
+		return Array.from(byAgent.values()).sort(byCreatedAtAscAgent);
+	}
+
+	async getAgent(
+		workspaceId: string,
+		agentId: string,
+	): Promise<AgentRecord | null> {
+		await this.assertWorkspace(workspaceId);
+		return this.agents.get(workspaceId)?.get(agentId) ?? null;
+	}
+
+	async createAgent(
+		workspaceId: string,
+		input: CreateAgentInput,
+	): Promise<AgentRecord> {
+		await this.assertWorkspace(workspaceId);
+		const agentId = input.agentId ?? randomUUID();
+		const byAgent = this.agents.get(workspaceId) ?? new Map();
+		if (byAgent.has(agentId)) {
+			throw new ControlPlaneConflictError(
+				`agent with id '${agentId}' already exists`,
+			);
+		}
+		const record = buildAgentRecord(workspaceId, agentId, input);
+		byAgent.set(agentId, record);
+		this.agents.set(workspaceId, byAgent);
+		return record;
+	}
+
+	async updateAgent(
+		workspaceId: string,
+		agentId: string,
+		patch: UpdateAgentInput,
+	): Promise<AgentRecord> {
+		await this.assertWorkspace(workspaceId);
+		const byAgent = this.agents.get(workspaceId);
+		const existing = byAgent?.get(agentId);
+		if (!existing) {
+			throw new ControlPlaneNotFoundError("agent", agentId);
+		}
+		const next: AgentRecord = {
+			...existing,
+			...(patch.name !== undefined && { name: patch.name }),
+			...(patch.description !== undefined && {
+				description: patch.description,
+			}),
+			...(patch.systemPrompt !== undefined && {
+				systemPrompt: patch.systemPrompt,
+			}),
+			...(patch.userPrompt !== undefined && { userPrompt: patch.userPrompt }),
+			...(patch.knowledgeBaseIds !== undefined && {
+				knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
+			}),
+			...(patch.ragEnabled !== undefined && { ragEnabled: patch.ragEnabled }),
+			...(patch.ragMaxResults !== undefined && {
+				ragMaxResults: patch.ragMaxResults,
+			}),
+			...(patch.ragMinScore !== undefined && {
+				ragMinScore: patch.ragMinScore,
+			}),
+			...(patch.rerankEnabled !== undefined && {
+				rerankEnabled: patch.rerankEnabled,
+			}),
+			...(patch.rerankingServiceId !== undefined && {
+				rerankingServiceId: patch.rerankingServiceId,
+			}),
+			...(patch.rerankMaxResults !== undefined && {
+				rerankMaxResults: patch.rerankMaxResults,
+			}),
+			updatedAt: nowIso(),
+		};
+		byAgent?.set(agentId, next);
+		return next;
+	}
+
+	async deleteAgent(
+		workspaceId: string,
+		agentId: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspaceId);
+		const deleted = this.agents.get(workspaceId)?.delete(agentId) ?? false;
+		if (deleted) {
+			// Cascade conversations + messages.
+			const convKey = `${workspaceId}:${agentId}`;
+			const byChat = this.conversations.get(convKey);
+			if (byChat) {
+				for (const conversationId of byChat.keys()) {
+					this.messages.delete(`${workspaceId}:${conversationId}`);
+				}
+				this.conversations.delete(convKey);
+			}
+		}
+		return { deleted };
+	}
+
+	/* ---------------- Conversations (agent-scoped) ---------------- */
+
+	async listConversations(
+		workspaceId: string,
+		agentId: string,
+	): Promise<readonly ConversationRecord[]> {
+		await this.assertWorkspace(workspaceId);
+		const byChat = this.conversations.get(`${workspaceId}:${agentId}`);
+		if (!byChat) return [];
+		// Newest-first matches the table's `created_at DESC` cluster
+		// ordering.
+		return Array.from(byChat.values()).sort(byCreatedAtDesc);
+	}
+
+	async getConversation(
+		workspaceId: string,
+		agentId: string,
+		conversationId: string,
+	): Promise<ConversationRecord | null> {
+		await this.assertWorkspace(workspaceId);
+		return (
+			this.conversations
+				.get(`${workspaceId}:${agentId}`)
+				?.get(conversationId) ?? null
+		);
+	}
+
+	async createConversation(
+		workspaceId: string,
+		agentId: string,
+		input: CreateConversationInput,
+	): Promise<ConversationRecord> {
+		await this.assertAgent(workspaceId, agentId);
+		const conversationId = input.conversationId ?? randomUUID();
+		const key = `${workspaceId}:${agentId}`;
+		const byChat = this.conversations.get(key) ?? new Map();
+		if (byChat.has(conversationId)) {
+			throw new ControlPlaneConflictError(
+				`conversation with id '${conversationId}' already exists`,
+			);
+		}
+		const record: ConversationRecord = {
+			workspaceId,
+			agentId,
+			conversationId,
+			createdAt: nowIso(),
+			title: input.title ?? null,
+			knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
+		};
+		byChat.set(conversationId, record);
+		this.conversations.set(key, byChat);
+		return record;
+	}
+
+	async updateConversation(
+		workspaceId: string,
+		agentId: string,
+		conversationId: string,
+		patch: UpdateConversationInput,
+	): Promise<ConversationRecord> {
+		await this.assertWorkspace(workspaceId);
+		const byChat = this.conversations.get(`${workspaceId}:${agentId}`);
+		const existing = byChat?.get(conversationId);
+		if (!existing) {
+			throw new ControlPlaneNotFoundError("conversation", conversationId);
+		}
+		const next: ConversationRecord = {
+			...existing,
+			...(patch.title !== undefined && { title: patch.title }),
+			...(patch.knowledgeBaseIds !== undefined && {
+				knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
+			}),
+		};
+		byChat?.set(conversationId, next);
+		return next;
+	}
+
+	async deleteConversation(
+		workspaceId: string,
+		agentId: string,
+		conversationId: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspaceId);
+		const deleted =
+			this.conversations
+				.get(`${workspaceId}:${agentId}`)
+				?.delete(conversationId) ?? false;
+		if (deleted) {
+			this.messages.delete(`${workspaceId}:${conversationId}`);
+		}
+		return { deleted };
+	}
+
+	/* ---------------- Chat (Bobbie alias) ---------------- */
 
 	async ensureBobbieAgent(workspaceId: string): Promise<AgentRecord> {
 		await this.assertWorkspace(workspaceId);
@@ -1115,23 +1358,17 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 	}
 
 	async listChats(workspaceId: string): Promise<readonly ConversationRecord[]> {
-		await this.assertWorkspace(workspaceId);
-		const agentId = bobbieAgentId(workspaceId);
-		const byChat = this.conversations.get(`${workspaceId}:${agentId}`);
-		if (!byChat) return [];
-		// Newest-first matches the table's `created_at DESC` cluster
-		// ordering.
-		return Array.from(byChat.values()).sort(byCreatedAtDesc);
+		return this.listConversations(workspaceId, bobbieAgentId(workspaceId));
 	}
 
 	async getChat(
 		workspaceId: string,
 		chatId: string,
 	): Promise<ConversationRecord | null> {
-		await this.assertWorkspace(workspaceId);
-		const agentId = bobbieAgentId(workspaceId);
-		return (
-			this.conversations.get(`${workspaceId}:${agentId}`)?.get(chatId) ?? null
+		return this.getConversation(
+			workspaceId,
+			bobbieAgentId(workspaceId),
+			chatId,
 		);
 	}
 
@@ -1140,26 +1377,26 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		input: CreateChatInput,
 	): Promise<ConversationRecord> {
 		await this.ensureBobbieAgent(workspaceId);
-		const agentId = bobbieAgentId(workspaceId);
-		const chatId = input.chatId ?? randomUUID();
-		const key = `${workspaceId}:${agentId}`;
-		const byChat = this.conversations.get(key) ?? new Map();
-		if (byChat.has(chatId)) {
-			throw new ControlPlaneConflictError(
-				`chat with id '${chatId}' already exists`,
+		try {
+			return await this.createConversation(
+				workspaceId,
+				bobbieAgentId(workspaceId),
+				{
+					conversationId: input.chatId,
+					title: input.title,
+					knowledgeBaseIds: input.knowledgeBaseIds,
+				},
 			);
+		} catch (err) {
+			// Rewrite the conversation-flavored error so existing chat
+			// callers still see "chat" in the message.
+			if (err instanceof ControlPlaneConflictError) {
+				throw new ControlPlaneConflictError(
+					`chat with id '${input.chatId}' already exists`,
+				);
+			}
+			throw err;
 		}
-		const record: ConversationRecord = {
-			workspaceId,
-			agentId,
-			conversationId: chatId,
-			createdAt: nowIso(),
-			title: input.title ?? null,
-			knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
-		};
-		byChat.set(chatId, record);
-		this.conversations.set(key, byChat);
-		return record;
 	}
 
 	async updateChat(
@@ -1167,37 +1404,30 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		chatId: string,
 		patch: UpdateChatInput,
 	): Promise<ConversationRecord> {
-		await this.assertWorkspace(workspaceId);
-		const agentId = bobbieAgentId(workspaceId);
-		const byChat = this.conversations.get(`${workspaceId}:${agentId}`);
-		const existing = byChat?.get(chatId);
-		if (!existing) {
-			throw new ControlPlaneNotFoundError("chat", chatId);
+		try {
+			return await this.updateConversation(
+				workspaceId,
+				bobbieAgentId(workspaceId),
+				chatId,
+				patch,
+			);
+		} catch (err) {
+			if (err instanceof ControlPlaneNotFoundError) {
+				throw new ControlPlaneNotFoundError("chat", chatId);
+			}
+			throw err;
 		}
-		const next: ConversationRecord = {
-			...existing,
-			...(patch.title !== undefined && { title: patch.title }),
-			...(patch.knowledgeBaseIds !== undefined && {
-				knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
-			}),
-		};
-		byChat?.set(chatId, next);
-		return next;
 	}
 
 	async deleteChat(
 		workspaceId: string,
 		chatId: string,
 	): Promise<{ deleted: boolean }> {
-		await this.assertWorkspace(workspaceId);
-		const agentId = bobbieAgentId(workspaceId);
-		const deleted =
-			this.conversations.get(`${workspaceId}:${agentId}`)?.delete(chatId) ??
-			false;
-		if (deleted) {
-			this.messages.delete(`${workspaceId}:${chatId}`);
-		}
-		return { deleted };
+		return this.deleteConversation(
+			workspaceId,
+			bobbieAgentId(workspaceId),
+			chatId,
+		);
 	}
 
 	async listChatMessages(
@@ -1273,10 +1503,28 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		return next;
 	}
 
+	/**
+	 * Resolve a conversation across any agent in the workspace. Used by
+	 * `appendChatMessage` / `listChatMessages` / `updateChatMessage`,
+	 * which are agent-agnostic from the storage POV — messages are
+	 * partitioned by (workspace, conversation), not by agent.
+	 */
 	private async assertChat(workspaceId: string, chatId: string): Promise<void> {
-		const chat = await this.getChat(workspaceId, chatId);
-		if (!chat) {
-			throw new ControlPlaneNotFoundError("chat", chatId);
+		await this.assertWorkspace(workspaceId);
+		for (const [key, byChat] of this.conversations.entries()) {
+			if (!key.startsWith(`${workspaceId}:`)) continue;
+			if (byChat.has(chatId)) return;
+		}
+		throw new ControlPlaneNotFoundError("chat", chatId);
+	}
+
+	private async assertAgent(
+		workspaceId: string,
+		agentId: string,
+	): Promise<void> {
+		await this.assertWorkspace(workspaceId);
+		if (!this.agents.get(workspaceId)?.has(agentId)) {
+			throw new ControlPlaneNotFoundError("agent", agentId);
 		}
 	}
 

@@ -15,6 +15,8 @@
  *   `/api/v1/workspaces/{w}/jobs/{jobId}`                             job poll + SSE
  *   `/api/v1/workspaces/{w}/chats`                                    Bobbie chat CRUD
  *   `/api/v1/workspaces/{w}/chats/{chatId}/messages`                  chat message append + history
+ *   `/api/v1/workspaces/{w}/agents`                                   user-defined agent CRUD
+ *   `/api/v1/workspaces/{w}/agents/{a}/conversations`                 conversation CRUD per agent
  *   `/api/v1/openapi.json`                                            generated OpenAPI doc
  *   `/docs`                                                           Scalar-rendered docs
  */
@@ -45,6 +47,7 @@ import { rateLimit } from "./lib/rate-limit.js";
 import { requestId } from "./lib/request-id.js";
 import { SCALAR_CDN_PINNED, securityHeaders } from "./lib/security-headers.js";
 import type { AppEnv } from "./lib/types.js";
+import { agentRoutes } from "./routes/api-v1/agents.js";
 import { apiKeyRoutes } from "./routes/api-v1/api-keys.js";
 import { chatRoutes } from "./routes/api-v1/chats.js";
 import { chunkingServiceRoutes } from "./routes/api-v1/chunking-services.js";
@@ -313,6 +316,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			chatConfig: opts.chatConfig ?? null,
 		}),
 	);
+	app.route("/api/v1/workspaces", agentRoutes({ store: opts.store }));
 	mountMcpRoutes(app, {
 		store: opts.store,
 		drivers: opts.drivers,

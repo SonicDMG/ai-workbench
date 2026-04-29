@@ -22,7 +22,9 @@ runnable artifact and a stable slice of the HTTP contract.
 | Chat-4 | HuggingFace chat completion + multi-KB RAG (sync) | ✅ Shipped |
 | Chat-5 | SSE token streaming end-to-end | ✅ Shipped |
 | MCP | Model Context Protocol façade — workspace as MCP tools | ✅ Shipped |
-| 7+ | User-defined agents, polish | Planned (see "Next steps") |
+| Agents-1 | Agent + conversation CRUD over the agentic tables | ✅ Shipped |
+| Agents-2 | Agent send + streaming pipeline (generalize chat-5 to any agent) | Planned |
+| 7+ | LLM-services CRUD, per-agent provider, MCP tool calls, polish | Planned (see "Next steps") |
 
 ## Phase 0 — Bootstrap ✅
 
@@ -389,23 +391,26 @@ Followups deferred:
 The phases below are sequenced loosely; each is independently
 shippable so reordering doesn't burn earlier work.
 
-### User-defined agents
+### User-defined agents (Agents-1 ✅, Agents-2 next)
 
-The agentic tables host Bobbie today; opening them up for
-user-defined agents is the natural successor:
+Agents-1 shipped the CRUD surface — agent + conversation
+primitives, with the chat surface refactored to be a thin alias
+that supplies the deterministic Bobbie agent id. See
+[`agents.md`](agents.md). Open work:
 
-- `POST /api/v1/workspaces/{w}/agents` — random `agent_id`, custom
-  system prompt, configurable `knowledge_base_ids`.
-- `POST .../agents/{a}/conversations[/{c}/messages]` —
-  generalization of `/chats` to any agent. The `/chats` endpoint
-  becomes a thin alias that targets the singleton Bobbie agent.
+- **Agents-2**: generalize the chat-5 send + streaming pipeline to
+  any agent.
+  `POST /api/v1/workspaces/{w}/agents/{a}/conversations/{c}/messages`
+  + `/messages/stream` should reuse the same handler that backs
+  `/chats/.../messages`, parameterised by `(agentId, agent)`. Today
+  custom agents support metadata + history CRUD only.
 - `wb_config_llm_service_by_workspace` — already declared but
   unused. Wire CRUD + a per-agent `llmServiceId` so different
   agents can use different providers / models without restarting
   the runtime.
-- Tool execution via MCP. Once the MCP server above is in, the
-  inverse — letting Bobbie / a user agent call MCP tools — is the
-  same SDK, just on the client side.
+- Tool execution via MCP. Now that the MCP server façade is in,
+  the inverse — letting Bobbie / a user agent **call** MCP tools —
+  is the same SDK, just on the client side.
 
 ### Per-KB / per-agent rate limiting
 

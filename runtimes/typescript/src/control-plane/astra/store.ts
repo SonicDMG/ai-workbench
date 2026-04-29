@@ -69,8 +69,10 @@ import {
 import type {
 	AppendChatMessageInput,
 	ControlPlaneStore,
+	CreateAgentInput,
 	CreateChatInput,
 	CreateChunkingServiceInput,
+	CreateConversationInput,
 	CreateEmbeddingServiceInput,
 	CreateKnowledgeBaseInput,
 	CreateKnowledgeFilterInput,
@@ -78,9 +80,11 @@ import type {
 	CreateRerankingServiceInput,
 	CreateWorkspaceInput,
 	PersistApiKeyInput,
+	UpdateAgentInput,
 	UpdateChatInput,
 	UpdateChatMessageInput,
 	UpdateChunkingServiceInput,
+	UpdateConversationInput,
 	UpdateEmbeddingServiceInput,
 	UpdateKnowledgeBaseInput,
 	UpdateKnowledgeFilterInput,
@@ -122,6 +126,17 @@ function byCreatedAtDescConv(
 	if (a.createdAt < b.createdAt) return 1;
 	if (a.conversationId < b.conversationId) return -1;
 	if (a.conversationId > b.conversationId) return 1;
+	return 0;
+}
+
+/**
+ * Oldest-first sort for agent rows. Tie-break on agent_id for total order.
+ */
+function byCreatedAtAscAgent(a: AgentRecord, b: AgentRecord): number {
+	if (a.createdAt < b.createdAt) return -1;
+	if (a.createdAt > b.createdAt) return 1;
+	if (a.agentId < b.agentId) return -1;
+	if (a.agentId > b.agentId) return 1;
 	return 0;
 }
 
@@ -1198,7 +1213,294 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		return { deleted: true };
 	}
 
-	/* ---------------- Chat (workspace-scoped) ---------------- */
+	/* ---------------- Agents ---------------- */
+
+	async listAgents(workspaceId: string): Promise<readonly AgentRecord[]> {
+		await this.assertWorkspace(workspaceId);
+		const rows = await this.tables.agents
+			.find({ workspace_id: workspaceId })
+			.toArray();
+		return rows.map(agentFromRow).sort(byCreatedAtAscAgent);
+	}
+
+	async getAgent(
+		workspaceId: string,
+		agentId: string,
+	): Promise<AgentRecord | null> {
+		await this.assertWorkspace(workspaceId);
+		const row = await this.tables.agents.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+		});
+		return row ? agentFromRow(row) : null;
+	}
+
+	async createAgent(
+		workspaceId: string,
+		input: CreateAgentInput,
+	): Promise<AgentRecord> {
+		await this.assertWorkspace(workspaceId);
+		const agentId = input.agentId ?? randomUUID();
+		const existing = await this.tables.agents.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+		});
+		if (existing) {
+			throw new ControlPlaneConflictError(
+				`agent with id '${agentId}' already exists`,
+			);
+		}
+		const now = nowIso();
+		const record: AgentRecord = {
+			workspaceId,
+			agentId,
+			name: input.name,
+			description: input.description ?? null,
+			systemPrompt: input.systemPrompt ?? null,
+			userPrompt: input.userPrompt ?? null,
+			toolIds: freezeStringSet([]),
+			ragEnabled: input.ragEnabled ?? false,
+			knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
+			ragMaxResults: input.ragMaxResults ?? null,
+			ragMinScore: input.ragMinScore ?? null,
+			rerankEnabled: input.rerankEnabled ?? false,
+			rerankingServiceId: input.rerankingServiceId ?? null,
+			rerankMaxResults: input.rerankMaxResults ?? null,
+			createdAt: now,
+			updatedAt: now,
+		};
+		await this.tables.agents.insertOne(agentToRow(record));
+		return record;
+	}
+
+	async updateAgent(
+		workspaceId: string,
+		agentId: string,
+		patch: UpdateAgentInput,
+	): Promise<AgentRecord> {
+		await this.assertWorkspace(workspaceId);
+		const existingRow = await this.tables.agents.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+		});
+		if (!existingRow) {
+			throw new ControlPlaneNotFoundError("agent", agentId);
+		}
+		const existing = agentFromRow(existingRow);
+		const next: AgentRecord = {
+			...existing,
+			...(patch.name !== undefined && { name: patch.name }),
+			...(patch.description !== undefined && {
+				description: patch.description,
+			}),
+			...(patch.systemPrompt !== undefined && {
+				systemPrompt: patch.systemPrompt,
+			}),
+			...(patch.userPrompt !== undefined && { userPrompt: patch.userPrompt }),
+			...(patch.knowledgeBaseIds !== undefined && {
+				knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
+			}),
+			...(patch.ragEnabled !== undefined && { ragEnabled: patch.ragEnabled }),
+			...(patch.ragMaxResults !== undefined && {
+				ragMaxResults: patch.ragMaxResults,
+			}),
+			...(patch.ragMinScore !== undefined && {
+				ragMinScore: patch.ragMinScore,
+			}),
+			...(patch.rerankEnabled !== undefined && {
+				rerankEnabled: patch.rerankEnabled,
+			}),
+			...(patch.rerankingServiceId !== undefined && {
+				rerankingServiceId: patch.rerankingServiceId,
+			}),
+			...(patch.rerankMaxResults !== undefined && {
+				rerankMaxResults: patch.rerankMaxResults,
+			}),
+			updatedAt: nowIso(),
+		};
+		const nextRow = agentToRow(next);
+		await this.tables.agents.updateOne(
+			{ workspace_id: workspaceId, agent_id: agentId },
+			{
+				$set: {
+					name: nextRow.name,
+					description: nextRow.description,
+					system_prompt: nextRow.system_prompt,
+					user_prompt: nextRow.user_prompt,
+					knowledge_base_ids: nextRow.knowledge_base_ids,
+					rag_enabled: nextRow.rag_enabled,
+					rag_max_results: nextRow.rag_max_results,
+					rag_min_score: nextRow.rag_min_score,
+					rerank_enabled: nextRow.rerank_enabled,
+					reranking_service_id: nextRow.reranking_service_id,
+					rerank_max_results: nextRow.rerank_max_results,
+					updated_at: nextRow.updated_at,
+				},
+			},
+		);
+		return next;
+	}
+
+	async deleteAgent(
+		workspaceId: string,
+		agentId: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspaceId);
+		const existing = await this.tables.agents.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+		});
+		if (!existing) return { deleted: false };
+		// Cascade conversations + their messages. Messages are partitioned
+		// by (workspace, conversation) — we read the agent's conversation
+		// ids, then delete each partition in turn (no cross-partition
+		// secondary index for messages keyed on agent_id).
+		const convRows = await this.tables.conversations
+			.find({ workspace_id: workspaceId, agent_id: agentId })
+			.toArray();
+		await this.tables.agents.deleteOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+		});
+		await this.tables.conversations.deleteMany({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+		});
+		for (const conv of convRows) {
+			await this.tables.messages.deleteMany({
+				workspace_id: workspaceId,
+				conversation_id: conv.conversation_id,
+			});
+		}
+		return { deleted: true };
+	}
+
+	/* ---------------- Conversations (agent-scoped) ---------------- */
+
+	async listConversations(
+		workspaceId: string,
+		agentId: string,
+	): Promise<readonly ConversationRecord[]> {
+		await this.assertWorkspace(workspaceId);
+		const rows = await this.tables.conversations
+			.find({ workspace_id: workspaceId, agent_id: agentId })
+			.toArray();
+		// Astra's `created_at DESC` cluster ordering is enforced server-
+		// side, but the fake bundle in tests doesn't honor cluster keys.
+		// Sort defensively so tests and prod agree.
+		return rows.map(conversationFromRow).sort(byCreatedAtDescConv);
+	}
+
+	async getConversation(
+		workspaceId: string,
+		agentId: string,
+		conversationId: string,
+	): Promise<ConversationRecord | null> {
+		await this.assertWorkspace(workspaceId);
+		const row = await this.tables.conversations.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+			conversation_id: conversationId,
+		});
+		return row ? conversationFromRow(row) : null;
+	}
+
+	async createConversation(
+		workspaceId: string,
+		agentId: string,
+		input: CreateConversationInput,
+	): Promise<ConversationRecord> {
+		await this.assertAgent(workspaceId, agentId);
+		const conversationId = input.conversationId ?? randomUUID();
+		const existing = await this.tables.conversations.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+			conversation_id: conversationId,
+		});
+		if (existing) {
+			throw new ControlPlaneConflictError(
+				`conversation with id '${conversationId}' already exists`,
+			);
+		}
+		const record: ConversationRecord = {
+			workspaceId,
+			agentId,
+			conversationId,
+			createdAt: nowIso(),
+			title: input.title ?? null,
+			knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
+		};
+		await this.tables.conversations.insertOne(conversationToRow(record));
+		return record;
+	}
+
+	async updateConversation(
+		workspaceId: string,
+		agentId: string,
+		conversationId: string,
+		patch: UpdateConversationInput,
+	): Promise<ConversationRecord> {
+		await this.assertWorkspace(workspaceId);
+		const existingRow = await this.tables.conversations.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+			conversation_id: conversationId,
+		});
+		if (!existingRow) {
+			throw new ControlPlaneNotFoundError("conversation", conversationId);
+		}
+		const existing = conversationFromRow(existingRow);
+		const next: ConversationRecord = {
+			...existing,
+			...(patch.title !== undefined && { title: patch.title }),
+			...(patch.knowledgeBaseIds !== undefined && {
+				knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
+			}),
+		};
+		const nextRow = conversationToRow(next);
+		await this.tables.conversations.updateOne(
+			{
+				workspace_id: workspaceId,
+				agent_id: agentId,
+				created_at: existingRow.created_at,
+				conversation_id: conversationId,
+			},
+			{
+				$set: {
+					title: nextRow.title,
+					knowledge_base_ids: nextRow.knowledge_base_ids,
+				},
+			},
+		);
+		return next;
+	}
+
+	async deleteConversation(
+		workspaceId: string,
+		agentId: string,
+		conversationId: string,
+	): Promise<{ deleted: boolean }> {
+		await this.assertWorkspace(workspaceId);
+		const existing = await this.tables.conversations.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+			conversation_id: conversationId,
+		});
+		if (!existing) return { deleted: false };
+		await this.tables.conversations.deleteOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+			created_at: existing.created_at,
+			conversation_id: conversationId,
+		});
+		await this.tables.messages.deleteMany({
+			workspace_id: workspaceId,
+			conversation_id: conversationId,
+		});
+		return { deleted: true };
+	}
+
+	/* ---------------- Chat (Bobbie alias) ---------------- */
 
 	async ensureBobbieAgent(workspaceId: string): Promise<AgentRecord> {
 		await this.assertWorkspace(workspaceId);
@@ -1243,29 +1545,18 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 	}
 
 	async listChats(workspaceId: string): Promise<readonly ConversationRecord[]> {
-		await this.assertWorkspace(workspaceId);
-		const agentId = bobbieAgentId(workspaceId);
-		const rows = await this.tables.conversations
-			.find({ workspace_id: workspaceId, agent_id: agentId })
-			.toArray();
-		// Astra's `created_at DESC` cluster ordering is enforced server-
-		// side, but the fake bundle in tests doesn't honor cluster keys.
-		// Sort defensively so tests and prod agree.
-		return rows.map(conversationFromRow).sort(byCreatedAtDescConv);
+		return this.listConversations(workspaceId, bobbieAgentId(workspaceId));
 	}
 
 	async getChat(
 		workspaceId: string,
 		chatId: string,
 	): Promise<ConversationRecord | null> {
-		await this.assertWorkspace(workspaceId);
-		const agentId = bobbieAgentId(workspaceId);
-		const row = await this.tables.conversations.findOne({
-			workspace_id: workspaceId,
-			agent_id: agentId,
-			conversation_id: chatId,
-		});
-		return row ? conversationFromRow(row) : null;
+		return this.getConversation(
+			workspaceId,
+			bobbieAgentId(workspaceId),
+			chatId,
+		);
 	}
 
 	async createChat(
@@ -1273,28 +1564,24 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		input: CreateChatInput,
 	): Promise<ConversationRecord> {
 		await this.ensureBobbieAgent(workspaceId);
-		const agentId = bobbieAgentId(workspaceId);
-		const chatId = input.chatId ?? randomUUID();
-		const existing = await this.tables.conversations.findOne({
-			workspace_id: workspaceId,
-			agent_id: agentId,
-			conversation_id: chatId,
-		});
-		if (existing) {
-			throw new ControlPlaneConflictError(
-				`chat with id '${chatId}' already exists`,
+		try {
+			return await this.createConversation(
+				workspaceId,
+				bobbieAgentId(workspaceId),
+				{
+					conversationId: input.chatId,
+					title: input.title,
+					knowledgeBaseIds: input.knowledgeBaseIds,
+				},
 			);
+		} catch (err) {
+			if (err instanceof ControlPlaneConflictError) {
+				throw new ControlPlaneConflictError(
+					`chat with id '${input.chatId}' already exists`,
+				);
+			}
+			throw err;
 		}
-		const record: ConversationRecord = {
-			workspaceId,
-			agentId,
-			conversationId: chatId,
-			createdAt: nowIso(),
-			title: input.title ?? null,
-			knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
-		};
-		await this.tables.conversations.insertOne(conversationToRow(record));
-		return record;
 	}
 
 	async updateChat(
@@ -1302,65 +1589,30 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		chatId: string,
 		patch: UpdateChatInput,
 	): Promise<ConversationRecord> {
-		await this.assertWorkspace(workspaceId);
-		const agentId = bobbieAgentId(workspaceId);
-		const existingRow = await this.tables.conversations.findOne({
-			workspace_id: workspaceId,
-			agent_id: agentId,
-			conversation_id: chatId,
-		});
-		if (!existingRow) {
-			throw new ControlPlaneNotFoundError("chat", chatId);
+		try {
+			return await this.updateConversation(
+				workspaceId,
+				bobbieAgentId(workspaceId),
+				chatId,
+				patch,
+			);
+		} catch (err) {
+			if (err instanceof ControlPlaneNotFoundError) {
+				throw new ControlPlaneNotFoundError("chat", chatId);
+			}
+			throw err;
 		}
-		const existing = conversationFromRow(existingRow);
-		const next: ConversationRecord = {
-			...existing,
-			...(patch.title !== undefined && { title: patch.title }),
-			...(patch.knowledgeBaseIds !== undefined && {
-				knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
-			}),
-		};
-		const nextRow = conversationToRow(next);
-		await this.tables.conversations.updateOne(
-			{
-				workspace_id: workspaceId,
-				agent_id: agentId,
-				created_at: existingRow.created_at,
-				conversation_id: chatId,
-			},
-			{
-				$set: {
-					title: nextRow.title,
-					knowledge_base_ids: nextRow.knowledge_base_ids,
-				},
-			},
-		);
-		return next;
 	}
 
 	async deleteChat(
 		workspaceId: string,
 		chatId: string,
 	): Promise<{ deleted: boolean }> {
-		await this.assertWorkspace(workspaceId);
-		const agentId = bobbieAgentId(workspaceId);
-		const existing = await this.tables.conversations.findOne({
-			workspace_id: workspaceId,
-			agent_id: agentId,
-			conversation_id: chatId,
-		});
-		if (!existing) return { deleted: false };
-		await this.tables.conversations.deleteOne({
-			workspace_id: workspaceId,
-			agent_id: agentId,
-			created_at: existing.created_at,
-			conversation_id: chatId,
-		});
-		await this.tables.messages.deleteMany({
-			workspace_id: workspaceId,
-			conversation_id: chatId,
-		});
-		return { deleted: true };
+		return this.deleteConversation(
+			workspaceId,
+			bobbieAgentId(workspaceId),
+			chatId,
+		);
 	}
 
 	async listChatMessages(
@@ -1456,10 +1708,36 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		return next;
 	}
 
+	/**
+	 * Resolve a conversation across any agent in the workspace. Messages
+	 * are partitioned by (workspace, conversation) only — append /
+	 * list / update don't need an agent argument. The workspace-wide
+	 * find is bounded (one row per conversation; v0 chats are O(10s) at
+	 * most) and a `_by_workspace` secondary index can be added later if
+	 * the workload grows.
+	 */
 	private async assertChat(workspaceId: string, chatId: string): Promise<void> {
-		const chat = await this.getChat(workspaceId, chatId);
-		if (!chat) {
+		await this.assertWorkspace(workspaceId);
+		const row = await this.tables.conversations.findOne({
+			workspace_id: workspaceId,
+			conversation_id: chatId,
+		});
+		if (!row) {
 			throw new ControlPlaneNotFoundError("chat", chatId);
+		}
+	}
+
+	private async assertAgent(
+		workspaceId: string,
+		agentId: string,
+	): Promise<void> {
+		await this.assertWorkspace(workspaceId);
+		const row = await this.tables.agents.findOne({
+			workspace_id: workspaceId,
+			agent_id: agentId,
+		});
+		if (!row) {
+			throw new ControlPlaneNotFoundError("agent", agentId);
 		}
 	}
 
