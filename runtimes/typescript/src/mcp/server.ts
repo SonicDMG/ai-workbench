@@ -61,6 +61,22 @@ export interface McpHandleRequestArgs {
  * Run a single MCP request to completion. The transport handles
  * `initialize`, `tools/list`, `tools/call`, etc. — we just register
  * the tools and let the SDK route.
+ *
+ * Cleanup lifecycle: `transport.handleRequest()` returns the
+ * `Response(readable, …)` shell **synchronously** while the SDK
+ * still has to async-process the message and pipe the JSON-RPC
+ * reply into the stream via `transport.send()`. A `finally` block
+ * around `handleRequest` would call `transport.close()` (which
+ * closes every open stream controller) before the SDK had a chance
+ * to write the response — yielding `Content-Length: 0` on the
+ * wire. Instead, we wrap the body in a TransformStream and run
+ * cleanup from its `flush` / `cancel` hooks, which fire after the
+ * SDK has finished sending or the client has disconnected.
+ *
+ * For non-streaming responses (e.g. JSON-RPC error envelopes that
+ * the SDK returns directly), we still need to close the transport
+ * — those Responses have a non-stream body and the wrapping is a
+ * no-op, so we close on the next microtask.
  */
 export async function handleMcpRequest(
 	args: McpHandleRequestArgs,
@@ -72,14 +88,54 @@ export async function handleMcpRequest(
 		sessionIdGenerator: undefined,
 	});
 	await server.connect(transport);
-	try {
-		return await transport.handleRequest(args.request);
-	} finally {
-		// Best-effort close; if the SDK hangs onto the transport we
-		// don't want to leak it across requests.
+
+	const cleanup = async (): Promise<void> => {
 		await transport.close().catch(() => {});
 		await server.close().catch(() => {});
+	};
+
+	let response: Response;
+	try {
+		response = await transport.handleRequest(args.request);
+	} catch (error) {
+		await cleanup();
+		throw error;
 	}
+
+	// No body to drain — close immediately on the microtask queue so
+	// the empty Response is delivered first, then the transport is
+	// torn down.
+	if (!response.body) {
+		queueMicrotask(() => {
+			void cleanup();
+		});
+		return response;
+	}
+
+	// Body is a stream (SSE or JSON written through a controller).
+	// Pipe through a passthrough; cleanup runs when the stream
+	// finishes naturally OR when the client cancels.
+	const passthrough = new TransformStream({
+		flush() {
+			void cleanup();
+		},
+		// `cancel` runs when the consumer (Hono → Node adapter →
+		// network) tears down the pipe early — e.g. client disconnect.
+		// The TransformStream spec calls `cancel` on the writable side
+		// in that case; mirror it on the readable side.
+	});
+	response.body
+		.pipeTo(passthrough.writable)
+		.catch(() => {
+			// pipeTo rejects on cancel; cleanup is still required.
+			void cleanup();
+		});
+
+	return new Response(passthrough.readable, {
+		status: response.status,
+		statusText: response.statusText,
+		headers: response.headers,
+	});
 }
 
 /**
