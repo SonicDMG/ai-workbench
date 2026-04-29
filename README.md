@@ -208,7 +208,7 @@ ai-workbench/
 │   │   │   └── routes/
 │   │   │       ├── operational.ts
 │   │   │       └── api-v1/
-│   │   ├── tests/                    # Vitest suite (460+ tests)
+│   │   ├── tests/                    # Vitest suite + conformance drift guard
 │   │   ├── scripts/
 │   │   ├── examples/workbench.yaml
 │   │   ├── package.json

@@ -229,15 +229,6 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 	}
 
 	/**
-	 * Deterministic pseudo-embedding of a text string.
-	 *
-	 * Used only by `searchByText` in the mock driver so tests can
-	 * exercise the route's driver-first dispatch branch without
-	 * pulling in the Vercel SDK. The same hash is applied at upsert
-	 * time if the caller uses `payload.$mockText`, so queries find
-	 * the documents they "embedded" with the same seed.
-	 */
-	/**
 	 * Server-side-embedded upsert. Mirrors searchByText: only fires
 	 * when `descriptor.embedding.provider === "mock"` (the opt-in flag
 	 * for mock vectorize). Calls mockEmbed per record, then routes
