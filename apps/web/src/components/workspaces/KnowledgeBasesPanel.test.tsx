@@ -67,10 +67,12 @@ const KB_ALPHA: KnowledgeBaseRecord = {
 	name: "alpha",
 	description: "Internal docs",
 	status: "active",
-	collection: "wb_vectors_kb_alpha",
+	vectorCollection: "wb_vectors_kb_alpha",
 	chunkingServiceId: "chk-1",
 	embeddingServiceId: "emb-1",
 	rerankingServiceId: null,
+	language: null,
+	lexical: { enabled: false, analyzer: null, options: {} },
 	createdAt: "2026-04-01T00:00:00.000Z",
 	updatedAt: "2026-04-01T00:00:00.000Z",
 };
