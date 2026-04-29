@@ -796,6 +796,22 @@ export const ChatIdParamSchema = z
 		example: "11111111-2222-3333-4444-555555555555",
 	});
 
+export const AgentIdParamSchema = z
+	.string()
+	.uuid()
+	.openapi({
+		param: { name: "agentId", in: "path" },
+		example: "11111111-2222-3333-4444-555555555555",
+	});
+
+export const ConversationIdParamSchema = z
+	.string()
+	.uuid()
+	.openapi({
+		param: { name: "conversationId", in: "path" },
+		example: "11111111-2222-3333-4444-555555555555",
+	});
+
 export const ChatMessageIdParamSchema = z
 	.string()
 	.uuid()
@@ -890,6 +906,113 @@ export const SendChatMessageResponseSchema = z
 		assistant: ChatMessageRecordSchema,
 	})
 	.openapi("SendChatMessageResponse");
+
+/* ---------- Agents (workspace-scoped) ---------- */
+
+/**
+ * Wire-shape for an agent. Mirrors the
+ * `wb_agentic_agents_by_workspace` row, minus the `tool_ids` set
+ * (no tools are wired in v0; the column stays as future-proofing).
+ *
+ * The deterministic Bobbie row appears in `listAgents`; clients can
+ * recognise it by `name === "Bobbie"` (or by recomputing the
+ * deterministic id) and choose to suppress it from "user agents"
+ * UIs.
+ */
+export const AgentRecordSchema = z
+	.object({
+		workspaceId: z.string().uuid(),
+		agentId: z.string().uuid(),
+		name: z.string(),
+		description: z.string().nullable(),
+		systemPrompt: z.string().nullable(),
+		userPrompt: z.string().nullable(),
+		knowledgeBaseIds: z.array(z.string().uuid()),
+		ragEnabled: z.boolean(),
+		ragMaxResults: z.number().int().nullable(),
+		ragMinScore: z.number().nullable(),
+		rerankEnabled: z.boolean(),
+		rerankingServiceId: z.string().uuid().nullable(),
+		rerankMaxResults: z.number().int().nullable(),
+		createdAt: DateTimeSchema,
+		updatedAt: DateTimeSchema,
+	})
+	.openapi("Agent");
+
+export const AgentPageSchema = pageSchema("AgentPage", AgentRecordSchema);
+
+export const CreateAgentInputSchema = z
+	.object({
+		agentId: z.string().uuid().optional(),
+		name: z.string().min(1),
+		description: z.string().nullable().optional(),
+		systemPrompt: z.string().nullable().optional(),
+		userPrompt: z.string().nullable().optional(),
+		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+		ragEnabled: z.boolean().optional(),
+		ragMaxResults: z.number().int().positive().nullable().optional(),
+		ragMinScore: z.number().nullable().optional(),
+		rerankEnabled: z.boolean().optional(),
+		rerankingServiceId: z.string().uuid().nullable().optional(),
+		rerankMaxResults: z.number().int().positive().nullable().optional(),
+	})
+	.openapi("CreateAgentInput");
+
+export const UpdateAgentInputSchema = z
+	.object({
+		name: z.string().min(1).optional(),
+		description: z.string().nullable().optional(),
+		systemPrompt: z.string().nullable().optional(),
+		userPrompt: z.string().nullable().optional(),
+		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+		ragEnabled: z.boolean().optional(),
+		ragMaxResults: z.number().int().positive().nullable().optional(),
+		ragMinScore: z.number().nullable().optional(),
+		rerankEnabled: z.boolean().optional(),
+		rerankingServiceId: z.string().uuid().nullable().optional(),
+		rerankMaxResults: z.number().int().positive().nullable().optional(),
+	})
+	.strict()
+	.openapi("UpdateAgentInput");
+
+/* ---------- Conversations (agent-scoped) ---------- */
+
+/**
+ * Wire-shape for an agent-scoped conversation. The `/chats` surface
+ * uses {@link ChatRecordSchema} (which hides agent_id); the agents
+ * surface includes it because callers picked the agent themselves.
+ */
+export const ConversationRecordSchema = z
+	.object({
+		workspaceId: z.string().uuid(),
+		agentId: z.string().uuid(),
+		conversationId: z.string().uuid(),
+		title: z.string().nullable(),
+		knowledgeBaseIds: z.array(z.string().uuid()),
+		createdAt: DateTimeSchema,
+	})
+	.openapi("Conversation");
+
+export const ConversationPageSchema = pageSchema(
+	"ConversationPage",
+	ConversationRecordSchema,
+);
+
+export const CreateConversationInputSchema = z
+	.object({
+		conversationId: z.string().uuid().optional(),
+		title: z.string().min(1).nullable().optional(),
+		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+	})
+	.openapi("CreateConversationInput");
+
+export const UpdateConversationInputSchema = z
+	.object({
+		title: z.string().min(1).nullable().optional(),
+		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+	})
+	.strict()
+	.openapi("UpdateConversationInput");
 
 export const EmbeddingServiceIdParamSchema = z
 	.string()

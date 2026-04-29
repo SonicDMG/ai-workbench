@@ -973,6 +973,94 @@ persisted with `finish_reason: "stop"`. See
 | `metadata` | `Record<string, string>` | RAG provenance (`context_document_ids`), `model`, `finish_reason` (`stop`/`length`/`error`), `error_message`. |
 
 
+## `/api/v1/workspaces/{workspaceId}/agents`
+
+User-defined agents — workspace-scoped personas that share the
+agentic tables with Bobbie. The `/chats` surface is a thin alias
+that talks to the deterministic Bobbie agent; this surface lets
+callers create their own. See [`agents.md`](agents.md) for the full
+walkthrough.
+
+### `GET /agents`
+
+List agents in the workspace, oldest-first. Paginated. Includes
+Bobbie if she has been ensured (any chat send creates her on
+first use).
+
+### `POST /agents`
+
+- Body: `CreateAgentInput` (see [`agents.md`](agents.md)).
+- **201** — `Agent`
+- **404** — workspace not found
+- **409** — duplicate explicit `agentId`
+
+### `GET /agents/{agentId}`
+
+- **200** — `Agent`
+
+### `PATCH /agents/{agentId}`
+
+Patch any optional field except `agentId`. Sends `null` to clear
+nullable fields.
+
+### `DELETE /agents/{agentId}`
+
+204; cascades the agent's conversations and their messages.
+
+### `GET /agents/{agentId}/conversations`
+
+List the agent's conversations, newest-first. Paginated.
+
+### `POST /agents/{agentId}/conversations`
+
+- Body: `CreateConversationInput` (`{ conversationId?, title?, knowledgeBaseIds? }`).
+- **201** — `Conversation`
+- **404** — workspace or agent not found
+
+### `GET|PATCH|DELETE /agents/{agentId}/conversations/{conversationId}`
+
+Single-conversation read / update (title + KB filter) / delete.
+Delete cascades messages.
+
+### `Agent` record
+
+| Field | Type | Notes |
+|---|---|---|
+| `workspaceId` | uuid | |
+| `agentId` | uuid | Bobbie's id is deterministic (sha256 of workspaceId); user agents are random UUIDs. |
+| `name` | string | |
+| `description` | string \| null | |
+| `systemPrompt` | string \| null | |
+| `userPrompt` | string \| null | |
+| `knowledgeBaseIds` | uuid[] | Default RAG-grounding set. |
+| `ragEnabled` | bool | |
+| `ragMaxResults` | int \| null | |
+| `ragMinScore` | number \| null | |
+| `rerankEnabled` | bool | |
+| `rerankingServiceId` | uuid \| null | Agent-level override of the KB-level reranker. |
+| `rerankMaxResults` | int \| null | |
+| `createdAt` | iso-8601 | |
+| `updatedAt` | iso-8601 | |
+
+### `Conversation` record
+
+| Field | Type | Notes |
+|---|---|---|
+| `workspaceId` | uuid | |
+| `agentId` | uuid | |
+| `conversationId` | uuid | |
+| `title` | string \| null | |
+| `knowledgeBaseIds` | uuid[] | Per-conversation override of the agent's default KB set. |
+| `createdAt` | iso-8601 | |
+
+### Conversation messages
+
+`POST /agents/{agentId}/conversations/{conversationId}/messages` is
+**not yet exposed** — Bobbie's chat send / streaming pipeline at
+`/chats/.../messages` covers the singleton case. Generalising the
+pipeline to any agent is a follow-up; see [`roadmap.md`](roadmap.md).
+
+
 ## `/api/v1/workspaces/{workspaceId}/mcp`
 
 Optional [Model Context Protocol](https://modelcontextprotocol.io)
@@ -1006,17 +1094,17 @@ scoping is enforced for free.
 
 These do not exist yet. Shapes may shift before they land.
 
-### User-defined agents and tool execution
+### Agent send + tool execution
 
-The chat surface above hosts Bobbie as a singleton; agents
-authored by users plus MCP-style tool execution are next:
+The agent surface above gives you CRUD over agents and conversation
+metadata. Send + streaming for arbitrary agents and MCP tool wiring
+are next:
 
 - `/api/v1/workspaces/{w}/llm-services` — CRUD
 - `/api/v1/workspaces/{w}/mcp-tools` — CRUD
-- `/api/v1/workspaces/{w}/agents` — CRUD; an agent composes one LLM
-  + a list of MCP tools + a list of knowledge bases
-- `/api/v1/workspaces/{w}/agents/{a}/conversations` — generalization
-  of `/chats` to any agent (chats today implicitly route to Bobbie)
+- `/api/v1/workspaces/{w}/agents/{a}/conversations/{c}/messages` —
+  send + streaming, generalization of `/chats/.../messages` to any
+  agent
 - `/api/v1/workspaces/{w}/agents/{a}/run` — execution loop with tool
   use
 

@@ -875,6 +875,136 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
+		test("createAgent persists fields; getAgent / listAgents return it", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const a = await store.createAgent(ws.uid, {
+					name: "Researcher",
+					description: "desc",
+					systemPrompt: "be careful",
+					ragEnabled: true,
+					knowledgeBaseIds: ["kb-1", "kb-2"],
+				});
+				expect(a.name).toBe("Researcher");
+				expect(a.description).toBe("desc");
+				expect(a.ragEnabled).toBe(true);
+				expect([...a.knowledgeBaseIds]).toEqual(["kb-1", "kb-2"]);
+
+				const got = await store.getAgent(ws.uid, a.agentId);
+				expect(got).toEqual(a);
+
+				const list = await store.listAgents(ws.uid);
+				const ids = list.map((row) => row.agentId);
+				expect(ids).toContain(a.agentId);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("updateAgent patches fields and bumps updatedAt", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const a = await store.createAgent(ws.uid, {
+					name: "Old",
+					description: "d",
+					ragEnabled: false,
+				});
+				// Sleep a millisecond so updatedAt is strictly later than
+				// createdAt — file/astra timestamps have ms resolution.
+				await new Promise((r) => setTimeout(r, 5));
+				const u = await store.updateAgent(ws.uid, a.agentId, {
+					name: "New",
+					description: null,
+					ragEnabled: true,
+				});
+				expect(u.name).toBe("New");
+				expect(u.description).toBeNull();
+				expect(u.ragEnabled).toBe(true);
+				expect(Date.parse(u.updatedAt)).toBeGreaterThanOrEqual(
+					Date.parse(a.updatedAt),
+				);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteAgent cascades conversations + messages", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const a = await store.createAgent(ws.uid, { name: "X" });
+				const conv = await store.createConversation(ws.uid, a.agentId, {
+					title: "to-cascade",
+				});
+				await store.appendChatMessage(ws.uid, conv.conversationId, {
+					role: "user",
+					content: "hi",
+				});
+				const { deleted } = await store.deleteAgent(ws.uid, a.agentId);
+				expect(deleted).toBe(true);
+				expect(await store.getAgent(ws.uid, a.agentId)).toBeNull();
+				expect(
+					await store.getConversation(ws.uid, a.agentId, conv.conversationId),
+				).toBeNull();
+				// Re-creating with the same id is fine — the cascade left no
+				// orphan conversation rows.
+				const reborn = await store.createAgent(ws.uid, {
+					agentId: a.agentId,
+					name: "X-reborn",
+				});
+				expect(reborn.agentId).toBe(a.agentId);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("createConversation rejects unknown agent", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await expect(
+					store.createConversation(
+						ws.uid,
+						"00000000-0000-0000-0000-0000000000aa",
+						{ title: "x" },
+					),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("user-defined agent conversations are isolated from Bobbie's chats", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				// Bobbie path.
+				const bobbieChat = await store.createChat(ws.uid, {
+					title: "bob-chat",
+				});
+				// User-defined path.
+				const a = await store.createAgent(ws.uid, { name: "Helper" });
+				const userConv = await store.createConversation(ws.uid, a.agentId, {
+					title: "user-conv",
+				});
+
+				// listChats only sees Bobbie's; listConversations(agentId)
+				// only sees its own.
+				const chats = await store.listChats(ws.uid);
+				expect(chats.map((c) => c.conversationId)).toEqual([
+					bobbieChat.conversationId,
+				]);
+				const userConvs = await store.listConversations(ws.uid, a.agentId);
+				expect(userConvs.map((c) => c.conversationId)).toEqual([
+					userConv.conversationId,
+				]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("deleteKnowledgeBase removes the kb id from chat KB filters", async () => {
 			const { store, cleanup } = await factory();
 			try {
