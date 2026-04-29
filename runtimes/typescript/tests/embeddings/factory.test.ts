@@ -79,4 +79,62 @@ describe("EmbedderFactory.forConfig", () => {
 		expect(e.id).toBe("cohere:embed-v4.0");
 		expect(e.dimension).toBe(1024);
 	});
+
+	describe("provider: 'mock'", () => {
+		test("returns a deterministic, network-free embedder with no secret resolution", async () => {
+			// Empty resolver — there is nothing to resolve, and we must
+			// not even try. The mock provider is the seam Playwright
+			// uses to drive embed-then-search end-to-end.
+			const factory = makeEmbedderFactory({ secrets: resolverWith() });
+			const e = await factory.forConfig(
+				cfg({
+					provider: "mock",
+					model: "fake-embedder",
+					dimension: 4,
+					secretRef: null,
+				}),
+			);
+			expect(e.id).toBe("mock:fake-embedder");
+			expect(e.dimension).toBe(4);
+		});
+
+		test("embeds the same text to the same vector every call (determinism)", async () => {
+			const factory = makeEmbedderFactory({ secrets: resolverWith() });
+			const e = await factory.forConfig(
+				cfg({
+					provider: "mock",
+					model: "fake-embedder",
+					dimension: 4,
+					secretRef: null,
+				}),
+			);
+			const a = await e.embed("the quick brown fox");
+			const b = await e.embed("the quick brown fox");
+			expect(a).toEqual(b);
+			// Different input → different vector (collision is technically
+			// possible with FNV+xorshift but vanishingly so for plain
+			// English at this dimension).
+			const c = await e.embed("a completely different sentence");
+			expect(a).not.toEqual(c);
+		});
+
+		test("embedMany matches embed() per element so batched and per-row dispatch agree", async () => {
+			const factory = makeEmbedderFactory({ secrets: resolverWith() });
+			const e = await factory.forConfig(
+				cfg({
+					provider: "mock",
+					model: "fake-embedder",
+					dimension: 4,
+					secretRef: null,
+				}),
+			);
+			const texts = ["alpha document", "bravo document"];
+			const batched = await e.embedMany(texts);
+			const oneByOne = [
+				await e.embed(texts[0] as string),
+				await e.embed(texts[1] as string),
+			];
+			expect(batched).toEqual(oneByOne);
+		});
+	});
 });
