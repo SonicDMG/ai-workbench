@@ -63,6 +63,38 @@ AI Workbench stores credentials as `SecretRef` pointers (`env:FOO`,
 logs, persists, or echoes back a **resolved** secret value, treat it
 as a security bug and report it through the channel above.
 
+## Browser security headers
+
+The TypeScript runtime applies a single hardening middleware to every
+response — see
+[`runtimes/typescript/src/lib/security-headers.ts`](./runtimes/typescript/src/lib/security-headers.ts).
+A regression in any of these is in scope for a security report.
+
+| Header | Value | Notes |
+| --- | --- | --- |
+| `Content-Security-Policy` | strict default; relaxed only on `/docs` | SPA + API: `default-src 'self'`, `script-src 'self'`, `frame-ancestors 'none'`. `/docs` (Scalar) pins `cdn.jsdelivr.net` and allows the inline bootstrap that vendor library requires; the relaxation is scoped to that single route. |
+| `Strict-Transport-Security` | `max-age=15552000; includeSubDomains` | Emitted only when `runtime.environment` is `production`. Plaintext-HTTP dev servers don't get HSTS — pinning a browser to HTTPS for a misconfigured deployment is hard to recover from. The runtime never emits `preload`; that's an operator decision. |
+| `X-Frame-Options` | `DENY` | Defense in depth alongside CSP `frame-ancestors 'none'`. |
+| `X-Content-Type-Options` | `nosniff` | Forces declared content types. |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | |
+| `Cross-Origin-Opener-Policy` | `same-origin` | Isolates the SPA's browsing context from popups it didn't open. |
+| `Permissions-Policy` | `camera=(), geolocation=(), microphone=(), payment=(), usb=()` | Empty allowlists turn off the listed capability APIs for the runtime origin and any nested frames. |
+
+### CORS posture
+
+The runtime intentionally **does not set** `Access-Control-Allow-Origin`
+or any other CORS headers. The bundled web UI (`apps/web/`) is
+same-origin with the API, and the API is not designed to be called
+from third-party browser origins. Multi-origin deployments must front
+the runtime with a reverse proxy that owns the CORS contract — adding
+permissive CORS at the runtime layer would invalidate the
+`Cross-Origin-Opener-Policy` and `frame-ancestors` guarantees above.
+
+If you need a browser client on a different origin to call the API,
+issue a workbench API key and have a server-side proxy (your own
+backend) make the call. Browser-initiated cross-origin calls into the
+runtime are not a supported deployment shape.
+
 ## Supported versions
 
 This repo is pre-1.0. Security fixes land on `main` and are available
