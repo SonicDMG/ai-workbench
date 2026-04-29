@@ -81,7 +81,7 @@ export function MarkdownContent({
 	workspaceId,
 	chunkMap,
 	className,
-}: MarkdownContentProps): JSX.Element {
+}: MarkdownContentProps) {
 	const map = chunkMap ?? EMPTY_MAP;
 	const source = injectCitations(content, map, workspaceId);
 	return (
