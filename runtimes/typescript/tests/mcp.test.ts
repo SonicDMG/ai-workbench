@@ -334,4 +334,61 @@ describe("MCP HTTP route", () => {
 		// but the route is reachable and the transport is wired.
 		expect(res.status).toBe(200);
 	});
+
+	/**
+	 * Regression test for the empty-body SSE bug.
+	 *
+	 * Before the TransformStream fix, `handleMcpRequest` called
+	 * `transport.close()` in a `finally` block that ran synchronously
+	 * after `transport.handleRequest()` returned the Response shell.
+	 * Closing the transport destroyed every open stream controller
+	 * before the SDK had a chance to async-write the JSON-RPC reply,
+	 * yielding an empty body on the wire.
+	 *
+	 * The fix wraps the response body in a passthrough TransformStream
+	 * and defers `transport.close()` to the stream's `flush` callback,
+	 * which fires only after all bytes have been piped through.
+	 *
+	 * This test hits the HTTP route end-to-end, drains the SSE body,
+	 * and asserts a non-empty JSON-RPC tools/list result. It would
+	 * have caught the bug (body would have been empty before the fix).
+	 */
+	test("body is non-empty and contains a tools/list result (SSE regression)", async () => {
+		const { app, store } = makeApp({ mcpEnabled: true });
+		const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}/mcp`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				accept: "application/json, text/event-stream",
+			},
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				id: 1,
+				method: "tools/list",
+			}),
+		});
+		expect(res.status).toBe(200);
+
+		// Drain the full body — an empty body would throw here or
+		// produce an empty string, which the assertions below catch.
+		const raw = await res.text();
+		expect(raw.length).toBeGreaterThan(0);
+
+		// Parse the first `data:` line from the SSE stream.
+		const dataLine = raw
+			.split(/\r?\n/)
+			.map((l) => l.trim())
+			.find((l) => l.startsWith("data:"));
+		expect(dataLine).toBeDefined();
+
+		const rpc = JSON.parse(dataLine?.slice("data:".length).trim()) as {
+			result?: { tools: Array<{ name: string }> };
+		};
+		expect(rpc.result).toBeDefined();
+		expect(Array.isArray(rpc.result?.tools)).toBe(true);
+		expect(rpc.result?.tools.length).toBeGreaterThan(0);
+		const toolNames = rpc.result?.tools.map((t) => t.name).sort();
+		expect(toolNames).toContain("list_knowledge_bases");
+	});
 });

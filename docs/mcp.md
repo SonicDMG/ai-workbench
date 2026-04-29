@@ -107,6 +107,57 @@ For the chat-with-Bobbie UI's own streaming, see
 `POST /chats/{c}/messages/stream` endpoint that emits structured
 SSE events tailored to the UI rather than going through MCP.
 
+## Tunnelling and reverse-proxy notes
+
+The MCP endpoint uses **SSE (Server-Sent Events)** to stream JSON-RPC
+responses. Most reverse proxies and local-tunnel tools work fine, but
+there are a few gotchas:
+
+### Cloudflare quick tunnels (`trycloudflare.com`)
+
+Quick tunnels (`cloudflare tunnel --url ...`) buffer SSE aggressively.
+The client often sees an empty body or a stalled connection because
+Cloudflare holds chunks until a flush threshold is reached or the
+connection closes — the opposite of what SSE needs.
+
+**Recommended alternatives for public dev access:**
+
+| Option | Notes |
+|--------|-------|
+| **Cloudflare Tunnel (named)** | `cloudflare tunnel create <name>` + `cloudflare tunnel route dns` — persistent, named tunnels flush SSE correctly. |
+| **ngrok** | `ngrok http 8080` — SSE works reliably out of the box. |
+| **Real reverse proxy** | nginx / Caddy with `proxy_buffering off` (nginx) or default Caddy config both pass SSE through without buffering. |
+
+### nginx
+
+Add to the `location` block that proxies the runtime:
+
+```nginx
+location /api/v1/ {
+    proxy_pass http://localhost:8080;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+    proxy_set_header Connection '';
+    chunked_transfer_encoding on;
+}
+```
+
+Without `proxy_buffering off`, nginx accumulates the SSE stream and
+delivers it in one shot when the connection closes — which looks like a
+hanging request from the MCP client's perspective.
+
+### MCP client requirements
+
+Most MCP clients require the endpoint URL to use `https://`. For local
+development this means either:
+
+- a named tunnel / ngrok (both provide HTTPS automatically), or
+- a local TLS terminator (Caddy's `localhost` cert, `mkcert` + nginx).
+
+`http://localhost:8080/...` works fine if your MCP client explicitly
+allows plain HTTP local addresses.
+
 ## Failure surface
 
 | Symptom | Why | Fix |

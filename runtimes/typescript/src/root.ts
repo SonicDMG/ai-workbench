@@ -87,6 +87,7 @@ async function main(): Promise<void> {
 	const embedders = makeEmbedderFactory({ secrets });
 	const auth = await buildAuthResolver(config.auth, { store, secrets });
 	warnOnOpenProductionAuth(config);
+	warnOnOpenMcpAuth(config);
 
 	const login = await buildLoginOptions(config.auth, secrets, {
 		publicOrigin: config.runtime.publicOrigin,
@@ -289,6 +290,46 @@ function warnOnOpenProductionAuth(config: {
 			hasBootstrapToken: config.auth.bootstrapTokenRef != null,
 		},
 		"non-memory control plane is accepting anonymous API access; set auth.mode to apiKey/oidc/any with anonymousPolicy: reject before exposing this runtime",
+	);
+}
+
+/**
+ * Warn when MCP is enabled but auth is in its default open state.
+ *
+ * `auth.mode: disabled` (the dev default) means any caller who
+ * discovers the MCP URL gets unrestricted access to every workspace.
+ * This is fine on a loopback dev runtime; it is dangerous the moment
+ * the port is forwarded, tunnelled, or deployed anywhere reachable
+ * from outside the developer's machine.
+ *
+ * We log WARN rather than refusing to start so existing quick-start
+ * configs keep working — but the message is loud enough that it shows
+ * up in the terminal when the developer enables MCP for the first time.
+ */
+function warnOnOpenMcpAuth(config: {
+	readonly mcp: { readonly enabled: boolean };
+	readonly auth: {
+		readonly mode: string;
+		readonly anonymousPolicy: string;
+	};
+}): void {
+	if (!config.mcp.enabled) {
+		return;
+	}
+	if (
+		config.auth.mode !== "disabled" &&
+		config.auth.anonymousPolicy === "reject"
+	) {
+		return;
+	}
+	logger.warn(
+		{
+			authMode: config.auth.mode,
+			anonymousPolicy: config.auth.anonymousPolicy,
+			mcpPath: "/api/v1/workspaces/{workspaceId}/mcp",
+		},
+		"MCP is enabled with open auth — any caller who knows the workspace URL has unrestricted MCP access; " +
+			"set auth.mode to apiKey/oidc/any with anonymousPolicy: reject and mint a workspace API key per agent before exposing this runtime",
 	);
 }
 
