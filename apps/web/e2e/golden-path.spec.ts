@@ -3,14 +3,17 @@ import { expect, test } from "@playwright/test";
 // End-to-end golden path:
 //
 //   onboarding → workspace (mock) → embedding service → chunking
-//   service → knowledge base → upsert two records via API → playground
-//   vector query → hits.
+//   service → knowledge base → upsert vector records → playground
+//   vector query → hits → upsert text records → playground text query
+//   → hits.
 //
-// We deliberately stay on the vector lane: text retrieval would build
-// an `Embedder` under the hood, and `embedding.provider: "mock"`
-// throws `embedding_unavailable` from the production embedder factory.
-// Vector input bypasses the embedder entirely and is enough to prove
-// the end-to-end shell works.
+// The text-lane coverage uses `embedding.provider: "mock"`, which the
+// production embedder factory now resolves to a deterministic
+// FNV-hash embedder (see runtimes/typescript/src/embeddings/factory.ts).
+// Same opt-in shape as the mock vector store driver — operators
+// who flip a real workspace to provider:"mock" are explicitly
+// opting out of real retrieval, but the seam lets E2E exercise the
+// full embed-then-search dispatch without provisioning credentials.
 //
 // The runtime is memory-backed (default workbench.yaml). State does
 // not persist between specs.
@@ -130,4 +133,39 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	await page.getByRole("button", { name: /Run query/ }).click();
 	await expect(page.getByText(/alpha/, { exact: false })).toBeVisible();
 	await expect(page.getByText(/bravo/, { exact: false })).toBeVisible();
+
+	// 10. Cover the text lane. Upsert two records by `text` — the
+	//     runtime client-side embeds them through the mock embedder,
+	//     producing deterministic vectors. Querying with the same text
+	//     deterministically retrieves the matching record at cosine 1.0.
+	const textUpsert = await request.post(
+		`/api/v1/workspaces/${workspaceUid}/knowledge-bases/${knowledgeBaseUid}/records`,
+		{
+			data: {
+				records: [
+					{
+						id: "text-cat",
+						text: "cats sit on mats",
+						payload: { tag: "animal" },
+					},
+					{
+						id: "text-dog",
+						text: "dogs chase balls",
+						payload: { tag: "animal" },
+					},
+				],
+			},
+		},
+	);
+	expect(textUpsert.ok(), `text upsert: ${await textUpsert.text()}`).toBe(true);
+
+	// 11. Switch back to the Text tab (default, but the previous step
+	//     left us on Vector) and query with one of the upserted texts.
+	//     The mock embedder hashes both the upserted text and the
+	//     query text identically → cosine 1.0 → that record is the top
+	//     hit.
+	await page.getByRole("button", { name: "Text", exact: true }).click();
+	await page.getByLabel("Query").fill("cats sit on mats");
+	await page.getByRole("button", { name: /Run query/ }).click();
+	await expect(page.getByText("text-cat", { exact: false })).toBeVisible();
 });
