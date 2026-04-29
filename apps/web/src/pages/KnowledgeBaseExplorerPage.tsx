@@ -1,6 +1,6 @@
 import { ArrowLeft, Database, RefreshCw, Sparkles, Upload } from "lucide-react";
-import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
@@ -56,6 +56,34 @@ export function KnowledgeBaseExplorerPage() {
 		workspaceUid ?? "",
 		knowledgeBaseUid ?? "",
 	);
+
+	// Deep-link from chat citations: `?document=<id>&chunk=<id>` lands
+	// here, auto-opens the matching document detail dialog, and the
+	// dialog scrolls + highlights the cited chunk on its own.
+	const [searchParams, setSearchParams] = useSearchParams();
+	const wantedDocumentId = searchParams.get("document");
+	const wantedChunkId = searchParams.get("chunk");
+	useEffect(() => {
+		if (!wantedDocumentId) return;
+		if (detail?.documentId === wantedDocumentId) return;
+		const match = (docs.data ?? []).find(
+			(d) => d.documentId === wantedDocumentId,
+		);
+		if (match) setDetail(match);
+	}, [wantedDocumentId, docs.data, detail?.documentId]);
+
+	const onDetailOpenChange = (open: boolean) => {
+		if (open) return;
+		setDetail(null);
+		// Strip the deep-link query when the user dismisses the dialog
+		// so a back-button-then-reopen doesn't re-trigger the auto-open.
+		if (wantedDocumentId || wantedChunkId) {
+			const next = new URLSearchParams(searchParams);
+			next.delete("document");
+			next.delete("chunk");
+			setSearchParams(next, { replace: true });
+		}
+	};
 
 	if (!workspaceUid || !knowledgeBaseUid) {
 		return (
@@ -196,7 +224,8 @@ export function KnowledgeBaseExplorerPage() {
 				workspace={workspaceUid}
 				knowledgeBaseUid={knowledgeBase.knowledgeBaseId}
 				doc={detail}
-				onOpenChange={(o) => !o && setDetail(null)}
+				highlightChunkId={wantedChunkId}
+				onOpenChange={onDetailOpenChange}
 			/>
 
 			<DeleteDocumentDialog

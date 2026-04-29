@@ -53,7 +53,7 @@ introducing parallel `wb_chat_*` tables. See
 |---|---|
 | `wb_agentic_agents_by_workspace` | One **Bobbie** row per workspace. Deterministic `agent_id = sha256("bobbie:" + workspaceId)` so concurrent first-use callers converge on a single row instead of racing. |
 | `wb_agentic_conversations_by_agent` | One row per chat. Carries `knowledge_base_ids: set<uuid>` for the per-conversation grounding filter. Empty / null = the conversation can draw from any KB in the workspace at retrieval time. |
-| `wb_agentic_messages_by_conversation` | One row per turn. `role ∈ {user, agent, system}` (`tool` exists in the schema for future use but isn't surfaced today). `metadata` is a string map carrying RAG provenance, model id, finish reason, and any error message. |
+| `wb_agentic_messages_by_conversation` | One row per turn. `role ∈ {user, agent, system}` (`tool` exists in the schema for future use but isn't surfaced today). `metadata` is a string map carrying RAG provenance, model id, finish reason, and any error message — see [Provenance metadata](#provenance-metadata) below. |
 
 Cascade behavior:
 
@@ -144,6 +144,66 @@ assistant row from the cache.
 
 `?id=<chatId>` selects the active conversation — chats are
 deep-linkable.
+
+### Markdown rendering
+
+Bobbie's persisted assistant turns render as sanitized
+GitHub-flavored markdown (via `react-markdown` + `remark-gfm` +
+`rehype-sanitize`). Bold, italic, lists, fenced code blocks, tables,
+and blockquotes all work; raw HTML is stripped at render time so
+nothing the model emits — even by way of jailbreak — can land an
+executable script in the DOM.
+
+Streaming bubbles (in-flight tokens) stay as plain whitespace-pre
+text. Markdown rendering of half-parsed input flickers, and the
+canonical `done` event swaps in a fully-rendered `MessageBubble` a
+moment later anyway, so the pre-text trade-off is the right one.
+
+User messages and error bubbles also stay as plain text — markdown
+formatting from the user is rare, and red-bordered error bubbles
+should look like literal failure output, not formatted prose.
+
+### Citation linkbacks
+
+Bobbie's persona prompt asks her to cite KB chunks inline as
+`[chunkId]`. The runtime persists a JSON-encoded chunk → (KB,
+document) map at `metadata.context_chunks` so the UI can rewrite
+each `[chunkId]` reference into a clickable link without a
+follow-up fetch:
+
+- Citations land at
+  `/workspaces/{w}/knowledge-bases/{kb}?document={d}&chunk={c}`.
+- The KB explorer reads those query parameters, auto-opens the
+  matching document's detail dialog, scrolls the cited chunk into
+  view, and highlights it with a brand-coloured ring.
+- The "Sources" disclosure under each assistant bubble shows the
+  same chunk IDs as clickable rows, so users who skipped the inline
+  citations still have one click to the source.
+
+The pre-processor for citations is conservative — it only rewrites
+bare `[chunkId]` patterns where the id is in the chunk map and the
+pattern isn't already a markdown link. Anything else (random
+`[brackets]`, already-linked citations, footnote-style references)
+passes through untouched.
+
+### Provenance metadata
+
+The assistant message row's `metadata: Record<string, string>` carries:
+
+| Key | Value | Notes |
+|---|---|---|
+| `model` | string | Model id used for this turn (mirrors `chat.model`). |
+| `finish_reason` | `stop` \| `length` \| `error` | Terminal state. |
+| `error_message` | string | Only present when `finish_reason === "error"`. |
+| `context_document_ids` | comma-joined chunk IDs | **Backward-compat key.** Older UIs (and the MCP `chat_send` tool) read this. |
+| `context_chunks` | JSON-encoded `[[chunkId, kbId, docId\|null], …]` | **New.** Used by the chat UI to render `[chunkId]` citation linkbacks without a chunk → document lookup round-trip. |
+
+`context_chunks` is intentionally a JSON-in-string blob rather than
+a typed column — the agentic-messages table stores `metadata` as a
+single `map<text, text>`, and adding a new column for what's
+fundamentally provenance metadata would be churn for a future-proof
+v0 surface. If the field grows enough to matter, promotion to a
+typed column is a straight refactor.
 
 ## Failure surface
 

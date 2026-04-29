@@ -165,11 +165,16 @@ describe("ChatPage", () => {
 			messageId: "44444444-5555-4666-8777-000000000003",
 			messageTs: "2026-04-22T10:11:14.000Z",
 			role: "agent",
-			content: "Here is what I think.",
+			content:
+				"Here **is** what I think. As cited in [chunk-1] and also [chunk-2].",
 			metadata: {
 				model: "fake-test-model",
 				finish_reason: "stop",
 				context_document_ids: "chunk-1,chunk-2",
+				context_chunks: JSON.stringify([
+					["chunk-1", "kb-A", "doc-X"],
+					["chunk-2", "kb-A", null],
+				]),
 			},
 		};
 		// Replay a fake stream: user-message, three token chunks,
@@ -204,8 +209,22 @@ describe("ChatPage", () => {
 		await waitFor(() =>
 			expect(screen.getByText("another one")).toBeInTheDocument(),
 		);
-		expect(screen.getByText("Here is what I think.")).toBeInTheDocument();
-		// Source-citation disclosure renders the chunk IDs.
+		// Markdown renders the bold span.
+		expect(screen.getByText("is").tagName).toBe("STRONG");
+		// `[chunk-1]` becomes a clickable react-router link to the KB
+		// explorer with `?document=` + `?chunk=`.
+		const citation = screen.getAllByTestId("chat-citation-link")[0];
+		expect(citation).toBeDefined();
+		expect(citation?.getAttribute("href")).toBe(
+			`/workspaces/${workspace.workspaceId}/knowledge-bases/kb-A?document=doc-X&chunk=chunk-1`,
+		);
+		// `[chunk-2]` had no documentId — link uses the KB-only form.
+		const citations = screen.getAllByTestId("chat-citation-link");
+		expect(citations.map((a) => a.getAttribute("href"))).toEqual([
+			`/workspaces/${workspace.workspaceId}/knowledge-bases/kb-A?document=doc-X&chunk=chunk-1`,
+			`/workspaces/${workspace.workspaceId}/knowledge-bases/kb-A?chunk=chunk-2`,
+		]);
+		// Source-citation disclosure renders the chunk IDs as links too.
 		expect(screen.getByText(/2 sources/i)).toBeInTheDocument();
 	});
 
