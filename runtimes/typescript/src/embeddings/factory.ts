@@ -1,10 +1,10 @@
 /**
- * Build an {@link Embedder} for a given {@link VectorStoreRecord}.
+ * Build an {@link Embedder} for a given embedding-service config.
  *
  * Resolves the configured secret via the existing `SecretResolver`
  * chain (so operators keep the same `env:` / `file:` / future
- * provider-prefixed shapes), then hands off to the Vercel SDK
- * impl. The factory is the seam tests mock.
+ * provider-prefixed shapes), then hands off to {@link
+ * buildLangchainEmbedder}. The factory is the seam tests mock.
  */
 
 import type { EmbeddingConfig } from "../control-plane/types.js";
