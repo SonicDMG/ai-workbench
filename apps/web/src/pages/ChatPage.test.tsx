@@ -30,7 +30,6 @@ vi.mock("@/lib/api", () => {
 			createChat: vi.fn(),
 			deleteChat: vi.fn(),
 			listChatMessages: vi.fn(),
-			sendChatMessage: vi.fn(),
 		},
 		ApiError,
 		formatApiError: (err: unknown) =>
@@ -38,10 +37,15 @@ vi.mock("@/lib/api", () => {
 	};
 });
 
+vi.mock("@/lib/chatStream", () => ({
+	sendChatStream: vi.fn(),
+}));
+
 // Confirm dialogs trigger window.confirm — auto-accept in tests.
 vi.spyOn(window, "confirm").mockImplementation(() => true);
 
 import { api } from "@/lib/api";
+import { sendChatStream } from "@/lib/chatStream";
 import { ChatPage } from "./ChatPage";
 
 const workspace: Workspace = {
@@ -145,7 +149,7 @@ describe("ChatPage", () => {
 		expect(screen.getByTestId("chat-empty-messages")).toBeInTheDocument();
 	});
 
-	it("renders message history and sends new messages with Bobbie's reply", async () => {
+	it("renders message history and streams Bobbie's reply token-by-token", async () => {
 		vi.mocked(api.getWorkspace).mockResolvedValue(workspace);
 		vi.mocked(api.listChats).mockResolvedValue([chatA]);
 		vi.mocked(api.getChat).mockResolvedValue(chatA);
@@ -168,9 +172,14 @@ describe("ChatPage", () => {
 				context_document_ids: "chunk-1,chunk-2",
 			},
 		};
-		vi.mocked(api.sendChatMessage).mockResolvedValue({
-			user: echoedUser,
-			assistant: bobbieReply,
+		// Replay a fake stream: user-message, three token chunks,
+		// then a terminal `done` carrying the persisted assistant row.
+		vi.mocked(sendChatStream).mockImplementation(async (_ws, _id, opts) => {
+			opts.onEvent({ type: "user-message", message: echoedUser });
+			opts.onEvent({ type: "token", delta: "Here is " });
+			opts.onEvent({ type: "token", delta: "what I " });
+			opts.onEvent({ type: "token", delta: "think." });
+			opts.onEvent({ type: "done", assistant: bobbieReply });
 		});
 
 		const user = userEvent.setup();
@@ -185,10 +194,10 @@ describe("ChatPage", () => {
 		await user.click(screen.getByRole("button", { name: /^Send$/ }));
 
 		await waitFor(() => {
-			expect(api.sendChatMessage).toHaveBeenCalledWith(
+			expect(sendChatStream).toHaveBeenCalledWith(
 				workspace.workspaceId,
 				chatA.chatId,
-				{ content: "another one" },
+				expect.objectContaining({ content: "another one" }),
 			);
 		});
 		// Both the user echo and Bobbie's reply land in the cache.
@@ -198,6 +207,58 @@ describe("ChatPage", () => {
 		expect(screen.getByText("Here is what I think.")).toBeInTheDocument();
 		// Source-citation disclosure renders the chunk IDs.
 		expect(screen.getByText(/2 sources/i)).toBeInTheDocument();
+	});
+
+	it("shows the streaming bubble while tokens arrive", async () => {
+		vi.mocked(api.getWorkspace).mockResolvedValue(workspace);
+		vi.mocked(api.listChats).mockResolvedValue([chatA]);
+		vi.mocked(api.getChat).mockResolvedValue(chatA);
+		vi.mocked(api.listChatMessages).mockResolvedValue([]);
+		const echoedUser: ChatMessage = {
+			...userMessage,
+			messageId: "44444444-5555-4666-8777-100000000002",
+			content: "ping",
+		};
+		const bobbieReply: ChatMessage = {
+			...userMessage,
+			messageId: "44444444-5555-4666-8777-100000000003",
+			role: "agent",
+			content: "pong",
+			metadata: { model: "fake-test-model", finish_reason: "stop" },
+		};
+		// Resolve the stream after a microtask so the streaming bubble
+		// has a chance to render before `done` fires.
+		vi.mocked(sendChatStream).mockImplementation(async (_ws, _id, opts) => {
+			opts.onEvent({ type: "user-message", message: echoedUser });
+			opts.onEvent({ type: "token", delta: "po" });
+			opts.onEvent({ type: "token", delta: "ng" });
+			await new Promise((r) => setTimeout(r, 10));
+			opts.onEvent({ type: "done", assistant: bobbieReply });
+		});
+
+		const user = userEvent.setup();
+		renderAt(`/workspaces/${workspace.workspaceId}/chat?id=${chatA.chatId}`);
+
+		await waitFor(() =>
+			expect(
+				screen.getByRole("textbox", { name: /message/i }),
+			).toBeInTheDocument(),
+		);
+		await user.type(screen.getByRole("textbox", { name: /message/i }), "ping");
+		await user.click(screen.getByRole("button", { name: /^Send$/ }));
+
+		// Streaming bubble appears while tokens are arriving.
+		await waitFor(() =>
+			expect(screen.getByTestId("bobbie-streaming")).toBeInTheDocument(),
+		);
+		expect(screen.getByTestId("bobbie-streaming")).toHaveTextContent(/pong/);
+
+		// Once `done` lands, the streaming bubble is gone and the
+		// canonical assistant bubble renders.
+		await waitFor(() =>
+			expect(screen.queryByTestId("bobbie-streaming")).not.toBeInTheDocument(),
+		);
+		expect(screen.getByText("pong")).toBeInTheDocument();
 	});
 
 	it("renders an error styling when Bobbie's reply has finish_reason=error", async () => {

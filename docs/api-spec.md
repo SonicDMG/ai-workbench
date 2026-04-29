@@ -889,23 +889,107 @@ restart-resume today should treat any `running` job older than a
 heartbeat threshold as failed and resubmit.
 
 
+## `/api/v1/workspaces/{workspaceId}/chats`
+
+Chat-with-Bobbie. Workspace-scoped conversations backed by the
+Stage-2 agentic tables. Bobbie is currently the only agent the chat
+surface exposes; user-defined agents are planned (see "Planned
+routes" below).
+
+### `GET /chats`
+List the workspace's chats, newest-first. Paginated.
+
+### `POST /chats`
+Body: `{ chatId?, title?, knowledgeBaseIds? }`. `knowledgeBaseIds`
+narrows retrieval; empty / omitted means Bobbie may draw from any
+KB in the workspace.
+
+- **201** — `Chat`
+- **404** `workspace_not_found`
+- **409** `conflict` (when `chatId` is supplied and already exists)
+
+### `GET /chats/{chatId}`
+- **200** — `Chat`
+- **404** `chat_not_found`
+
+### `PATCH /chats/{chatId}`
+Body: `{ title?, knowledgeBaseIds? }`.
+
+### `DELETE /chats/{chatId}`
+**204**. Cascades to messages.
+
+### `GET /chats/{chatId}/messages`
+Oldest-first message log, paginated.
+
+### `POST /chats/{chatId}/messages`  (synchronous)
+Body: `{ content }`. Persists the user turn, retrieves grounding
+context, calls the chat-completion model, persists the assistant
+turn, and returns:
+
+```json
+{ "user": <ChatMessage>, "assistant": <ChatMessage> }
+```
+
+- **201** — `{ user, assistant }`
+- **404** `chat_not_found`
+- **503** `chat_disabled` — runtime booted without a `chat` block
+
+### `POST /chats/{chatId}/messages/stream`  (SSE)
+Same body. Returns `text/event-stream`:
+
+| Event | Payload |
+|---|---|
+| `user-message` | The persisted user `ChatMessage` |
+| `token` | `{ delta: string }` — one per model emission |
+| `done` | The persisted assistant `ChatMessage` (terminal on success) |
+| `error` | The persisted assistant `ChatMessage` with `metadata.finish_reason: "error"` (terminal on failure) |
+
+The stream emits exactly one of `done` / `error`. Client disconnect
+is treated as a clean stop — whatever was already streamed gets
+persisted with `finish_reason: "stop"`. See
+[`chat.md`](chat.md) for the full lifecycle.
+
+### `Chat` record
+
+| Field | Type | Notes |
+|---|---|---|
+| `workspaceId` | uuid | |
+| `chatId` | uuid | Server-assigned unless caller supplied. |
+| `title` | string \| null | Free-form. |
+| `knowledgeBaseIds` | uuid[] | Empty = "any KB in workspace". |
+| `createdAt` | iso-8601 | |
+
+### `ChatMessage` record
+
+| Field | Type | Notes |
+|---|---|---|
+| `workspaceId` | uuid | |
+| `chatId` | uuid | |
+| `messageId` | uuid | |
+| `messageTs` | iso-8601 | Cluster-key. Strictly increasing within a chat. |
+| `role` | `"user"` \| `"agent"` \| `"system"` | `agent` is Bobbie. |
+| `content` | string \| null | |
+| `tokenCount` | int \| null | If the provider reports it. |
+| `metadata` | `Record<string, string>` | RAG provenance (`context_document_ids`), `model`, `finish_reason` (`stop`/`length`/`error`), `error_message`. |
+
+
 ## Planned routes
 
 These do not exist yet. Shapes may shift before they land.
 
-### Stage 2 — agents, conversations, messages
+### User-defined agents and tool execution
 
-The schema for `wb_agentic_*` and `wb_config_llm_service_*` /
-`wb_config_mcp_tools_*` is provisioned at boot but not yet wired
-through the runtime. The route shapes are reserved:
+The chat surface above hosts Bobbie as a singleton; agents
+authored by users plus MCP-style tool execution are next:
 
 - `/api/v1/workspaces/{w}/llm-services` — CRUD
 - `/api/v1/workspaces/{w}/mcp-tools` — CRUD
 - `/api/v1/workspaces/{w}/agents` — CRUD; an agent composes one LLM
   + a list of MCP tools + a list of knowledge bases
-- `/api/v1/workspaces/{w}/agents/{a}/conversations` — CRUD; nested
-  `messages` resource
-- `/api/v1/workspaces/{w}/agents/{a}/run` — execution loop
+- `/api/v1/workspaces/{w}/agents/{a}/conversations` — generalization
+  of `/chats` to any agent (chats today implicitly route to Bobbie)
+- `/api/v1/workspaces/{w}/agents/{a}/run` — execution loop with tool
+  use
 
 See [`roadmap.md`](roadmap.md) for the phase plan.
 

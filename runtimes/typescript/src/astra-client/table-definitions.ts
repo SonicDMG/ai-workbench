@@ -76,7 +76,10 @@ export const API_KEY_LOOKUP_DEFINITION = {
 /*  Three layers, mirroring the CQL the design proposes:              */
 /*    • config — workspaces, knowledge bases, execution services      */
 /*    • rag    — documents, indexed three ways                        */
-/*    • agentic — agents, conversations, messages (Stage 2)           */
+/*    • agentic — agents, conversations, messages (chat-with-Bobbie:  */
+/*                Bobbie is the only agent today; the schema is       */
+/*                shared so future user-defined agents can land       */
+/*                without table churn)                                */
 /*                                                                    */
 /*  All shapes use snake_case columns and partition keys that match   */
 /*  the access pattern in the route name. Application records         */
@@ -391,7 +394,15 @@ export const RAG_DOCUMENTS_BY_HASH_DEFINITION = {
 
 /* --------------------------- agentic layer ------------------------ */
 
-/** `wb_agentic_agents_by_workspace` — agent definitions (Stage 2). */
+/**
+ * `wb_agentic_agents_by_workspace` — agent definitions.
+ *
+ * Currently holds the singleton "Bobbie" row per workspace (chat-
+ * with-Bobbie feature). Designed to host future user-defined agents
+ * with their own random UUIDs; Bobbie's deterministic
+ * `agent_id = uuidv5(workspaceId, "bobbie")` keeps the namespaces
+ * from colliding.
+ */
 export const AGENTS_TABLE = "wb_agentic_agents_by_workspace";
 export const AGENTS_DEFINITION = {
 	columns: {
