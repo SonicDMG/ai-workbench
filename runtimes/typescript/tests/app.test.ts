@@ -275,6 +275,58 @@ describe("operational routes", () => {
 		expect(second.headers.get("X-RateLimit-Limit")).toBeNull();
 	});
 
+	test("/auth/* enforces a tighter 30-req fixed cap independent of /api/v1/*", async () => {
+		// Browser-login isn't configured, so /auth/* paths 404 — but the
+		// rate-limit middleware still runs ahead of `notFound` and burns
+		// quota. We're asserting the limiter, not the routes.
+		const store = new MemoryControlPlaneStore();
+		const drivers = new VectorStoreDriverRegistry(
+			new Map([["mock", new MockVectorStoreDriver()]]),
+		);
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const auth = new AuthResolver({
+			mode: "disabled",
+			anonymousPolicy: "allow",
+			verifiers: [],
+		});
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory(),
+			// Keep the API capacity wide open so we can verify the auth
+			// bucket isn't piggy-backing on it. Auth uses the hard-coded
+			// `DEFAULT_AUTH_RATE_LIMIT_CAPACITY = 30` — not configurable.
+			rateLimit: { enabled: true, capacity: 10_000, windowMs: 60_000 },
+		});
+
+		// 30 hits to /auth/* must each report a 30-cap bucket and stay
+		// under the 429. We don't care about the route status here; what
+		// matters is that the limiter advertises the tighter cap and
+		// doesn't reject before exhausting the bucket.
+		for (let i = 0; i < 30; i++) {
+			const res = await app.request("/auth/login");
+			expect(res.headers.get("X-RateLimit-Limit")).toBe("30");
+			expect(res.status).not.toBe(429);
+		}
+		const blocked = await app.request("/auth/login");
+		expect(blocked.status).toBe(429);
+		expect(blocked.headers.get("X-RateLimit-Limit")).toBe("30");
+		expect(blocked.headers.get("X-RateLimit-Remaining")).toBe("0");
+		expect(blocked.headers.get("Retry-After")).toBeTruthy();
+		const blockedBody = await json(blocked);
+		expect(blockedBody.error.code).toBe("rate_limited");
+
+		// The /api/v1/* bucket must be untouched — auth burning its 30
+		// can't take the API surface offline. Hitting /api/v1/workspaces
+		// once is enough: it should advertise the wide API cap (10000)
+		// rather than the auth cap (30).
+		const apiRes = await app.request("/api/v1/workspaces");
+		expect(apiRes.status).toBe(200);
+		expect(apiRes.headers.get("X-RateLimit-Limit")).toBe("10000");
+	});
+
 	test("echoes client-provided request id", async () => {
 		const { app } = makeApp();
 		const res = await app.request("/healthz", {
