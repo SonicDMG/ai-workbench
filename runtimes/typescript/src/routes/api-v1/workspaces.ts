@@ -20,6 +20,7 @@ import type {
 	WorkspaceRecord,
 } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
+import { audit } from "../../lib/audit.js";
 import { makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import { safeErrorMessage } from "../../lib/safe-error.js";
@@ -111,6 +112,12 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			const record = await store.createWorkspace({
 				...body,
 				uid: body.workspaceId,
+			});
+			audit(c, {
+				action: "workspace.create",
+				outcome: "success",
+				workspaceId: record.uid,
+				details: { label: record.name ?? undefined },
 			});
 			return c.json(toWireWorkspace(record), 201);
 		},
@@ -222,6 +229,12 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			const { deleted } = await store.deleteWorkspace(workspaceId);
 			if (!deleted)
 				throw new ControlPlaneNotFoundError("workspace", workspaceId);
+			audit(c, {
+				action: "workspace.delete",
+				outcome: "success",
+				workspaceId,
+				details: { label: workspace.name ?? undefined },
+			});
 			return c.body(null, 204);
 		},
 	);

@@ -170,6 +170,7 @@ phases.
 | [`docs/architecture.md`](docs/architecture.md) | System model, components, data flow |
 | [`docs/api-spec.md`](docs/api-spec.md) | HTTP API contract narrative |
 | [`docs/auth.md`](docs/auth.md) | `/api/v1/*` auth middleware, OIDC login, silent refresh, threat model |
+| [`docs/audit.md`](docs/audit.md) | Structured audit events for sensitive operations |
 | [`docs/configuration.md`](docs/configuration.md) | `workbench.yaml` schema reference |
 | [`docs/production.md`](docs/production.md) | Production hardening checklist |
 | [`docs/workspaces.md`](docs/workspaces.md) | Workspace model, scoping, cascade semantics |

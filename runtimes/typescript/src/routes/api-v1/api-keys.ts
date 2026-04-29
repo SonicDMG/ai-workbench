@@ -21,6 +21,7 @@ import { mintToken } from "../../auth/apiKey/token.js";
 import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
+import { audit } from "../../lib/audit.js";
 import { makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
@@ -118,6 +119,12 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 				label: body.label,
 				expiresAt: body.expiresAt ?? null,
 			});
+			audit(c, {
+				action: "api_key.create",
+				outcome: "success",
+				workspaceId,
+				details: { keyId, label: body.label ?? undefined },
+			});
 			return c.json(
 				{ plaintext: minted.plaintext, key: toWireApiKey(record) },
 				201,
@@ -155,6 +162,12 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 				throw new ControlPlaneNotFoundError("api_key", keyId);
 			}
 			await store.revokeApiKey(workspaceId, keyId);
+			audit(c, {
+				action: "api_key.revoke",
+				outcome: "success",
+				workspaceId,
+				details: { keyId, label: existing.label ?? undefined },
+			});
 			return c.body(null, 204);
 		},
 	);

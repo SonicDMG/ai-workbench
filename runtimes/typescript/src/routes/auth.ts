@@ -47,6 +47,7 @@ import {
 } from "../auth/oidc/login/pkce.js";
 import type { AuthResolver } from "../auth/resolver.js";
 import type { AuthConfig } from "../config/schema.js";
+import { audit } from "../lib/audit.js";
 import { logger } from "../lib/logger.js";
 import type { AppEnv } from "../lib/types.js";
 
@@ -189,10 +190,20 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 				{ err: err instanceof Error ? err.message : String(err) },
 				"oidc access token failed self-verification",
 			);
+			audit(c, {
+				action: "auth.login",
+				outcome: "failure",
+				details: { scheme: "oidc", reason: "token_validation_failed" },
+			});
 			return c.json({ error: { code: "token_validation_failed" } }, 502);
 		}
 
 		setSessionCookie(c, cookie, clientCfg.sessionCookieName, tokens, opts);
+		audit(c, {
+			action: "auth.login",
+			outcome: "success",
+			details: { scheme: "oidc" },
+		});
 		return c.redirect(pendingEntry.redirectAfter, 302);
 	});
 
@@ -291,6 +302,11 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 			fallbackRefreshToken: payload.refreshToken,
 		});
 		const expiresAt = jwtExpSecondsOrNull(tokens.access_token);
+		audit(c, {
+			action: "auth.refresh",
+			outcome: "success",
+			details: { scheme: "oidc" },
+		});
 		return c.json({ ok: true, expiresAt });
 	});
 
@@ -306,6 +322,11 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 				sameSite: "Lax",
 			}),
 		);
+		audit(c, {
+			action: "auth.logout",
+			outcome: "success",
+			details: { scheme: "oidc" },
+		});
 		return c.json({ postLogoutPath: clientCfg.postLogoutPath });
 	});
 

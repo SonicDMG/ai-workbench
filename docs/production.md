@@ -53,11 +53,18 @@ runtime beyond a trusted loopback or private admin network.
   Astra, OIDC, session, and bootstrap credentials. Rotate workspace
   credentials by updating the secret source and restarting the runtime
   so in-process driver caches reconnect with fresh credentials.
-- **Watch audit gaps.** Request IDs are present today; per-operation
-  audit logs and RBAC are still planned. Put the runtime behind an API
-  gateway or reverse proxy if you need centralized audit trails now.
-- **Apply rate limiting upstream.** The runtime has body and field
-  limits, but IP/user/workspace rate limiting is not built in yet.
+- **Forward audit events to a durable sink.** The runtime emits
+  structured audit events for API-key issuance/revocation, workspace
+  create/delete, and OIDC login/refresh/logout (see
+  [`docs/audit.md`](./audit.md) for the catalog and envelope shape).
+  Events are pino lines at `info` with `audit: true`; route them to a
+  SIEM/file via your container log pipeline. RBAC enforcement remains
+  on the roadmap.
+- **Apply rate limiting in front of the runtime.** The in-process
+  limiter defaults to 600 req/min/IP for `/api/v1/*` and 30 req/min/IP
+  for `/auth/*`; tune via `runtime.rateLimit` or set
+  `runtime.rateLimit.enabled: false` and front the runtime with a WAF
+  / API gateway. See [`docs/configuration.md`](./configuration.md).
 - **Keep dependency automation on.** CI runs lint/typecheck/test/build,
   coverage, secret scanning, Docker smoke, Playwright, Python/Java
   scaffold tests, and Dependabot updates. GitHub CodeQL default setup

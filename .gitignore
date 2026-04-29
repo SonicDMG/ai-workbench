@@ -14,3 +14,6 @@ coverage/
 .workbench-data/
 test-results/
 runtimes/typescript/workbench.yaml
+
+# Local-only Claude Code settings (per-developer)
+.claude/settings.local.json
