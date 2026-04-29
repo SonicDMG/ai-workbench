@@ -124,12 +124,10 @@ export async function handleMcpRequest(
 		// The TransformStream spec calls `cancel` on the writable side
 		// in that case; mirror it on the readable side.
 	});
-	response.body
-		.pipeTo(passthrough.writable)
-		.catch(() => {
-			// pipeTo rejects on cancel; cleanup is still required.
-			void cleanup();
-		});
+	response.body.pipeTo(passthrough.writable).catch(() => {
+		// pipeTo rejects on cancel; cleanup is still required.
+		void cleanup();
+	});
 
 	return new Response(passthrough.readable, {
 		status: response.status,

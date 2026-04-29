@@ -382,13 +382,13 @@ describe("MCP HTTP route", () => {
 			.find((l) => l.startsWith("data:"));
 		expect(dataLine).toBeDefined();
 
-		const rpc = JSON.parse(dataLine!.slice("data:".length).trim()) as {
+		const rpc = JSON.parse(dataLine?.slice("data:".length).trim()) as {
 			result?: { tools: Array<{ name: string }> };
 		};
 		expect(rpc.result).toBeDefined();
 		expect(Array.isArray(rpc.result?.tools)).toBe(true);
-		expect(rpc.result!.tools.length).toBeGreaterThan(0);
-		const toolNames = rpc.result!.tools.map((t) => t.name).sort();
+		expect(rpc.result?.tools.length).toBeGreaterThan(0);
+		const toolNames = rpc.result?.tools.map((t) => t.name).sort();
 		expect(toolNames).toContain("list_knowledge_bases");
 	});
 });
