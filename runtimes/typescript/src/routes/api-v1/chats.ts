@@ -1,11 +1,13 @@
 /**
  * `/api/v1/workspaces/{workspaceId}/chats` — workspace-scoped Bobbie chats.
  *
- * Phase 3 of the chat-with-Bobbie roadmap: CRUD over conversations
- * and message history, **no HuggingFace integration and no SSE
- * streaming yet**. POSTing a message persists it as a `user` turn and
- * returns the row. Phase 4 wires HF retrieval and synchronous reply;
- * phase 5 converts that to an SSE token stream.
+ * Surface:
+ *   - CRUD over conversations and message history.
+ *   - `POST .../messages`        — synchronous; returns
+ *     `{ user, assistant }` after the model finishes generating.
+ *   - `POST .../messages/stream` — SSE; emits `user-message`, then
+ *     one `token` event per delta, then a terminal `done` (or
+ *     `error`) carrying the persisted assistant row.
  *
  * Conversations are workspace-scoped (not KB-scoped) — see the
  * `knowledgeBaseIds` field on the chat row for the per-conversation
@@ -14,16 +16,17 @@
  *
  * Wire-shape projection: routes talk `Chat` / `ChatMessage` (the
  * user-facing terms). Internally the store reads/writes the Stage-2
- * agentic tables — agent_id is hidden from the wire because v0 has
- * exactly one agent per workspace and surfacing it would leak
- * premature agent-management surface area.
+ * agentic tables — `agent_id` is hidden from the wire because there
+ * is exactly one agent per workspace today (Bobbie) and surfacing
+ * it would leak premature agent-management surface area.
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { streamSSE } from "hono/streaming";
 import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { assemblePrompt } from "../../chat/prompt.js";
 import { retrieveContext } from "../../chat/retrieval.js";
-import type { ChatService } from "../../chat/types.js";
+import type { ChatService, ChatStreamEvent } from "../../chat/types.js";
 import type { ChatConfig } from "../../config/schema.js";
 import {
 	BOBBIE_SYSTEM_PROMPT,
@@ -456,6 +459,167 @@ export function chatRoutes(deps: ChatRouteDeps): OpenAPIHono<AppEnv> {
 			);
 		},
 	);
+
+	// SSE streaming variant of POST /messages. Emits the canonical
+	// persisted user turn first, then a `token` event per delta from
+	// the model, then a single terminal `done` event with the
+	// finalized assistant row. On any error the stream emits
+	// `error` and persists an assistant turn with `finish_reason:
+	// "error"` so the next listChatMessages call sees a complete log.
+	app.post("/:workspaceId/chats/:chatId/messages/stream", async (c) => {
+		const workspaceId = c.req.param("workspaceId");
+		const chatId = c.req.param("chatId");
+		assertWorkspaceAccess(c, workspaceId);
+		if (!chatService || !chatConfig) {
+			throw new ApiError(
+				"chat_disabled",
+				"chat is not configured on this runtime; set the `chat` block in workbench.yaml",
+				503,
+			);
+		}
+		const body = await c.req.json<{ content?: unknown }>();
+		if (typeof body?.content !== "string" || body.content.trim().length === 0) {
+			throw new ApiError(
+				"validation_error",
+				"`content` must be a non-empty string",
+				400,
+			);
+		}
+		const userContent = body.content;
+
+		const chat = await store.getChat(workspaceId, chatId);
+		if (!chat) {
+			throw new ControlPlaneNotFoundError("chat", chatId);
+		}
+
+		// Persist the user turn synchronously so the client can receive
+		// it as the first SSE event with canonical messageId / ts.
+		const userRecord = await store.appendChatMessage(workspaceId, chatId, {
+			role: "user",
+			content: userContent,
+		});
+
+		const chunks = await retrieveContext(
+			{ store, drivers, embedders, logger },
+			{
+				workspaceId,
+				knowledgeBaseIds: chat.knowledgeBaseIds,
+				query: userContent,
+				retrievalK: chatConfig.retrievalK,
+			},
+		);
+		const history = await store.listChatMessages(workspaceId, chatId);
+		const priorHistory = history.filter(
+			(m) => m.messageId !== userRecord.messageId,
+		);
+		const prompt = assemblePrompt({
+			systemPrompt: chatConfig.systemPrompt ?? BOBBIE_SYSTEM_PROMPT,
+			chunks,
+			history: priorHistory,
+			userTurn: userContent,
+		});
+
+		return streamSSE(c, async (stream) => {
+			const abort = new AbortController();
+			stream.onAbort(() => {
+				abort.abort();
+			});
+
+			await stream.writeSSE({
+				event: "user-message",
+				data: JSON.stringify(toChatMessageWire(userRecord)),
+			});
+
+			let buffer = "";
+			let finalEvent:
+				| { type: "done"; finishReason: "stop" | "length" }
+				| { type: "error"; errorMessage: string }
+				| null = null;
+			let tokenCount: number | null = null;
+
+			try {
+				for await (const event of chatService.completeStream(
+					{ messages: prompt },
+					{ signal: abort.signal },
+				) as AsyncIterable<ChatStreamEvent>) {
+					if (event.type === "token") {
+						buffer += event.delta;
+						await stream.writeSSE({
+							event: "token",
+							data: JSON.stringify({ delta: event.delta }),
+						});
+					} else if (event.type === "done") {
+						finalEvent = {
+							type: "done",
+							finishReason:
+								event.finishReason === "error" ? "stop" : event.finishReason,
+						};
+						tokenCount = event.tokenCount;
+						// `done.content` from the service is authoritative;
+						// some providers buffer their own tokens internally
+						// and emit empty deltas, leaving our `buffer` short.
+						if (event.content && event.content.length > buffer.length) {
+							buffer = event.content;
+						}
+					} else if (event.type === "error") {
+						finalEvent = { type: "error", errorMessage: event.errorMessage };
+						tokenCount = event.tokenCount;
+					}
+				}
+			} catch (err) {
+				finalEvent = {
+					type: "error",
+					errorMessage: err instanceof Error ? err.message : String(err),
+				};
+			}
+
+			if (!finalEvent) {
+				// Stream ended without a terminal event (shouldn't happen
+				// per the ChatService contract; defensive).
+				finalEvent = {
+					type: "error",
+					errorMessage: "chat service stream ended without a terminal event",
+				};
+			}
+
+			// Persist the assistant turn with strictly-after timestamp so
+			// the cluster ordering is unambiguous (same fix as the sync
+			// route — sub-ms streams can land in the same millisecond).
+			const userTs = Date.parse(userRecord.messageTs);
+			const assistantTs = new Date(
+				Math.max(userTs + 1, Date.now()),
+			).toISOString();
+			const finishReason: "stop" | "length" | "error" =
+				finalEvent.type === "done" ? finalEvent.finishReason : "error";
+			const errorMessage =
+				finalEvent.type === "error" ? finalEvent.errorMessage : null;
+			const persistedContent =
+				finishReason === "error"
+					? (errorMessage ?? "Bobbie couldn't answer this turn.")
+					: buffer;
+
+			const assistantRecord = await store.appendChatMessage(
+				workspaceId,
+				chatId,
+				{
+					role: "agent",
+					authorId: bobbieAgentId(workspaceId),
+					messageTs: assistantTs,
+					content: persistedContent,
+					tokenCount,
+					metadata: buildMetadata(chunks, chatService.modelId, {
+						finishReason,
+						errorMessage,
+					}),
+				},
+			);
+
+			await stream.writeSSE({
+				event: finalEvent.type === "done" ? "done" : "error",
+				data: JSON.stringify(toChatMessageWire(assistantRecord)),
+			});
+		});
+	});
 
 	return app;
 }

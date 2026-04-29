@@ -246,6 +246,30 @@ Using `seedWorkspaces` with any driver other than `memory` is a
 validation error — workspaces already persist in the backend, so
 there's nothing to seed.
 
+## `chat` *(optional)*
+
+Wires up chat-with-Bobbie. When unset, the chat CRUD routes still
+work but `POST .../messages` and `POST .../messages/stream` return
+`503 chat_disabled`. See [`chat.md`](chat.md) for the full feature
+walkthrough.
+
+```yaml
+chat:
+  tokenRef: env:HUGGINGFACE_API_KEY
+  model: mistralai/Mistral-7B-Instruct-v0.3
+  maxOutputTokens: 1024
+  retrievalK: 6
+  systemPrompt: null
+```
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `tokenRef` | SecretRef | required | Resolved once at boot. `env:VAR` or `file:/path`. |
+| `model` | string | `mistralai/Mistral-7B-Instruct-v0.3` | Any chat-completion-compatible HuggingFace Inference API model. |
+| `maxOutputTokens` | int (1–8192) | `1024` | Per-turn cap on the assistant's reply length. |
+| `retrievalK` | int (1–64) | `6` | Top-K KB chunks **per knowledge base**. The total injected into the prompt is `retrievalK * ceil(sqrt(numKbs))` so multi-KB chats don't blow up the prompt. |
+| `systemPrompt` | string \| null | `null` | Override Bobbie's built-in persona. `null` keeps the default. |
+
 ## `auth`
 
 Configures the `/api/v1/*` auth middleware. See

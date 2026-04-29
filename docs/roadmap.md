@@ -16,7 +16,12 @@ runnable artifact and a stable slice of the HTTP contract.
 | 3 | Playground + UI | ✅ Shipped |
 | Auth | Middleware, API keys, OIDC verifier, browser login, silent refresh | ✅ Shipped (1–3c); 4 (RBAC) planned |
 | KB | Catalogs + vector-store descriptors → knowledge bases + chunking/embedding/reranking services | ✅ Shipped |
-| 4+ | Chats, MCP | Reserved |
+| Chat-1 | Workspace-level Chat with Bobbie page (UI scaffold) | ✅ Shipped |
+| Chat-2 | Persistence — agentic tables wired through memory/file/astra | ✅ Shipped |
+| Chat-3 | Chat + message CRUD routes, functional UI | ✅ Shipped |
+| Chat-4 | HuggingFace chat completion + multi-KB RAG (sync) | ✅ Shipped |
+| Chat-5 | SSE token streaming end-to-end | ✅ Shipped |
+| 6+ | User-defined agents, MCP, polish | Planned (see "Next steps") |
 
 ## Phase 0 — Bootstrap ✅
 
@@ -312,14 +317,134 @@ Saved queries and the adopt-existing-collection flow were retired
 in this phase — the new shape doesn't need them, and re-adding
 either would land cleaner under the new model than as a port.
 
-## Phase 4+ — Chats, MCP
+## Chat phases ✅ — chat with Bobbie
 
-Reserved for integrating:
+Shipped across five focused PRs. See [`chat.md`](chat.md) for the
+feature walkthrough.
 
-- A chat harness that runs against a workspace's knowledge bases.
-- An MCP server view of the workspace for external agents.
+- **Chat-1.** Workspace-level chat page (`/workspaces/{w}/chat`)
+  scaffold with placeholder UI; route + navigation entry from the
+  workspace detail page.
+- **Chat-2.** Persistence layer. Stage-2 agentic tables
+  (`wb_agentic_agents_by_workspace`,
+  `wb_agentic_conversations_by_agent`,
+  `wb_agentic_messages_by_conversation`) wired through all three
+  control-plane backends with a chat-shaped façade. Bobbie is a
+  singleton agent with deterministic `agent_id` derived from
+  `sha256("bobbie:" + workspaceId)`. Cascade behavior covers
+  workspace delete, KB delete (kb-id stripped from any
+  conversation's `knowledge_base_ids` set), and chat delete.
+- **Chat-3.** CRUD HTTP surface
+  (`/api/v1/workspaces/{w}/chats[/{chatId}/messages]`). Full
+  conversation list / detail / patch / delete plus message history
+  + send. Functional ChatPage with sidebar conversation list,
+  composer, and URL-driven chat selection (`?id=<chatId>`).
+- **Chat-4.** HuggingFace integration. New `chat/` module with
+  `ChatService`, `HuggingFaceChatService` (over
+  `@huggingface/inference`'s `chatCompletion`), prompt-assembly,
+  and multi-KB retrieval (per-KB fan-out via the existing
+  `dispatchSearch` helper, total context capped at
+  `retrievalK · √numKbs`). Optional `chat:` block in
+  `workbench.yaml`; without it, `503 chat_disabled`.
+- **Chat-5.** SSE token streaming.
+  `POST /chats/{c}/messages/stream` emits `user-message`, then one
+  `token` event per delta, then a terminal `done`/`error` event
+  carrying the persisted assistant row. The browser uses fetch
+  streaming (not `EventSource`) since the request is `POST` with a
+  JSON body. Cancel button wires the `AbortSignal` through to the
+  HF stream so the runtime stops paying for tokens nobody will see.
 
-Contracts will be defined as those phases approach.
+## Next steps (not yet started)
+
+The phases below are sequenced loosely; each is independently
+shippable so reordering doesn't burn earlier work.
+
+### MCP server façade — expose the workbench to external agents
+
+Stand up a Model Context Protocol server that surfaces a workspace
+as tools an external agent can call:
+
+- `search` — KB retrieval (vector / hybrid / rerank), accepting a
+  workspace + KB filter and returning ranked chunks.
+- `list_documents` — paginated document metadata.
+- `ingest` — wraps `POST .../ingest` with the same `?async=true`
+  semantics so an agent can fire-and-forget large uploads.
+- `chats` resources — read-only access to a workspace's
+  conversation log (so external agents can summarize or audit chat
+  history).
+- Optionally a `chat` tool that streams Bobbie's reply for a given
+  workspace, for agents that want to delegate Q&A.
+
+Two transports to support: **stdio** for local Claude / IDE
+integrations, and **HTTP-SSE** for hosted MCP gateways. The MCP
+SDK already speaks both; the work is wiring the ControlPlaneStore
++ chat service behind the SDK's tool / resource interface and
+mapping `assertWorkspaceAccess` onto the MCP `clientId` claim.
+
+Open question: does the MCP server live in the runtime process (one
+binary, one port surface) or as a sidecar (separate process,
+shared control plane)? Sidecar is simpler operationally but
+duplicates auth/secrets bootstrap. Default to in-process behind a
+config flag.
+
+### User-defined agents
+
+The agentic tables host Bobbie today; opening them up for
+user-defined agents is the natural successor:
+
+- `POST /api/v1/workspaces/{w}/agents` — random `agent_id`, custom
+  system prompt, configurable `knowledge_base_ids`.
+- `POST .../agents/{a}/conversations[/{c}/messages]` —
+  generalization of `/chats` to any agent. The `/chats` endpoint
+  becomes a thin alias that targets the singleton Bobbie agent.
+- `wb_config_llm_service_by_workspace` — already declared but
+  unused. Wire CRUD + a per-agent `llmServiceId` so different
+  agents can use different providers / models without restarting
+  the runtime.
+- Tool execution via MCP. Once the MCP server above is in, the
+  inverse — letting Bobbie / a user agent call MCP tools — is the
+  same SDK, just on the client side.
+
+### Per-KB / per-agent rate limiting
+
+Chat costs HF tokens; today the runtime relies on the global
+`/api/v1/*` IP-based limiter. Per-workspace and per-chat token
+buckets would let operators bound spend without blocking other
+endpoints.
+
+### Markdown rendering + citation linkbacks
+
+The chat UI renders assistant content as plain text. Wire up
+[`react-markdown`](https://github.com/remarkjs/react-markdown) for
+the assistant bubble, and turn `[chunkId]` citations into clickable
+links that scroll the document explorer to the cited chunk.
+
+### Multi-provider chat backends
+
+`ChatService` is provider-agnostic. Adding an `OpenAIChatService`
+and a `CohereChatService` is mostly mechanical — the prompt
+assembler and route are unchanged. Worth doing once we have a
+reason to compare quality / latency / cost across providers.
+
+### Production-grade chat persistence
+
+The agentic tables are write-heavy under streaming load (one row
+per assistant turn, plus the user turn before it). Astra handles
+that fine, but the file backend writes the whole `messages.json`
+on every append. Worth either:
+
+- A per-chat append-only log file, or
+- A SQLite-backed `file` driver variant for chat-heavy
+  deployments.
+
+### Conformance for the chat surface
+
+Every other route surface has a cross-runtime conformance fixture.
+Chat doesn't yet — partly because the streaming SSE shape is
+trickier to fixture, partly because there's no Python runtime
+implementation yet. Add a fixture set covering the CRUD surface
+(easy) and the SSE happy path with a deterministic fake provider
+(less easy but worth it before a second runtime).
 
 ## Cross-cutting workstreams
 

@@ -53,6 +53,44 @@ export interface ChatCompletionRequest {
 	readonly messages: readonly ChatTurn[];
 }
 
+/**
+ * Streaming events emitted by {@link ChatService.completeStream}.
+ *
+ * - `token` — a single delta from the model. Append to the assistant
+ *   buffer and re-render. Multiple in flight per call.
+ * - `done` — terminal success. Carries the full assembled content and
+ *   metadata so the route layer can persist a single canonical row
+ *   without re-concatenating tokens itself.
+ * - `error` — terminal failure. The route persists the assistant turn
+ *   with `finish_reason: "error"` and the supplied message.
+ *
+ * The stream MUST emit exactly one terminal event (`done` OR
+ * `error`) and no further events after it.
+ */
+export type ChatStreamEvent =
+	| { readonly type: "token"; readonly delta: string }
+	| {
+			readonly type: "done";
+			readonly content: string;
+			readonly finishReason: ChatFinishReason;
+			readonly tokenCount: number | null;
+	  }
+	| {
+			readonly type: "error";
+			readonly errorMessage: string;
+			readonly tokenCount: number | null;
+	  };
+
+export interface ChatStreamOptions {
+	/**
+	 * Aborts the underlying provider request when the consumer
+	 * disconnects. Phase 5 routes wire this to the SSE
+	 * `stream.onAbort` callback so the runtime stops paying for
+	 * tokens nobody will see.
+	 */
+	readonly signal?: AbortSignal;
+}
+
 export interface ChatService {
 	/**
 	 * Identifier surfaced on persisted assistant messages
@@ -60,4 +98,17 @@ export interface ChatService {
 	 */
 	readonly modelId: string;
 	complete(request: ChatCompletionRequest): Promise<ChatCompletion>;
+
+	/**
+	 * Streaming variant. The async iterator yields incremental
+	 * `token` events while the model is generating, then exactly one
+	 * terminal `done` or `error` event. Optional — providers that
+	 * can't stream return their full reply as a single `token` then
+	 * `done`. Implementations MUST handle `signal.aborted` by
+	 * stopping cleanly.
+	 */
+	completeStream(
+		request: ChatCompletionRequest,
+		options?: ChatStreamOptions,
+	): AsyncIterable<ChatStreamEvent>;
 }

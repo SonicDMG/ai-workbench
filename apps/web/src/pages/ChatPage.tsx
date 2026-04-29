@@ -18,7 +18,7 @@ import {
 	useChats,
 	useCreateChat,
 	useDeleteChat,
-	useSendChatMessage,
+	useSendChatStream,
 } from "@/hooks/useChats";
 import { useWorkspace } from "@/hooks/useWorkspaces";
 import { ApiError, formatApiError } from "@/lib/api";
@@ -28,11 +28,12 @@ import { cn, formatDate } from "@/lib/utils";
 /**
  * Workspace-level chat with Bobbie.
  *
- * Phase 3 of the roadmap: full CRUD over conversations, persistence
- * for user messages, history rendering. Bobbie does NOT reply yet —
- * that lands in phase 4 (HuggingFace + RAG) and phase 5 (SSE
- * streaming). The empty-state copy on the assistant side flags this
- * to users so they aren't confused by the silence.
+ * Full CRUD over conversations + persistent message history.
+ * Sending a message opens an SSE stream against
+ * `POST .../chats/{id}/messages/stream` so Bobbie's reply renders
+ * token-by-token. The runtime falls back to `503 chat_disabled` if
+ * the operator hasn't wired a `chat:` block in `workbench.yaml`;
+ * the UI surfaces that as a toast.
  */
 export function ChatPage() {
 	const { workspaceUid } = useParams<{ workspaceUid: string }>();
@@ -273,16 +274,18 @@ function ChatThread({ workspaceUid, chatId, onDeleted }: ChatThreadProps) {
 	const chatQuery = useChat(workspaceUid, chatId);
 	const messagesQuery = useChatMessages(workspaceUid, chatId);
 	const deleteChat = useDeleteChat(workspaceUid);
-	const send = useSendChatMessage(workspaceUid, chatId);
+	const stream = useSendChatStream(workspaceUid, chatId);
 
 	const [draft, setDraft] = useState("");
 	const messageListRef = useRef<HTMLDivElement | null>(null);
 
-	// Auto-scroll the message list to the bottom when new messages
-	// arrive. We key off `length` (a primitive) so biome's exhaustive-
-	// deps check is happy and the effect doesn't re-fire when react-
-	// query returns a new array reference for the same data.
+	// Auto-scroll the message list to the bottom when new content
+	// arrives. We key off both the persisted message count AND the
+	// in-flight token buffer so streaming replies stay visible at the
+	// bottom of the viewport without snapping the scroll on every
+	// frame.
 	const messageCount = messagesQuery.data?.length ?? 0;
+	const pendingDeltaLength = stream.pendingDelta.length;
 	// biome-ignore lint/correctness/useExhaustiveDependencies: scrolling depends on content length, not the ref identity
 	useEffect(() => {
 		const node = messageListRef.current;
@@ -291,7 +294,7 @@ function ChatThread({ workspaceUid, chatId, onDeleted }: ChatThreadProps) {
 		if (node && typeof node.scrollTo === "function") {
 			node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
 		}
-	}, [messageCount]);
+	}, [messageCount, pendingDeltaLength]);
 
 	if (chatQuery.isLoading) {
 		return (
@@ -324,12 +327,9 @@ function ChatThread({ workspaceUid, chatId, onDeleted }: ChatThreadProps) {
 		const content = draft.trim();
 		if (!content) return;
 		setDraft("");
-		try {
-			await send.mutateAsync({ content });
-		} catch (err) {
-			toast.error("Couldn't send message", {
-				description: formatApiError(err),
-			});
+		await stream.send(content);
+		if (stream.error) {
+			toast.error("Couldn't send message", { description: stream.error });
 			setDraft(content); // restore so the user doesn't lose their typing
 		}
 	};
@@ -390,14 +390,16 @@ function ChatThread({ workspaceUid, chatId, onDeleted }: ChatThreadProps) {
 						<p className="text-sm text-red-600">
 							{formatApiError(messagesQuery.error)}
 						</p>
-					) : (messagesQuery.data?.length ?? 0) === 0 ? (
+					) : (messagesQuery.data?.length ?? 0) === 0 && !stream.pending ? (
 						<EmptyMessages />
 					) : (
 						<ul className="flex flex-col gap-3">
 							{messagesQuery.data?.map((m) => (
 								<MessageBubble key={m.messageId} message={m} />
 							))}
-							{send.isPending ? <BobbieThinking /> : null}
+							{stream.pending ? (
+								<StreamingBubble delta={stream.pendingDelta} />
+							) : null}
 						</ul>
 					)}
 				</div>
@@ -421,17 +423,27 @@ function ChatThread({ workspaceUid, chatId, onDeleted }: ChatThreadProps) {
 								(e.currentTarget.form as HTMLFormElement).requestSubmit();
 							}
 						}}
-						disabled={send.isPending}
+						disabled={stream.pending}
 						placeholder="Ask Bobbie about this workspace… (Enter to send)"
 						className="flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--color-brand-600)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-100)] disabled:cursor-not-allowed disabled:bg-slate-50"
 					/>
+					{stream.pending ? (
+						<Button
+							type="button"
+							variant="ghost"
+							onClick={stream.cancel}
+							title="Cancel"
+						>
+							Cancel
+						</Button>
+					) : null}
 					<Button
 						type="submit"
 						variant="brand"
-						disabled={send.isPending || draft.trim().length === 0}
+						disabled={stream.pending || draft.trim().length === 0}
 					>
 						<Send className="h-4 w-4" />
-						{send.isPending ? "Sending…" : "Send"}
+						{stream.pending ? "Streaming…" : "Send"}
 					</Button>
 				</form>
 			</CardContent>
@@ -454,8 +466,7 @@ function EmptyMessages() {
 			<p className="text-sm text-slate-700">No messages yet — say hi!</p>
 			<p className="text-xs text-slate-500 max-w-sm">
 				Bobbie answers grounded in this workspace's knowledge bases. Replies
-				arrive after the model finishes generating; phase 5 will stream them
-				token by token.
+				stream in token-by-token as the model generates.
 			</p>
 		</div>
 	);
@@ -517,6 +528,37 @@ function BobbieThinking() {
 		>
 			<Sparkles className="h-3 w-3 animate-pulse" aria-hidden="true" />
 			Bobbie is thinking…
+		</li>
+	);
+}
+
+/**
+ * Renders Bobbie's in-flight reply while the SSE stream is open.
+ * Once the stream emits `done`, the canonical assistant row lands
+ * in the cached message list and this bubble is replaced by a
+ * regular {@link MessageBubble}.
+ *
+ * Falls back to {@link BobbieThinking} when no tokens have arrived
+ * yet (initial retrieval delay) so the UI doesn't render an empty
+ * bubble.
+ */
+function StreamingBubble({ delta }: { delta: string }) {
+	if (delta.length === 0) return <BobbieThinking />;
+	return (
+		<li
+			className="flex flex-col gap-1 items-start"
+			data-testid="bobbie-streaming"
+		>
+			<span className="text-xs font-medium text-slate-500">
+				Bobbie
+				<span className="ml-2 font-normal text-slate-400">streaming…</span>
+			</span>
+			<div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-900">
+				{delta}
+				<span className="ml-0.5 inline-block animate-pulse text-slate-400">
+					▍
+				</span>
+			</div>
 		</li>
 	);
 }

@@ -1,11 +1,9 @@
 /**
  * Route-level coverage for `/api/v1/workspaces/{w}/chats` and the
- * nested message endpoints. Mirrors the harness used by
- * `knowledge-bases.test.ts`: memory control plane + mock driver,
- * drive HTTP through `app.request`, assert on JSON.
- *
- * Only the CRUD surface ships in this PR — phase 4 wires HF + RAG
- * for the assistant reply, phase 5 converts message-send to SSE.
+ * nested message endpoints (sync + SSE streaming). Mirrors the
+ * harness used by `knowledge-bases.test.ts`: memory control plane,
+ * mock vector driver, fake chat service. Drives HTTP through
+ * `app.request` and asserts on JSON / parsed SSE.
  */
 
 import { randomUUID } from "node:crypto";
@@ -424,6 +422,155 @@ describe("chat routes", () => {
 		);
 		// Body falls back to the error message so the user sees something.
 		expect(body.assistant.content).toContain("simulated provider failure");
+	});
+
+	/* ---------------- streaming variant ---------------- */
+
+	async function readSseEvents(
+		res: Response,
+	): Promise<Array<{ event: string; data: unknown }>> {
+		const text = await res.text();
+		const events: Array<{ event: string; data: unknown }> = [];
+		// Hono's streamSSE writes `event: <name>\ndata: <json>\n\n`.
+		for (const block of text.split("\n\n")) {
+			if (block.trim().length === 0) continue;
+			let event = "message";
+			const dataLines: string[] = [];
+			for (const line of block.split("\n")) {
+				if (line.startsWith("event: ")) event = line.slice("event: ".length);
+				else if (line.startsWith("data: "))
+					dataLines.push(line.slice("data: ".length));
+			}
+			const data =
+				dataLines.length > 0 ? JSON.parse(dataLines.join("\n")) : null;
+			events.push({ event, data });
+		}
+		return events;
+	}
+
+	test("POST /messages/stream emits user-message, tokens, and done", async () => {
+		const fake = makeFakeChatService();
+		const { app } = makeApp({ chatService: fake });
+		const ws = await createWorkspace(app);
+		const chatId = await createChat(app, ws, { title: "t" });
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/chats/${chatId}/messages/stream`,
+			{
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					accept: "text/event-stream",
+				},
+				body: JSON.stringify({ content: "hello bobbie" }),
+			},
+		);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toContain("text/event-stream");
+		const events = await readSseEvents(res);
+
+		// First: the canonical user record.
+		expect(events[0]?.event).toBe("user-message");
+		const user = events[0]?.data as { content: string; role: string };
+		expect(user.role).toBe("user");
+		expect(user.content).toBe("hello bobbie");
+
+		// Then: one or more `token` events whose deltas concatenate to
+		// the assistant's final content.
+		const tokenEvents = events.filter((e) => e.event === "token");
+		expect(tokenEvents.length).toBeGreaterThan(0);
+		const concat = tokenEvents
+			.map((e) => (e.data as { delta: string }).delta)
+			.join("");
+		expect(concat).toBe("echo: hello bobbie");
+
+		// Last: a `done` event with the persisted assistant row.
+		const last = events[events.length - 1];
+		expect(last?.event).toBe("done");
+		const assistant = last?.data as {
+			role: string;
+			content: string;
+			metadata: Record<string, string>;
+		};
+		expect(assistant.role).toBe("agent");
+		expect(assistant.content).toBe("echo: hello bobbie");
+		expect(assistant.metadata.finish_reason).toBe("stop");
+
+		// And the message is persisted: a follow-up GET sees both turns.
+		const list = await app.request(
+			`/api/v1/workspaces/${ws}/chats/${chatId}/messages`,
+		);
+		const items = ((await json(list)).items ?? []) as Array<{
+			role: string;
+			content: string;
+		}>;
+		expect(items).toHaveLength(2);
+		expect(items.map((m) => m.role).sort()).toEqual(["agent", "user"]);
+	});
+
+	test("POST /messages/stream returns 503 when chat is disabled", async () => {
+		const { app } = makeApp({ chatService: null });
+		const ws = await createWorkspace(app);
+		const chatId = await createChat(app, ws, { title: "t" });
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/chats/${chatId}/messages/stream`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ content: "hi" }),
+			},
+		);
+		expect(res.status).toBe(503);
+		expect((await json(res)).error.code).toBe("chat_disabled");
+	});
+
+	test("POST /messages/stream emits an `error` event when the model fails", async () => {
+		const fake = makeFakeChatService({
+			streamReply: async function* () {
+				yield {
+					type: "error",
+					errorMessage: "rate limit",
+					tokenCount: null,
+				};
+			},
+		});
+		const { app } = makeApp({ chatService: fake });
+		const ws = await createWorkspace(app);
+		const chatId = await createChat(app, ws, { title: "t" });
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/chats/${chatId}/messages/stream`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ content: "hi" }),
+			},
+		);
+		expect(res.status).toBe(200);
+		const events = await readSseEvents(res);
+		const last = events[events.length - 1];
+		expect(last?.event).toBe("error");
+		const assistant = last?.data as {
+			content: string;
+			metadata: Record<string, string>;
+		};
+		expect(assistant.metadata.finish_reason).toBe("error");
+		expect(assistant.metadata.error_message).toBe("rate limit");
+		expect(assistant.content).toContain("rate limit");
+	});
+
+	test("POST /messages/stream rejects empty content", async () => {
+		const { app } = makeApp();
+		const ws = await createWorkspace(app);
+		const chatId = await createChat(app, ws, { title: "t" });
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/chats/${chatId}/messages/stream`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ content: "" }),
+			},
+		);
+		expect(res.status).toBe(400);
 	});
 
 	test("auth scope: scoped subject can't read another workspace's chats", async () => {

@@ -5,14 +5,14 @@ import {
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
+import { useCallback, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { sendChatStream } from "@/lib/chatStream";
 import { keys } from "@/lib/query";
 import type {
 	Chat,
 	ChatMessage,
 	CreateChatInput,
-	SendChatMessageInput,
-	SendChatMessageResponse,
 	UpdateChatInput,
 } from "@/lib/schemas";
 
@@ -102,25 +102,82 @@ export function useDeleteChat(
 }
 
 /**
- * Send a user message and append both turns (user + Bobbie's reply)
- * to the cached message list. Phase 5 will swap this for an
- * EventSource-backed streaming variant that emits tokens as they
- * arrive; the UI reducer will be the same shape so the swap is
- * invisible to consumers.
+ * Streaming variant. Returns:
+ *   - `send(content)` to fire a turn,
+ *   - `pendingDelta` accumulating the in-flight token buffer,
+ *   - `pending` boolean for the whole turn lifecycle,
+ *   - `cancel()` to abort the in-flight stream.
+ *
+ * The hook drives the cached message list via react-query so the
+ * regular `useChatMessages` hook keeps rendering the canonical view.
+ * The `pendingDelta` is a separate piece of UI state for "live"
+ * tokens that haven't been persisted yet — once the stream emits
+ * `done` / `error`, the cache appends the canonical assistant row
+ * and `pendingDelta` is cleared.
  */
-export function useSendChatMessage(
+export interface SendChatStreamHandle {
+	readonly send: (content: string) => Promise<void>;
+	readonly pendingDelta: string;
+	readonly pending: boolean;
+	readonly error: string | null;
+	readonly cancel: () => void;
+}
+
+export function useSendChatStream(
 	workspaceUid: string,
 	chatId: string,
-): UseMutationResult<SendChatMessageResponse, Error, SendChatMessageInput> {
+): SendChatStreamHandle {
 	const qc = useQueryClient();
-	return useMutation({
-		mutationFn: (input: SendChatMessageInput) =>
-			api.sendChatMessage(workspaceUid, chatId, input),
-		onSuccess: (response) => {
-			qc.setQueryData<ChatMessage[]>(
-				keys.chats.messages(workspaceUid, chatId),
-				(previous) => [...(previous ?? []), response.user, response.assistant],
-			);
+	const [pendingDelta, setPendingDelta] = useState("");
+	const [pending, setPending] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const abortRef = useRef<AbortController | null>(null);
+
+	const cancel = useCallback(() => {
+		abortRef.current?.abort();
+	}, []);
+
+	const send = useCallback(
+		async (content: string) => {
+			if (pending) return;
+			const ctrl = new AbortController();
+			abortRef.current = ctrl;
+			setPending(true);
+			setPendingDelta("");
+			setError(null);
+			try {
+				let buffer = "";
+				await sendChatStream(workspaceUid, chatId, {
+					content,
+					signal: ctrl.signal,
+					onEvent: (evt) => {
+						if (evt.type === "user-message") {
+							qc.setQueryData<ChatMessage[]>(
+								keys.chats.messages(workspaceUid, chatId),
+								(previous) => [...(previous ?? []), evt.message],
+							);
+						} else if (evt.type === "token") {
+							buffer += evt.delta;
+							setPendingDelta(buffer);
+						} else if (evt.type === "done" || evt.type === "error") {
+							qc.setQueryData<ChatMessage[]>(
+								keys.chats.messages(workspaceUid, chatId),
+								(previous) => [...(previous ?? []), evt.assistant],
+							);
+							setPendingDelta("");
+						}
+					},
+				});
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				setError(msg);
+			} finally {
+				setPending(false);
+				abortRef.current = null;
+			}
 		},
-	});
+		[chatId, pending, qc, workspaceUid],
+	);
+
+	return { send, pendingDelta, pending, error, cancel };
 }

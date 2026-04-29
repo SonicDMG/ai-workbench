@@ -137,6 +137,11 @@ All routes documented at `/docs` (Scalar UI) and
 | `GET / POST / DELETE` | `/api/v1/workspaces/{w}/reranking-services` | Reranking-service CRUD |
 | `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}` | Poll an async-ingest job |
 | `GET` | `/api/v1/workspaces/{w}/jobs/{jobId}/events` | SSE stream of job updates until terminal state |
+| `GET / POST` | `/api/v1/workspaces/{w}/chats` | List / create Bobbie chats |
+| `GET / PATCH / DELETE` | `/api/v1/workspaces/{w}/chats/{c}` | Chat CRUD (DELETE cascades messages) |
+| `GET` | `/api/v1/workspaces/{w}/chats/{c}/messages` | Chat history, oldest-first |
+| `POST` | `/api/v1/workspaces/{w}/chats/{c}/messages` | Send a message; sync reply with retrieval-grounded HF chat-completion |
+| `POST` | `/api/v1/workspaces/{w}/chats/{c}/messages/stream` | Same flow as SSE — `user-message` + `token` deltas + terminal `done`/`error` |
 | `GET / POST` | `/api/v1/workspaces/{w}/api-keys` | List / issue workspace API keys |
 | `DELETE` | `/api/v1/workspaces/{w}/api-keys/{keyId}` | Revoke a workspace API key |
 
@@ -167,6 +172,8 @@ phases.
 | [`docs/workspaces.md`](docs/workspaces.md) | Workspace model, scoping, cascade semantics |
 | [`docs/green-boxes.md`](docs/green-boxes.md) | Multi-runtime "green box" architecture |
 | [`docs/playground.md`](docs/playground.md) | Playground UX, text/vector dispatch, hybrid + rerank, ingest dialog |
+| [`docs/chat.md`](docs/chat.md) | Chat with Bobbie: HuggingFace-backed, multi-KB-grounded, SSE token streaming |
+| [`docs/astra-cli.md`](docs/astra-cli.md) | astra-cli auto-detection of Astra credentials at runtime startup |
 | [`docs/conformance.md`](docs/conformance.md) | Cross-runtime contract testing |
 | [`docs/cross-replica-jobs.md`](docs/cross-replica-jobs.md) | Design note for cross-replica job pub/sub + in-flight resume (proposed) |
 | [`docs/roadmap.md`](docs/roadmap.md) | Phased delivery plan and open questions |

@@ -14,7 +14,9 @@ contract first, then the runtime architecture behind them.
    where to go next.
 2. [`playground.md`](playground.md) — browser workflow for testing text,
    vector, hybrid, and rerank search.
-3. [`workspaces.md`](workspaces.md) — workspace semantics, scoping,
+3. [`chat.md`](chat.md) — chat-with-Bobbie: HuggingFace-backed,
+   multi-KB-grounded assistant with SSE token streaming.
+4. [`workspaces.md`](workspaces.md) — workspace semantics, scoping,
    and cascade rules.
 4. [`configuration.md`](configuration.md) — the `workbench.yaml`
    schema and deployment-oriented settings.
