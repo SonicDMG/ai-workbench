@@ -44,3 +44,15 @@ controlPlane:
 #   retrievalK: 6
 #   # Override Bobbie's persona (null = built-in default):
 #   # systemPrompt: null
+
+# Optional — exposes the workspace's read surface as a Model Context
+# Protocol server at /api/v1/workspaces/{w}/mcp so external agents
+# (Claude Code, Cursor, hosted MCP gateways) can use the workspace
+# as a context backend. Off by default — enable explicitly. See
+# docs/mcp.md.
+#
+# mcp:
+#   enabled: true
+#   # Also expose `chat_send`, which routes a message through Bobbie.
+#   # Requires the `chat:` block above.
+#   exposeChat: false

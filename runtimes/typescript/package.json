@@ -28,6 +28,7 @@
 		"@langchain/cohere": "^1.0.5",
 		"@langchain/core": "^1.1.42",
 		"@langchain/openai": "^1.4.5",
+		"@modelcontextprotocol/sdk": "^1.29.0",
 		"@scalar/hono-api-reference": "^0.10.10",
 		"hono": "^4.12.15",
 		"jose": "^6.2.2",

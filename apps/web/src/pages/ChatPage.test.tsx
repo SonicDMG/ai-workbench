@@ -226,13 +226,20 @@ describe("ChatPage", () => {
 			content: "pong",
 			metadata: { model: "fake-test-model", finish_reason: "stop" },
 		};
-		// Resolve the stream after a microtask so the streaming bubble
-		// has a chance to render before `done` fires.
+		// Hold the mock open until the test releases it, so we can
+		// deterministically observe the streaming bubble before `done`
+		// flips `pending` back to false. Without this gate the React
+		// render that includes the bubble can race the post-`done`
+		// re-render and the assertion flakes.
+		let releaseDone: () => void = () => {};
+		const donePromise = new Promise<void>((resolve) => {
+			releaseDone = resolve;
+		});
 		vi.mocked(sendChatStream).mockImplementation(async (_ws, _id, opts) => {
 			opts.onEvent({ type: "user-message", message: echoedUser });
 			opts.onEvent({ type: "token", delta: "po" });
 			opts.onEvent({ type: "token", delta: "ng" });
-			await new Promise((r) => setTimeout(r, 10));
+			await donePromise;
 			opts.onEvent({ type: "done", assistant: bobbieReply });
 		});
 
@@ -253,8 +260,9 @@ describe("ChatPage", () => {
 		);
 		expect(screen.getByTestId("bobbie-streaming")).toHaveTextContent(/pong/);
 
-		// Once `done` lands, the streaming bubble is gone and the
-		// canonical assistant bubble renders.
+		// Release `done` and watch the bubble disappear in favor of the
+		// canonical assistant row.
+		releaseDone();
 		await waitFor(() =>
 			expect(screen.queryByTestId("bobbie-streaming")).not.toBeInTheDocument(),
 		);

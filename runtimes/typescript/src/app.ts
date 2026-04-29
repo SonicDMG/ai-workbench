@@ -31,7 +31,7 @@ import type { PendingLoginStore } from "./auth/oidc/login/pending.js";
 import type { AuthResolver } from "./auth/resolver.js";
 import type { ChatService } from "./chat/types.js";
 import type { AstraCliInfo } from "./config/astra-cli.js";
-import type { AuthConfig, ChatConfig } from "./config/schema.js";
+import type { AuthConfig, ChatConfig, McpConfig } from "./config/schema.js";
 import type { ControlPlaneStore } from "./control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "./drivers/registry.js";
 import type { EmbedderFactory } from "./embeddings/factory.js";
@@ -55,6 +55,7 @@ import { kbDataPlaneRoutes } from "./routes/api-v1/kb-data-plane.js";
 import { kbDocumentRoutes } from "./routes/api-v1/kb-documents.js";
 import { knowledgeBaseRoutes } from "./routes/api-v1/knowledge-bases.js";
 import { knowledgeFilterRoutes } from "./routes/api-v1/knowledge-filters.js";
+import { mountMcpRoutes } from "./routes/api-v1/mcp.js";
 import { rerankingServiceRoutes } from "./routes/api-v1/reranking-services.js";
 import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
 import { authLoginRoutes } from "./routes/auth.js";
@@ -129,6 +130,12 @@ export interface AppOptions {
 	readonly chatService?: ChatService | null;
 	/** Mirrors the parsed `chat` config block; needed for retrieval defaults. */
 	readonly chatConfig?: ChatConfig | null;
+	/**
+	 * Model Context Protocol surface configuration. When omitted /
+	 * `enabled: false`, the MCP route returns 404. See
+	 * [`docs/mcp.md`](../../../docs/mcp.md).
+	 */
+	readonly mcpConfig?: McpConfig;
 }
 
 const DEFAULT_API_RATE_LIMIT: Required<
@@ -306,6 +313,14 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			chatConfig: opts.chatConfig ?? null,
 		}),
 	);
+	mountMcpRoutes(app, {
+		store: opts.store,
+		drivers: opts.drivers,
+		embedders: opts.embedders,
+		chatService: opts.chatService ?? null,
+		chatConfig: opts.chatConfig ?? null,
+		mcpConfig: opts.mcpConfig ?? { enabled: false, exposeChat: false },
+	});
 	app.route("/api/v1/workspaces", chunkingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", embeddingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", rerankingServiceRoutes(opts.store));

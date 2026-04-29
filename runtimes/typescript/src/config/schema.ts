@@ -318,6 +318,29 @@ const ChatSchema = z.object({
 	systemPrompt: z.string().min(1).nullable().default(null),
 });
 
+/**
+ * Model Context Protocol server. When enabled, the runtime mounts an
+ * MCP endpoint at `/api/v1/workspaces/{w}/mcp` that exposes the
+ * workspace's read surface (KB search, document listing, chat
+ * history) as MCP tools and resources. External agents
+ * (Claude / Cursor / Continue / hosted gateways) can connect over
+ * Streamable HTTP and use the workspace as a context backend.
+ *
+ * Default off so existing deployments don't accidentally expand
+ * their attack surface. Enable explicitly via `mcp.enabled: true`.
+ */
+const McpSchema = z.object({
+	enabled: z.boolean().default(false),
+	/**
+	 * Surface the chat tool (`chat_send`) which streams a Bobbie
+	 * reply for the workspace. Inherits the runtime's `chat`
+	 * configuration; if `chat` is unset the tool simply isn't
+	 * registered. Default off so agents that just want retrieval
+	 * don't accidentally rack up HF inference cost.
+	 */
+	exposeChat: z.boolean().default(false),
+});
+
 export const ConfigSchema = z
 	.object({
 		version: z.literal(1),
@@ -326,6 +349,7 @@ export const ConfigSchema = z
 		auth: AuthSchema,
 		seedWorkspaces: z.array(SeedWorkspaceSchema).default([]),
 		chat: ChatSchema.optional(),
+		mcp: McpSchema.default({ enabled: false, exposeChat: false }),
 	})
 	.superRefine((cfg, ctx) => {
 		if (cfg.runtime.environment === "production") {
@@ -410,6 +434,7 @@ export type OidcConfig = z.infer<typeof OidcSchema>;
 export type OidcClientConfig = z.infer<typeof OidcClientSchema>;
 export type SeedWorkspace = z.infer<typeof SeedWorkspaceSchema>;
 export type ChatConfig = z.infer<typeof ChatSchema>;
+export type McpConfig = z.infer<typeof McpSchema>;
 
 // Lightweight alias to keep `Id` reachable for callers that want the
 // same validator applied elsewhere (e.g. request validation).

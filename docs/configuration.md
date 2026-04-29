@@ -270,6 +270,24 @@ chat:
 | `retrievalK` | int (1–64) | `6` | Top-K KB chunks **per knowledge base**. The total injected into the prompt is `retrievalK * ceil(sqrt(numKbs))` so multi-KB chats don't blow up the prompt. |
 | `systemPrompt` | string \| null | `null` | Override Bobbie's built-in persona. `null` keeps the default. |
 
+## `mcp` *(optional)*
+
+Toggles the Model Context Protocol façade at
+`/api/v1/workspaces/{w}/mcp`. Off by default — when disabled the
+route returns `404` so the surface isn't probeable. See
+[`mcp.md`](mcp.md) for the full feature walkthrough.
+
+```yaml
+mcp:
+  enabled: true
+  exposeChat: false
+```
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `enabled` | bool | `false` | When false, MCP is not exposed at all. |
+| `exposeChat` | bool | `false` | Adds the `chat_send` MCP tool. Requires the `chat:` block; silently skipped when chat is unset. |
+
 ## `auth`
 
 Configures the `/api/v1/*` auth middleware. See

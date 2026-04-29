@@ -142,6 +142,7 @@ All routes documented at `/docs` (Scalar UI) and
 | `GET` | `/api/v1/workspaces/{w}/chats/{c}/messages` | Chat history, oldest-first |
 | `POST` | `/api/v1/workspaces/{w}/chats/{c}/messages` | Send a message; sync reply with retrieval-grounded HF chat-completion |
 | `POST` | `/api/v1/workspaces/{w}/chats/{c}/messages/stream` | Same flow as SSE — `user-message` + `token` deltas + terminal `done`/`error` |
+| `POST` | `/api/v1/workspaces/{w}/mcp` | Model Context Protocol façade (optional, `mcp.enabled: true`) — exposes the workspace as MCP tools for external agents |
 | `GET / POST` | `/api/v1/workspaces/{w}/api-keys` | List / issue workspace API keys |
 | `DELETE` | `/api/v1/workspaces/{w}/api-keys/{keyId}` | Revoke a workspace API key |
 
@@ -173,6 +174,7 @@ phases.
 | [`docs/green-boxes.md`](docs/green-boxes.md) | Multi-runtime "green box" architecture |
 | [`docs/playground.md`](docs/playground.md) | Playground UX, text/vector dispatch, hybrid + rerank, ingest dialog |
 | [`docs/chat.md`](docs/chat.md) | Chat with Bobbie: HuggingFace-backed, multi-KB-grounded, SSE token streaming |
+| [`docs/mcp.md`](docs/mcp.md) | Model Context Protocol façade — expose a workspace as MCP tools for external agents |
 | [`docs/astra-cli.md`](docs/astra-cli.md) | astra-cli auto-detection of Astra credentials at runtime startup |
 | [`docs/conformance.md`](docs/conformance.md) | Cross-runtime contract testing |
 | [`docs/cross-replica-jobs.md`](docs/cross-replica-jobs.md) | Design note for cross-replica job pub/sub + in-flight resume (proposed) |
