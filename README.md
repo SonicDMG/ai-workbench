@@ -234,6 +234,13 @@ ai-workbench/
 └── docs/                             # Narrative documentation
 ```
 
+## Contributing
+
+Setup, dev loops, PR expectations, and the rules for changing the
+cross-runtime API contract live in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Security issues use the private channel in
+[`SECURITY.md`](SECURITY.md).
+
 ## License
 
 TBD.
