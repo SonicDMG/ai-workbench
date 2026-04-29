@@ -135,6 +135,7 @@ async function main(): Promise<void> {
 		astraCli,
 		chatService,
 		chatConfig: config.chat ?? null,
+		mcpConfig: config.mcp,
 		requestIdHeader: config.runtime.requestIdHeader,
 		rateLimit: {
 			enabled: config.runtime.rateLimit.enabled,

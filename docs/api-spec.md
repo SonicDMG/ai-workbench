@@ -973,6 +973,35 @@ persisted with `finish_reason: "stop"`. See
 | `metadata` | `Record<string, string>` | RAG provenance (`context_document_ids`), `model`, `finish_reason` (`stop`/`length`/`error`), `error_message`. |
 
 
+## `/api/v1/workspaces/{workspaceId}/mcp`
+
+Optional [Model Context Protocol](https://modelcontextprotocol.io)
+façade. Speaks Streamable HTTP (the modern MCP transport) with
+JSON-RPC payloads. Off by default; enable via
+`mcp.enabled: true` in `workbench.yaml`. See [`mcp.md`](mcp.md) for
+the full walkthrough.
+
+| Method | Status | Body |
+|---|---|---|
+| `POST` (any) | 200 | JSON-RPC response (or SSE stream for long-running tool calls) |
+| any | 404 `not_found` | When `mcp.enabled` is false |
+| any | 404 `workspace_not_found` | When the path workspace doesn't exist |
+
+Tools surfaced (read-mostly, ground external agents in workspace
+context):
+
+- `list_knowledge_bases`
+- `list_documents`
+- `search_kb` (vector / hybrid / rerank)
+- `list_chats`
+- `list_chat_messages`
+- `chat_send` *(only when `mcp.exposeChat: true` and `chat:` is configured)*
+
+Auth flows through the regular `/api/v1/*` middleware:
+`assertWorkspaceAccess` runs on every MCP request, so workspace
+scoping is enforced for free.
+
+
 ## Planned routes
 
 These do not exist yet. Shapes may shift before they land.

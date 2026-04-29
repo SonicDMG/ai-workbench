@@ -16,7 +16,9 @@ contract first, then the runtime architecture behind them.
    vector, hybrid, and rerank search.
 3. [`chat.md`](chat.md) — chat-with-Bobbie: HuggingFace-backed,
    multi-KB-grounded assistant with SSE token streaming.
-4. [`workspaces.md`](workspaces.md) — workspace semantics, scoping,
+4. [`mcp.md`](mcp.md) — Model Context Protocol façade for external
+   agents (Claude Code, Cursor, hosted MCP gateways).
+5. [`workspaces.md`](workspaces.md) — workspace semantics, scoping,
    and cascade rules.
 4. [`configuration.md`](configuration.md) — the `workbench.yaml`
    schema and deployment-oriented settings.

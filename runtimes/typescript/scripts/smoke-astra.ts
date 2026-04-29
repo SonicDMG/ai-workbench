@@ -105,6 +105,7 @@ async function main(): Promise<void> {
 			bootstrapTokenRef: null,
 		},
 		seedWorkspaces: [],
+		mcp: { enabled: false, exposeChat: false },
 	};
 
 	const { store, astraTables } = await controlPlaneFromConfig(config, secrets);

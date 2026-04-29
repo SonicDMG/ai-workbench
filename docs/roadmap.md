@@ -21,7 +21,8 @@ runnable artifact and a stable slice of the HTTP contract.
 | Chat-3 | Chat + message CRUD routes, functional UI | ✅ Shipped |
 | Chat-4 | HuggingFace chat completion + multi-KB RAG (sync) | ✅ Shipped |
 | Chat-5 | SSE token streaming end-to-end | ✅ Shipped |
-| 6+ | User-defined agents, MCP, polish | Planned (see "Next steps") |
+| MCP | Model Context Protocol façade — workspace as MCP tools | ✅ Shipped |
+| 7+ | User-defined agents, polish | Planned (see "Next steps") |
 
 ## Phase 0 — Bootstrap ✅
 
@@ -354,38 +355,39 @@ feature walkthrough.
   JSON body. Cancel button wires the `AbortSignal` through to the
   HF stream so the runtime stops paying for tokens nobody will see.
 
+## MCP phase ✅ — Model Context Protocol façade
+
+Workspace-scoped MCP server mounted at
+`/api/v1/workspaces/{w}/mcp`. See [`mcp.md`](mcp.md) for the
+walkthrough.
+
+- **Streamable HTTP transport** (modern MCP). Stateless: each
+  request constructs a fresh server, no session-id tracking.
+- **Tools** (read-mostly):
+  `list_knowledge_bases`, `list_documents`, `search_kb`
+  (vector / hybrid / rerank), `list_chats`, `list_chat_messages`.
+  Plus `chat_send` (opt-in via `mcp.exposeChat: true`) which routes
+  through Bobbie.
+- **Auth.** Reuses `assertWorkspaceAccess`, so a scoped workspace
+  API key for workspace A cannot call MCP tools on workspace B.
+- **Off by default.** `mcp.enabled: true` opts in.
+
+Tools deliberately don't include write operations
+(`ingest`, KB CRUD, workspace CRUD) yet — see "Next steps" for
+when to add them.
+
+Followups deferred:
+- **stdio transport** (`npx ai-workbench-mcp`) for local Claude /
+  IDE integrations that don't want to round-trip through HTTP.
+- **Per-tool auth scopes** so write tools can be enabled
+  per-API-key.
+- **MCP resources** (vs tools) — currently every read is a tool
+  call. Some clients prefer resources for read-only data.
+
 ## Next steps (not yet started)
 
 The phases below are sequenced loosely; each is independently
 shippable so reordering doesn't burn earlier work.
-
-### MCP server façade — expose the workbench to external agents
-
-Stand up a Model Context Protocol server that surfaces a workspace
-as tools an external agent can call:
-
-- `search` — KB retrieval (vector / hybrid / rerank), accepting a
-  workspace + KB filter and returning ranked chunks.
-- `list_documents` — paginated document metadata.
-- `ingest` — wraps `POST .../ingest` with the same `?async=true`
-  semantics so an agent can fire-and-forget large uploads.
-- `chats` resources — read-only access to a workspace's
-  conversation log (so external agents can summarize or audit chat
-  history).
-- Optionally a `chat` tool that streams Bobbie's reply for a given
-  workspace, for agents that want to delegate Q&A.
-
-Two transports to support: **stdio** for local Claude / IDE
-integrations, and **HTTP-SSE** for hosted MCP gateways. The MCP
-SDK already speaks both; the work is wiring the ControlPlaneStore
-+ chat service behind the SDK's tool / resource interface and
-mapping `assertWorkspaceAccess` onto the MCP `clientId` claim.
-
-Open question: does the MCP server live in the runtime process (one
-binary, one port surface) or as a sidecar (separate process,
-shared control plane)? Sidecar is simpler operationally but
-duplicates auth/secrets bootstrap. Default to in-process behind a
-config flag.
 
 ### User-defined agents
 
