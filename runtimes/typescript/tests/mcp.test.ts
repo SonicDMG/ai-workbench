@@ -380,9 +380,9 @@ describe("MCP HTTP route", () => {
 			.split(/\r?\n/)
 			.map((l) => l.trim())
 			.find((l) => l.startsWith("data:"));
-		expect(dataLine).toBeDefined();
+		if (!dataLine) throw new Error("expected SSE data line in response");
 
-		const rpc = JSON.parse(dataLine?.slice("data:".length).trim()) as {
+		const rpc = JSON.parse(dataLine.slice("data:".length).trim()) as {
 			result?: { tools: Array<{ name: string }> };
 		};
 		expect(rpc.result).toBeDefined();
