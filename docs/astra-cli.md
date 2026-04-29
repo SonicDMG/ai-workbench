@@ -86,12 +86,12 @@ On a successful auto-config, the runtime prints a banner to stdout
 *before* the rest of startup, so the selection is impossible to miss:
 
 ```
-[astra-cli] using profile "Eric Hare"
-  database: mydb  (id: c933e7fc-4996-4dcd-bb87-4f282fe1e7ef)
+[astra-cli] using profile "workbench-dev"
+  database: mydb  (id: 00000000-0000-0000-0000-000000000000)
   region:   us-east-2
-  endpoint: https://c933e7fc-4996-4dcd-bb87-4f282fe1e7ef-us-east-2.apps.astra.datastax.com
+  endpoint: https://00000000-0000-0000-0000-000000000000-us-east-2.apps.astra.datastax.com
   keyspace: default_keyspace
-  token:    from profile "Eric Hare"
+  token:    from profile "workbench-dev"
 ```
 
 If `ASTRA_DB_API_ENDPOINT` was already set in the environment when
@@ -129,12 +129,12 @@ The runtime exposes the resolved info (token-redacted) on
 ```json
 {
   "detected": true,
-  "profile": "Eric Hare",
+  "profile": "workbench-dev",
   "database": {
-    "id": "c933e7fc-4996-4dcd-bb87-4f282fe1e7ef",
+    "id": "00000000-0000-0000-0000-000000000000",
     "name": "mydb",
     "region": "us-east-2",
-    "endpoint": "https://c933e7fc-4996-4dcd-bb87-4f282fe1e7ef-us-east-2.apps.astra.datastax.com",
+    "endpoint": "https://00000000-0000-0000-0000-000000000000-us-east-2.apps.astra.datastax.com",
     "keyspace": "default_keyspace"
   }
 }
