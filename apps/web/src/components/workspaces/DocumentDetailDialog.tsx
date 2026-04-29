@@ -1,5 +1,6 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { Hash, Loader2 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import {
 	Dialog,
 	DialogContent,
@@ -10,7 +11,7 @@ import {
 import { useDocumentChunks } from "@/hooks/useDocuments";
 import { formatFileSize } from "@/lib/files";
 import type { DocumentChunk, RagDocumentRecord } from "@/lib/schemas";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
 import { FileTypeBadge } from "./FileTypeBadge";
 
@@ -24,11 +25,15 @@ export function DocumentDetailDialog({
 	workspace,
 	knowledgeBaseUid,
 	doc,
+	highlightChunkId,
 	onOpenChange,
 }: {
 	workspace: string;
 	knowledgeBaseUid: string;
 	doc: RagDocumentRecord | null;
+	/** Chunk ID to scroll into view + highlight once chunks load.
+	 * Driven by the `?chunk=<id>` deep-link from chat citations. */
+	highlightChunkId?: string | null;
 	onOpenChange: (open: boolean) => void;
 }) {
 	const open = doc !== null;
@@ -131,7 +136,10 @@ export function DocumentDetailDialog({
 										</span>
 									) : null}
 								</p>
-								<ChunksList query={chunks} />
+								<ChunksList
+									query={chunks}
+									highlightChunkId={highlightChunkId ?? null}
+								/>
 							</div>
 						) : null}
 					</div>
@@ -167,9 +175,26 @@ function KV({
 
 function ChunksList({
 	query,
+	highlightChunkId,
 }: {
 	query: UseQueryResult<DocumentChunk[], Error>;
+	highlightChunkId: string | null;
 }) {
+	const highlightRef = useRef<HTMLLIElement | null>(null);
+	const data = query.data;
+	useEffect(() => {
+		if (!highlightChunkId || !data) return;
+		// Run after the chunk list has rendered so the ref points at a
+		// real DOM node. `scrollIntoView` is a no-op in jsdom (the test
+		// env), which is fine — the highlight class is what matters
+		// for assertions.
+		const node = highlightRef.current;
+		if (!node) return;
+		if (typeof node.scrollIntoView === "function") {
+			node.scrollIntoView({ block: "center", behavior: "smooth" });
+		}
+	}, [highlightChunkId, data]);
+
 	if (query.isLoading) {
 		return (
 			<p className="inline-flex items-center gap-2 text-xs text-slate-500">
@@ -184,7 +209,7 @@ function ChunksList({
 			</p>
 		);
 	}
-	const chunks = query.data ?? [];
+	const chunks = data ?? [];
 	if (chunks.length === 0) {
 		return (
 			<p className="text-xs text-slate-500">
@@ -195,31 +220,41 @@ function ChunksList({
 	}
 	return (
 		<ol className="flex flex-col gap-1.5 max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white p-2">
-			{chunks.map((c) => (
-				<li
-					key={c.id}
-					className="rounded-md border border-slate-100 bg-slate-50 p-2 text-xs"
-				>
-					<div className="flex items-baseline gap-2">
-						<span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 tabular-nums">
-							#{c.chunkIndex ?? "—"}
-						</span>
-						<span className="font-mono text-[10px] text-slate-400 truncate">
-							{c.id}
-						</span>
-					</div>
-					{c.text ? (
-						<p className="mt-1 whitespace-pre-wrap break-words text-slate-700 leading-snug">
-							{c.text}
-						</p>
-					) : (
-						<p className="mt-1 text-slate-400 italic">
-							(text not stored — older ingest, before the chunkText payload key
-							landed)
-						</p>
-					)}
-				</li>
-			))}
+			{chunks.map((c) => {
+				const isHighlight = c.id === highlightChunkId;
+				return (
+					<li
+						key={c.id}
+						ref={isHighlight ? highlightRef : undefined}
+						data-testid={isHighlight ? "chunk-highlight" : undefined}
+						className={cn(
+							"rounded-md border p-2 text-xs",
+							isHighlight
+								? "border-[var(--color-brand-400)] bg-[var(--color-brand-50)] ring-1 ring-[var(--color-brand-200)]"
+								: "border-slate-100 bg-slate-50",
+						)}
+					>
+						<div className="flex items-baseline gap-2">
+							<span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 tabular-nums">
+								#{c.chunkIndex ?? "—"}
+							</span>
+							<span className="font-mono text-[10px] text-slate-400 truncate">
+								{c.id}
+							</span>
+						</div>
+						{c.text ? (
+							<p className="mt-1 whitespace-pre-wrap break-words text-slate-700 leading-snug">
+								{c.text}
+							</p>
+						) : (
+							<p className="mt-1 text-slate-400 italic">
+								(text not stored — older ingest, before the chunkText payload
+								key landed)
+							</p>
+						)}
+					</li>
+				);
+			})}
 		</ol>
 	);
 }

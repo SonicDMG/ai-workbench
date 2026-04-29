@@ -624,8 +624,17 @@ export function chatRoutes(deps: ChatRouteDeps): OpenAPIHono<AppEnv> {
 	return app;
 }
 
-function buildMetadata(
-	chunks: readonly { chunkId: string }[],
+/**
+ * Compose the assistant message's `metadata` map. Exported so the
+ * format is unit-testable without spinning up the full retrieval +
+ * model pipeline. See `tests/chat/metadata.test.ts`.
+ */
+export function buildMetadata(
+	chunks: readonly {
+		readonly chunkId: string;
+		readonly knowledgeBaseId: string;
+		readonly documentId: string | null;
+	}[],
 	model: string,
 	completion: {
 		finishReason: "stop" | "length" | "error";
@@ -637,7 +646,15 @@ function buildMetadata(
 		finish_reason: completion.finishReason,
 	};
 	if (chunks.length > 0) {
+		// Comma-joined list of chunk IDs — kept for backward-compat with
+		// older UI / API consumers that don't read context_chunks yet.
 		metadata.context_document_ids = chunks.map((c) => c.chunkId).join(",");
+		// Compact tuple-array of [chunkId, knowledgeBaseId, documentId|null]
+		// per chunk so the UI can render `[chunkId]` citation linkbacks
+		// to the owning KB + document without a follow-up fetch.
+		metadata.context_chunks = JSON.stringify(
+			chunks.map((c) => [c.chunkId, c.knowledgeBaseId, c.documentId]),
+		);
 	}
 	if (completion.errorMessage) {
 		metadata.error_message = completion.errorMessage;

@@ -419,12 +419,16 @@ Chat costs HF tokens; today the runtime relies on the global
 buckets would let operators bound spend without blocking other
 endpoints.
 
-### Markdown rendering + citation linkbacks
+### Markdown rendering + citation linkbacks ✅
 
-The chat UI renders assistant content as plain text. Wire up
-[`react-markdown`](https://github.com/remarkjs/react-markdown) for
-the assistant bubble, and turn `[chunkId]` citations into clickable
-links that scroll the document explorer to the cited chunk.
+Shipped. Bobbie's assistant bubble renders sanitized GitHub-flavored
+markdown via `react-markdown` + `remark-gfm` + `rehype-sanitize`.
+Inline `[chunkId]` citations rewrite into deep links that auto-open
+the cited document's detail dialog in the KB explorer and scroll the
+matching chunk into view. The runtime persists the chunk → (KB,
+document) map on each assistant turn at `metadata.context_chunks`
+(JSON-encoded compact tuples), so the UI doesn't need a follow-up
+fetch. See [`chat.md`](chat.md#citation-linkbacks).
 
 ### Multi-provider chat backends
 

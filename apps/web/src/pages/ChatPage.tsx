@@ -9,6 +9,11 @@ import {
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import {
+	type ChunkRef,
+	MarkdownContent,
+	parseChunkMap,
+} from "@/components/chat/MarkdownContent";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -395,7 +400,11 @@ function ChatThread({ workspaceUid, chatId, onDeleted }: ChatThreadProps) {
 					) : (
 						<ul className="flex flex-col gap-3">
 							{messagesQuery.data?.map((m) => (
-								<MessageBubble key={m.messageId} message={m} />
+								<MessageBubble
+									key={m.messageId}
+									message={m}
+									workspaceId={workspaceUid}
+								/>
 							))}
 							{stream.pending ? (
 								<StreamingBubble delta={stream.pendingDelta} />
@@ -472,10 +481,16 @@ function EmptyMessages() {
 	);
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({
+	message,
+	workspaceId,
+}: {
+	message: ChatMessage;
+	workspaceId: string;
+}) {
 	const isUser = message.role === "user";
 	const isError = message.metadata.finish_reason === "error";
-	const sources = parseSources(message.metadata.context_document_ids);
+	const chunkMap = parseChunkMap(message.metadata);
 	return (
 		<li
 			className={cn(
@@ -491,33 +506,76 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 			</span>
 			<div
 				className={cn(
-					"max-w-[80%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm",
+					"max-w-[80%] rounded-lg px-3 py-2 text-sm",
+					// User content stays plain (whitespace preserved); the model's
+					// reply is rendered as sanitized markdown so lists, code, and
+					// citations land formatted.
 					isUser
-						? "bg-[var(--color-brand-600)] text-white"
+						? "whitespace-pre-wrap bg-[var(--color-brand-600)] text-white"
 						: isError
-							? "border border-red-200 bg-red-50 text-red-900"
+							? "whitespace-pre-wrap border border-red-200 bg-red-50 text-red-900"
 							: "bg-slate-100 text-slate-900",
 				)}
 				data-testid={isError ? "bobbie-error" : undefined}
 			>
-				{message.content ?? ""}
+				{isUser || isError ? (
+					(message.content ?? "")
+				) : (
+					<MarkdownContent
+						content={message.content ?? ""}
+						workspaceId={workspaceId}
+						chunkMap={chunkMap}
+					/>
+				)}
 			</div>
-			{!isUser && sources.length > 0 ? (
-				<details className="self-start text-xs text-slate-500">
-					<summary className="cursor-pointer hover:text-slate-700">
-						{sources.length} source{sources.length === 1 ? "" : "s"}
-					</summary>
-					<ul className="mt-1 flex flex-col gap-0.5 pl-2">
-						{sources.map((id) => (
-							<li key={id} className="font-mono text-[11px] text-slate-400">
-								{id}
-							</li>
-						))}
-					</ul>
-				</details>
+			{!isUser && chunkMap.size > 0 ? (
+				<SourcesDisclosure workspaceId={workspaceId} chunks={chunkMap} />
 			) : null}
 		</li>
 	);
+}
+
+function SourcesDisclosure({
+	workspaceId,
+	chunks,
+}: {
+	workspaceId: string;
+	chunks: ReadonlyMap<string, ChunkRef>;
+}) {
+	const entries = [...chunks.values()];
+	return (
+		<details className="self-start text-xs text-slate-500">
+			<summary className="cursor-pointer hover:text-slate-700">
+				{entries.length} source{entries.length === 1 ? "" : "s"}
+			</summary>
+			<ul className="mt-1 flex flex-col gap-0.5 pl-2">
+				{entries.map((ref) => (
+					<li key={ref.chunkId} className="font-mono text-[11px]">
+						{ref.knowledgeBaseId.length > 0 ? (
+							<Link
+								to={citationHref(workspaceId, ref)}
+								className="text-slate-500 hover:text-[var(--color-brand-700)] hover:underline"
+								data-testid="chat-source-link"
+							>
+								{ref.chunkId}
+							</Link>
+						) : (
+							// Legacy `context_document_ids` only — no KB / doc info,
+							// so we can't deep-link. Render as plain text.
+							<span className="text-slate-400">{ref.chunkId}</span>
+						)}
+					</li>
+				))}
+			</ul>
+		</details>
+	);
+}
+
+function citationHref(workspaceId: string, ref: ChunkRef): string {
+	const params = new URLSearchParams();
+	if (ref.documentId) params.set("document", ref.documentId);
+	params.set("chunk", ref.chunkId);
+	return `/workspaces/${workspaceId}/knowledge-bases/${ref.knowledgeBaseId}?${params.toString()}`;
 }
 
 function BobbieThinking() {
@@ -561,12 +619,4 @@ function StreamingBubble({ delta }: { delta: string }) {
 			</div>
 		</li>
 	);
-}
-
-function parseSources(value: string | undefined): readonly string[] {
-	if (!value) return [];
-	return value
-		.split(",")
-		.map((id) => id.trim())
-		.filter((id) => id.length > 0);
 }

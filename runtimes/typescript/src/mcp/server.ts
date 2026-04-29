@@ -292,10 +292,11 @@ function registerChatTool(
 					content: [{ type: "text", text: `chat '${chatId}' not found` }],
 				};
 			}
-			await deps.store.appendChatMessage(workspaceId, chatId, {
-				role: "user",
-				content,
-			});
+			const userRecord = await deps.store.appendChatMessage(
+				workspaceId,
+				chatId,
+				{ role: "user", content },
+			);
 			const chunks = await retrieveContext(
 				{
 					store: deps.store,
@@ -322,8 +323,18 @@ function registerChatTool(
 				completion.finishReason === "error"
 					? (completion.errorMessage ?? "Bobbie couldn't answer this turn.")
 					: completion.content;
+			// Force the assistant turn strictly after the user turn so the
+			// `message_ts ASC` cluster ordering is unambiguous — the column
+			// has ms resolution and a fast model can finish in the same
+			// millisecond as the user append, which would otherwise leave
+			// the order to a random-UUID tiebreaker.
+			const userTs = Date.parse(userRecord.messageTs);
+			const assistantTs = new Date(
+				Math.max(userTs + 1, Date.now()),
+			).toISOString();
 			await deps.store.appendChatMessage(workspaceId, chatId, {
 				role: "agent",
+				messageTs: assistantTs,
 				content: replyText,
 				tokenCount: completion.tokenCount,
 				metadata: {
@@ -331,6 +342,9 @@ function registerChatTool(
 					finish_reason: completion.finishReason,
 					...(chunks.length > 0 && {
 						context_document_ids: chunks.map((c) => c.chunkId).join(","),
+						context_chunks: JSON.stringify(
+							chunks.map((c) => [c.chunkId, c.knowledgeBaseId, c.documentId]),
+						),
 					}),
 					...(completion.errorMessage && {
 						error_message: completion.errorMessage,
