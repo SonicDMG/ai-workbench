@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -20,29 +21,78 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { useCreateKnowledgeBase } from "@/hooks/useKnowledgeBases";
+import {
+	useAdoptableCollections,
+	useCreateKnowledgeBase,
+} from "@/hooks/useKnowledgeBases";
 import {
 	useChunkingServices,
 	useEmbeddingServices,
 	useRerankingServices,
 } from "@/hooks/useServices";
 import { formatApiError } from "@/lib/api";
+import type {
+	AdoptableCollection,
+	EmbeddingServiceRecord,
+} from "@/lib/schemas";
 
-const FormSchema = z.object({
-	name: z.string().min(1, "Name is required"),
-	description: z.string().optional(),
-	embeddingServiceId: z.string().uuid("Pick an embedding service"),
-	chunkingServiceId: z.string().uuid("Pick a chunking service"),
-	rerankingServiceId: z.string().uuid().or(z.literal("")).optional(),
-	language: z.string().optional(),
-});
+type Mode = "create" | "attach";
+
+const FormSchema = z
+	.object({
+		mode: z.enum(["create", "attach"]),
+		name: z.string().min(1, "Name is required"),
+		description: z.string().optional(),
+		embeddingServiceId: z.string().uuid("Pick an embedding service"),
+		chunkingServiceId: z.string().uuid("Pick a chunking service"),
+		rerankingServiceId: z.string().uuid().or(z.literal("")).optional(),
+		language: z.string().optional(),
+		vectorCollection: z.string().optional(),
+	})
+	.superRefine((v, ctx) => {
+		if (v.mode === "attach" && !v.vectorCollection) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["vectorCollection"],
+				message: "Pick an existing collection to attach",
+			});
+		}
+	});
 type FormInput = z.infer<typeof FormSchema>;
 
 /**
- * Create a knowledge base under a workspace. Embedding + chunking
- * services are required (the runtime won't auto-provision the
- * underlying vector collection without an embedding service to fix
- * its dimension); reranking is optional and can be added later.
+ * Decide whether an embedding service is compatible with a target
+ * collection. Compatibility = same vector dimension AND, if the
+ * collection was created with an Astra `$vectorize` service, the same
+ * provider/model. We surface this as a filter on the embedding
+ * dropdown so the user can't pick a service that would fail backend
+ * validation on submit.
+ *
+ * Exported for unit testing — the dialog itself uses it via the
+ * filtered-list memo.
+ */
+export function isCompatible(
+	collection: AdoptableCollection,
+	emb: EmbeddingServiceRecord,
+): boolean {
+	if (collection.vectorDimension !== emb.embeddingDimension) return false;
+	if (
+		collection.vectorService &&
+		(collection.vectorService.provider !== emb.provider ||
+			collection.vectorService.modelName !== emb.modelName)
+	) {
+		return false;
+	}
+	return true;
+}
+
+/**
+ * Create a knowledge base under a workspace, either by provisioning a
+ * fresh Astra collection (default) or by attaching to a pre-existing
+ * one. In attach mode the embedding-service dropdown is filtered to
+ * services whose dimension (and `$vectorize` provider/model when set)
+ * matches the chosen collection — the runtime would reject mismatches
+ * at create time, this just surfaces compatibility upfront.
  */
 export function CreateKnowledgeBaseDialog({
 	workspace,
@@ -57,17 +107,35 @@ export function CreateKnowledgeBaseDialog({
 	const embeddings = useEmbeddingServices(open ? workspace : undefined);
 	const chunkings = useChunkingServices(open ? workspace : undefined);
 	const rerankings = useRerankingServices(open ? workspace : undefined);
+	const adoptable = useAdoptableCollections(open ? workspace : undefined);
 	const form = useForm<FormInput>({
 		resolver: zodResolver(FormSchema),
 		defaultValues: {
+			mode: "create",
 			name: "",
 			description: "",
 			embeddingServiceId: "",
 			chunkingServiceId: "",
 			rerankingServiceId: "",
 			language: "",
+			vectorCollection: "",
 		},
 	});
+
+	const mode = form.watch("mode") as Mode;
+	const selectedCollectionName = form.watch("vectorCollection") ?? "";
+	const cols = useMemo(() => adoptable.data ?? [], [adoptable.data]);
+	const selectedCollection = useMemo(
+		() => cols.find((c) => c.name === selectedCollectionName) ?? null,
+		[cols, selectedCollectionName],
+	);
+
+	const allEmbeddings: readonly EmbeddingServiceRecord[] =
+		embeddings.data ?? [];
+	const compatibleEmbeddings = useMemo(() => {
+		if (mode !== "attach" || !selectedCollection) return allEmbeddings;
+		return allEmbeddings.filter((e) => isCompatible(selectedCollection, e));
+	}, [allEmbeddings, mode, selectedCollection]);
 
 	function handleOpenChange(next: boolean): void {
 		if (!next) {
@@ -77,7 +145,27 @@ export function CreateKnowledgeBaseDialog({
 		onOpenChange(next);
 	}
 
-	async function onSubmit(values: FormInput) {
+	function handleModeChange(next: Mode): void {
+		form.setValue("mode", next);
+		form.setValue("vectorCollection", "");
+		// Re-checking compat after mode change — clear the embedding
+		// pick so the user re-picks from the (possibly-filtered) list.
+		form.setValue("embeddingServiceId", "");
+	}
+
+	function handleCollectionChange(name: string): void {
+		form.setValue("vectorCollection", name);
+		const next = cols.find((c) => c.name === name);
+		const current = form.getValues("embeddingServiceId");
+		const stillOk =
+			next &&
+			allEmbeddings.find(
+				(e) => e.embeddingServiceId === current && isCompatible(next, e),
+			);
+		if (!stillOk) form.setValue("embeddingServiceId", "");
+	}
+
+	async function onSubmit(values: FormInput): Promise<void> {
 		try {
 			const record = await create.mutateAsync({
 				name: values.name,
@@ -88,26 +176,51 @@ export function CreateKnowledgeBaseDialog({
 					? values.rerankingServiceId
 					: null,
 				language: values.language?.trim() || null,
+				attach: values.mode === "attach",
+				vectorCollection:
+					values.mode === "attach" ? (values.vectorCollection ?? null) : null,
 			});
-			toast.success(`Knowledge base '${record.name}' created`);
+			toast.success(
+				values.mode === "attach"
+					? `Attached to '${record.vectorCollection}'`
+					: `Knowledge base '${record.name}' created`,
+			);
 			handleOpenChange(false);
 		} catch (err) {
-			toast.error("Couldn't create knowledge base", {
-				description: formatApiError(err),
-			});
+			toast.error(
+				values.mode === "attach"
+					? "Couldn't attach knowledge base"
+					: "Couldn't create knowledge base",
+				{ description: formatApiError(err) },
+			);
 		}
 	}
 
 	const errors = form.formState.errors;
-	const embs = embeddings.data ?? [];
 	const chunks = chunkings.data ?? [];
 	const reranks = rerankings.data ?? [];
+	const selectableCollections = cols.filter((c) => !c.attached);
 	const blockedReason =
-		embs.length === 0
-			? "Create an embedding service first"
-			: chunks.length === 0
-				? "Create a chunking service first"
-				: null;
+		mode === "attach"
+			? selectableCollections.length === 0 && !adoptable.isLoading
+				? "No unattached collections found in this workspace's data plane"
+				: chunks.length === 0
+					? "Create a chunking service first"
+					: null
+			: allEmbeddings.length === 0
+				? "Create an embedding service first"
+				: chunks.length === 0
+					? "Create a chunking service first"
+					: null;
+
+	const embeddingPlaceholder =
+		mode === "attach" && !selectedCollection
+			? "Pick a collection first"
+			: compatibleEmbeddings.length === 0
+				? mode === "attach"
+					? "No compatible embedding service for this collection"
+					: "No embedding services yet"
+				: "Pick an embedding service";
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
@@ -116,7 +229,8 @@ export function CreateKnowledgeBaseDialog({
 					<DialogTitle>Create a knowledge base</DialogTitle>
 					<DialogDescription>
 						A KB owns an Astra collection plus the chunking, embedding, and
-						(optionally) reranking services that produce its content.
+						(optionally) reranking services that produce its content. You can
+						also attach an existing collection instead of creating a new one.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -124,6 +238,39 @@ export function CreateKnowledgeBaseDialog({
 					onSubmit={form.handleSubmit(onSubmit)}
 					className="flex flex-col gap-4"
 				>
+					<div
+						className="grid grid-cols-2 gap-2 rounded-md border bg-slate-50 p-1"
+						role="tablist"
+						aria-label="Knowledge base creation mode"
+					>
+						<button
+							type="button"
+							role="tab"
+							aria-selected={mode === "create"}
+							onClick={() => handleModeChange("create")}
+							className={`rounded px-3 py-2 text-sm transition ${
+								mode === "create"
+									? "bg-white shadow-sm font-medium"
+									: "text-slate-600 hover:text-slate-900"
+							}`}
+						>
+							Create new collection
+						</button>
+						<button
+							type="button"
+							role="tab"
+							aria-selected={mode === "attach"}
+							onClick={() => handleModeChange("attach")}
+							className={`rounded px-3 py-2 text-sm transition ${
+								mode === "attach"
+									? "bg-white shadow-sm font-medium"
+									: "text-slate-600 hover:text-slate-900"
+							}`}
+						>
+							Attach existing
+						</button>
+					</div>
+
 					<div className="flex flex-col gap-1.5">
 						<FieldLabel
 							htmlFor="kb-name"
@@ -156,29 +303,87 @@ export function CreateKnowledgeBaseDialog({
 						/>
 					</div>
 
+					{mode === "attach" ? (
+						<div className="flex flex-col gap-1.5">
+							<FieldLabel
+								htmlFor="kb-collection"
+								help="Pick a collection that already exists in this workspace's Astra database. The KB will read and write into that collection without provisioning a new one."
+							>
+								Existing collection
+							</FieldLabel>
+							<Select
+								value={selectedCollectionName}
+								onValueChange={handleCollectionChange}
+								disabled={
+									adoptable.isLoading || selectableCollections.length === 0
+								}
+							>
+								<SelectTrigger id="kb-collection">
+									<SelectValue
+										placeholder={
+											adoptable.isLoading
+												? "Loading collections…"
+												: selectableCollections.length === 0
+													? "None available"
+													: "Pick a collection"
+										}
+									/>
+								</SelectTrigger>
+								<SelectContent>
+									{selectableCollections.map((c) => (
+										<SelectItem key={c.name} value={c.name}>
+											{c.name}
+											<span className="ml-2 text-xs text-slate-500">
+												(dim {c.vectorDimension} / {c.vectorSimilarity}
+												{c.vectorService
+													? ` / vectorize: ${c.vectorService.provider}:${c.vectorService.modelName}`
+													: ""}
+												)
+											</span>
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							{errors.vectorCollection ? (
+								<p className="text-xs text-red-600">
+									{errors.vectorCollection.message}
+								</p>
+							) : null}
+							{cols.some((c) => c.attached) ? (
+								<p className="text-xs text-slate-500">
+									{cols.filter((c) => c.attached).length} collection
+									{cols.filter((c) => c.attached).length === 1 ? "" : "s"}{" "}
+									already attached to a KB and hidden.
+								</p>
+							) : null}
+						</div>
+					) : null}
+
 					<div className="flex flex-col gap-1.5">
 						<FieldLabel
 							htmlFor="kb-emb"
-							help="The model/service used to convert chunks and text queries into vectors. Its dimension determines the vector collection shape."
+							help={
+								mode === "attach"
+									? "Only embedding services whose vector dimension (and Astra vectorize service, if set) match the chosen collection are shown."
+									: "The model/service used to convert chunks and text queries into vectors. Its dimension determines the vector collection shape."
+							}
 						>
 							Embedding service
 						</FieldLabel>
 						<Select
 							value={form.watch("embeddingServiceId") ?? ""}
 							onValueChange={(v) => form.setValue("embeddingServiceId", v)}
-							disabled={embeddings.isLoading || embs.length === 0}
+							disabled={
+								embeddings.isLoading ||
+								compatibleEmbeddings.length === 0 ||
+								(mode === "attach" && !selectedCollection)
+							}
 						>
 							<SelectTrigger id="kb-emb">
-								<SelectValue
-									placeholder={
-										embs.length === 0
-											? "No embedding services yet"
-											: "Pick an embedding service"
-									}
-								/>
+								<SelectValue placeholder={embeddingPlaceholder} />
 							</SelectTrigger>
 							<SelectContent>
-								{embs.map((s) => (
+								{compatibleEmbeddings.map((s) => (
 									<SelectItem
 										key={s.embeddingServiceId}
 										value={s.embeddingServiceId}
@@ -194,6 +399,18 @@ export function CreateKnowledgeBaseDialog({
 						{errors.embeddingServiceId ? (
 							<p className="text-xs text-red-600">
 								{errors.embeddingServiceId.message}
+							</p>
+						) : null}
+						{mode === "attach" &&
+						selectedCollection &&
+						compatibleEmbeddings.length === 0 ? (
+							<p className="text-xs text-amber-700">
+								No existing embedding service matches this collection (dim{" "}
+								{selectedCollection.vectorDimension}
+								{selectedCollection.vectorService
+									? `, vectorize ${selectedCollection.vectorService.provider}:${selectedCollection.vectorService.modelName}`
+									: ""}
+								). Create one in Services first.
 							</p>
 						) : null}
 					</div>
@@ -308,7 +525,13 @@ export function CreateKnowledgeBaseDialog({
 							variant="brand"
 							disabled={create.isPending || blockedReason !== null}
 						>
-							{create.isPending ? "Creating…" : "Create knowledge base"}
+							{create.isPending
+								? mode === "attach"
+									? "Attaching…"
+									: "Creating…"
+								: mode === "attach"
+									? "Attach knowledge base"
+									: "Create knowledge base"}
 						</Button>
 					</DialogFooter>
 				</form>

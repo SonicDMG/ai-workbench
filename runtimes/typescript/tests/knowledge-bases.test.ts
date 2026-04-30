@@ -36,7 +36,10 @@ function makeApp() {
 		verifiers: [],
 	});
 	const embedders = makeFakeEmbedderFactory();
-	return createApp({ store, drivers, secrets, auth, embedders });
+	return Object.assign(
+		createApp({ store, drivers, secrets, auth, embedders }),
+		{ _driver: driver },
+	);
 }
 
 async function createWorkspace(
@@ -491,6 +494,191 @@ describe("knowledge-base routes", () => {
 		const body = await json(list);
 		expect(body.items).toHaveLength(2);
 		expect(body.nextCursor).not.toBeNull();
+	});
+
+	test("GET /adoptable-collections lists driver collections and flags attached", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		app._driver.seedAdoptable(ws, {
+			name: "products_external",
+			vectorDimension: 4,
+			vectorSimilarity: "cosine",
+			embedding: null,
+			lexicalEnabled: false,
+			rerankEnabled: false,
+			rerankProvider: null,
+			rerankModel: null,
+		});
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/adoptable-collections`,
+		);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.items).toHaveLength(1);
+		expect(body.items[0].name).toBe("products_external");
+		expect(body.items[0].vectorDimension).toBe(4);
+		expect(body.items[0].attached).toBe(false);
+	});
+
+	test("attach happy path: skips createCollection, persists owned=false, marks attached", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const embId = await createService(app, ws, "embedding-services", {
+			name: "mock-embedder",
+			provider: "mock",
+			modelName: "mock-embedder",
+			embeddingDimension: 4,
+		});
+		const chunkId = await createService(app, ws, "chunking-services", {
+			name: "c",
+			engine: "docling",
+		});
+		app._driver.seedAdoptable(ws, {
+			name: "preexisting",
+			vectorDimension: 4,
+			vectorSimilarity: "cosine",
+			embedding: null,
+			lexicalEnabled: false,
+			rerankEnabled: false,
+			rerankProvider: null,
+			rerankModel: null,
+		});
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "attached",
+					embeddingServiceId: embId,
+					chunkingServiceId: chunkId,
+					attach: true,
+					vectorCollection: "preexisting",
+				}),
+			},
+		);
+		expect(res.status, await res.clone().text()).toBe(201);
+		const kb = await json(res);
+		expect(kb.vectorCollection).toBe("preexisting");
+		expect(kb.owned).toBe(false);
+
+		// adoptable list now flags this collection as attached.
+		const adoptable = await json(
+			await app.request(`/api/v1/workspaces/${ws}/adoptable-collections`),
+		);
+		expect(adoptable.items[0].attached).toBe(true);
+
+		// DELETE on an attached KB does NOT throw on dropCollection
+		// (the runtime never tries) — confirms the owned: false branch.
+		const del = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kb.knowledgeBaseId}`,
+			{ method: "DELETE" },
+		);
+		expect(del.status).toBe(204);
+	});
+
+	test("attach 400s when vectorCollection is missing", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const embId = await createService(app, ws, "embedding-services", {
+			name: "e",
+			provider: "openai",
+			modelName: "m",
+			embeddingDimension: 4,
+		});
+		const chunkId = await createService(app, ws, "chunking-services", {
+			name: "c",
+			engine: "docling",
+		});
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "no-target",
+					embeddingServiceId: embId,
+					chunkingServiceId: chunkId,
+					attach: true,
+				}),
+			},
+		);
+		expect(res.status).toBe(400);
+		expect((await json(res)).error.code).toBe("vector_collection_required");
+	});
+
+	test("attach 404s when target collection does not exist", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const embId = await createService(app, ws, "embedding-services", {
+			name: "e",
+			provider: "openai",
+			modelName: "m",
+			embeddingDimension: 4,
+		});
+		const chunkId = await createService(app, ws, "chunking-services", {
+			name: "c",
+			engine: "docling",
+		});
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "nope",
+					embeddingServiceId: embId,
+					chunkingServiceId: chunkId,
+					attach: true,
+					vectorCollection: "does-not-exist",
+				}),
+			},
+		);
+		expect(res.status).toBe(404);
+		expect((await json(res)).error.code).toBe("collection_not_found");
+	});
+
+	test("attach 400s when collection dimension does not match embedding service", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const embId = await createService(app, ws, "embedding-services", {
+			name: "e",
+			provider: "openai",
+			modelName: "m",
+			embeddingDimension: 1536,
+		});
+		const chunkId = await createService(app, ws, "chunking-services", {
+			name: "c",
+			engine: "docling",
+		});
+		app._driver.seedAdoptable(ws, {
+			name: "small_dim",
+			vectorDimension: 4,
+			vectorSimilarity: "cosine",
+			embedding: null,
+			lexicalEnabled: false,
+			rerankEnabled: false,
+			rerankProvider: null,
+			rerankModel: null,
+		});
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "mismatch",
+					embeddingServiceId: embId,
+					chunkingServiceId: chunkId,
+					attach: true,
+					vectorCollection: "small_dim",
+				}),
+			},
+		);
+		expect(res.status).toBe(400);
+		expect((await json(res)).error.code).toBe("dimension_mismatch");
 	});
 
 	test("knowledge filters CRUD round-trip under a KB", async () => {

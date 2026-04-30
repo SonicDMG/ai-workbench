@@ -490,6 +490,11 @@ export const KnowledgeBaseRecordSchema = z
 		rerankingServiceId: z.string().uuid().nullable(),
 		language: z.string().nullable(),
 		vectorCollection: z.string().nullable(),
+		/** True when the runtime provisioned the underlying collection
+		 * during KB creation (and therefore owns its lifecycle); false
+		 * when the KB was attached to a pre-existing collection. Drives
+		 * whether `DELETE` drops the collection. */
+		owned: z.boolean(),
 		lexical: LexicalConfigSchema,
 		createdAt: DateTimeSchema,
 		updatedAt: DateTimeSchema,
@@ -512,7 +517,16 @@ export const CreateKnowledgeBaseInputSchema = z
 		rerankingServiceId: z.string().uuid().nullable().optional(),
 		language: z.string().nullable().optional(),
 		lexical: LexicalConfigSchema.optional(),
+		/** Override the runtime-generated collection name. When `attach`
+		 * is true this MUST point at an existing collection in the
+		 * workspace's data plane; when false it's an optional rename. */
 		vectorCollection: z.string().nullable().optional(),
+		/** When true, bind the KB to a pre-existing data-plane collection
+		 * named by `vectorCollection`. The runtime skips
+		 * `createCollection` and validates the collection's vector
+		 * dimension matches the embedding service. The collection is NOT
+		 * dropped when the KB is later deleted. */
+		attach: z.boolean().optional(),
 	})
 	.openapi("CreateKnowledgeBaseInput");
 
@@ -530,6 +544,35 @@ export const UpdateKnowledgeBaseInputSchema = z
 	})
 	.strict()
 	.openapi("UpdateKnowledgeBaseInput");
+
+/**
+ * One pre-existing data-plane collection a workspace's driver knows
+ * about. Used by the KB-attach flow so the UI can show what's already
+ * in Astra and validate compatibility before the KB row is written.
+ *
+ * `attached` is true when a workbench KB already binds this collection
+ * — the UI uses it to mark such rows as unavailable. `vectorService`
+ * mirrors Astra's `$vectorize` block: when set, the collection embeds
+ * server-side and the bound embedding service must use a matching
+ * provider/model.
+ */
+export const AdoptableCollectionSchema = z
+	.object({
+		name: z.string(),
+		vectorDimension: z.number().int().positive(),
+		vectorSimilarity: DistanceMetricSchema,
+		vectorService: z
+			.object({ provider: z.string(), modelName: z.string() })
+			.nullable(),
+		lexicalEnabled: z.boolean(),
+		rerankEnabled: z.boolean(),
+		attached: z.boolean(),
+	})
+	.openapi("AdoptableCollection");
+
+export const AdoptableCollectionListSchema = z
+	.object({ items: z.array(AdoptableCollectionSchema) })
+	.openapi("AdoptableCollectionList");
 
 /* ---------- Knowledge filter ---------- */
 

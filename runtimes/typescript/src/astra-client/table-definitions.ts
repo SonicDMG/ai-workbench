@@ -117,6 +117,10 @@ export const KNOWLEDGE_BASES_DEFINITION = {
 		// runtime-managed: the auto-provisioned vector collection backing
 		// this KB. Set on create, never edited by callers.
 		vector_collection: "text",
+		// True when the runtime provisioned the underlying collection;
+		// false when the KB was attached to a pre-existing collection.
+		// Drives whether `DELETE` drops the collection.
+		owned: "boolean",
 		// lexical / BM25 — folded onto the KB row, see issue #98 thread.
 		lexical_enabled: "boolean",
 		lexical_analyzer: "text",

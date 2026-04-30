@@ -16,6 +16,7 @@ const baseKnowledgeBases = [
 		language: null,
 		lexical: { enabled: false, analyzer: null, options: {} },
 		vectorCollection: "wb_vectors_kb_aaa",
+		owned: true,
 		createdAt: "2026-04-01T00:00:00Z",
 		updatedAt: "2026-04-01T00:00:00Z",
 	},

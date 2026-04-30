@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { getAuthToken } from "./authToken";
 import {
+	type AdoptableCollection,
+	AdoptableCollectionListSchema,
 	AgentPageSchema,
 	type AgentRecord,
 	AgentRecordSchema,
@@ -304,22 +306,34 @@ export const api = {
 	createKnowledgeBase: (
 		workspaceId: string,
 		input: CreateKnowledgeBaseInput,
-	): Promise<KnowledgeBaseRecord> =>
-		request(
+	): Promise<KnowledgeBaseRecord> => {
+		const body: Record<string, unknown> = {
+			name: input.name,
+			description: input.description ? input.description : null,
+			embeddingServiceId: input.embeddingServiceId,
+			chunkingServiceId: input.chunkingServiceId,
+			rerankingServiceId: input.rerankingServiceId ?? null,
+			language: input.language ? input.language : null,
+		};
+		if (input.attach) {
+			body.attach = true;
+			body.vectorCollection = input.vectorCollection ?? null;
+		}
+		return request(
 			`/workspaces/${workspaceId}/knowledge-bases`,
-			{
-				method: "POST",
-				body: JSON.stringify({
-					name: input.name,
-					description: input.description ? input.description : null,
-					embeddingServiceId: input.embeddingServiceId,
-					chunkingServiceId: input.chunkingServiceId,
-					rerankingServiceId: input.rerankingServiceId ?? null,
-					language: input.language ? input.language : null,
-				}),
-			},
+			{ method: "POST", body: JSON.stringify(body) },
 			KnowledgeBaseRecordSchema,
-		),
+		);
+	},
+
+	listAdoptableCollections: (
+		workspaceId: string,
+	): Promise<AdoptableCollection[]> =>
+		request(
+			`/workspaces/${workspaceId}/adoptable-collections`,
+			{ method: "GET" },
+			AdoptableCollectionListSchema,
+		).then((page) => page.items),
 
 	updateKnowledgeBase: (
 		workspaceId: string,

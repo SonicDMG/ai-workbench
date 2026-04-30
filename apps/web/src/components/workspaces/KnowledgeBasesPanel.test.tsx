@@ -68,6 +68,7 @@ const KB_ALPHA: KnowledgeBaseRecord = {
 	description: "Internal docs",
 	status: "active",
 	vectorCollection: "wb_vectors_kb_alpha",
+	owned: true,
 	chunkingServiceId: "chk-1",
 	embeddingServiceId: "emb-1",
 	rerankingServiceId: null,

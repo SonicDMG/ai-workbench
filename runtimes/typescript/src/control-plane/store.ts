@@ -122,6 +122,10 @@ export interface CreateKnowledgeBaseInput {
 	/** Optional override for the auto-provisioned vector collection name.
 	 * If omitted the store generates `wb_vectors_<knowledge_base_id>`. */
 	readonly vectorCollection?: string | null;
+	/** When `false`, the runtime did NOT provision the underlying
+	 * collection (KB was attached to a pre-existing one) and `DELETE`
+	 * must NOT drop it. Defaults to `true` for backward compatibility. */
+	readonly owned?: boolean;
 }
 
 /**

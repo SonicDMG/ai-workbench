@@ -40,6 +40,7 @@ const KB: KnowledgeBaseRecord = {
 	rerankingServiceId: null,
 	language: null,
 	vectorCollection: "wb_vectors_kb",
+	owned: true,
 	lexical: { enabled: false, analyzer: null, options: {} },
 	createdAt: "2026-04-25T00:00:00.000Z",
 	updatedAt: "2026-04-25T00:00:00.000Z",

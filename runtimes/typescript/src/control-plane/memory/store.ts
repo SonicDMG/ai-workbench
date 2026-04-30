@@ -562,6 +562,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 			rerankingServiceId: input.rerankingServiceId ?? null,
 			language: input.language ?? null,
 			vectorCollection: input.vectorCollection ?? defaultVectorCollection(uid),
+			owned: input.owned ?? true,
 			lexical: input.lexical ?? DEFAULT_LEXICAL,
 			createdAt: now,
 			updatedAt: now,

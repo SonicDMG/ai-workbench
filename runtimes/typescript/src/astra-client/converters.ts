@@ -174,6 +174,7 @@ export function knowledgeBaseToRow(r: KnowledgeBaseRecord): KnowledgeBaseRow {
 		reranking_service_id: r.rerankingServiceId,
 		language: r.language,
 		vector_collection: r.vectorCollection,
+		owned: r.owned,
 		lexical_enabled: r.lexical.enabled,
 		lexical_analyzer: r.lexical.analyzer,
 		lexical_options: { ...r.lexical.options },
@@ -196,6 +197,10 @@ export function knowledgeBaseFromRow(
 		rerankingServiceId: row.reranking_service_id,
 		language: row.language,
 		vectorCollection: row.vector_collection,
+		// Pre-`owned`-column rows are coerced to `true` so their
+		// collection lifecycle stays under runtime control, matching
+		// the original behavior at the time those rows were written.
+		owned: row.owned ?? true,
 		lexical: {
 			enabled: row.lexical_enabled,
 			analyzer: row.lexical_analyzer,

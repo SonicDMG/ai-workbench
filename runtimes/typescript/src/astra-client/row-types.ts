@@ -71,6 +71,9 @@ export interface KnowledgeBaseRow {
 	reranking_service_id: Uuid | null;
 	language: KnowledgeBaseLanguage | null;
 	vector_collection: string | null;
+	/** Nullable for backward compatibility — rows written before the
+	 * column landed are read as `owned: true` (legacy behavior). */
+	owned: boolean | null;
 	lexical_enabled: boolean;
 	lexical_analyzer: string | null;
 	lexical_options: Record<string, string>;

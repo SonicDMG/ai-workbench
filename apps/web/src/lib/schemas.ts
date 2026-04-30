@@ -158,6 +158,7 @@ export const KnowledgeBaseRecordSchema = z.object({
 	rerankingServiceId: z.string().uuid().nullable(),
 	language: z.string().nullable(),
 	vectorCollection: z.string().nullable(),
+	owned: z.boolean(),
 	lexical: LexicalConfigSchema,
 	createdAt: z.string(),
 	updatedAt: z.string(),
@@ -174,10 +175,28 @@ export const CreateKnowledgeBaseInputSchema = z.object({
 	chunkingServiceId: z.string().uuid("Pick a chunking service"),
 	rerankingServiceId: z.string().uuid().nullable().optional(),
 	language: z.string().or(z.literal("")).nullable().optional(),
+	attach: z.boolean().optional(),
+	vectorCollection: z.string().nullable().optional(),
 });
 export type CreateKnowledgeBaseInput = z.infer<
 	typeof CreateKnowledgeBaseInputSchema
 >;
+
+export const AdoptableCollectionSchema = z.object({
+	name: z.string(),
+	vectorDimension: z.number().int().positive(),
+	vectorSimilarity: DistanceMetricSchema,
+	vectorService: z
+		.object({ provider: z.string(), modelName: z.string() })
+		.nullable(),
+	lexicalEnabled: z.boolean(),
+	rerankEnabled: z.boolean(),
+	attached: z.boolean(),
+});
+export type AdoptableCollection = z.infer<typeof AdoptableCollectionSchema>;
+export const AdoptableCollectionListSchema = z.object({
+	items: z.array(AdoptableCollectionSchema),
+});
 
 export const UpdateKnowledgeBaseInputSchema = z.object({
 	name: z.string().min(1).optional(),

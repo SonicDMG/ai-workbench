@@ -14,7 +14,9 @@
  *     (matches the convention on the {@link SearchHit.score} field)
  */
 
+import type { WorkspaceRecord } from "../../control-plane/types.js";
 import {
+	type AdoptableCollection,
 	CollectionUnavailableError,
 	DimensionMismatchError,
 	NotSupportedError,
@@ -120,6 +122,14 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 	 * scores. Records upserted via plain {@link upsert} (vectors only)
 	 * do not appear here and score 0 on lexical. */
 	private readonly texts = new Map<Key, Map<string, string>>();
+	/** Per-workspace registry of "external" collections — collections
+	 * that exist in the workspace's data plane independent of any KB.
+	 * Drives {@link listAdoptable} so the attach-existing route can be
+	 * exercised end-to-end against the mock backend. */
+	private readonly adoptable = new Map<
+		string,
+		Map<string, AdoptableCollection>
+	>();
 
 	async testConnection(): Promise<{ ok: boolean; details: string }> {
 		return {
@@ -139,6 +149,24 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 		const k = keyOf(ctx);
 		this.stores.delete(k);
 		this.texts.delete(k);
+	}
+
+	async listAdoptable(
+		workspace: WorkspaceRecord,
+	): Promise<readonly AdoptableCollection[]> {
+		return Array.from(this.adoptable.get(workspace.uid)?.values() ?? []);
+	}
+
+	/**
+	 * Test-only: pre-register a collection in the mock data plane that
+	 * exists outside the KB graph, so the attach-existing route has
+	 * something to discover via {@link listAdoptable}. The shape mirrors
+	 * what the Astra driver returns from a real `db.listCollections()`.
+	 */
+	seedAdoptable(workspaceUid: string, col: AdoptableCollection): void {
+		const bucket = this.adoptable.get(workspaceUid) ?? new Map();
+		bucket.set(col.name, col);
+		this.adoptable.set(workspaceUid, bucket);
 	}
 
 	async upsert(

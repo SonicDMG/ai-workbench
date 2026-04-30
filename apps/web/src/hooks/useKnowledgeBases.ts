@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type {
+	AdoptableCollection,
 	CreateKnowledgeBaseInput,
 	KnowledgeBaseRecord,
 	UpdateKnowledgeBaseInput,
@@ -17,7 +18,23 @@ const keys = {
 		["workspaces", workspaceId, "knowledge-bases"] as const,
 	one: (workspaceId: string, kbId: string) =>
 		["workspaces", workspaceId, "knowledge-bases", kbId] as const,
+	adoptable: (workspaceId: string) =>
+		["workspaces", workspaceId, "adoptable-collections"] as const,
 };
+
+export function useAdoptableCollections(
+	workspaceId: string | undefined,
+	enabled = true,
+): UseQueryResult<AdoptableCollection[], Error> {
+	return useQuery({
+		queryKey: workspaceId
+			? keys.adoptable(workspaceId)
+			: ["workspaces", "_", "adoptable-collections"],
+		queryFn: () =>
+			workspaceId ? api.listAdoptableCollections(workspaceId) : [],
+		enabled: Boolean(workspaceId) && enabled,
+	});
+}
 
 export function useKnowledgeBases(
 	workspaceId: string | undefined,

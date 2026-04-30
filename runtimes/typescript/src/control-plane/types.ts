@@ -181,10 +181,15 @@ export interface KnowledgeBaseRecord {
 	readonly chunkingServiceId: string;
 	readonly rerankingServiceId: string | null;
 	readonly language: KnowledgeBaseLanguage | null;
-	/** Auto-provisioned Astra collection name backing this KB. Set on
-	 * create from the bound embedding service's dimension/metric;
-	 * surfaced read-only to callers. */
+	/** Astra collection name backing this KB. Auto-generated on create
+	 * (`wb_vectors_<id>`), or the name of a pre-existing collection
+	 * when the KB was created via the attach-existing path. */
 	readonly vectorCollection: string | null;
+	/** True when the runtime provisioned the underlying collection
+	 * during create (and therefore owns its lifecycle); false when
+	 * the KB attached to a pre-existing collection. Drives whether
+	 * `DELETE` drops the collection. */
+	readonly owned: boolean;
 	readonly lexical: LexicalConfig;
 	readonly createdAt: string;
 	readonly updatedAt: string;
