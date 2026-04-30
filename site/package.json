@@ -1,6 +1,7 @@
 {
 	"name": "ai-workbench-site",
 	"private": true,
+	"license": "MIT",
 	"version": "0.0.0",
 	"type": "module",
 	"description": "AI Workbench landing page + docs site (VitePress). Markdown source lives in /docs at the repo root; this app stages a copy and renders it.",

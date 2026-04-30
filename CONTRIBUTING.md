@@ -53,7 +53,13 @@ npm --prefix apps/web test            # Web UI — Vitest + jsdom
 Coverage thresholds are enforced in `vitest.config.ts` for both
 packages — `npm run test:coverage` (root → TS runtime) and
 `npm --prefix apps/web run test:coverage` are the same commands CI
-runs.
+runs. Thresholds ratchet upward only: when your PR raises the floor,
+bump the numbers in `vitest.config.ts` so the new level becomes the
+guaranteed minimum. The TS-runtime target is **80% across all four
+metrics** (lines/statements/branches/functions); we're partway there.
+The web app gates a small allowlist of `src/lib/*` files today —
+adding test coverage for `src/pages/*` or `src/components/**` should
+extend that allowlist.
 
 If your change touches Playwright (`apps/web/e2e/`), run it locally:
 

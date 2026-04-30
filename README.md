@@ -253,4 +253,4 @@ Security issues use the private channel in
 
 ## License
 
-TBD.
+MIT — see [`LICENSE`](LICENSE).

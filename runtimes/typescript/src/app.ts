@@ -19,7 +19,6 @@
  *   `/docs`                                                           Scalar-rendered docs
  */
 
-import { randomUUID } from "node:crypto";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import { bodyLimit } from "hono/body-limit";
@@ -42,6 +41,7 @@ import { MAX_API_JSON_BODY_BYTES } from "./lib/limits.js";
 import { logger } from "./lib/logger.js";
 import { makeOpenApi } from "./lib/openapi.js";
 import { rateLimit } from "./lib/rate-limit.js";
+import { generateReplicaId } from "./lib/replica-id.js";
 import { requestId } from "./lib/request-id.js";
 import { SCALAR_CDN_PINNED, securityHeaders } from "./lib/security-headers.js";
 import type { AppEnv } from "./lib/types.js";
@@ -160,7 +160,10 @@ const OPENAPI_CONFIG = {
 		version: VERSION,
 		description:
 			"Single-runtime, multi-workspace workbench for Astra DB and the Data API. This is the TypeScript green box; alternative language runtimes expose the same surface.",
-		license: { name: "TBD" },
+		license: {
+			name: "MIT",
+			url: "https://opensource.org/license/mit",
+		},
 	},
 	servers: [{ url: "/" }],
 };
@@ -407,20 +410,6 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	});
 
 	return app;
-}
-
-/**
- * Build a stable, greppable replica id for the lifetime of this app
- * instance. Format: `<host>-<rand8>` where `host` is the env's
- * `HOSTNAME` (set by Kubernetes from the pod name) or the literal
- * `wb` when unset, and `rand8` is the first 8 hex chars of a
- * fresh UUID. Tests typically pass an explicit `replicaId` and skip
- * this entirely.
- */
-function generateReplicaId(): string {
-	const host = process.env.HOSTNAME?.trim() || "wb";
-	const rand = randomUUID().replace(/-/g, "").slice(0, 8);
-	return `${host}-${rand}`;
 }
 
 function errorResponse(description: string) {

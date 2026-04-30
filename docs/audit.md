@@ -185,14 +185,18 @@ external systems:
 
 These are tracked as gaps:
 
-- Bootstrap-token use (`auth.bootstrap_use`) — action name is
-  reserved in the type but no call site yet.
+- Bootstrap-token use (`auth.bootstrap_use`).
 - Knowledge-base create/delete (`knowledge_base.create` /
-  `knowledge_base.delete`) — reserved.
+  `knowledge_base.delete`).
 - Failed auth attempts on `/api/v1/*` (the middleware short-circuits
   before reaching a handler). Rate-limit denials are visible from
   the limiter's existing log lines but are not audit events yet.
 - Document and chunk mutation. Volume-sensitive; needs a sampling /
   batching strategy first.
+
+When a new event lands, add it to the [What gets logged](#what-gets-logged)
+table **and** the `AuditAction` union in
+[`src/lib/audit.ts`](../runtimes/typescript/src/lib/audit.ts) — the
+`audit-doc-drift` test will fail otherwise.
 
 PRs welcome.

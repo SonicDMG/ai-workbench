@@ -3,6 +3,7 @@
 	"version": "0.0.0",
 	"description": "AI Workbench monorepo — polyglot green-box runtimes (TypeScript default) plus shared conformance harness.",
 	"private": true,
+	"license": "MIT",
 	"type": "module",
 	"engines": {
 		"node": ">=22.0.0"

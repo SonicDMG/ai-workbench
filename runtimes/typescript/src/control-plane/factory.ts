@@ -72,18 +72,6 @@ export async function buildControlPlane(
 	}
 }
 
-/**
- * Backward-compatible wrapper. Prefer {@link buildControlPlane} when
- * the caller wants the tables bundle too (e.g. for the JobStore
- * factory).
- */
-export async function buildControlPlaneStore(
-	opts: BuildStoreOptions,
-): Promise<ControlPlaneStore> {
-	const { store } = await buildControlPlane(opts);
-	return store;
-}
-
 async function seedMemoryStore(
 	store: MemoryControlPlaneStore,
 	seeds: readonly SeedWorkspace[],
@@ -127,22 +115,10 @@ async function seedDefaultServices(
 	}
 }
 
-/** Convenience wrapper for {@link buildControlPlaneStore} that takes a
- * full {@link Config}. Keeps {@link ../root.ts} short. */
-export async function storeFromConfig(
-	config: Config,
-	secrets: SecretResolver,
-): Promise<ControlPlaneStore> {
-	return buildControlPlaneStore({
-		controlPlane: config.controlPlane,
-		seedWorkspaces: config.seedWorkspaces,
-		secrets,
-	});
-}
-
-/** Same as {@link storeFromConfig} but returns the full
- * {@link BuiltControlPlane} so the caller can hand the astra tables
- * bundle to the JobStore factory. */
+/** Convenience wrapper for {@link buildControlPlane} that takes a
+ * full {@link Config}. Keeps {@link ../root.ts} short and lets the
+ * caller pass the resulting astra tables bundle to the JobStore
+ * factory. */
 export async function controlPlaneFromConfig(
 	config: Config,
 	secrets: SecretResolver,

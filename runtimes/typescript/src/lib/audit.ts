@@ -33,18 +33,21 @@ import type { AuthContext, AuthSubject } from "../auth/types.js";
 import { logger } from "./logger.js";
 import type { AppEnv } from "./types.js";
 
-/** All audit actions the runtime currently emits. */
+/**
+ * All audit actions the runtime currently emits.
+ *
+ * The set is checked against [`docs/audit.md`](../../../../docs/audit.md)
+ * by `tests/lib/audit-doc-drift.test.ts` — adding an action requires
+ * adding a row in the doc table.
+ */
 export type AuditAction =
 	| "api_key.create"
 	| "api_key.revoke"
 	| "workspace.create"
 	| "workspace.delete"
-	| "knowledge_base.create"
-	| "knowledge_base.delete"
 	| "auth.login"
 	| "auth.logout"
-	| "auth.refresh"
-	| "auth.bootstrap_use";
+	| "auth.refresh";
 
 export type AuditOutcome = "success" | "failure" | "denied";
 

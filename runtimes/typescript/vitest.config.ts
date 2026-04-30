@@ -10,11 +10,14 @@ export default defineConfig({
 			reporter: ["text", "html", "json-summary"],
 			include: ["src/**/*.ts"],
 			exclude: ["src/version.ts"],
+			// Ratcheted up from 70/65 to lock in current floor — see
+			// `CONTRIBUTING.md`. Target is 80/80 across the board; raise
+			// these only after adding tests, never lower them.
 			thresholds: {
-				lines: 70,
-				statements: 70,
-				branches: 65,
-				functions: 70,
+				lines: 76,
+				statements: 75,
+				branches: 67,
+				functions: 80,
 			},
 		},
 	},

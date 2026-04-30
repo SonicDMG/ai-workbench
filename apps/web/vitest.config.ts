@@ -25,22 +25,26 @@ export default defineConfig({
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "html", "json-summary"],
-			// Coverage gates today only fire on the focused `src/lib`
-			// helpers. The generated-ish API client is intentionally
-			// excluded until it has its own focused contract tests.
-			// Component coverage is exercised indirectly through
-			// Playwright (#64); locking a number on it prematurely would
-			// push us toward shallow tests.
-			//
-			// Numbers were calibrated against the suite at the time the
-			// gate landed. Bump them as new tests land; never lower
-			// without a comment explaining why.
+			// Coverage gates ratchet upward only — never lower a number
+			// without a comment explaining why. The `api.ts` client is
+			// excluded from gates until it has its own focused contract
+			// tests; pages are exercised through Playwright today and
+			// will be gated once we have unit-level tests for them.
 			thresholds: {
 				"src/lib/{authToken,files,schemas,utils,session}.ts": {
 					lines: 50,
 					statements: 50,
 					branches: 80,
 					functions: 20,
+				},
+				// Workspace dashboard surface — the largest component
+				// tree and the highest-traffic regression zone. Floors
+				// reflect the current suite of 14 component tests.
+				"src/components/workspaces/**/*.{ts,tsx}": {
+					lines: 70,
+					statements: 67,
+					branches: 60,
+					functions: 58,
 				},
 			},
 		},

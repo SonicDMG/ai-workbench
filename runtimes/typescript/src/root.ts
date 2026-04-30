@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { type AppLoginOptions, createApp } from "./app.js";
 import { assertSafeAuthDeployment } from "./auth/deployment-guard.js";
@@ -25,6 +24,7 @@ import { buildJobStore } from "./jobs/factory.js";
 import { runKbIngestJob } from "./jobs/ingest-worker.js";
 import { JobOrphanSweeper } from "./jobs/sweeper.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
+import { generateReplicaId } from "./lib/replica-id.js";
 import { EnvSecretProvider } from "./secrets/env.js";
 import { FileSecretProvider } from "./secrets/file.js";
 import { SecretResolver } from "./secrets/provider.js";
@@ -106,11 +106,7 @@ async function main(): Promise<void> {
 	}
 
 	const readiness = { draining: false };
-	const replicaId =
-		config.runtime.replicaId ??
-		`${process.env.HOSTNAME?.trim() || "wb"}-${randomUUID()
-			.replace(/-/g, "")
-			.slice(0, 8)}`;
+	const replicaId = config.runtime.replicaId ?? generateReplicaId();
 
 	const chatService = await buildChatService({
 		config: config.chat ?? null,
