@@ -11,7 +11,12 @@
 # ---------- UI build ----------
 FROM node:22-alpine AS ui-build
 WORKDIR /ui
-COPY apps/web/package.json apps/web/package-lock.json* ./
+# `.npmrc` carries `legacy-peer-deps=true` to satisfy the
+# openapi-typescript@7 → typescript@^5 peer constraint on a
+# typescript@^6 project (see the file's own comment for context).
+# The trailing `*` keeps the COPY non-fatal if the file is removed
+# in a future cleanup.
+COPY apps/web/package.json apps/web/package-lock.json* apps/web/.npmrc* ./
 RUN if [ -f package-lock.json ]; then \
       npm ci --no-audit --no-fund; \
     else \
