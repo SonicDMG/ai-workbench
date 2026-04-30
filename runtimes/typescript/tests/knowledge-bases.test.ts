@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.js";
 import { AuthResolver } from "../src/auth/resolver.js";
+import { DEFAULT_WORKSPACE_SEED_SERVICES } from "../src/control-plane/default-services.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
@@ -70,6 +71,46 @@ async function createService(
 }
 
 describe("execution service routes", () => {
+	test("workspace POST auto-seeds DEFAULT_WORKSPACE_SEED_SERVICES", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+
+		const chunkRes = await app.request(
+			`/api/v1/workspaces/${ws}/chunking-services`,
+		);
+		expect(chunkRes.status).toBe(200);
+		const chunkers = (await json(chunkRes)).items as Array<{
+			name: string;
+			engine: string;
+			strategy: string | null;
+		}>;
+		const chunkNames = chunkers.map((c) => c.name).sort();
+		expect(chunkNames).toEqual(
+			DEFAULT_WORKSPACE_SEED_SERVICES.chunking.map((c) => c.name).sort(),
+		);
+		// Sanity: one recursive-character chunker, one line chunker.
+		const strategies = chunkers.map((c) => c.strategy).sort();
+		expect(strategies).toEqual(["line", "recursive"]);
+
+		const embRes = await app.request(
+			`/api/v1/workspaces/${ws}/embedding-services`,
+		);
+		expect(embRes.status).toBe(200);
+		const embedders = (await json(embRes)).items as Array<{
+			name: string;
+			provider: string;
+			modelName: string;
+			embeddingDimension: number;
+		}>;
+		expect(embedders).toHaveLength(
+			DEFAULT_WORKSPACE_SEED_SERVICES.embedding.length,
+		);
+		const openai = embedders.find((e) => e.provider === "openai");
+		expect(openai).toBeDefined();
+		expect(openai?.modelName).toBe("text-embedding-3-small");
+		expect(openai?.embeddingDimension).toBe(1536);
+	});
+
 	test("CRUD round-trip on chunking-services", async () => {
 		const app = makeApp();
 		const ws = await createWorkspace(app);
@@ -97,7 +138,17 @@ describe("execution service routes", () => {
 			`/api/v1/workspaces/${ws}/chunking-services`,
 		);
 		expect(list.status).toBe(200);
-		expect((await json(list)).items).toHaveLength(1);
+		// Workspace POST auto-seeds DEFAULT_WORKSPACE_SEED_SERVICES.chunking,
+		// so the list contains those defaults plus the docling chunker we
+		// just created.
+		const listBody = await json(list);
+		expect(listBody.items).toHaveLength(
+			DEFAULT_WORKSPACE_SEED_SERVICES.chunking.length + 1,
+		);
+		const ids = listBody.items.map(
+			(c: { chunkingServiceId: string }) => c.chunkingServiceId,
+		);
+		expect(ids).toContain(cBody.chunkingServiceId);
 
 		const updated = await app.request(
 			`/api/v1/workspaces/${ws}/chunking-services/${cBody.chunkingServiceId}`,

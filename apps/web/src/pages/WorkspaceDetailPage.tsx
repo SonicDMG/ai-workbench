@@ -1,12 +1,4 @@
-import {
-	ArrowLeft,
-	Bot,
-	ExternalLink,
-	MessageSquare,
-	Pencil,
-	Trash2,
-	X,
-} from "lucide-react";
+import { ArrowLeft, Bot, ExternalLink, Pencil, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -94,14 +86,6 @@ export function WorkspaceDetailPage() {
 								<Link to={`/workspaces/${data.workspaceId}/agents`}>
 									<Bot className="h-4 w-4" />
 									Agents
-								</Link>
-							</Button>
-						) : null}
-						{!editing ? (
-							<Button variant="secondary" asChild>
-								<Link to={`/workspaces/${data.workspaceId}/chat`}>
-									<MessageSquare className="h-4 w-4" />
-									Chat
 								</Link>
 							</Button>
 						) : null}

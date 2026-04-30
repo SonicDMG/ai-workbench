@@ -215,3 +215,23 @@ export const DEFAULT_SERVICES: DefaultServices = {
 	],
 	embedding: [OPENAI_SMALL, OPENAI_LARGE, COHERE_MULTILINGUAL],
 };
+
+/**
+ * Curated subset of {@link DEFAULT_SERVICES} that the workspace POST
+ * handler auto-seeds into every freshly-created workspace via the
+ * public API. Intentionally small — one canonical character chunker,
+ * one canonical line chunker, and one canonical OpenAI embedder — so a
+ * brand-new workspace can ingest something without first POST-ing a
+ * service config, but without flooding the UI's service pickers with
+ * presets the operator never asked for.
+ *
+ * Operators can delete or replace any of them via the regular
+ * service-CRUD routes; the full {@link DEFAULT_SERVICES} catalog is
+ * still available for the memory-control-plane bootstrap path
+ * (`buildControlPlane` with `seedWorkspaces`), which needs the broader
+ * preset menu for demo / test environments.
+ */
+export const DEFAULT_WORKSPACE_SEED_SERVICES: DefaultServices = {
+	chunking: [RECURSIVE_CHAR_DEFAULT, LINE_BASED_DEFAULT],
+	embedding: [OPENAI_SMALL],
+};

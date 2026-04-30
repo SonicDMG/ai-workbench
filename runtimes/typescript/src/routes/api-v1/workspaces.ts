@@ -13,6 +13,7 @@ import {
 	assertWorkspaceAccess,
 	filterToAccessibleWorkspaces,
 } from "../../auth/authz.js";
+import { DEFAULT_WORKSPACE_SEED_SERVICES } from "../../control-plane/default-services.js";
 import { DEFAULT_WORKSPACE_AGENTS } from "../../control-plane/defaults.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
@@ -115,6 +116,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 				...body,
 				uid: body.workspaceId,
 			});
+			await seedDefaultServices(store, record.uid);
 			await seedDefaultAgents(store, record.uid);
 			audit(c, {
 				action: "workspace.create",
@@ -343,6 +345,45 @@ async function seedDefaultAgents(
 			logger.warn(
 				{ workspaceId, agentName: spec.name, err },
 				"failed to seed default agent",
+			);
+		}
+	}
+}
+
+/**
+ * Seed each freshly created workspace with the
+ * {@link DEFAULT_WORKSPACE_SEED_SERVICES} starter chunking + embedding
+ * services so the user can ingest content immediately without first
+ * POST-ing a service config. Today this is one OpenAI embedder
+ * (`text-embedding-3-small`), one recursive-character chunker, and one
+ * line-based chunker.
+ *
+ * Failures are logged but do not abort the workspace creation: a
+ * workspace with no services is still a valid workspace, and the user
+ * can always create services manually. Surfacing a 500 here would
+ * leave the caller with an orphaned workspace.
+ */
+async function seedDefaultServices(
+	store: ControlPlaneStore,
+	workspaceId: string,
+): Promise<void> {
+	for (const spec of DEFAULT_WORKSPACE_SEED_SERVICES.chunking) {
+		try {
+			await store.createChunkingService(workspaceId, spec);
+		} catch (err) {
+			logger.warn(
+				{ workspaceId, serviceName: spec.name, err },
+				"failed to seed default chunking service",
+			);
+		}
+	}
+	for (const spec of DEFAULT_WORKSPACE_SEED_SERVICES.embedding) {
+		try {
+			await store.createEmbeddingService(workspaceId, spec);
+		} catch (err) {
+			logger.warn(
+				{ workspaceId, serviceName: spec.name, err },
+				"failed to seed default embedding service",
 			);
 		}
 	}
