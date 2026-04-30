@@ -98,11 +98,27 @@ describe("agent routes", () => {
 		const names = items.map((a) => a.name).sort();
 		expect(names).toEqual(["Bobby", "Heidi"]);
 
-		// Defaults must not pin to a workspace LLM service — otherwise a
-		// fresh workspace can't actually use them until the user creates
-		// one.
+		// Both agents are wired to the auto-seeded OpenAI chat LLM
+		// service so the tool-call loop has a function-calling-capable
+		// model out of the box. Confirm they share that same id, and
+		// that the id does point at a real LLM service in the workspace.
+		const llmIds = new Set(items.map((a) => a.llmServiceId));
+		expect(llmIds.size).toBe(1);
+		const sharedLlmId = items[0]?.llmServiceId;
+		expect(sharedLlmId).toMatch(/^[0-9a-f-]{36}$/);
+		const llmList = await app.request(`/api/v1/workspaces/${ws}/llm-services`);
+		expect(llmList.status).toBe(200);
+		const llmItems = (await json(llmList)).items as Array<{
+			llmServiceId: string;
+			provider: string;
+			modelName: string;
+		}>;
+		expect(llmItems.find((s) => s.llmServiceId === sharedLlmId)).toMatchObject({
+			provider: "openai",
+			modelName: "gpt-4o-mini",
+		});
+
 		for (const item of items) {
-			expect(item.llmServiceId).toBeNull();
 			expect(item.description).toBeTruthy();
 			expect(item.systemPrompt).toBeTruthy();
 		}

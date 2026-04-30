@@ -10,7 +10,7 @@
  */
 
 import type { MessageRecord } from "../control-plane/types.js";
-import type { ChatTurn } from "./types.js";
+import type { ChatTurn, ToolCall } from "./types.js";
 
 /**
  * One chunk of KB content injected into the system context block.
@@ -77,31 +77,111 @@ export function assemblePrompt(
 				historyTurns.push({ role: "user", content: m.content });
 			}
 		} else if (m.role === "agent") {
-			// Drop empty placeholders or rows that were persisted with
-			// `finish_reason: "error"` — re-sending them confuses the
-			// model and just wastes tokens.
-			if (
-				m.content &&
-				m.content.length > 0 &&
-				m.metadata.finish_reason !== "error"
-			) {
+			// Drop rows that were persisted with `finish_reason: "error"`
+			// — re-sending them confuses the model and just wastes
+			// tokens. Empty-content rows are kept ONLY when they carry
+			// tool_calls, since the model still needs to see its own
+			// tool-call history to make sense of the tool turns that
+			// follow.
+			if (m.metadata.finish_reason === "error") continue;
+			const persistedToolCalls = decodePersistedToolCalls(m.toolCallPayload);
+			if (persistedToolCalls.length > 0) {
+				historyTurns.push({
+					role: "assistant",
+					content: m.content ?? "",
+					toolCalls: persistedToolCalls,
+				});
+			} else if (m.content && m.content.length > 0) {
 				historyTurns.push({ role: "assistant", content: m.content });
 			}
+		} else if (m.role === "tool") {
+			// Tool result rows are persisted as `role:"tool"` with the
+			// tool name in `toolId` and `{ content, toolCallId }` in
+			// `toolResponse`. Skip rows that don't match — they're either
+			// in-flight placeholders or pre-tool-loop legacy rows.
+			const tr = m.toolResponse;
+			if (
+				tr &&
+				typeof tr.content === "string" &&
+				typeof tr.toolCallId === "string" &&
+				m.toolId
+			) {
+				historyTurns.push({
+					role: "tool",
+					toolCallId: tr.toolCallId,
+					name: m.toolId,
+					content: tr.content,
+				});
+			}
 		}
-		// `system` and `tool` history rows are intentionally skipped —
-		// the system prompt is rebuilt from current persona+context
-		// every turn, and tool turns aren't part of v0.
+		// `system` history rows are intentionally skipped — the system
+		// prompt is rebuilt from current persona+context every turn.
 	}
 
-	// Keep the tail (most recent) under the limit.
+	// Keep the tail (most recent) under the limit, then prune any
+	// orphan tool turns at the head — i.e. tool results whose
+	// preceding `assistant(toolCalls)` got trimmed out, which OpenAI
+	// rejects with a 400.
 	const trimmed =
 		historyTurns.length > limit
 			? historyTurns.slice(historyTurns.length - limit)
 			: historyTurns;
-	turns.push(...trimmed);
+	turns.push(...stripOrphanToolTurns(trimmed));
 
 	turns.push({ role: "user", content: input.userTurn });
 	return turns;
+}
+
+/**
+ * Strip leading `tool` turns whose matching `assistant(toolCalls)`
+ * isn't in the slice. The OpenAI Chat Completions API rejects a tool
+ * message that doesn't have a corresponding assistant tool_call_id
+ * earlier in the conversation, so we have to drop them rather than
+ * leak history-trim leakage into the next request.
+ */
+function stripOrphanToolTurns(turns: readonly ChatTurn[]): ChatTurn[] {
+	const seenIds = new Set<string>();
+	const out: ChatTurn[] = [];
+	for (const t of turns) {
+		if (t.role === "assistant" && t.toolCalls) {
+			for (const tc of t.toolCalls) seenIds.add(tc.id);
+			out.push(t);
+		} else if (t.role === "tool") {
+			if (seenIds.has(t.toolCallId)) out.push(t);
+			// else: orphan; silently drop.
+		} else {
+			out.push(t);
+		}
+	}
+	return out;
+}
+
+/**
+ * Decode the `toolCallPayload` map persisted on an assistant
+ * `MessageRecord` back into structured {@link ToolCall}s. Tolerant
+ * of legacy rows that don't have the field set, and of partial /
+ * malformed payloads (skip silently — the alternative is failing the
+ * whole turn just because one prior call's payload is corrupt).
+ */
+function decodePersistedToolCalls(
+	payload: Readonly<Record<string, unknown>> | null,
+): readonly ToolCall[] {
+	if (!payload) return [];
+	const calls = payload.toolCalls;
+	if (!Array.isArray(calls)) return [];
+	const out: ToolCall[] = [];
+	for (const c of calls) {
+		if (
+			c &&
+			typeof c === "object" &&
+			typeof (c as { id?: unknown }).id === "string" &&
+			typeof (c as { name?: unknown }).name === "string" &&
+			typeof (c as { arguments?: unknown }).arguments === "string"
+		) {
+			out.push(c as ToolCall);
+		}
+	}
+	return out;
 }
 
 /**

@@ -30,6 +30,7 @@
 import type {
 	CreateChunkingServiceInput,
 	CreateEmbeddingServiceInput,
+	CreateLlmServiceInput,
 } from "./store.js";
 
 export interface DefaultServices {
@@ -235,3 +236,34 @@ export const DEFAULT_WORKSPACE_SEED_SERVICES: DefaultServices = {
 	chunking: [RECURSIVE_CHAR_DEFAULT, LINE_BASED_DEFAULT],
 	embedding: [OPENAI_SMALL],
 };
+
+/** OpenAI `gpt-4o-mini` — the default chat LLM auto-seeded into every
+ * new workspace. Supports native function calling, which the agent
+ * tool-call loop in {@link ../chat/agent-dispatch.ts} requires. */
+const OPENAI_GPT_4O_MINI: CreateLlmServiceInput = {
+	name: "openai-gpt-4o-mini",
+	description:
+		"Default. OpenAI `gpt-4o-mini` chat completion with native function calling. Used by Bobby + Heidi to call the workspace tools (search_kb, list_documents, summarize_kb, etc.).",
+	status: "active",
+	provider: "openai",
+	modelName: "gpt-4o-mini",
+	contextWindowTokens: 128000,
+	maxOutputTokens: 1024,
+	supportsStreaming: true,
+	supportsTools: true,
+	authType: "api_key",
+	credentialRef: "env:OPENAI_API_KEY",
+	supportedLanguages: ["en", "multi"],
+	supportedContent: ["text"],
+};
+
+/**
+ * Curated chat LLM services auto-seeded into every freshly-created
+ * workspace via the public API. Currently a single OpenAI entry —
+ * the agent tool-call loop needs native function calling, which only
+ * the OpenAI adapter implements today. Operators can add more LLM
+ * services (HuggingFace, Anthropic, etc.) via the regular service-
+ * CRUD routes.
+ */
+export const DEFAULT_WORKSPACE_SEED_LLM_SERVICES: readonly CreateLlmServiceInput[] =
+	Object.freeze([OPENAI_GPT_4O_MINI]);

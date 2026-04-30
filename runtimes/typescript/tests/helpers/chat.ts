@@ -47,6 +47,7 @@ export function makeFakeChatService(
 			finishReason: "stop",
 			tokenCount: 42,
 			errorMessage: null,
+			toolCalls: [],
 		};
 	}
 

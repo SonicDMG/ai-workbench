@@ -13,7 +13,10 @@ import {
 	assertWorkspaceAccess,
 	filterToAccessibleWorkspaces,
 } from "../../auth/authz.js";
-import { DEFAULT_WORKSPACE_SEED_SERVICES } from "../../control-plane/default-services.js";
+import {
+	DEFAULT_WORKSPACE_SEED_LLM_SERVICES,
+	DEFAULT_WORKSPACE_SEED_SERVICES,
+} from "../../control-plane/default-services.js";
 import { DEFAULT_WORKSPACE_AGENTS } from "../../control-plane/defaults.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
@@ -117,7 +120,11 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 				uid: body.workspaceId,
 			});
 			await seedDefaultServices(store, record.uid);
-			await seedDefaultAgents(store, record.uid);
+			const seededLlmServiceId = await seedDefaultLlmServices(
+				store,
+				record.uid,
+			);
+			await seedDefaultAgents(store, record.uid, seededLlmServiceId);
 			audit(c, {
 				action: "workspace.create",
 				outcome: "success",
@@ -326,7 +333,11 @@ function toWireWorkspace(record: WorkspaceRecord) {
 /**
  * Seed each freshly created workspace with the {@link DEFAULT_WORKSPACE_AGENTS}
  * starter agents (Bobby + Heidi) so the user lands in a non-empty agent
- * list and can start chatting immediately.
+ * list and can start chatting immediately. When a default LLM service
+ * was successfully seeded by {@link seedDefaultLlmServices}, both
+ * agents are wired to it so they get tool calling out of the box;
+ * otherwise they fall back to the global runtime chat service (no
+ * tools, but at least replies work).
  *
  * Failures are logged but do not abort the workspace creation: a
  * workspace with zero agents is still a valid workspace, and the user
@@ -337,10 +348,14 @@ function toWireWorkspace(record: WorkspaceRecord) {
 async function seedDefaultAgents(
 	store: ControlPlaneStore,
 	workspaceId: string,
+	llmServiceId: string | null,
 ): Promise<void> {
 	for (const spec of DEFAULT_WORKSPACE_AGENTS) {
 		try {
-			await store.createAgent(workspaceId, spec);
+			await store.createAgent(workspaceId, {
+				...spec,
+				...(llmServiceId && { llmServiceId }),
+			});
 		} catch (err) {
 			logger.warn(
 				{ workspaceId, agentName: spec.name, err },
@@ -348,6 +363,35 @@ async function seedDefaultAgents(
 			);
 		}
 	}
+}
+
+/**
+ * Seed the curated chat LLM services (currently a single OpenAI
+ * `gpt-4o-mini` entry) so the agent tool-call loop has a function-
+ * calling-capable model out of the box. Returns the id of the first
+ * successfully-seeded service so the agent seeder can wire each
+ * default agent to it; returns `null` when seeding fails entirely
+ * (e.g. astra credentials missing) — the agent seeder then leaves
+ * `llmServiceId` unset and the agents fall back to the global
+ * runtime chat service.
+ */
+async function seedDefaultLlmServices(
+	store: ControlPlaneStore,
+	workspaceId: string,
+): Promise<string | null> {
+	let firstId: string | null = null;
+	for (const spec of DEFAULT_WORKSPACE_SEED_LLM_SERVICES) {
+		try {
+			const created = await store.createLlmService(workspaceId, spec);
+			if (firstId === null) firstId = created.llmServiceId;
+		} catch (err) {
+			logger.warn(
+				{ workspaceId, serviceName: spec.name, err },
+				"failed to seed default llm service",
+			);
+		}
+	}
+	return firstId;
 }
 
 /**

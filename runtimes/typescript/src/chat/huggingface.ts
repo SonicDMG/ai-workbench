@@ -40,10 +40,7 @@ export class HuggingFaceChatService implements ChatService {
 			const out = await this.client.chatCompletion({
 				model: this.modelId,
 				max_tokens: this.maxOutputTokens,
-				messages: request.messages.map((turn) => ({
-					role: turn.role,
-					content: turn.content,
-				})),
+				messages: toHuggingFaceMessages(request.messages),
 			});
 			const choice = out.choices[0];
 			const content = choice?.message.content?.trim() ?? "";
@@ -54,6 +51,7 @@ export class HuggingFaceChatService implements ChatService {
 					tokenCount: out.usage?.total_tokens ?? null,
 					errorMessage:
 						"HuggingFace returned an empty completion — try again, or pick a different model.",
+					toolCalls: [],
 				};
 			}
 			return {
@@ -61,6 +59,7 @@ export class HuggingFaceChatService implements ChatService {
 				finishReason: normalizeFinishReason(choice?.finish_reason),
 				tokenCount: out.usage?.total_tokens ?? null,
 				errorMessage: null,
+				toolCalls: [],
 			};
 		} catch (err) {
 			return {
@@ -68,9 +67,34 @@ export class HuggingFaceChatService implements ChatService {
 				finishReason: "error",
 				tokenCount: null,
 				errorMessage: `HuggingFace inference failed: ${safeErrorMessage(err)}`,
+				toolCalls: [],
 			};
 		}
 	}
+}
+
+/**
+ * Project our tagged-union {@link ChatTurn}s into the flat
+ * `{role, content}` shape HF's chat-completion API expects. HF doesn't
+ * support tool turns at all — when the dispatcher (mistakenly) sends
+ * one through this provider, fold it into a system message so the
+ * model still sees the tool's output rather than dropping it silently.
+ */
+function toHuggingFaceMessages(
+	turns: readonly ChatCompletionRequest["messages"][number][],
+): { role: "system" | "user" | "assistant"; content: string }[] {
+	const out: { role: "system" | "user" | "assistant"; content: string }[] = [];
+	for (const turn of turns) {
+		if (turn.role === "tool") {
+			out.push({
+				role: "system",
+				content: `Tool '${turn.name}' returned: ${turn.content}`,
+			});
+			continue;
+		}
+		out.push({ role: turn.role, content: turn.content });
+	}
+	return out;
 }
 
 function normalizeFinishReason(
@@ -111,10 +135,7 @@ HuggingFaceChatService.prototype.completeStream = async function* (
 		const stream = client.chatCompletionStream({
 			model: this.modelId,
 			max_tokens: self.maxOutputTokens,
-			messages: request.messages.map((turn) => ({
-				role: turn.role,
-				content: turn.content,
-			})),
+			messages: toHuggingFaceMessages(request.messages),
 		});
 		for await (const chunk of stream) {
 			if (options?.signal?.aborted) {

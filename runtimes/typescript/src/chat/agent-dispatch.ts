@@ -28,10 +28,25 @@ import {
 	HuggingFaceChatService,
 	type HuggingFaceChatServiceOptions,
 } from "../chat/huggingface.js";
+import {
+	OpenAIChatService,
+	type OpenAIChatServiceOptions,
+} from "../chat/openai.js";
 import type { RetrievedChunk } from "../chat/prompt.js";
 import { assemblePrompt } from "../chat/prompt.js";
 import { retrieveContext } from "../chat/retrieval.js";
-import type { ChatService, ChatStreamEvent } from "../chat/types.js";
+import {
+	type AgentTool,
+	type AgentToolDeps,
+	DEFAULT_AGENT_TOOLS,
+} from "../chat/tools/registry.js";
+import type {
+	ChatService,
+	ChatStreamEvent,
+	ChatTurn,
+	ToolCall,
+	ToolDefinition,
+} from "../chat/types.js";
 import type { ChatConfig } from "../config/schema.js";
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../control-plane/defaults.js";
 import { ControlPlaneNotFoundError } from "../control-plane/errors.js";
@@ -50,6 +65,15 @@ import type { SecretResolver } from "../secrets/provider.js";
 
 const DEFAULT_RETRIEVAL_K = 6;
 const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+
+/**
+ * Hard cap on how many tool-call iterations a single user turn can
+ * trigger. Each iteration is one round-trip with the LLM. The cap
+ * prevents a confused model from looping forever on malformed tool
+ * results; in practice 3–4 iterations is plenty for "list KBs → pick
+ * one → search → answer".
+ */
+const MAX_TOOL_ITERATIONS = 6;
 
 export interface AgentDispatchDeps {
 	readonly store: ControlPlaneStore;
@@ -98,6 +122,19 @@ interface ResolvedAgentChat {
 	readonly systemPrompt: string;
 	readonly retrievalK: number;
 	readonly knowledgeBaseIds: readonly string[];
+	/**
+	 * Tools advertised to the model on every iteration of the
+	 * tool-call loop. Empty when the agent's chat provider doesn't
+	 * support function calling — the dispatcher falls back to the
+	 * old retrieve-and-answer flow.
+	 */
+	readonly tools: readonly AgentTool[];
+	/**
+	 * Bound context for tool execution. Built once per turn so each
+	 * tool invocation doesn't have to plumb workspace + store + driver
+	 * registry on its own.
+	 */
+	readonly toolDeps: AgentToolDeps;
 }
 
 async function resolveAgentChat(
@@ -131,13 +168,95 @@ async function resolveAgentChat(
 				? agent.knowledgeBaseIds
 				: [];
 
+	const toolDeps: AgentToolDeps = {
+		workspaceId,
+		store,
+		drivers: deps.drivers,
+		embedders: deps.embedders,
+		logger: deps.logger,
+	};
+
+	// Tools are always advertised to the resolved chat service. The
+	// OpenAI adapter forwards them as the `tools[]` request body field
+	// and the model decides whether to call them; the HuggingFace
+	// adapter drops the field on the floor (its provider request
+	// shape doesn't carry tools today), so HF-backed agents simply
+	// answer in plain text. There's no harm in advertising regardless,
+	// and the dispatcher loop only iterates when a completion actually
+	// emits tool calls.
+	const tools = DEFAULT_AGENT_TOOLS;
+
 	return {
 		chatService: chat,
 		systemPrompt,
 		retrievalK,
 		knowledgeBaseIds,
+		tools,
+		toolDeps,
 	};
 }
+
+/**
+ * Conditionally pull RAG context up front. Tool-using agents
+ * (`ragEnabled === false`) skip the implicit retrieval and let the
+ * model decide when to call `search_kb`; classic RAG agents keep the
+ * existing top-K-into-system-prompt behavior.
+ */
+async function retrieveContextIfEnabled(
+	deps: AgentDispatchDeps,
+	agent: AgentRecord,
+	request: {
+		readonly workspaceId: string;
+		readonly knowledgeBaseIds: readonly string[];
+		readonly query: string;
+		readonly retrievalK: number;
+	},
+): Promise<readonly RetrievedChunk[]> {
+	if (!agent.ragEnabled) return [];
+	return retrieveContext(
+		{
+			store: deps.store,
+			drivers: deps.drivers,
+			embedders: deps.embedders,
+			logger: deps.logger,
+		},
+		request,
+	);
+}
+
+/**
+ * Execute a single tool call. Argument JSON is parsed defensively —
+ * the model occasionally emits malformed payloads (extra fields,
+ * smart quotes, partial closures) and we want a clean error string
+ * back to the model, not an exception.
+ */
+async function runToolCall(
+	call: ToolCall,
+	deps: AgentToolDeps,
+): Promise<string> {
+	const tool = DEFAULT_AGENT_TOOLS.find((t) => t.definition.name === call.name);
+	if (!tool) {
+		return `Error: tool '${call.name}' is not available. Try one of: ${DEFAULT_AGENT_TOOLS.map((t) => t.definition.name).join(", ")}.`;
+	}
+	let parsed: unknown;
+	try {
+		parsed = call.arguments.length === 0 ? {} : JSON.parse(call.arguments);
+	} catch (err) {
+		return `Error: tool arguments were not valid JSON (${err instanceof Error ? err.message : String(err)}).`;
+	}
+	try {
+		return await tool.execute(parsed, deps);
+	} catch (err) {
+		deps.logger?.warn?.(
+			{ err, tool: call.name },
+			"agent tool threw — surfacing as a tool error",
+		);
+		return `Error: tool '${call.name}' failed — ${err instanceof Error ? err.message : String(err)}.`;
+	}
+}
+
+/** Re-export so the route layer can advertise the same set in its OpenAPI metadata. */
+export { DEFAULT_AGENT_TOOLS };
 
 interface ChatServiceResolutionOptions {
 	readonly fallbackChatService: ChatService | null;
@@ -169,31 +288,41 @@ async function resolveChatService(
 	if (!record) {
 		throw new ControlPlaneNotFoundError("llm service", agent.llmServiceId);
 	}
-	if (record.provider !== "huggingface") {
+	if (record.provider !== "huggingface" && record.provider !== "openai") {
 		throw new ApiError(
 			"llm_provider_unsupported",
-			`only the 'huggingface' provider is supported in this runtime today; agent points at provider '${record.provider}'`,
+			`only the 'huggingface' and 'openai' providers are supported in this runtime today; agent points at provider '${record.provider}'`,
 			422,
 		);
 	}
 	if (!record.credentialRef) {
 		throw new ApiError(
 			"llm_credential_missing",
-			`llm service '${record.llmServiceId}' has no credentialRef set; cannot authenticate to HuggingFace`,
+			`llm service '${record.llmServiceId}' has no credentialRef set; cannot authenticate to ${record.provider}`,
 			422,
 		);
 	}
 
-	const token = await secrets.resolve(record.credentialRef);
-	const options: HuggingFaceChatServiceOptions = {
-		token,
+	const credential = await secrets.resolve(record.credentialRef);
+	const maxOutputTokens =
+		record.maxOutputTokens ??
+		opts.fallbackMaxOutputTokens ??
+		DEFAULT_MAX_OUTPUT_TOKENS;
+
+	if (record.provider === "huggingface") {
+		const options: HuggingFaceChatServiceOptions = {
+			token: credential,
+			modelId: record.modelName,
+			maxOutputTokens,
+		};
+		return new HuggingFaceChatService(options);
+	}
+	const options: OpenAIChatServiceOptions = {
+		apiKey: credential,
 		modelId: record.modelName,
-		maxOutputTokens:
-			record.maxOutputTokens ??
-			opts.fallbackMaxOutputTokens ??
-			DEFAULT_MAX_OUTPUT_TOKENS,
+		maxOutputTokens,
 	};
-	return new HuggingFaceChatService(options);
+	return new OpenAIChatService(options);
 }
 
 /* ------------------------------------------------------------------ */
@@ -215,8 +344,8 @@ export function buildAgentMetadata(
 	}[],
 	model: string,
 	completion: {
-		finishReason: "stop" | "length" | "error";
-		errorMessage: string | null;
+		readonly finishReason: "stop" | "length" | "error" | "tool_calls";
+		readonly errorMessage: string | null;
 	},
 ): Record<string, string> {
 	const metadata: Record<string, string> = {
@@ -240,10 +369,18 @@ export function buildAgentMetadata(
 /* ------------------------------------------------------------------ */
 
 /**
- * Run a single agent turn synchronously: persist the user turn, fetch
- * RAG context, call the resolved chat service, and persist the
- * assistant turn. Returns both records so the route layer can return
- * them verbatim.
+ * Run a single agent turn synchronously. Persists the user turn,
+ * fetches optional up-front RAG context, then runs the tool-call loop
+ * against the resolved chat service: for each iteration the model
+ * either emits tool calls (which the dispatcher executes and feeds
+ * back as `tool` turns) or returns a final answer. Each tool call /
+ * tool result is persisted as its own message row so the conversation
+ * history stays auditable.
+ *
+ * Returns the user row and the FINAL assistant row. Intermediate
+ * tool-call assistant rows + tool-result rows live in the conversation
+ * history but aren't returned here — keeps the wire response shape
+ * stable for callers that just want the user-visible reply.
  */
 export async function dispatchAgentSend(
 	deps: AgentDispatchDeps,
@@ -254,37 +391,19 @@ export async function dispatchAgentSend(
 	const { workspaceId, agent, conversation } = ctx;
 	const conversationId = conversation.conversationId;
 
-	// 1) Persist the user turn first so it appears even if the model
-	// fails midway through the call.
 	const userRecord = await deps.store.appendChatMessage(
 		workspaceId,
 		conversationId,
-		{
-			role: "user",
-			content: body.content,
-		},
+		{ role: "user", content: body.content },
 	);
 
-	// 2) RAG retrieval (single-KB and multi-KB fan-out both flow
-	// through the same helper used by /chats).
-	const chunks = await retrieveContext(
-		{
-			store: deps.store,
-			drivers: deps.drivers,
-			embedders: deps.embedders,
-			logger: deps.logger,
-		},
-		{
-			workspaceId,
-			knowledgeBaseIds: resolved.knowledgeBaseIds,
-			query: body.content,
-			retrievalK: resolved.retrievalK,
-		},
-	);
+	const chunks = await retrieveContextIfEnabled(deps, agent, {
+		workspaceId,
+		knowledgeBaseIds: resolved.knowledgeBaseIds,
+		query: body.content,
+		retrievalK: resolved.retrievalK,
+	});
 
-	// 3) Build the prompt from history + the just-appended turn. We
-	// drop the new user row out of `priorHistory` so the assembler
-	// doesn't double-count it (it's added back as `userTurn`).
 	const history = await deps.store.listChatMessages(
 		workspaceId,
 		conversationId,
@@ -292,56 +411,136 @@ export async function dispatchAgentSend(
 	const priorHistory = history.filter(
 		(m) => m.messageId !== userRecord.messageId,
 	);
-	const prompt = assemblePrompt({
+	const initialPrompt = assemblePrompt({
 		systemPrompt: resolved.systemPrompt,
 		chunks,
 		history: priorHistory,
 		userTurn: body.content,
 	});
 
-	// 4) Call the resolved chat service. Errors are returned as a
-	// `finishReason: "error"` outcome — we still persist the row so
-	// the chat history reflects the failure.
-	const completion = await resolved.chatService.complete({
-		messages: prompt,
-	});
+	const tools = resolved.tools;
+	const turns: ChatTurn[] = [...initialPrompt];
+	let lastTokenCount: number | null = null;
+	let prevTs = userRecord.messageTs;
 
-	// 5) Persist the assistant turn with provenance. Strictly-after
-	// timestamp keeps cluster ordering monotonic when a fast model
-	// finishes within the same millisecond as the user-turn write.
-	const assistantTs = strictlyAfter(userRecord.messageTs);
+	for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+		const completion = await resolved.chatService.complete({
+			messages: turns,
+			tools: tools.length > 0 ? tools.map((t) => t.definition) : undefined,
+		});
+		lastTokenCount = completion.tokenCount;
+
+		if (completion.finishReason === "error") {
+			const ts = strictlyAfter(prevTs);
+			const assistantRecord = await deps.store.appendChatMessage(
+				workspaceId,
+				conversationId,
+				{
+					role: "agent",
+					authorId: agent.agentId,
+					messageTs: ts,
+					content:
+						completion.errorMessage ?? "the agent couldn't answer this turn.",
+					tokenCount: completion.tokenCount,
+					metadata: buildAgentMetadata(
+						chunks,
+						resolved.chatService.modelId,
+						completion,
+					),
+				},
+			);
+			return { user: userRecord, assistant: assistantRecord };
+		}
+
+		// Final answer — no tool calls.
+		if (completion.toolCalls.length === 0) {
+			const ts = strictlyAfter(prevTs);
+			const assistantRecord = await deps.store.appendChatMessage(
+				workspaceId,
+				conversationId,
+				{
+					role: "agent",
+					authorId: agent.agentId,
+					messageTs: ts,
+					content: completion.content,
+					tokenCount: completion.tokenCount,
+					metadata: buildAgentMetadata(
+						chunks,
+						resolved.chatService.modelId,
+						completion,
+					),
+				},
+			);
+			return { user: userRecord, assistant: assistantRecord };
+		}
+
+		// Tool-call iteration: persist the assistant turn (carrying the
+		// tool calls), execute each tool, persist + append a tool turn
+		// for each result, then loop.
+		const assistantTs = strictlyAfter(prevTs);
+		await deps.store.appendChatMessage(workspaceId, conversationId, {
+			role: "agent",
+			authorId: agent.agentId,
+			messageTs: assistantTs,
+			content: completion.content,
+			tokenCount: completion.tokenCount,
+			toolCallPayload: { toolCalls: completion.toolCalls },
+			metadata: {
+				model: resolved.chatService.modelId,
+				finish_reason: completion.finishReason,
+			},
+		});
+		prevTs = assistantTs;
+		turns.push({
+			role: "assistant",
+			content: completion.content,
+			toolCalls: completion.toolCalls,
+		});
+
+		for (const call of completion.toolCalls) {
+			const resultText = await runToolCall(call, resolved.toolDeps);
+			const toolTs = strictlyAfter(prevTs);
+			await deps.store.appendChatMessage(workspaceId, conversationId, {
+				role: "tool",
+				messageTs: toolTs,
+				toolId: call.name,
+				toolResponse: { content: resultText, toolCallId: call.id },
+			});
+			prevTs = toolTs;
+			turns.push({
+				role: "tool",
+				toolCallId: call.id,
+				name: call.name,
+				content: resultText,
+			});
+		}
+	}
+
+	// Hit the iteration cap without convergence. Persist a friendly
+	// error so the chat reflects what happened.
+	const failTs = strictlyAfter(prevTs);
 	const assistantRecord = await deps.store.appendChatMessage(
 		workspaceId,
 		conversationId,
 		{
 			role: "agent",
 			authorId: agent.agentId,
-			messageTs: assistantTs,
+			messageTs: failTs,
 			content:
-				completion.finishReason === "error"
-					? (completion.errorMessage ?? "the agent couldn't answer this turn.")
-					: completion.content,
-			tokenCount: completion.tokenCount,
+				"the agent kept calling tools without converging on an answer; aborting after the iteration cap.",
+			tokenCount: lastTokenCount,
 			metadata: buildAgentMetadata(chunks, resolved.chatService.modelId, {
-				finishReason: completion.finishReason,
-				errorMessage: completion.errorMessage,
+				finishReason: "error",
+				errorMessage: "tool-call iteration cap reached",
 			}),
 		},
 	);
-
 	return { user: userRecord, assistant: assistantRecord };
 }
 
 /* ------------------------------------------------------------------ */
 /* Streaming send                                                     */
 /* ------------------------------------------------------------------ */
-
-interface FinalStreamState {
-	readonly finishReason: "stop" | "length" | "error";
-	readonly errorMessage: string | null;
-	readonly tokenCount: number | null;
-	readonly content: string;
-}
 
 export interface AgentStreamSerializer {
 	/** Convert a persisted user message to the SSE `data` payload. */
@@ -352,14 +551,24 @@ export interface AgentStreamSerializer {
 
 /**
  * Run a single agent turn with token-by-token streaming. Mirrors the
- * `/chats/.../messages/stream` SSE shape: emits one `user-message`,
- * a series of `token` events, and a single terminal `done` (or
- * `error`) carrying the persisted assistant row.
+ * SSE shape the agents route uses:
+ *
+ *   - one `user-message` carrying the persisted user row
+ *   - zero or more `tool-call` / `tool-result` events surfacing the
+ *     intermediate tool-call iterations (when the model decides to
+ *     use tools)
+ *   - a series of `token` events for the FINAL user-visible answer
+ *   - exactly one terminal `done` (or `error`) carrying the persisted
+ *     assistant row
+ *
+ * Tool-call iterations are run synchronously inside the stream — the
+ * model emits all tool calls before the dispatcher executes them, so
+ * per-iteration token streaming would mostly leak metadata. We surface
+ * progress via the `tool-call` / `tool-result` events instead, then
+ * stream tokens for the model's final answer.
  *
  * The route caller supplies `serializer` because the SSE wire format
- * uses the `*Wire` projections defined per-route (chats and agents
- * share schemas but the route owns the serializer to keep this module
- * route-shape agnostic).
+ * uses the `*Wire` projections defined per-route.
  */
 export async function dispatchAgentSendStream(
 	deps: AgentDispatchDeps,
@@ -375,26 +584,16 @@ export async function dispatchAgentSendStream(
 	const userRecord = await deps.store.appendChatMessage(
 		workspaceId,
 		conversationId,
-		{
-			role: "user",
-			content: body.content,
-		},
+		{ role: "user", content: body.content },
 	);
 
-	const chunks = await retrieveContext(
-		{
-			store: deps.store,
-			drivers: deps.drivers,
-			embedders: deps.embedders,
-			logger: deps.logger,
-		},
-		{
-			workspaceId,
-			knowledgeBaseIds: resolved.knowledgeBaseIds,
-			query: body.content,
-			retrievalK: resolved.retrievalK,
-		},
-	);
+	const chunks = await retrieveContextIfEnabled(deps, agent, {
+		workspaceId,
+		knowledgeBaseIds: resolved.knowledgeBaseIds,
+		query: body.content,
+		retrievalK: resolved.retrievalK,
+	});
+
 	const history = await deps.store.listChatMessages(
 		workspaceId,
 		conversationId,
@@ -402,7 +601,7 @@ export async function dispatchAgentSendStream(
 	const priorHistory = history.filter(
 		(m) => m.messageId !== userRecord.messageId,
 	);
-	const prompt = assemblePrompt({
+	const initialPrompt = assemblePrompt({
 		systemPrompt: resolved.systemPrompt,
 		chunks,
 		history: priorHistory,
@@ -410,122 +609,250 @@ export async function dispatchAgentSendStream(
 	});
 
 	const abort = new AbortController();
-	sse.onAbort(() => {
-		abort.abort();
-	});
+	sse.onAbort(() => abort.abort());
 
 	await sse.writeSSE({
 		event: "user-message",
 		data: serializer.serializeUserMessage(userRecord),
 	});
 
-	const final = await consumeChatStream(
-		resolved.chatService,
-		prompt,
-		abort.signal,
-		sse,
-	);
+	const turns: ChatTurn[] = [...initialPrompt];
+	const tools = resolved.tools;
+	let prevTs = userRecord.messageTs;
+	let lastTokenCount: number | null = null;
 
-	const assistantTs = strictlyAfter(userRecord.messageTs);
-	const persistedContent =
-		final.finishReason === "error"
-			? (final.errorMessage ?? "the agent couldn't answer this turn.")
-			: final.content;
+	for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+		// Buffer tokens locally on each iteration. We only forward them
+		// to the SSE consumer once we know the iteration is the FINAL
+		// one (i.e. produced no tool calls) — otherwise the model's
+		// "narration before calling a tool" would leak into the user-
+		// visible reply.
+		const buffer: string[] = [];
+		const final = await consumeStreamIteration(
+			resolved.chatService,
+			turns,
+			tools.map((t) => t.definition),
+			abort.signal,
+			(delta) => buffer.push(delta),
+		);
+		lastTokenCount = final.tokenCount;
 
+		if (final.kind === "error") {
+			const ts = strictlyAfter(prevTs);
+			const assistantRecord = await deps.store.appendChatMessage(
+				workspaceId,
+				conversationId,
+				{
+					role: "agent",
+					authorId: agent.agentId,
+					messageTs: ts,
+					content: final.errorMessage ?? "the agent couldn't answer this turn.",
+					tokenCount: final.tokenCount,
+					metadata: buildAgentMetadata(chunks, resolved.chatService.modelId, {
+						finishReason: "error",
+						errorMessage: final.errorMessage,
+					}),
+				},
+			);
+			await sse.writeSSE({
+				event: "error",
+				data: serializer.serializeAssistantMessage(assistantRecord),
+			});
+			return;
+		}
+
+		if (final.toolCalls.length === 0) {
+			// Final answer. Replay the buffered tokens to the SSE
+			// consumer in order, then persist + emit `done`.
+			for (const delta of buffer) {
+				await sse.writeSSE({
+					event: "token",
+					data: JSON.stringify({ delta }),
+				});
+			}
+			const ts = strictlyAfter(prevTs);
+			const assistantRecord = await deps.store.appendChatMessage(
+				workspaceId,
+				conversationId,
+				{
+					role: "agent",
+					authorId: agent.agentId,
+					messageTs: ts,
+					content: final.content,
+					tokenCount: final.tokenCount,
+					metadata: buildAgentMetadata(chunks, resolved.chatService.modelId, {
+						finishReason: final.finishReason,
+						errorMessage: null,
+					}),
+				},
+			);
+			await sse.writeSSE({
+				event: "done",
+				data: serializer.serializeAssistantMessage(assistantRecord),
+			});
+			return;
+		}
+
+		// Tool-call iteration. Persist the assistant turn (with
+		// tool_calls) + each tool result, surface progress on the
+		// stream, and loop.
+		const assistantTs = strictlyAfter(prevTs);
+		await deps.store.appendChatMessage(workspaceId, conversationId, {
+			role: "agent",
+			authorId: agent.agentId,
+			messageTs: assistantTs,
+			content: final.content,
+			tokenCount: final.tokenCount,
+			toolCallPayload: { toolCalls: final.toolCalls },
+			metadata: {
+				model: resolved.chatService.modelId,
+				finish_reason: "tool_calls",
+			},
+		});
+		prevTs = assistantTs;
+		await sse.writeSSE({
+			event: "tool-call",
+			data: JSON.stringify({ toolCalls: final.toolCalls }),
+		});
+		turns.push({
+			role: "assistant",
+			content: final.content,
+			toolCalls: final.toolCalls,
+		});
+
+		for (const call of final.toolCalls) {
+			const resultText = await runToolCall(call, resolved.toolDeps);
+			const toolTs = strictlyAfter(prevTs);
+			await deps.store.appendChatMessage(workspaceId, conversationId, {
+				role: "tool",
+				messageTs: toolTs,
+				toolId: call.name,
+				toolResponse: { content: resultText, toolCallId: call.id },
+			});
+			prevTs = toolTs;
+			turns.push({
+				role: "tool",
+				toolCallId: call.id,
+				name: call.name,
+				content: resultText,
+			});
+			await sse.writeSSE({
+				event: "tool-result",
+				data: JSON.stringify({
+					toolCallId: call.id,
+					name: call.name,
+					content: resultText,
+				}),
+			});
+		}
+	}
+
+	const ts = strictlyAfter(prevTs);
 	const assistantRecord = await deps.store.appendChatMessage(
 		workspaceId,
 		conversationId,
 		{
 			role: "agent",
 			authorId: agent.agentId,
-			messageTs: assistantTs,
-			content: persistedContent,
-			tokenCount: final.tokenCount,
+			messageTs: ts,
+			content:
+				"the agent kept calling tools without converging on an answer; aborting after the iteration cap.",
+			tokenCount: lastTokenCount,
 			metadata: buildAgentMetadata(chunks, resolved.chatService.modelId, {
-				finishReason: final.finishReason,
-				errorMessage: final.errorMessage,
+				finishReason: "error",
+				errorMessage: "tool-call iteration cap reached",
 			}),
 		},
 	);
-
 	await sse.writeSSE({
-		event: final.finishReason === "error" ? "error" : "done",
+		event: "error",
 		data: serializer.serializeAssistantMessage(assistantRecord),
 	});
 }
 
-async function consumeChatStream(
+type IterationResult =
+	| {
+			readonly kind: "done";
+			readonly finishReason: "stop" | "length" | "tool_calls";
+			readonly content: string;
+			readonly toolCalls: readonly ToolCall[];
+			readonly tokenCount: number | null;
+	  }
+	| {
+			readonly kind: "error";
+			readonly errorMessage: string;
+			readonly tokenCount: number | null;
+	  };
+
+/**
+ * Consume one iteration of the streaming chat-completion. Tokens are
+ * NOT directly forwarded to the SSE consumer — the dispatcher decides
+ * after the iteration finishes whether this was the final answer
+ * (replay tokens) or an intermediate tool-call iteration (drop them).
+ *
+ * `onToken` is invoked for every delta so the caller can buffer them.
+ */
+async function consumeStreamIteration(
 	chatService: ChatService,
-	prompt: ReturnType<typeof assemblePrompt>,
+	prompt: readonly ChatTurn[],
+	tools: readonly ToolDefinition[] | undefined,
 	signal: AbortSignal,
-	sse: AgentSseWriter,
-): Promise<FinalStreamState> {
+	onToken: (delta: string) => void,
+): Promise<IterationResult> {
 	let buffer = "";
-	let finalEvent:
-		| { type: "done"; finishReason: "stop" | "length"; content: string }
-		| { type: "error"; errorMessage: string }
-		| null = null;
+	let finalKind: IterationResult["kind"] | null = null;
+	let finishReason: "stop" | "length" | "tool_calls" = "stop";
+	let toolCalls: readonly ToolCall[] = [];
+	let errorMessage = "";
 	let tokenCount: number | null = null;
 
 	try {
 		for await (const event of chatService.completeStream(
-			{ messages: prompt },
+			{
+				messages: prompt,
+				tools: tools && tools.length > 0 ? tools : undefined,
+			},
 			{ signal },
 		) as AsyncIterable<ChatStreamEvent>) {
 			if (event.type === "token") {
 				buffer += event.delta;
-				await sse.writeSSE({
-					event: "token",
-					data: JSON.stringify({ delta: event.delta }),
-				});
+				onToken(event.delta);
 			} else if (event.type === "done") {
-				finalEvent = {
-					type: "done",
-					finishReason:
-						event.finishReason === "error" ? "stop" : event.finishReason,
-					content:
-						event.content && event.content.length > buffer.length
-							? event.content
-							: buffer,
-				};
+				finalKind = "done";
+				finishReason =
+					event.finishReason === "error" ? "stop" : event.finishReason;
+				toolCalls = event.toolCalls ?? [];
 				tokenCount = event.tokenCount;
 				if (event.content && event.content.length > buffer.length) {
 					buffer = event.content;
 				}
 			} else if (event.type === "error") {
-				finalEvent = { type: "error", errorMessage: event.errorMessage };
+				finalKind = "error";
+				errorMessage = event.errorMessage;
 				tokenCount = event.tokenCount;
 			}
 		}
 	} catch (err) {
-		finalEvent = {
-			type: "error",
-			errorMessage: err instanceof Error ? err.message : String(err),
-		};
+		finalKind = "error";
+		errorMessage = err instanceof Error ? err.message : String(err);
 	}
 
-	if (!finalEvent) {
-		// Stream ended without a terminal event — defensive; the
-		// ChatService contract requires exactly one terminal event.
-		finalEvent = {
-			type: "error",
-			errorMessage: "chat service stream ended without a terminal event",
-		};
-	}
-
-	if (finalEvent.type === "done") {
+	if (finalKind === null) {
 		return {
-			finishReason: finalEvent.finishReason,
-			errorMessage: null,
+			kind: "error",
+			errorMessage: "chat service stream ended without a terminal event",
 			tokenCount,
-			content: finalEvent.content,
 		};
+	}
+	if (finalKind === "error") {
+		return { kind: "error", errorMessage, tokenCount };
 	}
 	return {
-		finishReason: "error",
-		errorMessage: finalEvent.errorMessage,
-		tokenCount,
+		kind: "done",
+		finishReason,
 		content: buffer,
+		toolCalls,
+		tokenCount,
 	};
 }
 
