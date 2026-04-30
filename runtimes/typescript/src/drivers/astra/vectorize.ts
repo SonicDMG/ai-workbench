@@ -31,14 +31,19 @@ export interface VectorizeService {
 
 /**
  * Returns the `service` config when this embedding declaration is one
- * Astra vectorize supports, else null. The descriptor must also carry
- * a `secretRef` — without an API key, the request-time header won't be
- * set and Astra will reject the $vectorize call.
+ * Astra vectorize supports, else null. `secretRef` is intentionally
+ * optional: Astra ships KMS-managed credentials for bundled providers
+ * (NVIDIA NIM today; potentially others in the future), so a runtime
+ * that omits the per-request `x-embedding-api-key` header lets Astra
+ * use its KMS shared-secret. The driver's per-request
+ * {@link AstraVectorStoreDriver.resolveEmbeddingKey} mirrors this:
+ * `secretRef: null` → no header attached → Astra falls back to KMS.
+ * If neither a header nor KMS is configured, Astra returns 401 — the
+ * operator's signal to either set the env var or wire up KMS.
  */
 export function resolveVectorizeService(
 	config: EmbeddingConfig,
 ): VectorizeService | null {
-	if (!config.secretRef) return null;
 	if (!SUPPORTED_PROVIDERS.has(config.provider)) return null;
 	return {
 		provider: config.provider,

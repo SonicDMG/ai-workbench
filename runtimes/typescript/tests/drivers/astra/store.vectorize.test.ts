@@ -128,19 +128,26 @@ describe("AstraVectorStoreDriver + vectorize", () => {
 		expect(fake.createCalls[0]?.opts.vector.service).toBeUndefined();
 	});
 
-	test("createCollection omits `service` when no secretRef is configured", async () => {
+	test("createCollection still attaches `service` when no secretRef is configured (Astra-managed KMS path)", async () => {
+		// Bundled NIM providers (NVIDIA today) ship with Astra-managed
+		// KMS shared secrets — the descriptor intentionally has no
+		// client-side secretRef and the runtime must still register the
+		// service block so Astra runs $vectorize server-side.
 		const { driver, fake } = build();
 		const d = descriptor({
 			embedding: {
-				provider: "openai",
-				model: "text-embedding-3-small",
+				provider: "nvidia",
+				model: "nvidia/nv-embedqa-e5-v5",
 				endpoint: null,
 				dimension: 8,
 				secretRef: null,
 			},
 		});
 		await driver.createCollection({ workspace: WORKSPACE, descriptor: d });
-		expect(fake.createCalls[0]?.opts.vector.service).toBeUndefined();
+		expect(fake.createCalls[0]?.opts.vector.service).toEqual({
+			provider: "nvidia",
+			modelName: "nvidia/nv-embedqa-e5-v5",
+		});
 	});
 
 	test("searchByText attaches embeddingApiKey on the collection handle and finds results via $vectorize", async () => {

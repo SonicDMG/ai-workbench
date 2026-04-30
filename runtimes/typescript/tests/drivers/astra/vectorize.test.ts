@@ -29,10 +29,16 @@ describe("resolveVectorizeService", () => {
 		expect(resolveVectorizeService(cfg({ provider: "homegrown" }))).toBe(null);
 	});
 
-	test("returns null when no secretRef is configured", () => {
-		// Without a secret we can't attach the per-request header, so
-		// $vectorize would 401 — refuse upfront.
-		expect(resolveVectorizeService(cfg({ secretRef: null }))).toBe(null);
+	test("returns the service block even when no secretRef is configured", () => {
+		// Astra ships KMS-managed credentials for bundled NIM providers,
+		// so a missing secretRef is the correct shape — the runtime omits
+		// the `x-embedding-api-key` header and Astra resolves auth from
+		// its KMS. If KMS isn't configured Astra returns 401, which the
+		// driver surfaces as a clear error.
+		expect(resolveVectorizeService(cfg({ secretRef: null }))).toEqual({
+			provider: "openai",
+			modelName: "text-embedding-3-small",
+		});
 	});
 
 	test("supports the multi-provider allowlist", () => {
