@@ -205,21 +205,26 @@ const AuthSchema = z
 		// deployments to create their first workspace/API key without
 		// briefly opening anonymous access.
 		bootstrapTokenRef: SecretRef.nullable().default(null),
-		// Operator opt-in for running with open auth on a durable
-		// control plane (file/astra). The runtime refuses to start in
-		// that combination unless this is set to `true` — see
-		// `assertSafeAuthDeployment` in root.ts. Useful for the rare
-		// case of a trusted reverse proxy that handles its own
-		// authentication; in every other case, set `auth.mode` to
-		// apiKey/oidc/any and `anonymousPolicy: reject` instead.
-		acknowledgeOpenAccess: z.boolean().default(false),
+		// Controls how the deployment guard reacts when a durable
+		// control plane (file/astra) is paired with open auth
+		// (`mode: disabled` or `anonymousPolicy: allow`). Default is
+		// `true`, which makes that combination a *loud* startup
+		// warning — the dev loop regularly does file CP + open auth,
+		// and a hard fail blocks `npm run dev`. Flip to `false` in
+		// CI / shared environments to convert the warning into a
+		// startup fatal. Production deployments should set
+		// `runtime.environment: production` instead, which forces
+		// apiKey/oidc/any + anonymousPolicy: reject + a non-ephemeral
+		// session secret at the schema layer regardless of this
+		// setting.
+		acknowledgeOpenAccess: z.boolean().default(true),
 		oidc: OidcSchema.optional(),
 	})
 	.default({
 		mode: "disabled",
 		anonymousPolicy: "allow",
 		bootstrapTokenRef: null,
-		acknowledgeOpenAccess: false,
+		acknowledgeOpenAccess: true,
 	})
 	.superRefine((cfg, ctx) => {
 		if ((cfg.mode === "oidc" || cfg.mode === "any") && !cfg.oidc) {

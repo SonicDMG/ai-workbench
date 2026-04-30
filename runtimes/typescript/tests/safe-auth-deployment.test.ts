@@ -8,12 +8,12 @@ const FILE_CP = { driver: "file" as const };
 const SAFE_AUTH = {
 	mode: "apiKey",
 	anonymousPolicy: "reject",
-	acknowledgeOpenAccess: false,
+	acknowledgeOpenAccess: true,
 	bootstrapTokenRef: null,
 };
 
 describe("assertSafeAuthDeployment", () => {
-	test("memory control plane is always allowed", () => {
+	test("memory control plane is always allowed regardless of auth posture", () => {
 		expect(() =>
 			assertSafeAuthDeployment({
 				controlPlane: MEMORY_CP,
@@ -27,7 +27,7 @@ describe("assertSafeAuthDeployment", () => {
 		).not.toThrow();
 	});
 
-	test("astra control plane with apiKey/reject is allowed", () => {
+	test("astra control plane with strict auth passes silently", () => {
 		expect(() =>
 			assertSafeAuthDeployment({
 				controlPlane: ASTRA_CP,
@@ -36,7 +36,27 @@ describe("assertSafeAuthDeployment", () => {
 		).not.toThrow();
 	});
 
-	test("file control plane with auth.mode=disabled is rejected", () => {
+	test("durable CP + open auth + acknowledgeOpenAccess: true (the default) warns but does NOT throw", () => {
+		// The dev loop runs on file CP with default-disabled auth;
+		// blocking startup here would break `npm run dev`. We rely on
+		// the loud terminal banner to surface the risk instead.
+		expect(() =>
+			assertSafeAuthDeployment({
+				controlPlane: FILE_CP,
+				auth: {
+					mode: "disabled",
+					anonymousPolicy: "allow",
+					acknowledgeOpenAccess: true,
+					bootstrapTokenRef: null,
+				},
+			}),
+		).not.toThrow();
+	});
+
+	test("durable CP + open auth + acknowledgeOpenAccess: false IS a fatal", () => {
+		// Operators who want strict-mode behavior in CI / shared envs
+		// flip the field back to false to convert the warning into a
+		// startup error.
 		expect(() =>
 			assertSafeAuthDeployment({
 				controlPlane: FILE_CP,
@@ -47,10 +67,10 @@ describe("assertSafeAuthDeployment", () => {
 					bootstrapTokenRef: null,
 				},
 			}),
-		).toThrow(/refusing to start with unsafe auth/);
+		).toThrow(/auth\.acknowledgeOpenAccess is false/);
 	});
 
-	test("astra control plane with anonymousPolicy=allow is rejected", () => {
+	test("astra control plane with anonymousPolicy=allow + ack: false is fatal", () => {
 		expect(() =>
 			assertSafeAuthDeployment({
 				controlPlane: ASTRA_CP,
@@ -64,44 +84,14 @@ describe("assertSafeAuthDeployment", () => {
 		).toThrow(/anonymousPolicy='allow'/);
 	});
 
-	test("acknowledgeOpenAccess: true allows the open-auth combination", () => {
-		expect(() =>
-			assertSafeAuthDeployment({
-				controlPlane: ASTRA_CP,
-				auth: {
-					mode: "disabled",
-					anonymousPolicy: "allow",
-					acknowledgeOpenAccess: true,
-					bootstrapTokenRef: null,
-				},
-			}),
-		).not.toThrow();
-	});
-
-	test("OIDC client without sessionSecretRef on file CP is rejected", () => {
+	test("OIDC client without sessionSecretRef on file CP is fatal regardless of ack", () => {
+		// The session-key requirement has no opt-out — an ephemeral
+		// key invalidates browser sessions on restart and breaks
+		// across replicas, so there's no scenario where defaulting it
+		// makes sense on a non-memory CP.
 		expect(() =>
 			assertSafeAuthDeployment({
 				controlPlane: FILE_CP,
-				auth: {
-					mode: "oidc",
-					anonymousPolicy: "reject",
-					acknowledgeOpenAccess: false,
-					bootstrapTokenRef: null,
-					oidc: {
-						client: { sessionSecretRef: null },
-					},
-				},
-			}),
-		).toThrow(/sessionSecretRef is required/);
-	});
-
-	test("OIDC client without sessionSecretRef cannot be opted out via acknowledgeOpenAccess", () => {
-		// `acknowledgeOpenAccess` only excuses open auth — the session-key
-		// requirement is unconditional because an ephemeral key is broken
-		// across replicas regardless of whether the proxy auths upstream.
-		expect(() =>
-			assertSafeAuthDeployment({
-				controlPlane: ASTRA_CP,
 				auth: {
 					mode: "oidc",
 					anonymousPolicy: "reject",
@@ -122,7 +112,7 @@ describe("assertSafeAuthDeployment", () => {
 				auth: {
 					mode: "oidc",
 					anonymousPolicy: "reject",
-					acknowledgeOpenAccess: false,
+					acknowledgeOpenAccess: true,
 					bootstrapTokenRef: null,
 					oidc: {
 						client: { sessionSecretRef: "env:WB_SESSION_KEY" },
@@ -132,7 +122,7 @@ describe("assertSafeAuthDeployment", () => {
 		).not.toThrow();
 	});
 
-	test("error message names the control plane driver", () => {
+	test("strict-mode error names the control plane driver", () => {
 		expect(() =>
 			assertSafeAuthDeployment({
 				controlPlane: FILE_CP,
