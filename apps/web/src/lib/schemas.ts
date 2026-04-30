@@ -19,12 +19,17 @@ import type { components } from "./api-types.generated";
  */
 export type WorkspaceKind = components["schemas"]["Workspace"]["kind"];
 
-export const WorkspaceKindSchema: z.ZodType<WorkspaceKind> = z.enum([
+// No `: z.ZodType<WorkspaceKind>` annotation here — narrowing the
+// type erases `.options` from the surface, which the drift test in
+// `schemas.test.ts` reads to compare the enum against the generated
+// OpenAPI type. The `satisfies` check below preserves the safety
+// without shadowing the more-specific `ZodEnum` shape.
+export const WorkspaceKindSchema = z.enum([
 	"astra",
 	"hcd",
 	"openrag",
 	"mock",
-]);
+]) satisfies z.ZodType<WorkspaceKind>;
 
 export const SecretRefSchema = z
 	.string()
