@@ -13,7 +13,7 @@
  *
  *   1. **Stable indices.** `chunk(input).map(c => c.index)` is
  *      `[0, 1, 2, …]` — callers rely on it for deterministic record
- *      ids (`${documentUid}:${index}`).
+ *      ids (`${documentId}:${index}`).
  *   2. **Span correctness.** For every chunk,
  *      `input.text.slice(startChar, endChar) === chunk.text`. Overlap
  *      is baked into `startChar`, not appended to `text` out of band.

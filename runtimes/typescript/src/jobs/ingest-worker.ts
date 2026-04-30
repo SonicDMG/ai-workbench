@@ -33,7 +33,7 @@ export interface IngestWorkerDeps {
 
 export interface IngestWorkerArgs {
 	readonly deps: IngestWorkerDeps;
-	readonly workspaceUid: string;
+	readonly workspaceId: string;
 	readonly jobId: string;
 	readonly replicaId: string;
 	/**
@@ -47,12 +47,12 @@ export interface IngestWorkerArgs {
 
 async function failJob(
 	jobs: JobStore,
-	workspaceUid: string,
+	workspaceId: string,
 	jobId: string,
 	message: string,
 ): Promise<void> {
 	await jobs
-		.update(workspaceUid, jobId, {
+		.update(workspaceId, jobId, {
 			status: "failed",
 			errorMessage: safeErrorMessage(message),
 			leasedBy: null,
@@ -69,16 +69,16 @@ async function failJob(
  * patched). Same lease + heartbeat semantics as the catalog path.
  */
 export async function runKbIngestJob(args: IngestWorkerArgs): Promise<void> {
-	const { deps, workspaceUid, jobId, replicaId, input } = args;
+	const { deps, workspaceId, jobId, replicaId, input } = args;
 	const { store, drivers, embedders, jobs } = deps;
 
 	let job: JobRecord | null;
 	try {
-		job = await jobs.get(workspaceUid, jobId);
+		job = await jobs.get(workspaceId, jobId);
 	} catch (err) {
 		logger.warn(
 			{
-				workspace: workspaceUid,
+				workspace: workspaceId,
 				jobId,
 				err: err instanceof Error ? err.message : String(err),
 			},
@@ -88,7 +88,7 @@ export async function runKbIngestJob(args: IngestWorkerArgs): Promise<void> {
 	}
 	if (!job) {
 		logger.warn(
-			{ workspace: workspaceUid, jobId },
+			{ workspace: workspaceId, jobId },
 			"kb ingest worker: job not found; aborting",
 		);
 		return;
@@ -96,23 +96,23 @@ export async function runKbIngestJob(args: IngestWorkerArgs): Promise<void> {
 	if (job.status === "succeeded" || job.status === "failed") {
 		return;
 	}
-	if (!job.knowledgeBaseUid || !job.documentUid) {
+	if (!job.knowledgeBaseId || !job.documentId) {
 		await failJob(
 			jobs,
-			workspaceUid,
+			workspaceId,
 			jobId,
-			"job is missing knowledgeBaseUid or documentUid; cannot run kb ingest pipeline",
+			"job is missing knowledgeBaseId or documentId; cannot run kb ingest pipeline",
 		);
 		return;
 	}
 
 	let resolved: Awaited<ReturnType<typeof resolveKb>>;
 	try {
-		resolved = await resolveKb(store, workspaceUid, job.knowledgeBaseUid);
+		resolved = await resolveKb(store, workspaceId, job.knowledgeBaseId);
 	} catch (err) {
 		await failJob(
 			jobs,
-			workspaceUid,
+			workspaceId,
 			jobId,
 			`kb resolution failed: ${safeErrorMessage(err)}`,
 		);
@@ -120,7 +120,7 @@ export async function runKbIngestJob(args: IngestWorkerArgs): Promise<void> {
 	}
 
 	try {
-		await jobs.update(workspaceUid, jobId, {
+		await jobs.update(workspaceId, jobId, {
 			status: "running",
 			leasedBy: replicaId,
 			leasedAt: new Date().toISOString(),
@@ -131,12 +131,12 @@ export async function runKbIngestJob(args: IngestWorkerArgs): Promise<void> {
 				workspace: resolved.workspace,
 				knowledgeBase: resolved.knowledgeBase,
 				descriptor: resolved.descriptor,
-				documentUid: job.documentUid,
+				documentId: job.documentId,
 			},
 			input,
 			(p) => {
 				void jobs
-					.update(workspaceUid, jobId, {
+					.update(workspaceId, jobId, {
 						processed: p.processed,
 						total: p.total,
 						leasedAt: new Date().toISOString(),
@@ -144,7 +144,7 @@ export async function runKbIngestJob(args: IngestWorkerArgs): Promise<void> {
 					.catch(() => undefined);
 			},
 		);
-		await jobs.update(workspaceUid, jobId, {
+		await jobs.update(workspaceId, jobId, {
 			status: "succeeded",
 			result: { chunks: result.chunks },
 			leasedBy: null,
@@ -152,7 +152,7 @@ export async function runKbIngestJob(args: IngestWorkerArgs): Promise<void> {
 		});
 	} catch (err) {
 		await jobs
-			.update(workspaceUid, jobId, {
+			.update(workspaceId, jobId, {
 				status: "failed",
 				errorMessage: safeErrorMessage(err),
 				leasedBy: null,

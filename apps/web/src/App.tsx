@@ -84,20 +84,20 @@ function RoutedView() {
 					<Route path="/" element={<WorkspacesPage />} />
 					<Route path="/onboarding" element={<OnboardingPage />} />
 					<Route
-						path="/workspaces/:workspaceUid"
+						path="/workspaces/:workspaceId"
 						element={<WorkspaceDetailPage />}
 					/>
-					<Route path="/workspaces/:workspaceUid/chat" element={<ChatPage />} />
+					<Route path="/workspaces/:workspaceId/chat" element={<ChatPage />} />
 					<Route
-						path="/workspaces/:workspaceUid/agents"
+						path="/workspaces/:workspaceId/agents"
 						element={<AgentsPage />}
 					/>
 					<Route
-						path="/workspaces/:workspaceUid/knowledge-bases/:knowledgeBaseUid"
+						path="/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId"
 						element={<KnowledgeBaseExplorerPage />}
 					/>
 					<Route
-						path="/workspaces/:workspaceUid/knowledge-bases/:knowledgeBaseUid/playground"
+						path="/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId/playground"
 						element={<PlaygroundPage />}
 					/>
 					<Route path="/playground" element={<PlaygroundPage />} />

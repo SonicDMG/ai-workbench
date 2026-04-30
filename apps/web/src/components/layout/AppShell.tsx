@@ -14,7 +14,7 @@ import { useWorkspaces } from "@/hooks/useWorkspaces";
 
 export function AppShell({ children }: { children: ReactNode }) {
 	const { pathname } = useLocation();
-	const currentWorkspaceUid = currentWorkspaceUidFromPath(pathname);
+	const currentWorkspaceId = currentWorkspaceIdFromPath(pathname);
 
 	return (
 		<div className="min-h-full flex flex-col bg-[#f4f4f4] text-[#161616]">
@@ -38,7 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 							</span>
 						</div>
 					</Link>
-					<WorkspaceSwitcher currentWorkspaceUid={currentWorkspaceUid} />
+					<WorkspaceSwitcher currentWorkspaceId={currentWorkspaceId} />
 					<nav className="flex shrink-0 items-center gap-1 text-sm">
 						<UserMenu />
 						<a
@@ -76,14 +76,14 @@ export function AppShell({ children }: { children: ReactNode }) {
 }
 
 function WorkspaceSwitcher({
-	currentWorkspaceUid,
+	currentWorkspaceId,
 }: {
-	currentWorkspaceUid: string | undefined;
+	currentWorkspaceId: string | undefined;
 }) {
 	const navigate = useNavigate();
 	const workspaces = useWorkspaces();
 	const currentWorkspace = workspaces.data?.find(
-		(w) => w.workspaceId === currentWorkspaceUid,
+		(w) => w.workspaceId === currentWorkspaceId,
 	);
 
 	if (workspaces.isLoading) {
@@ -101,8 +101,8 @@ function WorkspaceSwitcher({
 	return (
 		<div className="flex min-w-0 flex-1 items-center gap-2">
 			<Select
-				value={currentWorkspaceUid ?? ""}
-				onValueChange={(uid) => navigate(`/workspaces/${uid}`)}
+				value={currentWorkspaceId ?? ""}
+				onValueChange={(workspaceId) => navigate(`/workspaces/${workspaceId}`)}
 				disabled={rows.length === 0}
 			>
 				<SelectTrigger
@@ -141,9 +141,9 @@ function WorkspaceSwitcher({
 	);
 }
 
-function currentWorkspaceUidFromPath(pathname: string): string | undefined {
+function currentWorkspaceIdFromPath(pathname: string): string | undefined {
 	const match =
-		matchPath({ path: "/workspaces/:workspaceUid", end: true }, pathname) ??
-		matchPath({ path: "/workspaces/:workspaceUid/*", end: false }, pathname);
-	return match?.params.workspaceUid;
+		matchPath({ path: "/workspaces/:workspaceId", end: true }, pathname) ??
+		matchPath({ path: "/workspaces/:workspaceId/*", end: false }, pathname);
+	return match?.params.workspaceId;
 }

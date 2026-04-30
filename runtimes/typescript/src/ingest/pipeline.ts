@@ -65,7 +65,7 @@ export interface KbIngestContext {
 	/** Synthesised driver descriptor — the data plane stays
 	 * descriptor-shaped while the control plane speaks KB. */
 	readonly descriptor: VectorStoreRecord;
-	readonly documentUid: string;
+	readonly documentId: string;
 }
 
 /**
@@ -80,7 +80,7 @@ export async function runKbIngest(
 	onProgress?: (p: IngestProgress) => void,
 ): Promise<IngestResult> {
 	const { store, drivers, embedders } = deps;
-	const { workspace, knowledgeBase, descriptor, documentUid } = ctx;
+	const { workspace, knowledgeBase, descriptor, documentId } = ctx;
 	const kbId = knowledgeBase.knowledgeBaseId;
 
 	const chunkingService = await store.getChunkingService(
@@ -98,7 +98,7 @@ export async function runKbIngest(
 		metadata: input.metadata,
 	});
 
-	await store.updateRagDocument(workspace.uid, kbId, documentUid, {
+	await store.updateRagDocument(workspace.uid, kbId, documentId, {
 		chunkTotal: chunks.length,
 	});
 	onProgress?.({ processed: 0, total: chunks.length });
@@ -112,12 +112,12 @@ export async function runKbIngest(
 				driver,
 				embedders,
 				records: chunks.map((chunk) => ({
-					id: `${documentUid}:${chunk.index}`,
+					id: `${documentId}:${chunk.index}`,
 					text: chunk.text,
 					payload: {
 						...chunk.metadata,
 						[KB_SCOPE_KEY]: kbId,
-						[DOCUMENT_SCOPE_KEY]: documentUid,
+						[DOCUMENT_SCOPE_KEY]: documentId,
 						[CHUNK_INDEX_KEY]: chunk.index,
 						[CHUNK_TEXT_KEY]: chunk.text,
 					},
@@ -125,14 +125,14 @@ export async function runKbIngest(
 			});
 		}
 		onProgress?.({ processed: chunks.length, total: chunks.length });
-		await store.updateRagDocument(workspace.uid, kbId, documentUid, {
+		await store.updateRagDocument(workspace.uid, kbId, documentId, {
 			status: "ready",
 			ingestedAt: new Date().toISOString(),
 		});
 		return { chunks: chunks.length };
 	} catch (err) {
 		await store
-			.updateRagDocument(workspace.uid, kbId, documentUid, {
+			.updateRagDocument(workspace.uid, kbId, documentId, {
 				status: "failed",
 				errorMessage: safeErrorMessage(err),
 			})

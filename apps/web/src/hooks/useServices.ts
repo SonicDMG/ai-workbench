@@ -29,62 +29,60 @@ const KIND_PATH: Record<ServiceKind, string> = {
 	reranking: "reranking-services",
 };
 
-function keys(workspaceUid: string, kind: ServiceKind) {
-	return ["workspaces", workspaceUid, KIND_PATH[kind]] as const;
+function keys(workspaceId: string, kind: ServiceKind) {
+	return ["workspaces", workspaceId, KIND_PATH[kind]] as const;
 }
 
 export function useChunkingServices(
-	workspaceUid: string | undefined,
+	workspaceId: string | undefined,
 ): UseQueryResult<ChunkingServiceRecord[], Error> {
 	return useQuery({
-		queryKey: workspaceUid
-			? keys(workspaceUid, "chunking")
+		queryKey: workspaceId
+			? keys(workspaceId, "chunking")
 			: ["workspaces", "_", "chunking-services"],
-		queryFn: () => (workspaceUid ? api.listChunkingServices(workspaceUid) : []),
-		enabled: Boolean(workspaceUid),
+		queryFn: () => (workspaceId ? api.listChunkingServices(workspaceId) : []),
+		enabled: Boolean(workspaceId),
 	});
 }
 
 export function useEmbeddingServices(
-	workspaceUid: string | undefined,
+	workspaceId: string | undefined,
 ): UseQueryResult<EmbeddingServiceRecord[], Error> {
 	return useQuery({
-		queryKey: workspaceUid
-			? keys(workspaceUid, "embedding")
+		queryKey: workspaceId
+			? keys(workspaceId, "embedding")
 			: ["workspaces", "_", "embedding-services"],
-		queryFn: () =>
-			workspaceUid ? api.listEmbeddingServices(workspaceUid) : [],
-		enabled: Boolean(workspaceUid),
+		queryFn: () => (workspaceId ? api.listEmbeddingServices(workspaceId) : []),
+		enabled: Boolean(workspaceId),
 	});
 }
 
 export function useRerankingServices(
-	workspaceUid: string | undefined,
+	workspaceId: string | undefined,
 ): UseQueryResult<RerankingServiceRecord[], Error> {
 	return useQuery({
-		queryKey: workspaceUid
-			? keys(workspaceUid, "reranking")
+		queryKey: workspaceId
+			? keys(workspaceId, "reranking")
 			: ["workspaces", "_", "reranking-services"],
-		queryFn: () =>
-			workspaceUid ? api.listRerankingServices(workspaceUid) : [],
-		enabled: Boolean(workspaceUid),
+		queryFn: () => (workspaceId ? api.listRerankingServices(workspaceId) : []),
+		enabled: Boolean(workspaceId),
 	});
 }
 
 export function useCreateChunkingService(
-	workspaceUid: string,
+	workspaceId: string,
 ): UseMutationResult<ChunkingServiceRecord, Error, CreateChunkingServiceInput> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (input) => api.createChunkingService(workspaceUid, input),
+		mutationFn: (input) => api.createChunkingService(workspaceId, input),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys(workspaceUid, "chunking") });
+			qc.invalidateQueries({ queryKey: keys(workspaceId, "chunking") });
 		},
 	});
 }
 
 export function useCreateEmbeddingService(
-	workspaceUid: string,
+	workspaceId: string,
 ): UseMutationResult<
 	EmbeddingServiceRecord,
 	Error,
@@ -92,15 +90,15 @@ export function useCreateEmbeddingService(
 > {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (input) => api.createEmbeddingService(workspaceUid, input),
+		mutationFn: (input) => api.createEmbeddingService(workspaceId, input),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys(workspaceUid, "embedding") });
+			qc.invalidateQueries({ queryKey: keys(workspaceId, "embedding") });
 		},
 	});
 }
 
 export function useCreateRerankingService(
-	workspaceUid: string,
+	workspaceId: string,
 ): UseMutationResult<
 	RerankingServiceRecord,
 	Error,
@@ -108,45 +106,48 @@ export function useCreateRerankingService(
 > {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (input) => api.createRerankingService(workspaceUid, input),
+		mutationFn: (input) => api.createRerankingService(workspaceId, input),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys(workspaceUid, "reranking") });
+			qc.invalidateQueries({ queryKey: keys(workspaceId, "reranking") });
 		},
 	});
 }
 
 export function useDeleteChunkingService(
-	workspaceUid: string,
+	workspaceId: string,
 ): UseMutationResult<void, Error, string> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (uid) => api.deleteChunkingService(workspaceUid, uid),
+		mutationFn: (chunkingServiceId) =>
+			api.deleteChunkingService(workspaceId, chunkingServiceId),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys(workspaceUid, "chunking") });
+			qc.invalidateQueries({ queryKey: keys(workspaceId, "chunking") });
 		},
 	});
 }
 
 export function useDeleteEmbeddingService(
-	workspaceUid: string,
+	workspaceId: string,
 ): UseMutationResult<void, Error, string> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (uid) => api.deleteEmbeddingService(workspaceUid, uid),
+		mutationFn: (embeddingServiceId) =>
+			api.deleteEmbeddingService(workspaceId, embeddingServiceId),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys(workspaceUid, "embedding") });
+			qc.invalidateQueries({ queryKey: keys(workspaceId, "embedding") });
 		},
 	});
 }
 
 export function useDeleteRerankingService(
-	workspaceUid: string,
+	workspaceId: string,
 ): UseMutationResult<void, Error, string> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (uid) => api.deleteRerankingService(workspaceUid, uid),
+		mutationFn: (rerankingServiceId) =>
+			api.deleteRerankingService(workspaceId, rerankingServiceId),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys(workspaceUid, "reranking") });
+			qc.invalidateQueries({ queryKey: keys(workspaceId, "reranking") });
 		},
 	});
 }

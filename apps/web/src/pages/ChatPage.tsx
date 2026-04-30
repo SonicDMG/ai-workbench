@@ -52,15 +52,15 @@ import { cn, formatDate } from "@/lib/utils";
  * message to an agent and see the streamed reply.
  */
 export function ChatPage() {
-	const { workspaceUid } = useParams<{ workspaceUid: string }>();
+	const { workspaceId } = useParams<{ workspaceId: string }>();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const activeAgentId = searchParams.get("agent");
 	const activeConversationId = searchParams.get("conversation");
 
-	const workspaceQuery = useWorkspace(workspaceUid);
-	const agentsQuery = useAgents(workspaceUid);
+	const workspaceQuery = useWorkspace(workspaceId);
+	const agentsQuery = useAgents(workspaceId);
 
-	if (!workspaceUid) return <Navigate to="/" replace />;
+	if (!workspaceId) return <Navigate to="/" replace />;
 	if (workspaceQuery.isLoading)
 		return <LoadingState label="Loading workspace…" />;
 	if (workspaceQuery.isError || !workspaceQuery.data) {
@@ -108,7 +108,7 @@ export function ChatPage() {
 	return (
 		<div className="flex flex-col gap-6">
 			<Button variant="ghost" size="sm" asChild className="-ml-3 self-start">
-				<Link to={`/workspaces/${workspaceUid}`}>
+				<Link to={`/workspaces/${workspaceId}`}>
 					<ArrowLeft className="h-4 w-4" />
 					{workspace.name}
 				</Link>
@@ -135,21 +135,18 @@ export function ChatPage() {
 					message={formatApiError(agentsQuery.error)}
 				/>
 			) : agents.length === 0 ? (
-				<CreateFirstAgent
-					workspaceUid={workspaceUid}
-					onCreated={onSelectAgent}
-				/>
+				<CreateFirstAgent workspaceId={workspaceId} onCreated={onSelectAgent} />
 			) : activeAgent ? (
 				<>
 					<AgentPicker
 						agents={agents}
 						activeAgentId={activeAgent.agentId}
 						onSelect={onSelectAgent}
-						workspaceUid={workspaceUid}
+						workspaceId={workspaceId}
 					/>
 					<div className="grid grid-cols-[14rem_minmax(0,1fr)] gap-4 min-h-[28rem]">
 						<ConversationSidebar
-							workspaceUid={workspaceUid}
+							workspaceId={workspaceId}
 							agentId={activeAgent.agentId}
 							activeConversationId={activeConversationId}
 							onSelect={onSelectConversation}
@@ -157,14 +154,14 @@ export function ChatPage() {
 						{activeConversationId ? (
 							<ConversationThread
 								key={activeConversationId}
-								workspaceUid={workspaceUid}
+								workspaceId={workspaceId}
 								agent={activeAgent}
 								conversationId={activeConversationId}
 								onDeleted={onClearConversation}
 							/>
 						) : (
 							<EmptyConversationPane
-								workspaceUid={workspaceUid}
+								workspaceId={workspaceId}
 								agent={activeAgent}
 								onCreated={(c) => onSelectConversation(c.conversationId)}
 							/>
@@ -177,12 +174,12 @@ export function ChatPage() {
 }
 
 interface CreateFirstAgentProps {
-	workspaceUid: string;
+	workspaceId: string;
 	onCreated: (agentId: string) => void;
 }
 
-function CreateFirstAgent({ workspaceUid, onCreated }: CreateFirstAgentProps) {
-	const create = useCreateAgent(workspaceUid);
+function CreateFirstAgent({ workspaceId, onCreated }: CreateFirstAgentProps) {
+	const create = useCreateAgent(workspaceId);
 	const [name, setName] = useState("");
 	const [systemPrompt, setSystemPrompt] = useState("");
 
@@ -273,18 +270,18 @@ interface AgentPickerProps {
 	agents: readonly AgentRecord[];
 	activeAgentId: string;
 	onSelect: (agentId: string) => void;
-	workspaceUid: string;
+	workspaceId: string;
 }
 
 function AgentPicker({
 	agents,
 	activeAgentId,
 	onSelect,
-	workspaceUid,
+	workspaceId,
 }: AgentPickerProps) {
 	const manageLink = (
 		<Link
-			to={`/workspaces/${workspaceUid}/agents`}
+			to={`/workspaces/${workspaceId}/agents`}
 			className="ml-auto text-xs text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
 		>
 			Manage agents
@@ -331,20 +328,20 @@ function AgentPicker({
 }
 
 interface ConversationSidebarProps {
-	workspaceUid: string;
+	workspaceId: string;
 	agentId: string;
 	activeConversationId: string | null;
 	onSelect: (conversationId: string) => void;
 }
 
 function ConversationSidebar({
-	workspaceUid,
+	workspaceId,
 	agentId,
 	activeConversationId,
 	onSelect,
 }: ConversationSidebarProps) {
-	const conversationsQuery = useConversations(workspaceUid, agentId);
-	const create = useCreateConversation(workspaceUid, agentId);
+	const conversationsQuery = useConversations(workspaceId, agentId);
+	const create = useCreateConversation(workspaceId, agentId);
 	const conversations = conversationsQuery.data ?? [];
 
 	const onNew = async () => {
@@ -421,17 +418,17 @@ function ConversationSidebar({
 }
 
 interface EmptyConversationPaneProps {
-	workspaceUid: string;
+	workspaceId: string;
 	agent: AgentRecord;
 	onCreated: (conv: ConversationRecord) => void;
 }
 
 function EmptyConversationPane({
-	workspaceUid,
+	workspaceId,
 	agent,
 	onCreated,
 }: EmptyConversationPaneProps) {
-	const create = useCreateConversation(workspaceUid, agent.agentId);
+	const create = useCreateConversation(workspaceId, agent.agentId);
 	return (
 		<Card className="flex flex-col">
 			<CardContent className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
@@ -470,31 +467,31 @@ function EmptyConversationPane({
 }
 
 interface ConversationThreadProps {
-	workspaceUid: string;
+	workspaceId: string;
 	agent: AgentRecord;
 	conversationId: string;
 	onDeleted: () => void;
 }
 
 function ConversationThread({
-	workspaceUid,
+	workspaceId,
 	agent,
 	conversationId,
 	onDeleted,
 }: ConversationThreadProps) {
 	const conversationQuery = useConversation(
-		workspaceUid,
+		workspaceId,
 		agent.agentId,
 		conversationId,
 	);
 	const messagesQuery = useConversationMessages(
-		workspaceUid,
+		workspaceId,
 		agent.agentId,
 		conversationId,
 	);
-	const deleteConv = useDeleteConversation(workspaceUid, agent.agentId);
+	const deleteConv = useDeleteConversation(workspaceId, agent.agentId);
 	const stream = useSendConversationStream(
-		workspaceUid,
+		workspaceId,
 		agent.agentId,
 		conversationId,
 	);
@@ -618,7 +615,7 @@ function ConversationThread({
 								<MessageBubble
 									key={m.messageId}
 									message={m}
-									workspaceId={workspaceUid}
+									workspaceId={workspaceId}
 									agentName={agent.name}
 								/>
 							))}

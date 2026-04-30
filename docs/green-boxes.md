@@ -43,11 +43,11 @@ Every green box serves:
 | `GET /` | Service banner (JSON) when no UI is embedded; the UI shell (HTML) in the bundled TypeScript + UI image |
 | `GET /docs` | OpenAPI reference UI |
 | `GET /api/v1/openapi.json` | Machine-readable OpenAPI 3.1 doc |
-| `(CRUD)` `/api/v1/workspaces[/{uid}]` | Workspace lifecycle |
-| `(CRUD)` `/api/v1/workspaces/{w}/{chunking,embedding,reranking}-services[/{uid}]` | Service-definition lifecycle |
-| `(CRUD)` `/api/v1/workspaces/{w}/knowledge-bases[/{uid}]` | KB lifecycle (POST auto-provisions the underlying vector collection; DELETE drops it) |
+| `(CRUD)` `/api/v1/workspaces[/{id}]` | Workspace lifecycle |
+| `(CRUD)` `/api/v1/workspaces/{w}/{chunking,embedding,reranking}-services[/{id}]` | Service-definition lifecycle |
+| `(CRUD)` `/api/v1/workspaces/{w}/knowledge-bases[/{id}]` | KB lifecycle (POST auto-provisions the underlying vector collection; DELETE drops it) |
 | `POST / DELETE / POST` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records`, `.../records/{rid}`, `.../search` | Data plane — upsert, delete, vector / hybrid search |
-| `(CRUD)` `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents[/{uid}]` | Document metadata + chunks listing under a KB |
+| `(CRUD)` `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents[/{id}]` | Document metadata + chunks listing under a KB |
 | `POST` | `/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest[?async=true]` | Sync / async ingest pipeline |
 
 Full contract details: [`api-spec.md`](api-spec.md).

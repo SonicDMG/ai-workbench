@@ -13,77 +13,77 @@ import type {
 } from "@/lib/schemas";
 
 const keys = {
-	all: (workspaceUid: string) =>
-		["workspaces", workspaceUid, "knowledge-bases"] as const,
-	one: (workspaceUid: string, kbUid: string) =>
-		["workspaces", workspaceUid, "knowledge-bases", kbUid] as const,
+	all: (workspaceId: string) =>
+		["workspaces", workspaceId, "knowledge-bases"] as const,
+	one: (workspaceId: string, kbId: string) =>
+		["workspaces", workspaceId, "knowledge-bases", kbId] as const,
 };
 
 export function useKnowledgeBases(
-	workspaceUid: string | undefined,
+	workspaceId: string | undefined,
 ): UseQueryResult<KnowledgeBaseRecord[], Error> {
 	return useQuery({
-		queryKey: workspaceUid
-			? keys.all(workspaceUid)
+		queryKey: workspaceId
+			? keys.all(workspaceId)
 			: ["workspaces", "_", "knowledge-bases"],
-		queryFn: () => (workspaceUid ? api.listKnowledgeBases(workspaceUid) : []),
-		enabled: Boolean(workspaceUid),
+		queryFn: () => (workspaceId ? api.listKnowledgeBases(workspaceId) : []),
+		enabled: Boolean(workspaceId),
 	});
 }
 
 export function useKnowledgeBase(
-	workspaceUid: string | undefined,
-	kbUid: string | undefined,
+	workspaceId: string | undefined,
+	kbId: string | undefined,
 ): UseQueryResult<KnowledgeBaseRecord, Error> {
 	return useQuery({
 		queryKey:
-			workspaceUid && kbUid
-				? keys.one(workspaceUid, kbUid)
+			workspaceId && kbId
+				? keys.one(workspaceId, kbId)
 				: ["workspaces", "_", "knowledge-bases", "_"],
 		queryFn: () => {
-			if (!workspaceUid || !kbUid) {
-				throw new Error("useKnowledgeBase requires workspaceUid + kbUid");
+			if (!workspaceId || !kbId) {
+				throw new Error("useKnowledgeBase requires workspaceId + kbId");
 			}
-			return api.getKnowledgeBase(workspaceUid, kbUid);
+			return api.getKnowledgeBase(workspaceId, kbId);
 		},
-		enabled: Boolean(workspaceUid && kbUid),
+		enabled: Boolean(workspaceId && kbId),
 	});
 }
 
 export function useCreateKnowledgeBase(
-	workspaceUid: string,
+	workspaceId: string,
 ): UseMutationResult<KnowledgeBaseRecord, Error, CreateKnowledgeBaseInput> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (input) => api.createKnowledgeBase(workspaceUid, input),
+		mutationFn: (input) => api.createKnowledgeBase(workspaceId, input),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys.all(workspaceUid) });
+			qc.invalidateQueries({ queryKey: keys.all(workspaceId) });
 		},
 	});
 }
 
 export function useUpdateKnowledgeBase(
-	workspaceUid: string,
-	kbUid: string,
+	workspaceId: string,
+	kbId: string,
 ): UseMutationResult<KnowledgeBaseRecord, Error, UpdateKnowledgeBaseInput> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (patch) => api.updateKnowledgeBase(workspaceUid, kbUid, patch),
+		mutationFn: (patch) => api.updateKnowledgeBase(workspaceId, kbId, patch),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys.all(workspaceUid) });
-			qc.invalidateQueries({ queryKey: keys.one(workspaceUid, kbUid) });
+			qc.invalidateQueries({ queryKey: keys.all(workspaceId) });
+			qc.invalidateQueries({ queryKey: keys.one(workspaceId, kbId) });
 		},
 	});
 }
 
 export function useDeleteKnowledgeBase(
-	workspaceUid: string,
+	workspaceId: string,
 ): UseMutationResult<void, Error, string> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (kbUid) => api.deleteKnowledgeBase(workspaceUid, kbUid),
+		mutationFn: (kbId) => api.deleteKnowledgeBase(workspaceId, kbId),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: keys.all(workspaceUid) });
+			qc.invalidateQueries({ queryKey: keys.all(workspaceId) });
 		},
 	});
 }

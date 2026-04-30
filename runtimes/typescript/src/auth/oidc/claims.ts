@@ -4,7 +4,7 @@
  * The claim names come from `auth.oidc.claims` in workbench.yaml, so
  * operators can point at whatever their IdP actually puts in tokens.
  * The `workspaceScopes` claim is expected to hold a JSON array of
- * workspace UIDs; if it's missing, the subject authenticates but has
+ * workspace IDs; if it's missing, the subject authenticates but has
  * an empty scope list and will 403 on every workspace route (the
  * authz helpers treat `null` — not `[]` — as "unscoped / admin").
  */

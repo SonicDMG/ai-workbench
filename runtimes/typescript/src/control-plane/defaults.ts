@@ -71,7 +71,7 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT =
  * resolution when rows are created in the same tick). Produces a
  * total order, which is what callers and fixtures rely on.
  */
-export function byCreatedAtThenUid<
+export function byCreatedAtThenId<
 	T extends { readonly createdAt: string; readonly uid: string },
 >(a: T, b: T): number {
 	if (a.createdAt < b.createdAt) return -1;
@@ -83,7 +83,7 @@ export function byCreatedAtThenUid<
 
 /**
  * Comparator for records that use `keyId` instead of `uid` for their
- * identity. Same semantics as {@link byCreatedAtThenUid}.
+ * identity. Same semantics as {@link byCreatedAtThenId}.
  */
 export function byCreatedAtThenKeyId<
 	T extends { readonly createdAt: string; readonly keyId: string },

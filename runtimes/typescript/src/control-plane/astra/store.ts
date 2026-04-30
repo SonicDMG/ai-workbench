@@ -51,8 +51,8 @@ import {
 } from "../../astra-client/converters.js";
 import type { TablesBundle } from "../../astra-client/tables.js";
 import {
+	byCreatedAtThenId,
 	byCreatedAtThenKeyId,
-	byCreatedAtThenUid,
 	DEFAULT_AUTH_TYPE,
 	DEFAULT_DISTANCE_METRIC,
 	DEFAULT_KB_STATUS,
@@ -170,7 +170,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 
 	async listWorkspaces(): Promise<readonly WorkspaceRecord[]> {
 		const rows = await this.tables.workspaces.find({}).toArray();
-		return rows.map(workspaceFromRow).sort(byCreatedAtThenUid);
+		return rows.map(workspaceFromRow).sort(byCreatedAtThenId);
 	}
 
 	async getWorkspace(uid: string): Promise<WorkspaceRecord | null> {
@@ -182,7 +182,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		const uid = input.uid ?? randomUUID();
 		if (await this.tables.workspaces.findOne({ uid })) {
 			throw new ControlPlaneConflictError(
-				`workspace with uid '${uid}' already exists`,
+				`workspace with id '${uid}' already exists`,
 			);
 		}
 		const now = nowIso();
@@ -391,7 +391,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			})
 		) {
 			throw new ControlPlaneConflictError(
-				`knowledge base with uid '${uid}' already exists in workspace '${workspace}'`,
+				`knowledge base with id '${uid}' already exists in workspace '${workspace}'`,
 			);
 		}
 		const now = nowIso();
@@ -556,7 +556,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			})
 		) {
 			throw new ControlPlaneConflictError(
-				`knowledge filter with uid '${uid}' already exists in knowledge base '${knowledgeBase}'`,
+				`knowledge filter with id '${uid}' already exists in knowledge base '${knowledgeBase}'`,
 			);
 		}
 		const now = nowIso();
@@ -677,7 +677,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			})
 		) {
 			throw new ControlPlaneConflictError(
-				`document with uid '${uid}' already exists in knowledge base '${knowledgeBase}'`,
+				`document with id '${uid}' already exists in knowledge base '${knowledgeBase}'`,
 			);
 		}
 		const now = nowIso();
@@ -880,7 +880,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			})
 		) {
 			throw new ControlPlaneConflictError(
-				`chunking service with uid '${uid}' already exists in workspace '${workspace}'`,
+				`chunking service with id '${uid}' already exists in workspace '${workspace}'`,
 			);
 		}
 		const now = nowIso();
@@ -998,7 +998,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			})
 		) {
 			throw new ControlPlaneConflictError(
-				`embedding service with uid '${uid}' already exists in workspace '${workspace}'`,
+				`embedding service with id '${uid}' already exists in workspace '${workspace}'`,
 			);
 		}
 		const now = nowIso();
@@ -1123,7 +1123,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			})
 		) {
 			throw new ControlPlaneConflictError(
-				`reranking service with uid '${uid}' already exists in workspace '${workspace}'`,
+				`reranking service with id '${uid}' already exists in workspace '${workspace}'`,
 			);
 		}
 		const now = nowIso();
@@ -1256,7 +1256,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			})
 		) {
 			throw new ControlPlaneConflictError(
-				`llm service with uid '${uid}' already exists in workspace '${workspace}'`,
+				`llm service with id '${uid}' already exists in workspace '${workspace}'`,
 			);
 		}
 		const now = nowIso();
@@ -1846,7 +1846,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 	private async assertServiceNotReferenced(
 		workspace: string,
 		field: "embeddingServiceId" | "chunkingServiceId" | "rerankingServiceId",
-		serviceUid: string,
+		serviceId: string,
 	): Promise<void> {
 		const rows = await this.tables.knowledgeBases
 			.find({ workspace_id: workspace })
@@ -1857,10 +1857,10 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 				: field === "chunkingServiceId"
 					? "chunking_service_id"
 					: "reranking_service_id";
-		const ref = rows.find((kb) => kb[fieldOnRow] === serviceUid);
+		const ref = rows.find((kb) => kb[fieldOnRow] === serviceId);
 		if (ref) {
 			throw new ControlPlaneConflictError(
-				`service '${serviceUid}' is referenced by knowledge base '${ref.knowledge_base_id}' (${field})`,
+				`service '${serviceId}' is referenced by knowledge base '${ref.knowledge_base_id}' (${field})`,
 			);
 		}
 	}
@@ -1876,17 +1876,17 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 	private async assertAgentServiceNotReferenced(
 		workspace: string,
 		field: "llmServiceId" | "rerankingServiceId",
-		serviceUid: string,
+		serviceId: string,
 	): Promise<void> {
 		const rows = await this.tables.agents
 			.find({ workspace_id: workspace })
 			.toArray();
 		const fieldOnRow: keyof (typeof rows)[number] =
 			field === "llmServiceId" ? "llm_service_id" : "reranking_service_id";
-		const ref = rows.find((agent) => agent[fieldOnRow] === serviceUid);
+		const ref = rows.find((agent) => agent[fieldOnRow] === serviceId);
 		if (ref) {
 			throw new ControlPlaneConflictError(
-				`service '${serviceUid}' is referenced by agent '${ref.agent_id}' (${field})`,
+				`service '${serviceId}' is referenced by agent '${ref.agent_id}' (${field})`,
 			);
 		}
 	}

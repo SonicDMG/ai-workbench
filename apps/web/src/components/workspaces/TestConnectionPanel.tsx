@@ -7,10 +7,10 @@ import { cn } from "@/lib/utils";
 
 /**
  * Compact button + inline result for
- * `POST /workspaces/{uid}/test-connection`.
+ * `POST /workspaces/{workspaceId}/test-connection`.
  */
-export function TestConnectionPanel({ uid }: { uid: string }) {
-	const probe = useTestConnection(uid);
+export function TestConnectionPanel({ workspaceId }: { workspaceId: string }) {
+	const probe = useTestConnection(workspaceId);
 	const result = probe.data;
 	const runtimeError = probe.error ? formatApiError(probe.error) : null;
 

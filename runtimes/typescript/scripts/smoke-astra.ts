@@ -127,10 +127,10 @@ async function main(): Promise<void> {
 		replicaId: config.runtime.replicaId,
 	});
 
-	let workspaceUid: string | null = null;
-	let chunkingServiceUid: string | null = null;
-	let embeddingServiceUid: string | null = null;
-	let knowledgeBaseUid: string | null = null;
+	let workspaceId: string | null = null;
+	let chunkingServiceId: string | null = null;
+	let embeddingServiceId: string | null = null;
+	let knowledgeBaseId: string | null = null;
 
 	try {
 		// 1. Create workspace.
@@ -147,12 +147,12 @@ async function main(): Promise<void> {
 		});
 		assertStatus(wsRes, 201, "workspace create");
 		const ws = (await wsRes.json()) as { uid: string };
-		workspaceUid = ws.uid;
-		log("workspace created", workspaceUid);
+		workspaceId = ws.uid;
+		log("workspace created", workspaceId);
 
 		// 2. Create execution services, then bind them into a KB.
 		const chunkRes = await app.request(
-			`/api/v1/workspaces/${workspaceUid}/chunking-services`,
+			`/api/v1/workspaces/${workspaceId}/chunking-services`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -165,11 +165,11 @@ async function main(): Promise<void> {
 		);
 		assertStatus(chunkRes, 201, "chunking-service create");
 		const chunk = (await chunkRes.json()) as { chunkingServiceId: string };
-		chunkingServiceUid = chunk.chunkingServiceId;
-		log("chunking service created", chunkingServiceUid);
+		chunkingServiceId = chunk.chunkingServiceId;
+		log("chunking service created", chunkingServiceId);
 
 		const embRes = await app.request(
-			`/api/v1/workspaces/${workspaceUid}/embedding-services`,
+			`/api/v1/workspaces/${workspaceId}/embedding-services`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -184,32 +184,32 @@ async function main(): Promise<void> {
 		);
 		assertStatus(embRes, 201, "embedding-service create");
 		const emb = (await embRes.json()) as { embeddingServiceId: string };
-		embeddingServiceUid = emb.embeddingServiceId;
-		log("embedding service created", embeddingServiceUid);
+		embeddingServiceId = emb.embeddingServiceId;
+		log("embedding service created", embeddingServiceId);
 
 		const kbRes = await app.request(
-			`/api/v1/workspaces/${workspaceUid}/knowledge-bases`,
+			`/api/v1/workspaces/${workspaceId}/knowledge-bases`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({
 					name: `kb-${RUN_ID}`,
-					embeddingServiceId: embeddingServiceUid,
-					chunkingServiceId: chunkingServiceUid,
+					embeddingServiceId: embeddingServiceId,
+					chunkingServiceId: chunkingServiceId,
 				}),
 			},
 		);
 		assertStatus(kbRes, 201, "knowledge-base create");
 		const kb = (await kbRes.json()) as { knowledgeBaseId: string };
-		knowledgeBaseUid = kb.knowledgeBaseId;
-		log("knowledge base created", knowledgeBaseUid);
+		knowledgeBaseId = kb.knowledgeBaseId;
+		log("knowledge base created", knowledgeBaseId);
 
 		// 4. Sync ingest. The mock embedder gives deterministic 4-dim
 		// vectors so we don't need an OpenAI key for this smoke.
 		const ingestText =
 			"Apples are red. Bananas are yellow. Cherries are red too. Dates are brown.";
 		const ingestRes = await app.request(
-			`/api/v1/workspaces/${workspaceUid}/knowledge-bases/${knowledgeBaseUid}/ingest`,
+			`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/ingest`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -225,7 +225,7 @@ async function main(): Promise<void> {
 
 		// 5. Async ingest — opens a job, polls, waits for terminal.
 		const asyncRes = await app.request(
-			`/api/v1/workspaces/${workspaceUid}/knowledge-bases/${knowledgeBaseUid}/ingest?async=true`,
+			`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/ingest?async=true`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -240,7 +240,7 @@ async function main(): Promise<void> {
 		const jobId = asyncBody.job.jobId;
 		log("async ingest queued", { jobId });
 
-		const final = await waitForJobTerminal(app, workspaceUid, jobId, 15_000);
+		const final = await waitForJobTerminal(app, workspaceId, jobId, 15_000);
 		if (final.status !== "succeeded") {
 			throw new Error(
 				`async ingest did not succeed; got ${final.status}: ${final.errorMessage}`,
@@ -250,7 +250,7 @@ async function main(): Promise<void> {
 
 		// 6. KB-scoped search.
 		const searchRes = await app.request(
-			`/api/v1/workspaces/${workspaceUid}/knowledge-bases/${knowledgeBaseUid}/search`,
+			`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/search`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -270,9 +270,9 @@ async function main(): Promise<void> {
 		// the backing vector collection, and service/config rows. The
 		// `wb_jobs_by_workspace` table is shared keyspace; orphan rows
 		// from this run age out via standard ops, no special cleanup.
-		if (workspaceUid) {
+		if (workspaceId) {
 			try {
-				const del = await app.request(`/api/v1/workspaces/${workspaceUid}`, {
+				const del = await app.request(`/api/v1/workspaces/${workspaceId}`, {
 					method: "DELETE",
 				});
 				log("cleanup workspace", { status: del.status });
@@ -297,14 +297,14 @@ function assertStatus(res: Response, expected: number, label: string): void {
 
 async function waitForJobTerminal(
 	app: { request: (input: string) => Response | Promise<Response> },
-	workspaceUid: string,
+	workspaceId: string,
 	jobId: string,
 	timeoutMs: number,
 ): Promise<{ status: string; processed: number; errorMessage: string | null }> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
 		const r = await app.request(
-			`/api/v1/workspaces/${workspaceUid}/jobs/${jobId}`,
+			`/api/v1/workspaces/${workspaceId}/jobs/${jobId}`,
 		);
 		if (r.status === 200) {
 			const body = (await r.json()) as {

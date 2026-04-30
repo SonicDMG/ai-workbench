@@ -19,30 +19,30 @@ export const queryClient = new QueryClient({
 export const keys = {
 	workspaces: {
 		all: ["workspaces"] as const,
-		detail: (uid: string) => ["workspaces", uid] as const,
+		detail: (workspaceId: string) => ["workspaces", workspaceId] as const,
 	},
 	agents: {
-		all: (workspaceUid: string) =>
-			["workspaces", workspaceUid, "agents"] as const,
-		detail: (workspaceUid: string, agentId: string) =>
-			["workspaces", workspaceUid, "agents", agentId] as const,
+		all: (workspaceId: string) =>
+			["workspaces", workspaceId, "agents"] as const,
+		detail: (workspaceId: string, agentId: string) =>
+			["workspaces", workspaceId, "agents", agentId] as const,
 	},
 	conversations: {
-		all: (workspaceUid: string, agentId: string) =>
-			["workspaces", workspaceUid, "agents", agentId, "conversations"] as const,
-		detail: (workspaceUid: string, agentId: string, conversationId: string) =>
+		all: (workspaceId: string, agentId: string) =>
+			["workspaces", workspaceId, "agents", agentId, "conversations"] as const,
+		detail: (workspaceId: string, agentId: string, conversationId: string) =>
 			[
 				"workspaces",
-				workspaceUid,
+				workspaceId,
 				"agents",
 				agentId,
 				"conversations",
 				conversationId,
 			] as const,
-		messages: (workspaceUid: string, agentId: string, conversationId: string) =>
+		messages: (workspaceId: string, agentId: string, conversationId: string) =>
 			[
 				"workspaces",
-				workspaceUid,
+				workspaceId,
 				"agents",
 				agentId,
 				"conversations",
@@ -51,9 +51,9 @@ export const keys = {
 			] as const,
 	},
 	llmServices: {
-		all: (workspaceUid: string) =>
-			["workspaces", workspaceUid, "llm-services"] as const,
-		detail: (workspaceUid: string, llmServiceId: string) =>
-			["workspaces", workspaceUid, "llm-services", llmServiceId] as const,
+		all: (workspaceId: string) =>
+			["workspaces", workspaceId, "llm-services"] as const,
+		detail: (workspaceId: string, llmServiceId: string) =>
+			["workspaces", workspaceId, "llm-services", llmServiceId] as const,
 	},
 };

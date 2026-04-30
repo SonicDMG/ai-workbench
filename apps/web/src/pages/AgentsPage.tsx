@@ -49,10 +49,10 @@ import { formatDate } from "@/lib/utils";
  * preselected.
  */
 export function AgentsPage() {
-	const { workspaceUid } = useParams<{ workspaceUid: string }>();
-	const workspaceQuery = useWorkspace(workspaceUid);
+	const { workspaceId } = useParams<{ workspaceId: string }>();
+	const workspaceQuery = useWorkspace(workspaceId);
 
-	if (!workspaceUid) return <Navigate to="/" replace />;
+	if (!workspaceId) return <Navigate to="/" replace />;
 	if (workspaceQuery.isLoading) {
 		return <LoadingState label="Loading workspace…" />;
 	}

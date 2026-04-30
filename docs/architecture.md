@@ -242,7 +242,7 @@ wb_rag_documents_by_knowledge_base_and_status (secondary index, by status)
 wb_rag_documents_by_content_hash              (dedup lookup)
 
 wb_jobs_by_workspace                          PK ((workspace), job_id)
-    kind, knowledge_base_uid, document_uid, status,
+    kind, knowledge_base_id, document_id, status,
     processed, total, result_json, error_message,
     leased_by, leased_at, ingest_input_json,
     created_at, updated_at
@@ -284,7 +284,7 @@ table for per-agent provider selection.
 ## Isolation and scoping
 
 - Every request targeting a specific resource carries the workspace
-  UID in the path: `/api/v1/workspaces/{workspaceId}/...`.
+  ID in the path: `/api/v1/workspaces/{workspaceId}/...`.
 - The control-plane store asserts the workspace exists before
   returning nested resources. Requests against a non-existent
   workspace return `404 workspace_not_found`.

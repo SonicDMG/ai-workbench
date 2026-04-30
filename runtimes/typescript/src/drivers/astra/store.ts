@@ -705,7 +705,7 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 	 * — in that case Astra has to fall back on its own KMS lookup
 	 * (configured out-of-band), or the call will 401.
 	 *
-	 * Cached per descriptor UID so a burst of queries only pays the
+	 * Cached per descriptor ID so a burst of queries only pays the
 	 * secret-resolver cost once. Workspace-level secrets rotate by
 	 * runtime restart, same as the DB-connection cache.
 	 */

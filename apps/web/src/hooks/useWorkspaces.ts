@@ -22,12 +22,14 @@ export function useWorkspaces(): UseQueryResult<Workspace[], Error> {
 }
 
 export function useWorkspace(
-	uid: string | undefined,
+	workspaceId: string | undefined,
 ): UseQueryResult<Workspace, Error> {
 	return useQuery({
-		queryKey: uid ? keys.workspaces.detail(uid) : keys.workspaces.all,
-		queryFn: () => api.getWorkspace(uid as string),
-		enabled: Boolean(uid),
+		queryKey: workspaceId
+			? keys.workspaces.detail(workspaceId)
+			: keys.workspaces.all,
+		queryFn: () => api.getWorkspace(workspaceId as string),
+		enabled: Boolean(workspaceId),
 	});
 }
 
@@ -47,14 +49,14 @@ export function useCreateWorkspace(): UseMutationResult<
 }
 
 export function useUpdateWorkspace(
-	uid: string,
+	workspaceId: string,
 ): UseMutationResult<Workspace, Error, UpdateWorkspaceInput> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (patch: UpdateWorkspaceInput) =>
-			api.updateWorkspace(uid, patch),
+			api.updateWorkspace(workspaceId, patch),
 		onSuccess: (ws) => {
-			qc.setQueryData(keys.workspaces.detail(uid), ws);
+			qc.setQueryData(keys.workspaces.detail(workspaceId), ws);
 			qc.invalidateQueries({ queryKey: keys.workspaces.all });
 		},
 	});
@@ -64,17 +66,17 @@ export function useDeleteWorkspace(): UseMutationResult<void, Error, string> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: api.deleteWorkspace,
-		onSuccess: (_data, uid) => {
-			qc.removeQueries({ queryKey: keys.workspaces.detail(uid) });
+		onSuccess: (_data, workspaceId) => {
+			qc.removeQueries({ queryKey: keys.workspaces.detail(workspaceId) });
 			qc.invalidateQueries({ queryKey: keys.workspaces.all });
 		},
 	});
 }
 
 export function useTestConnection(
-	uid: string,
+	workspaceId: string,
 ): UseMutationResult<TestConnectionResult, Error, void> {
 	return useMutation({
-		mutationFn: () => api.testConnection(uid),
+		mutationFn: () => api.testConnection(workspaceId),
 	});
 }

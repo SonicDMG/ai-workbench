@@ -20,15 +20,15 @@ import { documentQueryKey } from "./useDocuments";
  * terminal state.
  */
 export function useAsyncIngest(
-	workspaceUid: string,
-	kbUid: string,
+	workspaceId: string,
+	kbId: string,
 ): UseMutationResult<KbAsyncIngestResponse, Error, KbIngestRequest> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (input) => api.kbIngestAsync(workspaceUid, kbUid, input),
+		mutationFn: (input) => api.kbIngestAsync(workspaceId, kbId, input),
 		onSuccess: () => {
 			qc.invalidateQueries({
-				queryKey: documentQueryKey(workspaceUid, kbUid),
+				queryKey: documentQueryKey(workspaceId, kbId),
 			});
 		},
 	});
@@ -38,20 +38,20 @@ export function useAsyncIngest(
  * Poll a job until it hits a terminal state (`succeeded` / `failed`).
  */
 export function useJobPoller(
-	workspaceUid: string | undefined,
+	workspaceId: string | undefined,
 	jobId: string | undefined,
 	opts?: { intervalMs?: number },
 ): UseQueryResult<JobRecord, Error> {
 	const intervalMs = opts?.intervalMs ?? 500;
 	return useQuery({
-		queryKey: ["workspaces", workspaceUid ?? "_", "jobs", jobId ?? "_"],
+		queryKey: ["workspaces", workspaceId ?? "_", "jobs", jobId ?? "_"],
 		queryFn: () => {
-			if (!workspaceUid || !jobId) {
-				throw new Error("useJobPoller requires workspaceUid + jobId");
+			if (!workspaceId || !jobId) {
+				throw new Error("useJobPoller requires workspaceId + jobId");
 			}
-			return api.getJob(workspaceUid, jobId);
+			return api.getJob(workspaceId, jobId);
 		},
-		enabled: Boolean(workspaceUid && jobId),
+		enabled: Boolean(workspaceId && jobId),
 		refetchInterval: (query) => {
 			const job = query.state.data;
 			if (!job) return intervalMs;

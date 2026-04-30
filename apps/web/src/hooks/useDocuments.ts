@@ -9,58 +9,52 @@ import { api } from "@/lib/api";
 import type { DocumentChunk, RagDocumentRecord } from "@/lib/schemas";
 
 const keys = {
-	all: (workspaceUid: string, kbUid: string) =>
+	all: (workspaceId: string, kbId: string) =>
+		["workspaces", workspaceId, "knowledge-bases", kbId, "documents"] as const,
+	chunks: (workspaceId: string, kbId: string, documentId: string) =>
 		[
 			"workspaces",
-			workspaceUid,
+			workspaceId,
 			"knowledge-bases",
-			kbUid,
+			kbId,
 			"documents",
-		] as const,
-	chunks: (workspaceUid: string, kbUid: string, documentUid: string) =>
-		[
-			"workspaces",
-			workspaceUid,
-			"knowledge-bases",
-			kbUid,
-			"documents",
-			documentUid,
+			documentId,
 			"chunks",
 		] as const,
 };
 
 export function useDocuments(
-	workspaceUid: string | undefined,
-	kbUid: string | undefined,
+	workspaceId: string | undefined,
+	kbId: string | undefined,
 ): UseQueryResult<RagDocumentRecord[], Error> {
 	return useQuery({
 		queryKey:
-			workspaceUid && kbUid
-				? keys.all(workspaceUid, kbUid)
+			workspaceId && kbId
+				? keys.all(workspaceId, kbId)
 				: ["workspaces", "_", "knowledge-bases", "_", "documents"],
 		queryFn: () =>
-			workspaceUid && kbUid ? api.listKbDocuments(workspaceUid, kbUid) : [],
-		enabled: Boolean(workspaceUid && kbUid),
+			workspaceId && kbId ? api.listKbDocuments(workspaceId, kbId) : [],
+		enabled: Boolean(workspaceId && kbId),
 	});
 }
 
 /**
- * Lists chunks under a KB document. Disabled until all three UIDs
+ * Lists chunks under a KB document. Disabled until all three IDs
  * are defined so consumers can pass `undefined`s while the parent
  * dialog is closed.
  */
 export function useDocumentChunks(
-	workspaceUid: string | undefined,
-	kbUid: string | undefined,
-	documentUid: string | undefined,
+	workspaceId: string | undefined,
+	kbId: string | undefined,
+	documentId: string | undefined,
 	opts?: { enabled?: boolean; limit?: number },
 ): UseQueryResult<DocumentChunk[], Error> {
 	const enabled =
-		Boolean(workspaceUid && kbUid && documentUid) && (opts?.enabled ?? true);
+		Boolean(workspaceId && kbId && documentId) && (opts?.enabled ?? true);
 	return useQuery({
 		queryKey:
-			workspaceUid && kbUid && documentUid
-				? keys.chunks(workspaceUid, kbUid, documentUid)
+			workspaceId && kbId && documentId
+				? keys.chunks(workspaceId, kbId, documentId)
 				: [
 						"workspaces",
 						"_",
@@ -71,8 +65,8 @@ export function useDocumentChunks(
 						"chunks",
 					],
 		queryFn: () =>
-			workspaceUid && kbUid && documentUid
-				? api.listKbDocumentChunks(workspaceUid, kbUid, documentUid, {
+			workspaceId && kbId && documentId
+				? api.listKbDocumentChunks(workspaceId, kbId, documentId, {
 						limit: opts?.limit ?? 1000,
 					})
 				: [],
@@ -80,8 +74,8 @@ export function useDocumentChunks(
 	});
 }
 
-export function documentQueryKey(workspaceUid: string, kbUid: string) {
-	return keys.all(workspaceUid, kbUid);
+export function documentQueryKey(workspaceId: string, kbId: string) {
+	return keys.all(workspaceId, kbId);
 }
 
 /**
@@ -90,17 +84,17 @@ export function documentQueryKey(workspaceUid: string, kbUid: string) {
  * successful delete leaves no traces in KB-scoped search.
  */
 export function useDeleteDocument(
-	workspaceUid: string,
-	kbUid: string,
+	workspaceId: string,
+	kbId: string,
 ): UseMutationResult<void, Error, string> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (documentUid) =>
-			api.deleteKbDocument(workspaceUid, kbUid, documentUid),
-		onSuccess: (_void, documentUid) => {
-			qc.invalidateQueries({ queryKey: keys.all(workspaceUid, kbUid) });
+		mutationFn: (documentId) =>
+			api.deleteKbDocument(workspaceId, kbId, documentId),
+		onSuccess: (_void, documentId) => {
+			qc.invalidateQueries({ queryKey: keys.all(workspaceId, kbId) });
 			qc.invalidateQueries({
-				queryKey: keys.chunks(workspaceUid, kbUid, documentUid),
+				queryKey: keys.chunks(workspaceId, kbId, documentId),
 			});
 		},
 	});

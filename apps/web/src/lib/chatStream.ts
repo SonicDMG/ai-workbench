@@ -37,13 +37,13 @@ export interface SendConversationStreamOptions {
  * normally — see `routes/api-v1/agents.ts`.
  */
 export async function sendConversationStream(
-	workspaceUid: string,
+	workspaceId: string,
 	agentId: string,
 	conversationId: string,
 	opts: SendConversationStreamOptions,
 ): Promise<void> {
 	const res = await fetch(
-		`/api/v1/workspaces/${workspaceUid}/agents/${agentId}/conversations/${conversationId}/messages/stream`,
+		`/api/v1/workspaces/${workspaceId}/agents/${agentId}/conversations/${conversationId}/messages/stream`,
 		{
 			method: "POST",
 			credentials: "include",

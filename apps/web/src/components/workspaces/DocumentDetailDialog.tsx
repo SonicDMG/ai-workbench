@@ -23,13 +23,13 @@ import { FileTypeBadge } from "./FileTypeBadge";
  */
 export function DocumentDetailDialog({
 	workspace,
-	knowledgeBaseUid,
+	knowledgeBaseId,
 	doc,
 	highlightChunkId,
 	onOpenChange,
 }: {
 	workspace: string;
-	knowledgeBaseUid: string;
+	knowledgeBaseId: string;
 	doc: RagDocumentRecord | null;
 	/** Chunk ID to scroll into view + highlight once chunks load.
 	 * Driven by the `?chunk=<id>` deep-link from chat citations. */
@@ -39,7 +39,7 @@ export function DocumentDetailDialog({
 	const open = doc !== null;
 	const chunks = useDocumentChunks(
 		workspace,
-		knowledgeBaseUid,
+		knowledgeBaseId,
 		doc?.documentId,
 		{ enabled: open && doc?.status === "ready" },
 	);
@@ -91,7 +91,7 @@ export function DocumentDetailDialog({
 						) : null}
 
 						<div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-							<KV label="Document UID" value={doc.documentId} mono />
+							<KV label="Document ID" value={doc.documentId} mono />
 							<KV label="Source ID" value={doc.sourceDocId ?? "—"} mono />
 							<KV
 								label="Size"

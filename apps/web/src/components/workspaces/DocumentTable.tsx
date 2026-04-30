@@ -44,7 +44,7 @@ export function DocumentTable({
 	/** When provided, a trash button renders on each row that calls
 	 * back to the parent (which usually pops a confirm dialog). */
 	onDelete?: (doc: RagDocumentRecord) => void;
-	/** documentUid currently being deleted — disables that row's
+	/** documentId currently being deleted — disables that row's
 	 * trash button to prevent double-clicks during the round trip. */
 	deletingDocumentId?: string | null;
 }) {

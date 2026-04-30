@@ -26,8 +26,8 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+	byCreatedAtThenId,
 	byCreatedAtThenKeyId,
-	byCreatedAtThenUid,
 	DEFAULT_AUTH_TYPE,
 	DEFAULT_DISTANCE_METRIC,
 	DEFAULT_KB_STATUS,
@@ -210,7 +210,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 
 	async listWorkspaces(): Promise<readonly WorkspaceRecord[]> {
 		const all = await this.readAll<WorkspaceRecord>("workspaces");
-		return [...all].sort(byCreatedAtThenUid);
+		return [...all].sort(byCreatedAtThenId);
 	}
 
 	async getWorkspace(uid: string): Promise<WorkspaceRecord | null> {
@@ -223,7 +223,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			const uid = input.uid ?? randomUUID();
 			if (rows.some((w) => w.uid === uid)) {
 				throw new ControlPlaneConflictError(
-					`workspace with uid '${uid}' already exists`,
+					`workspace with id '${uid}' already exists`,
 				);
 			}
 			const now = nowIso();
@@ -480,7 +480,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 					)
 				) {
 					throw new ControlPlaneConflictError(
-						`knowledge base with uid '${uid}' already exists in workspace '${workspace}'`,
+						`knowledge base with id '${uid}' already exists in workspace '${workspace}'`,
 					);
 				}
 				const now = nowIso();
@@ -650,7 +650,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 					)
 				) {
 					throw new ControlPlaneConflictError(
-						`knowledge filter with uid '${uid}' already exists in knowledge base '${knowledgeBase}'`,
+						`knowledge filter with id '${uid}' already exists in knowledge base '${knowledgeBase}'`,
 					);
 				}
 				const now = nowIso();
@@ -779,7 +779,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 					)
 				) {
 					throw new ControlPlaneConflictError(
-						`document with uid '${uid}' already exists in knowledge base '${knowledgeBase}'`,
+						`document with id '${uid}' already exists in knowledge base '${knowledgeBase}'`,
 					);
 				}
 				const record: RagDocumentRecord = {
@@ -921,7 +921,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 					)
 				) {
 					throw new ControlPlaneConflictError(
-						`chunking service with uid '${uid}' already exists in workspace '${workspace}'`,
+						`chunking service with id '${uid}' already exists in workspace '${workspace}'`,
 					);
 				}
 				const now = nowIso();
@@ -1045,7 +1045,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 					)
 				) {
 					throw new ControlPlaneConflictError(
-						`embedding service with uid '${uid}' already exists in workspace '${workspace}'`,
+						`embedding service with id '${uid}' already exists in workspace '${workspace}'`,
 					);
 				}
 				const now = nowIso();
@@ -1171,7 +1171,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 					)
 				) {
 					throw new ControlPlaneConflictError(
-						`reranking service with uid '${uid}' already exists in workspace '${workspace}'`,
+						`reranking service with id '${uid}' already exists in workspace '${workspace}'`,
 					);
 				}
 				const now = nowIso();
@@ -1302,7 +1302,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 					)
 				) {
 					throw new ControlPlaneConflictError(
-						`llm service with uid '${uid}' already exists in workspace '${workspace}'`,
+						`llm service with id '${uid}' already exists in workspace '${workspace}'`,
 					);
 				}
 				const now = nowIso();
@@ -1918,15 +1918,15 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 	private async assertServiceNotReferenced(
 		workspace: string,
 		field: "embeddingServiceId" | "chunkingServiceId" | "rerankingServiceId",
-		serviceUid: string,
+		serviceId: string,
 	): Promise<void> {
 		const kbs = await this.readAll<KnowledgeBaseRecord>("knowledge-bases");
 		const ref = kbs.find(
-			(kb) => kb.workspaceId === workspace && kb[field] === serviceUid,
+			(kb) => kb.workspaceId === workspace && kb[field] === serviceId,
 		);
 		if (ref) {
 			throw new ControlPlaneConflictError(
-				`service '${serviceUid}' is referenced by knowledge base '${ref.knowledgeBaseId}' (${field})`,
+				`service '${serviceId}' is referenced by knowledge base '${ref.knowledgeBaseId}' (${field})`,
 			);
 		}
 	}
@@ -1934,15 +1934,15 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 	private async assertAgentServiceNotReferenced(
 		workspace: string,
 		field: "llmServiceId" | "rerankingServiceId",
-		serviceUid: string,
+		serviceId: string,
 	): Promise<void> {
 		const agents = await this.readAll<AgentRecord>("agents");
 		const ref = agents.find(
-			(agent) => agent.workspaceId === workspace && agent[field] === serviceUid,
+			(agent) => agent.workspaceId === workspace && agent[field] === serviceId,
 		);
 		if (ref) {
 			throw new ControlPlaneConflictError(
-				`service '${serviceUid}' is referenced by agent '${ref.agentId}' (${field})`,
+				`service '${serviceId}' is referenced by agent '${ref.agentId}' (${field})`,
 			);
 		}
 	}

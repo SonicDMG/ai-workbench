@@ -25,72 +25,72 @@ import type {
 /* -------- Agents -------- */
 
 export function useAgents(
-	workspaceUid: string | undefined,
+	workspaceId: string | undefined,
 ): UseQueryResult<AgentRecord[], Error> {
 	return useQuery({
-		queryKey: workspaceUid
-			? keys.agents.all(workspaceUid)
+		queryKey: workspaceId
+			? keys.agents.all(workspaceId)
 			: ["agents", "disabled"],
-		queryFn: () => api.listAgents(workspaceUid as string),
-		enabled: Boolean(workspaceUid),
+		queryFn: () => api.listAgents(workspaceId as string),
+		enabled: Boolean(workspaceId),
 	});
 }
 
 export function useAgent(
-	workspaceUid: string | undefined,
+	workspaceId: string | undefined,
 	agentId: string | undefined,
 ): UseQueryResult<AgentRecord, Error> {
 	return useQuery({
 		queryKey:
-			workspaceUid && agentId
-				? keys.agents.detail(workspaceUid, agentId)
+			workspaceId && agentId
+				? keys.agents.detail(workspaceId, agentId)
 				: ["agents", "disabled"],
-		queryFn: () => api.getAgent(workspaceUid as string, agentId as string),
-		enabled: Boolean(workspaceUid && agentId),
+		queryFn: () => api.getAgent(workspaceId as string, agentId as string),
+		enabled: Boolean(workspaceId && agentId),
 	});
 }
 
 export function useCreateAgent(
-	workspaceUid: string,
+	workspaceId: string,
 ): UseMutationResult<AgentRecord, Error, CreateAgentInput> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (input: CreateAgentInput) =>
-			api.createAgent(workspaceUid, input),
+			api.createAgent(workspaceId, input),
 		onSuccess: (agent) => {
-			qc.invalidateQueries({ queryKey: keys.agents.all(workspaceUid) });
-			qc.setQueryData(keys.agents.detail(workspaceUid, agent.agentId), agent);
+			qc.invalidateQueries({ queryKey: keys.agents.all(workspaceId) });
+			qc.setQueryData(keys.agents.detail(workspaceId, agent.agentId), agent);
 		},
 	});
 }
 
 export function useUpdateAgent(
-	workspaceUid: string,
+	workspaceId: string,
 	agentId: string,
 ): UseMutationResult<AgentRecord, Error, UpdateAgentInput> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (patch: UpdateAgentInput) =>
-			api.updateAgent(workspaceUid, agentId, patch),
+			api.updateAgent(workspaceId, agentId, patch),
 		onSuccess: (agent) => {
-			qc.setQueryData(keys.agents.detail(workspaceUid, agentId), agent);
-			qc.invalidateQueries({ queryKey: keys.agents.all(workspaceUid) });
+			qc.setQueryData(keys.agents.detail(workspaceId, agentId), agent);
+			qc.invalidateQueries({ queryKey: keys.agents.all(workspaceId) });
 		},
 	});
 }
 
 export function useDeleteAgent(
-	workspaceUid: string,
+	workspaceId: string,
 ): UseMutationResult<void, Error, string> {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (agentId: string) => api.deleteAgent(workspaceUid, agentId),
+		mutationFn: (agentId: string) => api.deleteAgent(workspaceId, agentId),
 		onSuccess: (_data, agentId) => {
-			qc.removeQueries({ queryKey: keys.agents.detail(workspaceUid, agentId) });
+			qc.removeQueries({ queryKey: keys.agents.detail(workspaceId, agentId) });
 			qc.removeQueries({
-				queryKey: keys.conversations.all(workspaceUid, agentId),
+				queryKey: keys.conversations.all(workspaceId, agentId),
 			});
-			qc.invalidateQueries({ queryKey: keys.agents.all(workspaceUid) });
+			qc.invalidateQueries({ queryKey: keys.agents.all(workspaceId) });
 		},
 	});
 }
@@ -98,54 +98,54 @@ export function useDeleteAgent(
 /* -------- Conversations -------- */
 
 export function useConversations(
-	workspaceUid: string | undefined,
+	workspaceId: string | undefined,
 	agentId: string | undefined,
 ): UseQueryResult<ConversationRecord[], Error> {
 	return useQuery({
 		queryKey:
-			workspaceUid && agentId
-				? keys.conversations.all(workspaceUid, agentId)
+			workspaceId && agentId
+				? keys.conversations.all(workspaceId, agentId)
 				: ["conversations", "disabled"],
 		queryFn: () =>
-			api.listConversations(workspaceUid as string, agentId as string),
-		enabled: Boolean(workspaceUid && agentId),
+			api.listConversations(workspaceId as string, agentId as string),
+		enabled: Boolean(workspaceId && agentId),
 	});
 }
 
 export function useConversation(
-	workspaceUid: string | undefined,
+	workspaceId: string | undefined,
 	agentId: string | undefined,
 	conversationId: string | undefined,
 ): UseQueryResult<ConversationRecord, Error> {
 	return useQuery({
 		queryKey:
-			workspaceUid && agentId && conversationId
-				? keys.conversations.detail(workspaceUid, agentId, conversationId)
+			workspaceId && agentId && conversationId
+				? keys.conversations.detail(workspaceId, agentId, conversationId)
 				: ["conversations", "disabled"],
 		queryFn: () =>
 			api.getConversation(
-				workspaceUid as string,
+				workspaceId as string,
 				agentId as string,
 				conversationId as string,
 			),
-		enabled: Boolean(workspaceUid && agentId && conversationId),
+		enabled: Boolean(workspaceId && agentId && conversationId),
 	});
 }
 
 export function useCreateConversation(
-	workspaceUid: string,
+	workspaceId: string,
 	agentId: string,
 ): UseMutationResult<ConversationRecord, Error, CreateConversationInput> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (input: CreateConversationInput) =>
-			api.createConversation(workspaceUid, agentId, input),
+			api.createConversation(workspaceId, agentId, input),
 		onSuccess: (conv) => {
 			qc.invalidateQueries({
-				queryKey: keys.conversations.all(workspaceUid, agentId),
+				queryKey: keys.conversations.all(workspaceId, agentId),
 			});
 			qc.setQueryData(
-				keys.conversations.detail(workspaceUid, agentId, conv.conversationId),
+				keys.conversations.detail(workspaceId, agentId, conv.conversationId),
 				conv,
 			);
 		},
@@ -153,73 +153,73 @@ export function useCreateConversation(
 }
 
 export function useUpdateConversation(
-	workspaceUid: string,
+	workspaceId: string,
 	agentId: string,
 	conversationId: string,
 ): UseMutationResult<ConversationRecord, Error, UpdateConversationInput> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (patch: UpdateConversationInput) =>
-			api.updateConversation(workspaceUid, agentId, conversationId, patch),
+			api.updateConversation(workspaceId, agentId, conversationId, patch),
 		onSuccess: (conv) => {
 			qc.setQueryData(
-				keys.conversations.detail(workspaceUid, agentId, conversationId),
+				keys.conversations.detail(workspaceId, agentId, conversationId),
 				conv,
 			);
 			qc.invalidateQueries({
-				queryKey: keys.conversations.all(workspaceUid, agentId),
+				queryKey: keys.conversations.all(workspaceId, agentId),
 			});
 		},
 	});
 }
 
 export function useDeleteConversation(
-	workspaceUid: string,
+	workspaceId: string,
 	agentId: string,
 ): UseMutationResult<void, Error, string> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (conversationId: string) =>
-			api.deleteConversation(workspaceUid, agentId, conversationId),
+			api.deleteConversation(workspaceId, agentId, conversationId),
 		onSuccess: (_data, conversationId) => {
 			qc.removeQueries({
 				queryKey: keys.conversations.detail(
-					workspaceUid,
+					workspaceId,
 					agentId,
 					conversationId,
 				),
 			});
 			qc.removeQueries({
 				queryKey: keys.conversations.messages(
-					workspaceUid,
+					workspaceId,
 					agentId,
 					conversationId,
 				),
 			});
 			qc.invalidateQueries({
-				queryKey: keys.conversations.all(workspaceUid, agentId),
+				queryKey: keys.conversations.all(workspaceId, agentId),
 			});
 		},
 	});
 }
 
 export function useConversationMessages(
-	workspaceUid: string | undefined,
+	workspaceId: string | undefined,
 	agentId: string | undefined,
 	conversationId: string | undefined,
 ): UseQueryResult<ChatMessage[], Error> {
 	return useQuery({
 		queryKey:
-			workspaceUid && agentId && conversationId
-				? keys.conversations.messages(workspaceUid, agentId, conversationId)
+			workspaceId && agentId && conversationId
+				? keys.conversations.messages(workspaceId, agentId, conversationId)
 				: ["conversations", "disabled"],
 		queryFn: () =>
 			api.listConversationMessages(
-				workspaceUid as string,
+				workspaceId as string,
 				agentId as string,
 				conversationId as string,
 			),
-		enabled: Boolean(workspaceUid && agentId && conversationId),
+		enabled: Boolean(workspaceId && agentId && conversationId),
 	});
 }
 
@@ -246,7 +246,7 @@ export interface SendConversationStreamHandle {
 }
 
 export function useSendConversationStream(
-	workspaceUid: string,
+	workspaceId: string,
 	agentId: string,
 	conversationId: string,
 ): SendConversationStreamHandle {
@@ -270,14 +270,14 @@ export function useSendConversationStream(
 			setError(null);
 			try {
 				let buffer = "";
-				await sendConversationStream(workspaceUid, agentId, conversationId, {
+				await sendConversationStream(workspaceId, agentId, conversationId, {
 					content,
 					signal: ctrl.signal,
 					onEvent: (evt) => {
 						if (evt.type === "user-message") {
 							qc.setQueryData<ChatMessage[]>(
 								keys.conversations.messages(
-									workspaceUid,
+									workspaceId,
 									agentId,
 									conversationId,
 								),
@@ -289,7 +289,7 @@ export function useSendConversationStream(
 						} else if (evt.type === "done" || evt.type === "error") {
 							qc.setQueryData<ChatMessage[]>(
 								keys.conversations.messages(
-									workspaceUid,
+									workspaceId,
 									agentId,
 									conversationId,
 								),
@@ -307,7 +307,7 @@ export function useSendConversationStream(
 				abortRef.current = null;
 			}
 		},
-		[agentId, conversationId, pending, qc, workspaceUid],
+		[agentId, conversationId, pending, qc, workspaceId],
 	);
 
 	return { send, pendingDelta, pending, error, cancel };
@@ -316,43 +316,43 @@ export function useSendConversationStream(
 /* -------- LLM services -------- */
 
 export function useLlmServices(
-	workspaceUid: string | undefined,
+	workspaceId: string | undefined,
 ): UseQueryResult<LlmServiceRecord[], Error> {
 	return useQuery({
-		queryKey: workspaceUid
-			? keys.llmServices.all(workspaceUid)
+		queryKey: workspaceId
+			? keys.llmServices.all(workspaceId)
 			: ["llm-services", "disabled"],
-		queryFn: () => api.listLlmServices(workspaceUid as string),
-		enabled: Boolean(workspaceUid),
+		queryFn: () => api.listLlmServices(workspaceId as string),
+		enabled: Boolean(workspaceId),
 	});
 }
 
 export function useLlmService(
-	workspaceUid: string | undefined,
+	workspaceId: string | undefined,
 	llmServiceId: string | undefined,
 ): UseQueryResult<LlmServiceRecord, Error> {
 	return useQuery({
 		queryKey:
-			workspaceUid && llmServiceId
-				? keys.llmServices.detail(workspaceUid, llmServiceId)
+			workspaceId && llmServiceId
+				? keys.llmServices.detail(workspaceId, llmServiceId)
 				: ["llm-services", "disabled"],
 		queryFn: () =>
-			api.getLlmService(workspaceUid as string, llmServiceId as string),
-		enabled: Boolean(workspaceUid && llmServiceId),
+			api.getLlmService(workspaceId as string, llmServiceId as string),
+		enabled: Boolean(workspaceId && llmServiceId),
 	});
 }
 
 export function useCreateLlmService(
-	workspaceUid: string,
+	workspaceId: string,
 ): UseMutationResult<LlmServiceRecord, Error, CreateLlmServiceInput> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (input: CreateLlmServiceInput) =>
-			api.createLlmService(workspaceUid, input),
+			api.createLlmService(workspaceId, input),
 		onSuccess: (svc) => {
-			qc.invalidateQueries({ queryKey: keys.llmServices.all(workspaceUid) });
+			qc.invalidateQueries({ queryKey: keys.llmServices.all(workspaceId) });
 			qc.setQueryData(
-				keys.llmServices.detail(workspaceUid, svc.llmServiceId),
+				keys.llmServices.detail(workspaceId, svc.llmServiceId),
 				svc,
 			);
 		},
@@ -360,32 +360,32 @@ export function useCreateLlmService(
 }
 
 export function useUpdateLlmService(
-	workspaceUid: string,
+	workspaceId: string,
 	llmServiceId: string,
 ): UseMutationResult<LlmServiceRecord, Error, UpdateLlmServiceInput> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (patch: UpdateLlmServiceInput) =>
-			api.updateLlmService(workspaceUid, llmServiceId, patch),
+			api.updateLlmService(workspaceId, llmServiceId, patch),
 		onSuccess: (svc) => {
-			qc.setQueryData(keys.llmServices.detail(workspaceUid, llmServiceId), svc);
-			qc.invalidateQueries({ queryKey: keys.llmServices.all(workspaceUid) });
+			qc.setQueryData(keys.llmServices.detail(workspaceId, llmServiceId), svc);
+			qc.invalidateQueries({ queryKey: keys.llmServices.all(workspaceId) });
 		},
 	});
 }
 
 export function useDeleteLlmService(
-	workspaceUid: string,
+	workspaceId: string,
 ): UseMutationResult<void, Error, string> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (llmServiceId: string) =>
-			api.deleteLlmService(workspaceUid, llmServiceId),
+			api.deleteLlmService(workspaceId, llmServiceId),
 		onSuccess: (_data, llmServiceId) => {
 			qc.removeQueries({
-				queryKey: keys.llmServices.detail(workspaceUid, llmServiceId),
+				queryKey: keys.llmServices.detail(workspaceId, llmServiceId),
 			});
-			qc.invalidateQueries({ queryKey: keys.llmServices.all(workspaceUid) });
+			qc.invalidateQueries({ queryKey: keys.llmServices.all(workspaceId) });
 		},
 	});
 }

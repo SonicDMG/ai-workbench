@@ -46,7 +46,7 @@ export function isTerminal(status: JobStatus): boolean {
 
 /**
  * Canonical job record. Workspace-scoped so authorization reuses the
- * existing `assertWorkspaceAccess`; `knowledgeBaseUid` + `documentUid`
+ * existing `assertWorkspaceAccess`; `knowledgeBaseId` + `documentId`
  * are attached for ingest jobs so the UI can link back without an
  * extra fetch.
  */
@@ -56,9 +56,9 @@ export interface JobRecord {
 	readonly kind: JobKind;
 	/** For ingest jobs — the knowledge base the document was ingested
 	 * into. */
-	readonly knowledgeBaseUid: string | null;
+	readonly knowledgeBaseId: string | null;
 	/** For ingest jobs — the document row that tracks status in parallel. */
-	readonly documentUid: string | null;
+	readonly documentId: string | null;
 	readonly status: JobStatus;
 	/** Number of units processed so far. Unit is job-kind specific:
 	 * for ingest, "chunks embedded + upserted". */
@@ -122,8 +122,8 @@ export interface UpdateJobInput {
 export interface CreateJobInput {
 	readonly workspace: string;
 	readonly kind: JobKind;
-	readonly knowledgeBaseUid?: string | null;
-	readonly documentUid?: string | null;
+	readonly knowledgeBaseId?: string | null;
+	readonly documentId?: string | null;
 	/** Optional job id — generated if omitted. */
 	readonly jobId?: string;
 	readonly total?: number | null;

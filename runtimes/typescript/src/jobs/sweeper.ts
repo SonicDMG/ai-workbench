@@ -38,7 +38,7 @@ import type { IngestInputSnapshot, JobRecord } from "./types.js";
  * sweeper does not await this) and must drive the job to terminal
  * state itself. */
 export type ResumeIngestCallback = (args: {
-	workspaceUid: string;
+	workspaceId: string;
 	jobId: string;
 	replicaId: string;
 	input: IngestInputSnapshot;
@@ -171,7 +171,7 @@ export class JobOrphanSweeper {
 		if (ingestInput && this.resume) {
 			try {
 				await this.resume({
-					workspaceUid: workspace,
+					workspaceId: workspace,
 					jobId,
 					replicaId: this.replicaId,
 					input: ingestInput,

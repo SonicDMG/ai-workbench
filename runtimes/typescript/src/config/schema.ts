@@ -124,7 +124,7 @@ const OidcClaimsSchema = z
 		// Claim used as the human-readable label on `AuthSubject`.
 		// `email` is the typical choice; `preferred_username` works too.
 		label: z.string().min(1).default("email"),
-		// Claim containing the list of workspace UIDs the subject may
+		// Claim containing the list of workspace IDs the subject may
 		// touch. The value must be a JSON array of strings. Missing or
 		// empty means "no workspace access" (subject still authenticates
 		// but hits 403 on every workspace route). Set to `null` on the

@@ -217,7 +217,7 @@ describe("JobOrphanSweeper", () => {
 
 		expect(resume).toHaveBeenCalledTimes(1);
 		expect(resume).toHaveBeenCalledWith({
-			workspaceUid: WORKSPACE_A,
+			workspaceId: WORKSPACE_A,
 			jobId: job.jobId,
 			replicaId: "wb-replica-resumer",
 			input: { text: "resume me", metadata: { source: "abandoned.md" } },

@@ -45,9 +45,9 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	await page.getByLabel("Name").fill(workspaceName);
 	await page.getByRole("button", { name: "Create workspace" }).click();
 
-	// 4. Land on workspace detail; capture UID for API calls.
+	// 4. Land on workspace detail; capture ID for API calls.
 	await expect(page).toHaveURL(/\/workspaces\/[0-9a-f-]{36}/);
-	const workspaceUid = page.url().split("/").pop() as string;
+	const workspaceId = page.url().split("/").pop() as string;
 	await expect(
 		page.getByRole("heading", { name: workspaceName }),
 	).toBeVisible();
@@ -57,7 +57,7 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	//    covered by component-level tests; here we just need a
 	//    KB to query against.
 	const embRes = await request.post(
-		`/api/v1/workspaces/${workspaceUid}/embedding-services`,
+		`/api/v1/workspaces/${workspaceId}/embedding-services`,
 		{
 			data: {
 				name: "mock-embedder",
@@ -73,7 +73,7 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	const emb = await embRes.json();
 
 	const chunkRes = await request.post(
-		`/api/v1/workspaces/${workspaceUid}/chunking-services`,
+		`/api/v1/workspaces/${workspaceId}/chunking-services`,
 		{ data: { name: "default-chunker", engine: "docling" } },
 	);
 	expect(
@@ -83,7 +83,7 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	const chunk = await chunkRes.json();
 
 	const kbRes = await request.post(
-		`/api/v1/workspaces/${workspaceUid}/knowledge-bases`,
+		`/api/v1/workspaces/${workspaceId}/knowledge-bases`,
 		{
 			data: {
 				name: "kb",
@@ -94,12 +94,12 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	);
 	expect(kbRes.ok(), `knowledge-base create: ${await kbRes.text()}`).toBe(true);
 	const kb = await kbRes.json();
-	const knowledgeBaseUid = kb.knowledgeBaseId as string;
+	const knowledgeBaseId = kb.knowledgeBaseId as string;
 
 	// 6. Drop straight to the data-plane upsert endpoint — direct
 	//    upsert is the contract we're proving here.
 	const upsert = await request.post(
-		`/api/v1/workspaces/${workspaceUid}/knowledge-bases/${knowledgeBaseUid}/records`,
+		`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/records`,
 		{
 			data: {
 				records: [
@@ -121,7 +121,7 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	//    which is invisible to the page's React Query cache until a
 	//    hard load remounts the route.
 	await page.goto(
-		`/workspaces/${workspaceUid}/knowledge-bases/${knowledgeBaseUid}/playground`,
+		`/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/playground`,
 	);
 	await expect(page.getByRole("heading", { name: "Playground" })).toBeVisible();
 
@@ -139,7 +139,7 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	//     producing deterministic vectors. Querying with the same text
 	//     deterministically retrieves the matching record at cosine 1.0.
 	const textUpsert = await request.post(
-		`/api/v1/workspaces/${workspaceUid}/knowledge-bases/${knowledgeBaseUid}/records`,
+		`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/records`,
 		{
 			data: {
 				records: [

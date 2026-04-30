@@ -17,7 +17,7 @@ import type { EmbeddingServiceRecord, SearchHit } from "@/lib/schemas";
  * The playground.
  *
  * The playground is scoped to a single KB route:
- * `/workspaces/:workspaceUid/knowledge-bases/:knowledgeBaseUid/playground`.
+ * `/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId/playground`.
  * The containing route supplies the workspace + KB context, so there
  * are no selectors here.
  *
@@ -26,16 +26,16 @@ import type { EmbeddingServiceRecord, SearchHit } from "@/lib/schemas";
  */
 export function PlaygroundPage() {
 	const params = useParams<{
-		workspaceUid: string;
-		knowledgeBaseUid: string;
+		workspaceId: string;
+		knowledgeBaseId: string;
 	}>();
-	const workspaceUid = params.workspaceUid;
-	const knowledgeBaseUid = params.knowledgeBaseUid;
-	const workspace = useWorkspace(workspaceUid);
-	const knowledgeBase = useKnowledgeBase(workspaceUid, knowledgeBaseUid);
+	const workspaceId = params.workspaceId;
+	const knowledgeBaseId = params.knowledgeBaseId;
+	const workspace = useWorkspace(workspaceId);
+	const knowledgeBase = useKnowledgeBase(workspaceId, knowledgeBaseId);
 	const [hits, setHits] = useState<SearchHit[] | null>(null);
 
-	if (!workspaceUid || !knowledgeBaseUid) return <Navigate to="/" replace />;
+	if (!workspaceId || !knowledgeBaseId) return <Navigate to="/" replace />;
 
 	if (workspace.isLoading || knowledgeBase.isLoading) {
 		return <LoadingState label="Loading playground…" />;
@@ -55,7 +55,7 @@ export function PlaygroundPage() {
 				message={knowledgeBase.error?.message ?? "Knowledge base not found."}
 				actions={
 					<Button variant="secondary" asChild>
-						<Link to={`/workspaces/${workspaceUid}`}>
+						<Link to={`/workspaces/${workspaceId}`}>
 							<ArrowLeft className="h-4 w-4" /> Back to workspace
 						</Link>
 					</Button>
@@ -85,7 +85,7 @@ export function PlaygroundPage() {
 				</div>
 				<Button variant="secondary" size="sm" asChild>
 					<Link
-						to={`/workspaces/${workspaceUid}/knowledge-bases/${knowledgeBaseUid}`}
+						to={`/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}`}
 					>
 						<Database className="h-4 w-4" /> Knowledge base
 					</Link>
@@ -93,8 +93,8 @@ export function PlaygroundPage() {
 			</div>
 
 			<SearchPanel
-				workspaceUid={workspaceUid}
-				knowledgeBaseUid={knowledgeBaseUid}
+				workspaceId={workspaceId}
+				knowledgeBaseId={knowledgeBaseId}
 				embeddingServiceId={knowledgeBase.data.embeddingServiceId}
 				lexicalSupported={knowledgeBase.data.lexical.enabled}
 				rerankSupported={knowledgeBase.data.rerankingServiceId !== null}
@@ -106,34 +106,34 @@ export function PlaygroundPage() {
 }
 
 function SearchPanel({
-	workspaceUid,
-	knowledgeBaseUid,
+	workspaceId,
+	knowledgeBaseId,
 	embeddingServiceId,
 	lexicalSupported,
 	rerankSupported,
 	hits,
 	setHits,
 }: {
-	workspaceUid: string;
-	knowledgeBaseUid: string;
+	workspaceId: string;
+	knowledgeBaseId: string;
 	embeddingServiceId: string;
 	lexicalSupported: boolean;
 	rerankSupported: boolean;
 	hits: SearchHit[] | null;
 	setHits: (h: SearchHit[] | null) => void;
 }) {
-	const embeddings = useEmbeddingServices(workspaceUid);
+	const embeddings = useEmbeddingServices(workspaceId);
 	const embedding: EmbeddingServiceRecord | undefined = embeddings.data?.find(
 		(e) => e.embeddingServiceId === embeddingServiceId,
 	);
 	const search = usePlaygroundSearch();
 
 	async function run(input: PlaygroundSearchInput) {
-		if (!workspaceUid || !knowledgeBaseUid) return;
+		if (!workspaceId || !knowledgeBaseId) return;
 		try {
 			const out = await search.mutateAsync({
-				workspace: workspaceUid,
-				knowledgeBase: knowledgeBaseUid,
+				workspace: workspaceId,
+				knowledgeBase: knowledgeBaseId,
 				input,
 			});
 			setHits(out);

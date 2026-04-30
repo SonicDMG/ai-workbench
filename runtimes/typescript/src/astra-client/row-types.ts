@@ -308,8 +308,8 @@ export interface JobRow {
 	workspace: Uuid;
 	job_id: Uuid;
 	kind: string;
-	knowledge_base_uid: Uuid | null;
-	document_uid: Uuid | null;
+	knowledge_base_id: Uuid | null;
+	document_id: Uuid | null;
 	status: string;
 	processed: number;
 	total: number | null;

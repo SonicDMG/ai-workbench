@@ -76,7 +76,7 @@ split is declared in [`vite.config.ts`](vite.config.ts):
 | `zod` | `zod` — used by `lib/api.ts` to validate every response | Initial page load |
 | `forms` | `react-hook-form`, `@hookform/resolvers` | Only when a form renders (lazy via the detail / onboarding routes) |
 | `OnboardingPage` | The two-step onboarding wizard | `/onboarding` visit |
-| `WorkspaceDetailPage` | Detail + edit + API-key + test-connection panels | `/workspaces/:uid` visit |
+| `WorkspaceDetailPage` | Detail + edit + API-key + test-connection panels | `/workspaces/:workspaceId` visit |
 | `PlaygroundPage` | Query form + results table | `/playground` visit |
 
 `zod` and `forms` are deliberately kept in separate chunks: `zod`
@@ -95,8 +95,8 @@ navigation shows the shared loader while the chunk streams.
 |---|---|
 | `/` | Workspaces list. Redirects to `/onboarding` when empty. |
 | `/onboarding` | Two-step wizard — pick a backend kind, then fill details. HCD / OpenRAG tiles render but are non-selectable. |
-| `/workspaces/:uid` | Detail + edit + destructive delete (type-to-confirm). Hosts the knowledge-bases, services, and API-keys panels for this workspace. |
-| `/workspaces/:uid/knowledge-bases/:kbId` | Knowledge-base explorer — sortable / filterable document table with file-type badges, sizes, statuses, and a click-through detail dialog. Multi-file / folder ingest queue lives here. |
+| `/workspaces/:workspaceId` | Detail + edit + destructive delete (type-to-confirm). Hosts the knowledge-bases, services, and API-keys panels for this workspace. |
+| `/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId` | Knowledge-base explorer — sortable / filterable document table with file-type badges, sizes, statuses, and a click-through detail dialog. Multi-file / folder ingest queue lives here. |
 | `/playground` | Ad-hoc text / vector / hybrid / rerank queries against a workspace's knowledge bases. See [`docs/playground.md`](../../docs/playground.md). |
 
 The workspace detail page composes four panels (collapsible cards):
@@ -126,7 +126,7 @@ The KB explorer adds:
 - **React Hook Form + Zod** for forms; the same Zod schemas that
   describe API shapes drive form validation, so the UI and backend
   can't disagree about request shape.
-- **React Router** for the five routes (`/`, `/onboarding`, `/workspaces/:uid`, `/workspaces/:uid/knowledge-bases/:kbId`, `/playground`).
+- **React Router** for the five routes (`/`, `/onboarding`, `/workspaces/:workspaceId`, `/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId`, `/playground`).
 - **Sonner** for toasts.
 - **Lucide React** for icons.
 
@@ -208,7 +208,7 @@ apps/web/
 - **Empty state → onboarding redirect.** First-run users never see a
   bare "no workspaces" screen; they land directly in the wizard.
 - **List order is deterministic.** The runtime sorts by `createdAt`
-  (with `uid` as tie-breaker), so the grid is stable across reloads.
+  (with the record id as tie-breaker), so the grid is stable across reloads.
 - **Credential menu.** The header renders one of three things based
   on `GET /auth/config`:
   1. **Signed in (OIDC session)** — user's label + logout.

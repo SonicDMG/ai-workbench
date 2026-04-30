@@ -109,18 +109,18 @@ async function seedMemoryStore(
  */
 async function seedDefaultServices(
 	store: MemoryControlPlaneStore,
-	workspaceUid: string,
+	workspaceId: string,
 ): Promise<void> {
 	for (const chunk of DEFAULT_SERVICES.chunking) {
 		try {
-			await store.createChunkingService(workspaceUid, chunk);
+			await store.createChunkingService(workspaceId, chunk);
 		} catch {
 			// Already present — leave operator's edits alone.
 		}
 	}
 	for (const emb of DEFAULT_SERVICES.embedding) {
 		try {
-			await store.createEmbeddingService(workspaceUid, emb);
+			await store.createEmbeddingService(workspaceId, emb);
 		} catch {
 			// Already present — leave operator's edits alone.
 		}

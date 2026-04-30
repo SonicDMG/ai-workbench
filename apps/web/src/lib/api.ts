@@ -218,8 +218,12 @@ export const api = {
 			(page) => page.items,
 		),
 
-	getWorkspace: (uid: string): Promise<Workspace> =>
-		request(`/workspaces/${uid}`, { method: "GET" }, WorkspaceRecordSchema),
+	getWorkspace: (workspaceId: string): Promise<Workspace> =>
+		request(
+			`/workspaces/${workspaceId}`,
+			{ method: "GET" },
+			WorkspaceRecordSchema,
+		),
 
 	createWorkspace: (input: CreateWorkspaceInput): Promise<Workspace> =>
 		request(
@@ -229,38 +233,38 @@ export const api = {
 		),
 
 	updateWorkspace: (
-		uid: string,
+		workspaceId: string,
 		patch: UpdateWorkspaceInput,
 	): Promise<Workspace> =>
 		request(
-			`/workspaces/${uid}`,
+			`/workspaces/${workspaceId}`,
 			{ method: "PATCH", body: JSON.stringify(normalizeUpdate(patch)) },
 			WorkspaceRecordSchema,
 		),
 
-	deleteWorkspace: (uid: string): Promise<void> =>
-		request(`/workspaces/${uid}`, { method: "DELETE" }, null),
+	deleteWorkspace: (workspaceId: string): Promise<void> =>
+		request(`/workspaces/${workspaceId}`, { method: "DELETE" }, null),
 
-	testConnection: (uid: string): Promise<TestConnectionResult> =>
+	testConnection: (workspaceId: string): Promise<TestConnectionResult> =>
 		request(
-			`/workspaces/${uid}/test-connection`,
+			`/workspaces/${workspaceId}/test-connection`,
 			{ method: "POST" },
 			TestConnectionResultSchema,
 		),
 
-	listApiKeys: (workspaceUid: string): Promise<ApiKeyRecord[]> =>
+	listApiKeys: (workspaceId: string): Promise<ApiKeyRecord[]> =>
 		request(
-			`/workspaces/${workspaceUid}/api-keys`,
+			`/workspaces/${workspaceId}/api-keys`,
 			{ method: "GET" },
 			ApiKeyPageSchema,
 		).then((page) => page.items),
 
 	createApiKey: (
-		workspaceUid: string,
+		workspaceId: string,
 		input: CreateApiKeyInput,
 	): Promise<CreatedApiKeyResponse> =>
 		request(
-			`/workspaces/${workspaceUid}/api-keys`,
+			`/workspaces/${workspaceId}/api-keys`,
 			{
 				method: "POST",
 				body: JSON.stringify({
@@ -271,38 +275,38 @@ export const api = {
 			CreatedApiKeyResponseSchema,
 		),
 
-	revokeApiKey: (workspaceUid: string, keyId: string): Promise<void> =>
+	revokeApiKey: (workspaceId: string, keyId: string): Promise<void> =>
 		request(
-			`/workspaces/${workspaceUid}/api-keys/${keyId}`,
+			`/workspaces/${workspaceId}/api-keys/${keyId}`,
 			{ method: "DELETE" },
 			null,
 		),
 
 	/* -------- Knowledge bases -------- */
 
-	listKnowledgeBases: (workspaceUid: string): Promise<KnowledgeBaseRecord[]> =>
+	listKnowledgeBases: (workspaceId: string): Promise<KnowledgeBaseRecord[]> =>
 		request(
-			`/workspaces/${workspaceUid}/knowledge-bases`,
+			`/workspaces/${workspaceId}/knowledge-bases`,
 			{ method: "GET" },
 			KnowledgeBasePageSchema,
 		).then((page) => page.items),
 
 	getKnowledgeBase: (
-		workspaceUid: string,
-		kbUid: string,
+		workspaceId: string,
+		kbId: string,
 	): Promise<KnowledgeBaseRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}`,
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}`,
 			{ method: "GET" },
 			KnowledgeBaseRecordSchema,
 		),
 
 	createKnowledgeBase: (
-		workspaceUid: string,
+		workspaceId: string,
 		input: CreateKnowledgeBaseInput,
 	): Promise<KnowledgeBaseRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/knowledge-bases`,
+			`/workspaces/${workspaceId}/knowledge-bases`,
 			{
 				method: "POST",
 				body: JSON.stringify({
@@ -318,8 +322,8 @@ export const api = {
 		),
 
 	updateKnowledgeBase: (
-		workspaceUid: string,
-		kbUid: string,
+		workspaceId: string,
+		kbId: string,
 		patch: UpdateKnowledgeBaseInput,
 	): Promise<KnowledgeBaseRecord> => {
 		const body: Record<string, unknown> = {};
@@ -332,47 +336,47 @@ export const api = {
 		if (patch.language !== undefined)
 			body.language = patch.language ? patch.language : null;
 		return request(
-			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}`,
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}`,
 			{ method: "PATCH", body: JSON.stringify(body) },
 			KnowledgeBaseRecordSchema,
 		);
 	},
 
-	deleteKnowledgeBase: (workspaceUid: string, kbUid: string): Promise<void> =>
+	deleteKnowledgeBase: (workspaceId: string, kbId: string): Promise<void> =>
 		request(
-			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}`,
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}`,
 			{ method: "DELETE" },
 			null,
 		),
 
 	listKnowledgeFilters: (
-		workspaceUid: string,
-		kbUid: string,
+		workspaceId: string,
+		kbId: string,
 	): Promise<KnowledgeFilterRecord[]> =>
 		request(
-			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/filters`,
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/filters`,
 			{ method: "GET" },
 			KnowledgeFilterPageSchema,
 		).then((page) => page.items),
 
 	getKnowledgeFilter: (
-		workspaceUid: string,
-		kbUid: string,
-		filterUid: string,
+		workspaceId: string,
+		kbId: string,
+		filterId: string,
 	): Promise<KnowledgeFilterRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/filters/${filterUid}`,
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/filters/${filterId}`,
 			{ method: "GET" },
 			KnowledgeFilterRecordSchema,
 		),
 
 	createKnowledgeFilter: (
-		workspaceUid: string,
-		kbUid: string,
+		workspaceId: string,
+		kbId: string,
 		input: CreateKnowledgeFilterInput,
 	): Promise<KnowledgeFilterRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/filters`,
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/filters`,
 			{
 				method: "POST",
 				body: JSON.stringify({
@@ -385,9 +389,9 @@ export const api = {
 		),
 
 	updateKnowledgeFilter: (
-		workspaceUid: string,
-		kbUid: string,
-		filterUid: string,
+		workspaceId: string,
+		kbId: string,
+		filterId: string,
 		patch: UpdateKnowledgeFilterInput,
 	): Promise<KnowledgeFilterRecord> => {
 		const body: Record<string, unknown> = {};
@@ -396,19 +400,19 @@ export const api = {
 			body.description = patch.description ? patch.description : null;
 		if (patch.filter !== undefined) body.filter = patch.filter;
 		return request(
-			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/filters/${filterUid}`,
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/filters/${filterId}`,
 			{ method: "PATCH", body: JSON.stringify(body) },
 			KnowledgeFilterRecordSchema,
 		);
 	},
 
 	deleteKnowledgeFilter: (
-		workspaceUid: string,
-		kbUid: string,
-		filterUid: string,
+		workspaceId: string,
+		kbId: string,
+		filterId: string,
 	): Promise<void> =>
 		request(
-			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/filters/${filterUid}`,
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/filters/${filterId}`,
 			{ method: "DELETE" },
 			null,
 		),
@@ -416,123 +420,132 @@ export const api = {
 	/* -------- Execution services -------- */
 
 	listChunkingServices: (
-		workspaceUid: string,
+		workspaceId: string,
 	): Promise<ChunkingServiceRecord[]> =>
 		request(
-			`/workspaces/${workspaceUid}/chunking-services`,
+			`/workspaces/${workspaceId}/chunking-services`,
 			{ method: "GET" },
 			ChunkingServicePageSchema,
 		).then((page) => page.items),
 
 	createChunkingService: (
-		workspaceUid: string,
+		workspaceId: string,
 		input: CreateChunkingServiceInput,
 	): Promise<ChunkingServiceRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/chunking-services`,
+			`/workspaces/${workspaceId}/chunking-services`,
 			{ method: "POST", body: JSON.stringify(stripEmptyStrings(input)) },
 			ChunkingServiceRecordSchema,
 		),
 
-	deleteChunkingService: (workspaceUid: string, uid: string): Promise<void> =>
+	deleteChunkingService: (
+		workspaceId: string,
+		chunkingServiceId: string,
+	): Promise<void> =>
 		request(
-			`/workspaces/${workspaceUid}/chunking-services/${uid}`,
+			`/workspaces/${workspaceId}/chunking-services/${chunkingServiceId}`,
 			{ method: "DELETE" },
 			null,
 		),
 
 	listEmbeddingServices: (
-		workspaceUid: string,
+		workspaceId: string,
 	): Promise<EmbeddingServiceRecord[]> =>
 		request(
-			`/workspaces/${workspaceUid}/embedding-services`,
+			`/workspaces/${workspaceId}/embedding-services`,
 			{ method: "GET" },
 			EmbeddingServicePageSchema,
 		).then((page) => page.items),
 
 	createEmbeddingService: (
-		workspaceUid: string,
+		workspaceId: string,
 		input: CreateEmbeddingServiceInput,
 	): Promise<EmbeddingServiceRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/embedding-services`,
+			`/workspaces/${workspaceId}/embedding-services`,
 			{ method: "POST", body: JSON.stringify(stripEmptyStrings(input)) },
 			EmbeddingServiceRecordSchema,
 		),
 
-	deleteEmbeddingService: (workspaceUid: string, uid: string): Promise<void> =>
+	deleteEmbeddingService: (
+		workspaceId: string,
+		embeddingServiceId: string,
+	): Promise<void> =>
 		request(
-			`/workspaces/${workspaceUid}/embedding-services/${uid}`,
+			`/workspaces/${workspaceId}/embedding-services/${embeddingServiceId}`,
 			{ method: "DELETE" },
 			null,
 		),
 
 	listRerankingServices: (
-		workspaceUid: string,
+		workspaceId: string,
 	): Promise<RerankingServiceRecord[]> =>
 		request(
-			`/workspaces/${workspaceUid}/reranking-services`,
+			`/workspaces/${workspaceId}/reranking-services`,
 			{ method: "GET" },
 			RerankingServicePageSchema,
 		).then((page) => page.items),
 
 	createRerankingService: (
-		workspaceUid: string,
+		workspaceId: string,
 		input: CreateRerankingServiceInput,
 	): Promise<RerankingServiceRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/reranking-services`,
+			`/workspaces/${workspaceId}/reranking-services`,
 			{ method: "POST", body: JSON.stringify(stripEmptyStrings(input)) },
 			RerankingServiceRecordSchema,
 		),
 
-	deleteRerankingService: (workspaceUid: string, uid: string): Promise<void> =>
+	deleteRerankingService: (
+		workspaceId: string,
+		rerankingServiceId: string,
+	): Promise<void> =>
 		request(
-			`/workspaces/${workspaceUid}/reranking-services/${uid}`,
+			`/workspaces/${workspaceId}/reranking-services/${rerankingServiceId}`,
 			{ method: "DELETE" },
 			null,
 		),
 
 	/* -------- Agents -------- */
 
-	listAgents: (workspaceUid: string): Promise<AgentRecord[]> =>
+	listAgents: (workspaceId: string): Promise<AgentRecord[]> =>
 		request(
-			`/workspaces/${workspaceUid}/agents`,
+			`/workspaces/${workspaceId}/agents`,
 			{ method: "GET" },
 			AgentPageSchema,
 		).then((page) => page.items),
 
-	getAgent: (workspaceUid: string, agentId: string): Promise<AgentRecord> =>
+	getAgent: (workspaceId: string, agentId: string): Promise<AgentRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/agents/${agentId}`,
+			`/workspaces/${workspaceId}/agents/${agentId}`,
 			{ method: "GET" },
 			AgentRecordSchema,
 		),
 
 	createAgent: (
-		workspaceUid: string,
+		workspaceId: string,
 		input: CreateAgentInput,
 	): Promise<AgentRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/agents`,
+			`/workspaces/${workspaceId}/agents`,
 			{ method: "POST", body: JSON.stringify(stripUndefined(input)) },
 			AgentRecordSchema,
 		),
 
 	updateAgent: (
-		workspaceUid: string,
+		workspaceId: string,
 		agentId: string,
 		patch: UpdateAgentInput,
 	): Promise<AgentRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/agents/${agentId}`,
+			`/workspaces/${workspaceId}/agents/${agentId}`,
 			{ method: "PATCH", body: JSON.stringify(stripUndefined(patch)) },
 			AgentRecordSchema,
 		),
 
-	deleteAgent: (workspaceUid: string, agentId: string): Promise<void> =>
+	deleteAgent: (workspaceId: string, agentId: string): Promise<void> =>
 		request(
-			`/workspaces/${workspaceUid}/agents/${agentId}`,
+			`/workspaces/${workspaceId}/agents/${agentId}`,
 			{ method: "DELETE" },
 			null,
 		),
@@ -540,28 +553,28 @@ export const api = {
 	/* -------- Conversations (agent-scoped) -------- */
 
 	listConversations: (
-		workspaceUid: string,
+		workspaceId: string,
 		agentId: string,
 	): Promise<ConversationRecord[]> =>
 		request(
-			`/workspaces/${workspaceUid}/agents/${agentId}/conversations`,
+			`/workspaces/${workspaceId}/agents/${agentId}/conversations`,
 			{ method: "GET" },
 			ConversationPageSchema,
 		).then((page) => page.items),
 
 	getConversation: (
-		workspaceUid: string,
+		workspaceId: string,
 		agentId: string,
 		conversationId: string,
 	): Promise<ConversationRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/agents/${agentId}/conversations/${conversationId}`,
+			`/workspaces/${workspaceId}/agents/${agentId}/conversations/${conversationId}`,
 			{ method: "GET" },
 			ConversationRecordSchema,
 		),
 
 	createConversation: (
-		workspaceUid: string,
+		workspaceId: string,
 		agentId: string,
 		input: CreateConversationInput,
 	): Promise<ConversationRecord> => {
@@ -572,14 +585,14 @@ export const api = {
 		if (input.knowledgeBaseIds !== undefined)
 			body.knowledgeBaseIds = input.knowledgeBaseIds;
 		return request(
-			`/workspaces/${workspaceUid}/agents/${agentId}/conversations`,
+			`/workspaces/${workspaceId}/agents/${agentId}/conversations`,
 			{ method: "POST", body: JSON.stringify(body) },
 			ConversationRecordSchema,
 		);
 	},
 
 	updateConversation: (
-		workspaceUid: string,
+		workspaceId: string,
 		agentId: string,
 		conversationId: string,
 		patch: UpdateConversationInput,
@@ -589,92 +602,92 @@ export const api = {
 		if (patch.knowledgeBaseIds !== undefined)
 			body.knowledgeBaseIds = patch.knowledgeBaseIds;
 		return request(
-			`/workspaces/${workspaceUid}/agents/${agentId}/conversations/${conversationId}`,
+			`/workspaces/${workspaceId}/agents/${agentId}/conversations/${conversationId}`,
 			{ method: "PATCH", body: JSON.stringify(body) },
 			ConversationRecordSchema,
 		);
 	},
 
 	deleteConversation: (
-		workspaceUid: string,
+		workspaceId: string,
 		agentId: string,
 		conversationId: string,
 	): Promise<void> =>
 		request(
-			`/workspaces/${workspaceUid}/agents/${agentId}/conversations/${conversationId}`,
+			`/workspaces/${workspaceId}/agents/${agentId}/conversations/${conversationId}`,
 			{ method: "DELETE" },
 			null,
 		),
 
 	listConversationMessages: (
-		workspaceUid: string,
+		workspaceId: string,
 		agentId: string,
 		conversationId: string,
 	): Promise<ChatMessage[]> =>
 		request(
-			`/workspaces/${workspaceUid}/agents/${agentId}/conversations/${conversationId}/messages`,
+			`/workspaces/${workspaceId}/agents/${agentId}/conversations/${conversationId}/messages`,
 			{ method: "GET" },
 			ChatMessagePageSchema,
 		).then((page) => page.items),
 
 	sendConversationMessage: (
-		workspaceUid: string,
+		workspaceId: string,
 		agentId: string,
 		conversationId: string,
 		input: SendChatMessageInput,
 	): Promise<SendChatMessageResponse> =>
 		request(
-			`/workspaces/${workspaceUid}/agents/${agentId}/conversations/${conversationId}/messages`,
+			`/workspaces/${workspaceId}/agents/${agentId}/conversations/${conversationId}/messages`,
 			{ method: "POST", body: JSON.stringify(input) },
 			SendChatMessageResponseSchema,
 		),
 
 	/* -------- LLM services -------- */
 
-	listLlmServices: (workspaceUid: string): Promise<LlmServiceRecord[]> =>
+	listLlmServices: (workspaceId: string): Promise<LlmServiceRecord[]> =>
 		request(
-			`/workspaces/${workspaceUid}/llm-services`,
+			`/workspaces/${workspaceId}/llm-services`,
 			{ method: "GET" },
 			LlmServicePageSchema,
 		).then((page) => page.items),
 
 	getLlmService: (
-		workspaceUid: string,
+		workspaceId: string,
 		llmServiceId: string,
 	): Promise<LlmServiceRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/llm-services/${llmServiceId}`,
+			`/workspaces/${workspaceId}/llm-services/${llmServiceId}`,
 			{ method: "GET" },
 			LlmServiceRecordSchema,
 		),
 
 	createLlmService: (
-		workspaceUid: string,
+		workspaceId: string,
 		input: CreateLlmServiceInput,
 	): Promise<LlmServiceRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/llm-services`,
+			`/workspaces/${workspaceId}/llm-services`,
 			{ method: "POST", body: JSON.stringify(stripUndefined(input)) },
 			LlmServiceRecordSchema,
 		),
 
 	updateLlmService: (
-		workspaceUid: string,
+		workspaceId: string,
 		llmServiceId: string,
 		patch: UpdateLlmServiceInput,
 	): Promise<LlmServiceRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/llm-services/${llmServiceId}`,
+			`/workspaces/${workspaceId}/llm-services/${llmServiceId}`,
 			{ method: "PATCH", body: JSON.stringify(stripUndefined(patch)) },
 			LlmServiceRecordSchema,
 		),
 
 	deleteLlmService: (
-		workspaceUid: string,
+		workspaceId: string,
 		llmServiceId: string,
 	): Promise<void> =>
 		request(
-			`/workspaces/${workspaceUid}/llm-services/${llmServiceId}`,
+			`/workspaces/${workspaceId}/llm-services/${llmServiceId}`,
 			{ method: "DELETE" },
 			null,
 		),
@@ -682,36 +695,36 @@ export const api = {
 	/* -------- KB documents -------- */
 
 	listKbDocuments: (
-		workspaceUid: string,
-		kbUid: string,
+		workspaceId: string,
+		kbId: string,
 	): Promise<RagDocumentRecord[]> =>
 		request(
-			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/documents`,
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents`,
 			{ method: "GET" },
 			RagDocumentPageSchema,
 		).then((page) => page.items),
 
 	listKbDocumentChunks: (
-		workspaceUid: string,
-		kbUid: string,
-		documentUid: string,
+		workspaceId: string,
+		kbId: string,
+		documentId: string,
 		opts?: { limit?: number },
 	): Promise<DocumentChunk[]> => {
 		const qs = opts?.limit ? `?limit=${opts.limit}` : "";
 		return request(
-			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/documents/${documentUid}/chunks${qs}`,
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents/${documentId}/chunks${qs}`,
 			{ method: "GET" },
 			z.array(DocumentChunkSchema),
 		);
 	},
 
 	deleteKbDocument: (
-		workspaceUid: string,
-		kbUid: string,
-		documentUid: string,
+		workspaceId: string,
+		kbId: string,
+		documentId: string,
 	): Promise<void> =>
 		request(
-			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/documents/${documentUid}`,
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents/${documentId}`,
 			{ method: "DELETE" },
 			null,
 		),
@@ -719,12 +732,12 @@ export const api = {
 	/* -------- KB data plane -------- */
 
 	kbSearch: (
-		workspaceUid: string,
-		kbUid: string,
+		workspaceId: string,
+		kbId: string,
 		input: PlaygroundSearchInput,
 	): Promise<SearchHit[]> =>
 		request(
-			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/search`,
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/search`,
 			{ method: "POST", body: JSON.stringify(input) },
 			z.array(SearchHitSchema),
 		),
@@ -732,19 +745,19 @@ export const api = {
 	/* -------- Ingest + jobs -------- */
 
 	kbIngestAsync: (
-		workspaceUid: string,
-		kbUid: string,
+		workspaceId: string,
+		kbId: string,
 		input: KbIngestRequest,
 	): Promise<KbAsyncIngestResponse> =>
 		request(
-			`/workspaces/${workspaceUid}/knowledge-bases/${kbUid}/ingest?async=true`,
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/ingest?async=true`,
 			{ method: "POST", body: JSON.stringify(input) },
 			KbAsyncIngestResponseSchema,
 		),
 
-	getJob: (workspaceUid: string, jobId: string): Promise<JobRecord> =>
+	getJob: (workspaceId: string, jobId: string): Promise<JobRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/jobs/${jobId}`,
+			`/workspaces/${workspaceId}/jobs/${jobId}`,
 			{ method: "GET" },
 			JobRecordSchema,
 		),

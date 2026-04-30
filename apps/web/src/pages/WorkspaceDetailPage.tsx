@@ -34,15 +34,15 @@ function isLiteralUrl(value: string): boolean {
 }
 
 export function WorkspaceDetailPage() {
-	const { workspaceUid } = useParams<{ workspaceUid: string }>();
+	const { workspaceId } = useParams<{ workspaceId: string }>();
 	const navigate = useNavigate();
-	const { data, isLoading, isError, error } = useWorkspace(workspaceUid);
-	const update = useUpdateWorkspace(workspaceUid ?? "");
+	const { data, isLoading, isError, error } = useWorkspace(workspaceId);
+	const update = useUpdateWorkspace(workspaceId ?? "");
 	const del = useDeleteWorkspace();
 	const [editing, setEditing] = useState(false);
 	const [deleteOpen, setDeleteOpen] = useState(false);
 
-	if (!workspaceUid) return <Navigate to="/" replace />;
+	if (!workspaceId) return <Navigate to="/" replace />;
 	if (isLoading) return <LoadingState label="Loading workspace…" />;
 	if (isError || !data) {
 		const message =
@@ -86,7 +86,9 @@ export function WorkspaceDetailPage() {
 				</div>
 				<div className="flex shrink-0 flex-col items-end gap-2">
 					<div className="flex items-center gap-2">
-						{!editing ? <TestConnectionPanel uid={data.workspaceId} /> : null}
+						{!editing ? (
+							<TestConnectionPanel workspaceId={data.workspaceId} />
+						) : null}
 						{!editing ? (
 							<Button variant="secondary" asChild>
 								<Link to={`/workspaces/${data.workspaceId}/agents`}>

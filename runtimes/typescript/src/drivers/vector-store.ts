@@ -207,7 +207,7 @@ export interface VectorStoreDriver {
 	 * Plain (non-similarity-ordered) list of records matching a
 	 * payload filter, capped at `limit`. Optional — the route layer
 	 * uses this to drive the document-chunks view, which wants
-	 * "every chunk under documentUid X" without the rank/similarity
+	 * "every chunk under documentId X" without the rank/similarity
 	 * shape of `search`. Drivers that can implement it cheaply (a
 	 * direct `find()` against the underlying collection on Astra,
 	 * an in-memory filter on mock) should; otherwise omit and the
@@ -295,11 +295,11 @@ export class DriverUnavailableError extends Error {
 /** Workspace is missing required connection config (endpoint / token / keyspace). */
 export class WorkspaceMisconfiguredError extends Error {
 	constructor(
-		public readonly workspaceUid: string,
+		public readonly workspaceId: string,
 		public readonly missing: string,
 	) {
 		super(
-			`workspace '${workspaceUid}' is missing '${missing}' — required by its driver`,
+			`workspace '${workspaceId}' is missing '${missing}' — required by its driver`,
 		);
 		this.name = "WorkspaceMisconfiguredError";
 	}

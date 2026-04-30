@@ -3,7 +3,7 @@ package com.datastax.aiworkbench.model;
 import java.util.Map;
 
 /**
- * Request body for {@code PUT /api/v1/workspaces/{uid}}.
+ * Request body for {@code PUT /api/v1/workspaces/{id}}.
  *
  * <p>{@code kind} is intentionally absent — a workspace's backend is
  * immutable after creation. The TS runtime rejects PUT bodies containing

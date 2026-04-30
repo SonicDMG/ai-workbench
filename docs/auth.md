@@ -349,7 +349,7 @@ Any failure throws `UnauthorizedError` with a short, safe message
 raw jose error is never forwarded to clients.
 
 **Workspace authorization.** The `workspaceScopes` claim — an array
-of workspace UIDs, or a space-separated string — drives the same
+of workspace IDs, or a space-separated string — drives the same
 `assertWorkspaceAccess` path that API-key subjects use. Tokens
 with the claim set to JSON `null` are treated as unscoped / admin
 and may reach any workspace (matches the "operator tokens" escape

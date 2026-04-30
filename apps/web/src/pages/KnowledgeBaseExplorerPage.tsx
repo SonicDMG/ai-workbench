@@ -39,23 +39,20 @@ import type { RagDocumentRecord } from "@/lib/schemas";
  */
 export function KnowledgeBaseExplorerPage() {
 	const params = useParams<{
-		workspaceUid: string;
-		knowledgeBaseUid: string;
+		workspaceId: string;
+		knowledgeBaseId: string;
 	}>();
-	const workspaceUid = params.workspaceUid;
-	const knowledgeBaseUid = params.knowledgeBaseUid;
+	const workspaceId = params.workspaceId;
+	const knowledgeBaseId = params.knowledgeBaseId;
 
-	const ws = useWorkspace(workspaceUid);
-	const kb = useKnowledgeBase(workspaceUid, knowledgeBaseUid);
-	const docs = useDocuments(workspaceUid, knowledgeBaseUid);
+	const ws = useWorkspace(workspaceId);
+	const kb = useKnowledgeBase(workspaceId, knowledgeBaseId);
+	const docs = useDocuments(workspaceId, knowledgeBaseId);
 
 	const [ingestOpen, setIngestOpen] = useState(false);
 	const [detail, setDetail] = useState<RagDocumentRecord | null>(null);
 	const [toDelete, setToDelete] = useState<RagDocumentRecord | null>(null);
-	const deleteDoc = useDeleteDocument(
-		workspaceUid ?? "",
-		knowledgeBaseUid ?? "",
-	);
+	const deleteDoc = useDeleteDocument(workspaceId ?? "", knowledgeBaseId ?? "");
 
 	// Deep-link from chat citations: `?document=<id>&chunk=<id>` lands
 	// here, auto-opens the matching document detail dialog, and the
@@ -85,11 +82,11 @@ export function KnowledgeBaseExplorerPage() {
 		}
 	};
 
-	if (!workspaceUid || !knowledgeBaseUid) {
+	if (!workspaceId || !knowledgeBaseId) {
 		return (
 			<ErrorState
 				title="Invalid URL"
-				message="Missing workspace or knowledge-base UID."
+				message="Missing workspace or knowledge-base ID."
 			/>
 		);
 	}
@@ -109,11 +106,11 @@ export function KnowledgeBaseExplorerPage() {
 					title="Knowledge base not found"
 					message={
 						kb.error?.message ??
-						`No knowledge base ${knowledgeBaseUid} in this workspace.`
+						`No knowledge base ${knowledgeBaseId} in this workspace.`
 					}
 					actions={
 						<Button variant="secondary" asChild>
-							<Link to={`/workspaces/${workspaceUid}`}>
+							<Link to={`/workspaces/${workspaceId}`}>
 								<ArrowLeft className="h-4 w-4" /> Back to workspace
 							</Link>
 						</Button>
@@ -129,7 +126,7 @@ export function KnowledgeBaseExplorerPage() {
 		<div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
 			<header className="flex flex-col gap-2">
 				<Link
-					to={`/workspaces/${workspaceUid}`}
+					to={`/workspaces/${workspaceId}`}
 					className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900 w-max"
 				>
 					<ArrowLeft className="h-4 w-4" />
@@ -170,7 +167,7 @@ export function KnowledgeBaseExplorerPage() {
 						</Button>
 						<Button variant="brand" size="sm" asChild>
 							<Link
-								to={`/workspaces/${workspaceUid}/knowledge-bases/${knowledgeBaseUid}/playground`}
+								to={`/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/playground`}
 							>
 								<Sparkles className="h-4 w-4" /> Playground
 							</Link>
@@ -215,14 +212,14 @@ export function KnowledgeBaseExplorerPage() {
 			</Card>
 
 			<IngestQueueDialog
-				workspace={workspaceUid}
+				workspace={workspaceId}
 				knowledgeBase={knowledgeBase}
 				open={ingestOpen}
 				onOpenChange={setIngestOpen}
 			/>
 			<DocumentDetailDialog
-				workspace={workspaceUid}
-				knowledgeBaseUid={knowledgeBase.knowledgeBaseId}
+				workspace={workspaceId}
+				knowledgeBaseId={knowledgeBase.knowledgeBaseId}
 				doc={detail}
 				highlightChunkId={wantedChunkId}
 				onOpenChange={onDetailOpenChange}

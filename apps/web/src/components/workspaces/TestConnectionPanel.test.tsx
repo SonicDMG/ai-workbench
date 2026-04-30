@@ -28,14 +28,14 @@ beforeEach(() => {
 describe("TestConnectionPanel", () => {
 	it("triggers the probe mutation when the Test button is clicked", async () => {
 		const user = userEvent.setup();
-		render(<TestConnectionPanel uid="ws-1" />);
+		render(<TestConnectionPanel workspaceId="ws-1" />);
 		await user.click(screen.getByRole("button", { name: "Test" }));
 		expect(mutate).toHaveBeenCalledTimes(1);
 	});
 
 	it("renders a Testing… label and disables the button while the probe is pending", () => {
 		probeState = { data: undefined, error: undefined, isPending: true };
-		render(<TestConnectionPanel uid="ws-1" />);
+		render(<TestConnectionPanel workspaceId="ws-1" />);
 		const button = screen.getByRole("button", { name: "Testing…" });
 		expect(button).toBeDisabled();
 	});
@@ -49,7 +49,7 @@ describe("TestConnectionPanel", () => {
 			error: undefined,
 			isPending: false,
 		};
-		render(<TestConnectionPanel uid="ws-1" />);
+		render(<TestConnectionPanel workspaceId="ws-1" />);
 		expect(screen.getByText("Connection passed")).toBeInTheDocument();
 		expect(screen.getByText(/Reached https:\/\/example/)).toBeInTheDocument();
 	});
@@ -60,7 +60,7 @@ describe("TestConnectionPanel", () => {
 			error: undefined,
 			isPending: false,
 		};
-		render(<TestConnectionPanel uid="ws-1" />);
+		render(<TestConnectionPanel workspaceId="ws-1" />);
 		expect(screen.getByText("Connection failed")).toBeInTheDocument();
 		expect(
 			screen.getByText("401 from Data API: bad token"),
@@ -73,7 +73,7 @@ describe("TestConnectionPanel", () => {
 			error: new Error("network error"),
 			isPending: false,
 		};
-		render(<TestConnectionPanel uid="ws-1" />);
+		render(<TestConnectionPanel workspaceId="ws-1" />);
 		expect(screen.getByText("Probe failed to run")).toBeInTheDocument();
 	});
 });

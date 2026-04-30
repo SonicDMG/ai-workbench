@@ -122,7 +122,7 @@ Shipped in this phase so far:
   any future chunker must pass.
 - `POST .../catalogs/{c}/documents/search` — catalog-scoped search
   that delegates to the catalog's bound vector store. Merges
-  `catalogUid = catalog.workspaceId` into the filter so a search cannot
+  `catalogId = catalog.workspaceId` into the filter so a search cannot
   escape its catalog. Covered by scenario
   `catalog-scoped-document-search`.
 - **Hybrid + rerank lanes** on the search route. Driver contract
@@ -149,7 +149,7 @@ Shipped in this phase so far:
   the catalog's bound store, and creates a `Document` row with
   `status: ready`. Failures mark the row `failed` with
   `errorMessage` before re-raising. Chunk payloads carry
-  `catalogUid`, `documentId`, `chunkIndex`, plus caller metadata.
+  `catalogId`, `documentId`, `chunkIndex`, plus caller metadata.
   Covered by scenario `catalog-ingest-basic`.
 - `POST .../catalogs/{c}/ingest?async=true` — same pipeline, returned
   to the caller as a 202 with a `job` pointer. Background worker
@@ -191,7 +191,7 @@ Shipped in this phase so far:
 - **Saved queries** — `/api/v1/workspaces/{w}/catalogs/{c}/queries`
   CRUD + `POST /{q}/run` that replays through the catalog-scoped
   search path. Text-only; the `/run` endpoint merges the catalog's
-  UID into the filter unconditionally so saved queries cannot escape
+  ID into the filter unconditionally so saved queries cannot escape
   their catalog. New control-plane table
   (`wb_saved_queries_by_catalog` on astra); cascades on
   workspace/catalog delete. Covered by scenario

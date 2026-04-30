@@ -221,7 +221,7 @@ export function kbDocumentRoutes(
 				workspace: resolved.workspace,
 				knowledgeBase: resolved.knowledgeBase,
 				descriptor: resolved.descriptor,
-				documentUid: document.documentId,
+				documentId: document.documentId,
 			};
 
 			if (asyncMode === "true") {
@@ -235,13 +235,13 @@ export function kbDocumentRoutes(
 				const job = await jobs.create({
 					workspace: workspaceId,
 					kind: "ingest",
-					knowledgeBaseUid: knowledgeBaseId,
-					documentUid: document.documentId,
+					knowledgeBaseId: knowledgeBaseId,
+					documentId: document.documentId,
 					ingestInput: ingestSnapshot,
 				});
 				void runKbIngestJob({
 					deps: { store, drivers, embedders, jobs },
-					workspaceUid: workspaceId,
+					workspaceId: workspaceId,
 					jobId: job.jobId,
 					replicaId,
 					input: body,

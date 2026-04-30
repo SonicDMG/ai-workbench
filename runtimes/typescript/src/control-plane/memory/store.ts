@@ -5,10 +5,10 @@
  * Not durable — state is lost when the process exits.
  *
  * Internal layout mirrors the CQL partition structure:
- *   workspaces          : Map<workspaceUid, WorkspaceRecord>
- *   knowledgeBases      : Map<workspaceUid, Map<kbUid, KnowledgeBaseRecord>>
- *   ragDocuments        : Map<`${workspaceUid}:${kbUid}`, Map<docUid, RagDocumentRecord>>
- *   apiKeys             : Map<workspaceUid, Map<keyId, ApiKeyRecord>>
+ *   workspaces          : Map<workspaceId, WorkspaceRecord>
+ *   knowledgeBases      : Map<workspaceId, Map<kbId, KnowledgeBaseRecord>>
+ *   ragDocuments        : Map<`${workspaceId}:${kbId}`, Map<docId, RagDocumentRecord>>
+ *   apiKeys             : Map<workspaceId, Map<keyId, ApiKeyRecord>>
  *
  * This keeps lookups O(log N) on JS's Map while matching the physical
  * storage semantics one-to-one.
@@ -16,8 +16,8 @@
 
 import { randomUUID } from "node:crypto";
 import {
+	byCreatedAtThenId,
 	byCreatedAtThenKeyId,
-	byCreatedAtThenUid,
 	DEFAULT_AUTH_TYPE,
 	DEFAULT_DISTANCE_METRIC,
 	DEFAULT_KB_STATUS,
@@ -199,7 +199,7 @@ function mergeMetadata(
 
 export class MemoryControlPlaneStore implements ControlPlaneStore {
 	private readonly workspaces = new Map<string, WorkspaceRecord>();
-	// KB-scoped RAG documents (issue #98). `${workspaceUid}:${kbUid}`
+	// KB-scoped RAG documents (issue #98). `${workspaceId}:${kbId}`
 	// keyed.
 	private readonly ragDocuments = new Map<
 		string,
@@ -208,7 +208,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 	private readonly apiKeys = new Map<string, Map<string, ApiKeyRecord>>();
 	private readonly apiKeyPrefixIndex = new Map<string, ApiKeyRecord>();
 	// Knowledge-base schema (issue #98). All four maps follow the same
-	// `Map<workspaceUid, Map<recordUid, Record>>` shape.
+	// `Map<workspaceId, Map<recordId, Record>>` shape.
 	private readonly knowledgeBases = new Map<
 		string,
 		Map<string, KnowledgeBaseRecord>
@@ -246,7 +246,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 	/* ---------------- Workspaces ---------------- */
 
 	async listWorkspaces(): Promise<readonly WorkspaceRecord[]> {
-		return Array.from(this.workspaces.values()).sort(byCreatedAtThenUid);
+		return Array.from(this.workspaces.values()).sort(byCreatedAtThenId);
 	}
 
 	async getWorkspace(uid: string): Promise<WorkspaceRecord | null> {
@@ -257,7 +257,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		const uid = input.uid ?? randomUUID();
 		if (this.workspaces.has(uid)) {
 			throw new ControlPlaneConflictError(
-				`workspace with uid '${uid}' already exists`,
+				`workspace with id '${uid}' already exists`,
 			);
 		}
 		const now = nowIso();
@@ -362,7 +362,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		const bucket = this.ragDocuments.get(key) ?? new Map();
 		if (bucket.has(uid)) {
 			throw new ControlPlaneConflictError(
-				`document with uid '${uid}' already exists in knowledge base '${knowledgeBase}'`,
+				`document with id '${uid}' already exists in knowledge base '${knowledgeBase}'`,
 			);
 		}
 		const record: RagDocumentRecord = {
@@ -547,7 +547,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		const bucket = this.knowledgeBases.get(workspace) ?? new Map();
 		if (bucket.has(uid)) {
 			throw new ControlPlaneConflictError(
-				`knowledge base with uid '${uid}' already exists in workspace '${workspace}'`,
+				`knowledge base with id '${uid}' already exists in workspace '${workspace}'`,
 			);
 		}
 		const now = nowIso();
@@ -673,7 +673,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		const bucket = this.knowledgeFilters.get(key) ?? new Map();
 		if (bucket.has(uid)) {
 			throw new ControlPlaneConflictError(
-				`knowledge filter with uid '${uid}' already exists in knowledge base '${knowledgeBase}'`,
+				`knowledge filter with id '${uid}' already exists in knowledge base '${knowledgeBase}'`,
 			);
 		}
 		const now = nowIso();
@@ -756,7 +756,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		const bucket = this.chunkingServices.get(workspace) ?? new Map();
 		if (bucket.has(uid)) {
 			throw new ControlPlaneConflictError(
-				`chunking service with uid '${uid}' already exists in workspace '${workspace}'`,
+				`chunking service with id '${uid}' already exists in workspace '${workspace}'`,
 			);
 		}
 		const now = nowIso();
@@ -902,7 +902,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		const bucket = this.embeddingServices.get(workspace) ?? new Map();
 		if (bucket.has(uid)) {
 			throw new ControlPlaneConflictError(
-				`embedding service with uid '${uid}' already exists in workspace '${workspace}'`,
+				`embedding service with id '${uid}' already exists in workspace '${workspace}'`,
 			);
 		}
 		const now = nowIso();
@@ -1026,7 +1026,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		const bucket = this.rerankingServices.get(workspace) ?? new Map();
 		if (bucket.has(uid)) {
 			throw new ControlPlaneConflictError(
-				`reranking service with uid '${uid}' already exists in workspace '${workspace}'`,
+				`reranking service with id '${uid}' already exists in workspace '${workspace}'`,
 			);
 		}
 		const now = nowIso();
@@ -1161,7 +1161,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		const bucket = this.llmServices.get(workspace) ?? new Map();
 		if (bucket.has(uid)) {
 			throw new ControlPlaneConflictError(
-				`llm service with uid '${uid}' already exists in workspace '${workspace}'`,
+				`llm service with id '${uid}' already exists in workspace '${workspace}'`,
 			);
 		}
 		const now = nowIso();
@@ -1647,14 +1647,14 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 	private assertServiceNotReferenced(
 		workspace: string,
 		field: "embeddingServiceId" | "chunkingServiceId" | "rerankingServiceId",
-		serviceUid: string,
+		serviceId: string,
 	): void {
 		const ref = Array.from(
 			this.knowledgeBases.get(workspace)?.values() ?? [],
-		).find((kb) => kb[field] === serviceUid);
+		).find((kb) => kb[field] === serviceId);
 		if (ref) {
 			throw new ControlPlaneConflictError(
-				`service '${serviceUid}' is referenced by knowledge base '${ref.knowledgeBaseId}' (${field})`,
+				`service '${serviceId}' is referenced by knowledge base '${ref.knowledgeBaseId}' (${field})`,
 			);
 		}
 	}
@@ -1662,14 +1662,14 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 	private assertAgentServiceNotReferenced(
 		workspace: string,
 		field: "llmServiceId" | "rerankingServiceId",
-		serviceUid: string,
+		serviceId: string,
 	): void {
 		const ref = Array.from(this.agents.get(workspace)?.values() ?? []).find(
-			(agent) => agent[field] === serviceUid,
+			(agent) => agent[field] === serviceId,
 		);
 		if (ref) {
 			throw new ControlPlaneConflictError(
-				`service '${serviceUid}' is referenced by agent '${ref.agentId}' (${field})`,
+				`service '${serviceId}' is referenced by agent '${ref.agentId}' (${field})`,
 			);
 		}
 	}
