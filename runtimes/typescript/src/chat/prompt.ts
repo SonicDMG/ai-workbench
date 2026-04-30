@@ -1,5 +1,5 @@
 /**
- * Pure prompt-assembly for chat-with-Bobbie. Given a system prompt,
+ * Pure prompt-assembly for the agent chat surface. Given a system prompt,
  * a set of retrieved KB chunks, the conversation history, and a new
  * user turn, produce the ordered list of {@link ChatTurn}s to send
  * to the model.
@@ -53,8 +53,8 @@ const DEFAULT_HISTORY_LIMIT = 16;
  *   1. A `system` turn with the persona prompt + the retrieved
  *      context block (chunks delimited so the model can cite them).
  *   2. The most recent N history turns, in chronological order,
- *      with internal `tool` rows filtered out (Bobbie has no tools
- *      in v0) and empty / errored assistant placeholders dropped.
+ *      with internal `tool` rows filtered out (no tools wired in v0)
+ *      and empty / errored assistant placeholders dropped.
  *   3. The new `user` turn.
  *
  * No retrieval, no I/O — pure function.
@@ -108,7 +108,7 @@ export function assemblePrompt(
  * Builds the `system` turn body. The context block is a labeled list
  * of chunks so the model can cite them as `[chunkId]` per the
  * persona prompt's instructions. Empty context = persona prompt
- * alone, which is the right behavior when Bobbie has no KBs to
+ * alone, which is the right behavior when the agent has no KBs to
  * ground in.
  */
 function buildSystemPromptWithContext(

@@ -1,10 +1,9 @@
 /**
- * Provider-agnostic chat-completion abstractions for the
- * chat-with-Bobbie feature. The route layer only ever talks to
- * {@link ChatService}; the HuggingFace implementation in
- * {@link ./huggingface.ts} is one consumer, future providers (a
- * fake for tests, a Cohere wrapper, etc.) plug in without changing
- * routes.
+ * Provider-agnostic chat-completion abstractions for the agent chat
+ * surface. The route layer only ever talks to {@link ChatService};
+ * the HuggingFace implementation in {@link ./huggingface.ts} is one
+ * consumer, future providers (a fake for tests, a Cohere wrapper,
+ * etc.) plug in without changing routes.
  */
 
 /**
@@ -12,9 +11,9 @@
  * the OpenAI / HF chat-completion contract — content-only, no tool
  * calls in v0.
  *
- * `role` semantics are model-facing: `assistant` for Bobbie's prior
- * replies, `user` for human turns, `system` for the persona prompt
- * (added by the prompt-assembler, not the route caller).
+ * `role` semantics are model-facing: `assistant` for the agent's
+ * prior replies, `user` for human turns, `system` for the persona
+ * prompt (added by the prompt-assembler, not the route caller).
  */
 export interface ChatTurn {
 	readonly role: "system" | "user" | "assistant";

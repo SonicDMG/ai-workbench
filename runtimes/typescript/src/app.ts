@@ -11,10 +11,8 @@
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records`             upsert
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records/{id}`        delete record
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/search`              vector / hybrid / rerank
- *   `/api/v1/workspaces/{w}/{chunking,embedding,reranking}-services`  service CRUD
+ *   `/api/v1/workspaces/{w}/{chunking,embedding,reranking,llm}-services`  service CRUD
  *   `/api/v1/workspaces/{w}/jobs/{jobId}`                             job poll + SSE
- *   `/api/v1/workspaces/{w}/chats`                                    Bobbie chat CRUD
- *   `/api/v1/workspaces/{w}/chats/{chatId}/messages`                  chat message append + history
  *   `/api/v1/workspaces/{w}/agents`                                   user-defined agent CRUD
  *   `/api/v1/workspaces/{w}/agents/{a}/conversations`                 conversation CRUD per agent
  *   `/api/v1/openapi.json`                                            generated OpenAPI doc
@@ -49,7 +47,6 @@ import { SCALAR_CDN_PINNED, securityHeaders } from "./lib/security-headers.js";
 import type { AppEnv } from "./lib/types.js";
 import { agentRoutes } from "./routes/api-v1/agents.js";
 import { apiKeyRoutes } from "./routes/api-v1/api-keys.js";
-import { chatRoutes } from "./routes/api-v1/chats.js";
 import { chunkingServiceRoutes } from "./routes/api-v1/chunking-services.js";
 import { embeddingServiceRoutes } from "./routes/api-v1/embedding-services.js";
 import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
@@ -58,6 +55,7 @@ import { kbDataPlaneRoutes } from "./routes/api-v1/kb-data-plane.js";
 import { kbDocumentRoutes } from "./routes/api-v1/kb-documents.js";
 import { knowledgeBaseRoutes } from "./routes/api-v1/knowledge-bases.js";
 import { knowledgeFilterRoutes } from "./routes/api-v1/knowledge-filters.js";
+import { llmServiceRoutes } from "./routes/api-v1/llm-services.js";
 import { mountMcpRoutes } from "./routes/api-v1/mcp.js";
 import { rerankingServiceRoutes } from "./routes/api-v1/reranking-services.js";
 import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
@@ -132,10 +130,11 @@ export interface AppOptions {
 	 */
 	readonly astraCli?: AstraCliInfo | null;
 	/**
-	 * Chat-completion service for chat-with-Bobbie. `null` (or
-	 * undefined) means the runtime was booted without a `chat` block in
-	 * `workbench.yaml`; chat routes still serve CRUD but POST messages
-	 * returns `503 chat_disabled`.
+	 * Chat-completion service used by the agent send / stream surface
+	 * (`/api/v1/workspaces/{w}/agents/{a}/conversations/{c}/messages`).
+	 * `null` (or undefined) means the runtime was booted without a
+	 * `chat` block in `workbench.yaml`; agent send routes return
+	 * `503 chat_disabled`.
 	 */
 	readonly chatService?: ChatService | null;
 	/** Mirrors the parsed `chat` config block; needed for retrieval defaults. */
@@ -320,15 +319,15 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	app.route("/api/v1/workspaces", knowledgeFilterRoutes(opts.store));
 	app.route(
 		"/api/v1/workspaces",
-		chatRoutes({
+		agentRoutes({
 			store: opts.store,
 			drivers: opts.drivers,
 			embedders: opts.embedders,
+			secrets: opts.secrets,
 			chatService: opts.chatService ?? null,
 			chatConfig: opts.chatConfig ?? null,
 		}),
 	);
-	app.route("/api/v1/workspaces", agentRoutes({ store: opts.store }));
 	mountMcpRoutes(app, {
 		store: opts.store,
 		drivers: opts.drivers,
@@ -340,6 +339,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	app.route("/api/v1/workspaces", chunkingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", embeddingServiceRoutes(opts.store));
 	app.route("/api/v1/workspaces", rerankingServiceRoutes(opts.store));
+	app.route("/api/v1/workspaces", llmServiceRoutes(opts.store));
 	app.route(
 		"/api/v1/workspaces",
 		kbDataPlaneRoutes({

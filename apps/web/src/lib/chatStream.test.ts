@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { type ChatStreamUiEvent, sendChatStream } from "@/lib/chatStream";
+import {
+	type ChatStreamUiEvent,
+	sendConversationStream,
+} from "@/lib/chatStream";
 
 const stubFetch = vi.fn();
 vi.stubGlobal("fetch", stubFetch);
@@ -16,7 +19,37 @@ function streamFromChunks(
 	});
 }
 
-describe("sendChatStream", () => {
+describe("sendConversationStream", () => {
+	it("posts to the agent-conversation messages stream URL", async () => {
+		const assistantMsg = {
+			workspaceId: "00000000-0000-4000-8000-000000000001",
+			chatId: "00000000-0000-4000-8000-000000000002",
+			messageId: "00000000-0000-4000-8000-000000000003",
+			messageTs: "2026-04-28T00:00:00.000Z",
+			role: "agent",
+			content: "ok",
+			tokenCount: null,
+			metadata: { finish_reason: "stop" },
+		};
+		const body = streamFromChunks([
+			`event: done\ndata: ${JSON.stringify(assistantMsg)}\n\n`,
+		]);
+		stubFetch.mockResolvedValueOnce(
+			new Response(body, {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			}),
+		);
+		await sendConversationStream("ws", "agent-1", "conv-1", {
+			content: "hi",
+			onEvent: () => {},
+		});
+		expect(stubFetch).toHaveBeenCalledWith(
+			"/api/v1/workspaces/ws/agents/agent-1/conversations/conv-1/messages/stream",
+			expect.objectContaining({ method: "POST" }),
+		);
+	});
+
 	it("parses user-message, token deltas, and done events in order", async () => {
 		const userMsg = {
 			workspaceId: "00000000-0000-4000-8000-000000000001",
@@ -50,7 +83,7 @@ describe("sendChatStream", () => {
 		);
 
 		const events: ChatStreamUiEvent[] = [];
-		await sendChatStream("ws", "chat", {
+		await sendConversationStream("ws", "agent-1", "conv-1", {
 			content: "hi",
 			onEvent: (e) => events.push(e),
 		});
@@ -91,7 +124,7 @@ describe("sendChatStream", () => {
 
 		const tokens: string[] = [];
 		let done = false;
-		await sendChatStream("ws", "chat", {
+		await sendConversationStream("ws", "agent-1", "conv-1", {
 			content: "hi",
 			onEvent: (e) => {
 				if (e.type === "token") tokens.push(e.delta);
@@ -104,13 +137,16 @@ describe("sendChatStream", () => {
 
 	it("rejects on a non-2xx response", async () => {
 		stubFetch.mockResolvedValueOnce(
-			new Response("chat is disabled", {
+			new Response("conversation is disabled", {
 				status: 503,
 				statusText: "Service Unavailable",
 			}),
 		);
 		await expect(
-			sendChatStream("ws", "chat", { content: "hi", onEvent: () => {} }),
+			sendConversationStream("ws", "agent-1", "conv-1", {
+				content: "hi",
+				onEvent: () => {},
+			}),
 		).rejects.toThrow(/503/);
 	});
 });

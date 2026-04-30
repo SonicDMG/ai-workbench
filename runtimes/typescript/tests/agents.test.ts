@@ -1,19 +1,23 @@
 /**
  * Route-level coverage for `/api/v1/workspaces/{w}/agents` and the
  * nested per-agent conversation routes. Uses the memory control
- * plane and a mock vector driver — chat send paths are NOT covered
- * here (they live on `/chats` and are exercised by `chats.test.ts`).
+ * plane and a mock vector driver. Synchronous send + list message
+ * paths ARE covered here; SSE streaming relies on the same dispatcher
+ * exercised by `chats.test.ts` so the additional coverage focuses on
+ * route-shape consistency.
  */
 
 import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.js";
 import { AuthResolver } from "../src/auth/resolver.js";
+import type { ChatService } from "../src/chat/types.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
 import { SecretResolver } from "../src/secrets/provider.js";
+import { makeFakeChatService, TEST_CHAT_CONFIG } from "./helpers/chat.js";
 import { makeFakeEmbedderFactory } from "./helpers/embedder.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: test helper returns untyped JSON
@@ -22,7 +26,11 @@ async function json(res: Response): Promise<any> {
 	return (await res.json()) as any;
 }
 
-function makeApp(): ReturnType<typeof createApp> {
+interface MakeAppOptions {
+	readonly chatService?: ChatService | null;
+}
+
+function makeApp(opts: MakeAppOptions = {}): ReturnType<typeof createApp> {
 	const store = new MemoryControlPlaneStore();
 	const driver = new MockVectorStoreDriver();
 	const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
@@ -33,14 +41,15 @@ function makeApp(): ReturnType<typeof createApp> {
 		verifiers: [],
 	});
 	const embedders = makeFakeEmbedderFactory();
+	const chatService = opts.chatService === undefined ? null : opts.chatService;
 	return createApp({
 		store,
 		drivers,
 		secrets,
 		auth,
 		embedders,
-		chatService: null,
-		chatConfig: null,
+		chatService,
+		chatConfig: chatService ? TEST_CHAT_CONFIG : null,
 	});
 }
 
@@ -97,9 +106,8 @@ describe("agent routes", () => {
 		const list = await app.request(`/api/v1/workspaces/${ws}/agents`);
 		expect(list.status).toBe(200);
 		const lBody = await json(list);
-		// listAgents returns oldest-first; user-created agent comes after Bobbie
-		// only if Bobbie was already ensured. With no chat send yet, Bobbie
-		// hasn't been created, so the list contains just the new agent.
+		// listAgents returns oldest-first; only the user-created agent
+		// exists (workspaces no longer auto-create a singleton agent).
 		expect(lBody.items.length).toBe(1);
 		expect(lBody.items[0].agentId).toBe(created.agentId);
 
@@ -317,5 +325,126 @@ describe("agent conversation routes", () => {
 		);
 		expect((await json(listA)).items.length).toBe(1);
 		expect((await json(listB)).items.length).toBe(0);
+	});
+});
+
+describe("agent conversation message routes", () => {
+	async function createConversation(
+		app: AppHandle,
+		workspaceId: string,
+		agentId: string,
+		body: Record<string, unknown> = {},
+	): Promise<string> {
+		const res = await app.request(
+			`/api/v1/workspaces/${workspaceId}/agents/${agentId}/conversations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(body),
+			},
+		);
+		expect(res.status, await res.clone().text()).toBe(201);
+		return (await json(res)).conversationId as string;
+	}
+
+	test("GET messages returns an empty page initially", async () => {
+		const app = makeApp({ chatService: makeFakeChatService() });
+		const ws = await createWorkspace(app);
+		const aid = await createAgent(app, ws);
+		const cid = await createConversation(app, ws, aid, { title: "fresh" });
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/agents/${aid}/conversations/${cid}/messages`,
+		);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.items).toEqual([]);
+	});
+
+	test("POST /messages 503s when no chat service AND agent has no llmServiceId", async () => {
+		const app = makeApp({ chatService: null });
+		const ws = await createWorkspace(app);
+		const aid = await createAgent(app, ws);
+		const cid = await createConversation(app, ws, aid, { title: "no exec" });
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/agents/${aid}/conversations/${cid}/messages`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ content: "hi" }),
+			},
+		);
+		expect(res.status).toBe(503);
+		const body = await json(res);
+		expect(body.error.code).toBe("chat_disabled");
+	});
+
+	test("message routes 404 when conversation belongs to a different agent", async () => {
+		const app = makeApp({ chatService: makeFakeChatService() });
+		const ws = await createWorkspace(app);
+		const ownerAgent = await createAgent(app, ws, { name: "owner" });
+		const otherAgent = await createAgent(app, ws, { name: "other" });
+		const cid = await createConversation(app, ws, ownerAgent, {
+			title: "owned-by-owner",
+		});
+
+		// GET should 404 when accessed via the wrong agent.
+		const list = await app.request(
+			`/api/v1/workspaces/${ws}/agents/${otherAgent}/conversations/${cid}/messages`,
+		);
+		expect(list.status).toBe(404);
+
+		// POST should 404 too — even though the chat service is wired,
+		// the agent/conversation pair doesn't match.
+		const send = await app.request(
+			`/api/v1/workspaces/${ws}/agents/${otherAgent}/conversations/${cid}/messages`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ content: "wrong owner" }),
+			},
+		);
+		expect(send.status).toBe(404);
+	});
+
+	test("POST /messages returns 422 when agent points at a non-huggingface llm service", async () => {
+		const app = makeApp({ chatService: makeFakeChatService() });
+		const ws = await createWorkspace(app);
+
+		// Create an LLM service with provider="mock" — only "huggingface"
+		// is wired in this runtime today, so the dispatcher should reject
+		// the request before calling any model.
+		const svcRes = await app.request(`/api/v1/workspaces/${ws}/llm-services`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "mock-llm",
+				provider: "mock",
+				modelName: "mock-model",
+			}),
+		});
+		expect(svcRes.status, await svcRes.clone().text()).toBe(201);
+		const llmServiceId = (await json(svcRes)).llmServiceId as string;
+
+		// Bind that service to a fresh agent so the dispatcher pulls it
+		// from the agent record at send time.
+		const aid = await createAgent(app, ws, {
+			name: "with-mock-llm",
+			llmServiceId,
+		});
+		const cid = await createConversation(app, ws, aid, { title: "t" });
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/agents/${aid}/conversations/${cid}/messages`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ content: "trigger provider gate" }),
+			},
+		);
+		expect(res.status).toBe(422);
+		const body = await json(res);
+		expect(body.error.code).toBe("llm_provider_unsupported");
 	});
 });

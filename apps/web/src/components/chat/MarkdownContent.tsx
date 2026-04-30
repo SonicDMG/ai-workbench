@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 
 /**
- * One chunk Bobbie cited in this turn. Built from
+ * One chunk the agent cited in this turn. Built from
  * `metadata.context_chunks` on a {@link ChatMessage}.
  */
 export interface ChunkRef {
@@ -64,7 +64,7 @@ export function injectCitations(
 }
 
 /**
- * Renders Bobbie's assistant content as sanitized GitHub-flavored
+ * Renders the assistant's content as sanitized GitHub-flavored
  * markdown, with `[chunkId]` citation references rewritten into
  * clickable links to the KB explorer.
  *

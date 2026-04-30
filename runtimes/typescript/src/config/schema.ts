@@ -291,9 +291,10 @@ const SeedWorkspaceSchema = z.object({
 });
 
 /**
- * Chat-with-Bobbie configuration. When unset the chat surface still
- * accepts user messages but answers with a `chat_disabled` response —
- * the runtime stays usable for everything else.
+ * Chat configuration shared by all agents in this runtime. When unset
+ * the chat surface still accepts user messages but answers with a
+ * `chat_disabled` response — the runtime stays usable for everything
+ * else.
  *
  * `tokenRef` resolves to the HuggingFace inference API token at
  * request time; the resolver caches the result for the lifetime of
@@ -311,9 +312,10 @@ const ChatSchema = z.object({
 	 */
 	retrievalK: z.number().int().positive().max(64).default(6),
 	/**
-	 * Override Bobbie's built-in persona. `null` keeps the default
-	 * (defined alongside the `bobbieAgentId` deterministic id in
-	 * control-plane/defaults.ts).
+	 * Override the runtime's default agent persona. `null` keeps
+	 * `DEFAULT_AGENT_SYSTEM_PROMPT` from control-plane/defaults.ts;
+	 * per-agent prompts on `agent.systemPrompt` always take precedence
+	 * over this fallback.
 	 */
 	systemPrompt: z.string().min(1).nullable().default(null),
 });
@@ -332,11 +334,12 @@ const ChatSchema = z.object({
 const McpSchema = z.object({
 	enabled: z.boolean().default(false),
 	/**
-	 * Surface the chat tool (`chat_send`) which streams a Bobbie
-	 * reply for the workspace. Inherits the runtime's `chat`
-	 * configuration; if `chat` is unset the tool simply isn't
-	 * registered. Default off so agents that just want retrieval
-	 * don't accidentally rack up HF inference cost.
+	 * Surface the chat tool (`chat_send`) which appends a turn to an
+	 * agent-owned conversation and returns the assistant reply.
+	 * Inherits the runtime's `chat` configuration; if `chat` is unset
+	 * the tool simply isn't registered. Default off so MCP clients
+	 * that just want retrieval don't accidentally rack up inference
+	 * cost.
 	 */
 	exposeChat: z.boolean().default(false),
 });

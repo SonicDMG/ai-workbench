@@ -14,30 +14,30 @@ contract first, then the runtime architecture behind them.
    where to go next.
 2. [`playground.md`](playground.md) — browser workflow for testing text,
    vector, hybrid, and rerank search.
-3. [`chat.md`](chat.md) — chat-with-Bobbie: HuggingFace-backed,
-   multi-KB-grounded assistant with SSE token streaming.
-4. [`agents.md`](agents.md) — user-defined agents: extend Bobbie with
-   your own personas, RAG defaults, and per-agent conversations.
-5. [`mcp.md`](mcp.md) — Model Context Protocol façade for external
+3. [`agents.md`](agents.md) — user-defined agents: personas, RAG
+   defaults, per-agent LLM service binding, and the conversation +
+   message routes (HuggingFace-backed, multi-KB-grounded, SSE token
+   streaming).
+4. [`mcp.md`](mcp.md) — Model Context Protocol façade for external
    agents (Claude Code, Cursor, hosted MCP gateways).
-6. [`workspaces.md`](workspaces.md) — workspace semantics, scoping,
+5. [`workspaces.md`](workspaces.md) — workspace semantics, scoping,
    and cascade rules.
-7. [`configuration.md`](configuration.md) — the `workbench.yaml`
+6. [`configuration.md`](configuration.md) — the `workbench.yaml`
    schema and deployment-oriented settings.
-8. [`production.md`](production.md) — deployment hardening checklist
+7. [`production.md`](production.md) — deployment hardening checklist
    for auth, persistence, secrets, and browser posture.
-9. [`architecture.md`](architecture.md) — runtime model and how the
+8. [`architecture.md`](architecture.md) — runtime model and how the
    pieces fit together.
-10. [`green-boxes.md`](green-boxes.md) — the multi-runtime model and
-    why we ship language-native implementations.
-11. [`api-spec.md`](api-spec.md) — HTTP contract narrative (what
+9. [`green-boxes.md`](green-boxes.md) — the multi-runtime model and
+   why we ship language-native implementations.
+10. [`api-spec.md`](api-spec.md) — HTTP contract narrative (what
     operational routes exist, what errors are possible, what's
     planned).
-12. [`auth.md`](auth.md) — the `/api/v1/*` auth middleware: config,
+11. [`auth.md`](auth.md) — the `/api/v1/*` auth middleware: config,
     contract, threat model, rollout phases.
-13. [`conformance.md`](conformance.md) — how we keep language
+12. [`conformance.md`](conformance.md) — how we keep language
     runtimes in lockstep via shared fixtures.
-14. [`roadmap.md`](roadmap.md) — phased delivery plan and open
+13. [`roadmap.md`](roadmap.md) — phased delivery plan and open
     questions.
 
 ## Design notes

@@ -268,14 +268,18 @@ stamps `knowledgeBaseId`, `documentId`, `chunkIndex`, and
 chunk listing endpoint can filter / display them without a
 secondary lookup.
 
-**Stage 2 schema.** Three additional tables —
-`wb_config_llm_service_by_workspace`,
-`wb_config_mcp_tools_by_workspace`,
+**Stage 2 schema.** Five additional control-plane tables back the
+agent surface:
+`wb_config_llm_service_by_workspace` (LLM executors;
+`/api/v1/workspaces/{w}/llm-services` CRUD),
+`wb_config_mcp_tools_by_workspace` (provisioned, not yet wired —
+lands with agent tool-use),
 `wb_agentic_agents_by_workspace`,
-`wb_agentic_conversations_by_agent`,
-`wb_agentic_messages_by_conversation` — are provisioned at boot but
-are not yet wired through the runtime. They land with the agent
-execution loop (roadmap Stage 2).
+`wb_agentic_conversations_by_agent`, and
+`wb_agentic_messages_by_conversation`. The agent surface — CRUD
+plus send + streaming — runs against the last three tables; an
+agent's optional `llmServiceId` points at a row in the LLM-service
+table for per-agent provider selection.
 
 ## Isolation and scoping
 

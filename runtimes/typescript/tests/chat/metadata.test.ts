@@ -1,19 +1,19 @@
 /**
- * Unit coverage for `buildMetadata` — the composer that produces the
- * assistant message's `metadata` map at chat write time. The web UI
- * relies on `context_chunks` being a JSON-encoded tuple array so it
- * can render `[chunkId]` citation linkbacks without a follow-up
+ * Unit coverage for `buildAgentMetadata` — the composer that produces
+ * the assistant message's `metadata` map at chat write time. The web
+ * UI relies on `context_chunks` being a JSON-encoded tuple array so
+ * it can render `[chunkId]` citation linkbacks without a follow-up
  * fetch; this test pins that wire shape.
  */
 
 import { describe, expect, test } from "vitest";
-import { buildMetadata } from "../../src/routes/api-v1/chats.js";
+import { buildAgentMetadata } from "../../src/chat/agent-dispatch.js";
 
 const okStop = { finishReason: "stop" as const, errorMessage: null };
 
-describe("chats.buildMetadata", () => {
+describe("agent-dispatch.buildAgentMetadata", () => {
 	test("with no chunks: writes only model + finish_reason", () => {
-		const md = buildMetadata([], "fake-model", okStop);
+		const md = buildAgentMetadata([], "fake-model", okStop);
 		expect(md).toEqual({ model: "fake-model", finish_reason: "stop" });
 		expect(md.context_chunks).toBeUndefined();
 		expect(md.context_document_ids).toBeUndefined();
@@ -25,7 +25,7 @@ describe("chats.buildMetadata", () => {
 			{ chunkId: "chunk-2", knowledgeBaseId: "kb-a", documentId: "doc-2" },
 			{ chunkId: "chunk-3", knowledgeBaseId: "kb-b", documentId: null },
 		];
-		const md = buildMetadata(chunks, "fake-model", okStop);
+		const md = buildAgentMetadata(chunks, "fake-model", okStop);
 		// Backward-compat key — comma-joined chunk IDs.
 		expect(md.context_document_ids).toBe("chunk-1,chunk-2,chunk-3");
 		// New key — compact JSON array of [chunkId, kbId, documentId].
@@ -39,7 +39,7 @@ describe("chats.buildMetadata", () => {
 	});
 
 	test("with error: writes finish_reason=error + error_message", () => {
-		const md = buildMetadata([], "fake-model", {
+		const md = buildAgentMetadata([], "fake-model", {
 			finishReason: "error",
 			errorMessage: "rate limit",
 		});
@@ -56,7 +56,7 @@ describe("chats.buildMetadata", () => {
 			{ chunkId: "c-first", knowledgeBaseId: "kb-a", documentId: null },
 			{ chunkId: "c-second", knowledgeBaseId: "kb-a", documentId: null },
 		];
-		const md = buildMetadata(chunks, "m", okStop);
+		const md = buildAgentMetadata(chunks, "m", okStop);
 		expect(md.context_document_ids).toBe("c-third,c-first,c-second");
 		const parsed = JSON.parse(md.context_chunks ?? "[]") as unknown[][];
 		expect(parsed.map((row) => row[0])).toEqual([

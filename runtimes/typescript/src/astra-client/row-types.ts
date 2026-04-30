@@ -257,6 +257,7 @@ export interface AgentRow {
 	system_prompt: string | null;
 	user_prompt: string | null;
 	tool_ids: Set<Uuid>;
+	llm_service_id: Uuid | null;
 	rag_enabled: boolean;
 	knowledge_base_ids: Set<Uuid>;
 	rag_max_results: number | null;

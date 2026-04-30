@@ -889,103 +889,72 @@ restart-resume today should treat any `running` job older than a
 heartbeat threshold as failed and resubmit.
 
 
-## `/api/v1/workspaces/{workspaceId}/chats`
+## `/api/v1/workspaces/{workspaceId}/llm-services`
 
-Chat-with-Bobbie. Workspace-scoped conversations backed by the
-Stage-2 agentic tables. Bobbie is currently the only agent the chat
-surface exposes; user-defined agents are planned (see "Planned
-routes" below).
+Workspace-scoped LLM execution services — describe *how* to call a
+chat-completion or generation model. Mirrors the
+chunking / embedding / reranking service surface. An agent in the
+same workspace may bind one of these via `agent.llmServiceId`; the
+agent's send + streaming pipeline then instantiates a chat service
+from the bound record.
 
-### `GET /chats`
-List the workspace's chats, newest-first. Paginated.
+Today only `provider: "huggingface"` is wired end-to-end; other
+providers can be created and stored, but agent send returns
+`422 llm_provider_unsupported` for any non-`huggingface` binding.
 
-### `POST /chats`
-Body: `{ chatId?, title?, knowledgeBaseIds? }`. `knowledgeBaseIds`
-narrows retrieval; empty / omitted means Bobbie may draw from any
-KB in the workspace.
+### `GET /llm-services`
 
-- **201** — `Chat`
+List services in the workspace, oldest-first. Paginated.
+
+- **200** — paginated `LlmService` records
 - **404** `workspace_not_found`
-- **409** `conflict` (when `chatId` is supplied and already exists)
 
-### `GET /chats/{chatId}`
-- **200** — `Chat`
-- **404** `chat_not_found`
+### `POST /llm-services`
 
-### `PATCH /chats/{chatId}`
-Body: `{ title?, knowledgeBaseIds? }`.
-
-### `DELETE /chats/{chatId}`
-**204**. Cascades to messages.
-
-### `GET /chats/{chatId}/messages`
-Oldest-first message log, paginated.
-
-### `POST /chats/{chatId}/messages`  (synchronous)
-Body: `{ content }`. Persists the user turn, retrieves grounding
-context, calls the chat-completion model, persists the assistant
-turn, and returns:
+Create a service. Required: `name`, `provider`, `modelName`.
+Optional fields cover endpoint config (`endpointBaseUrl`,
+`endpointPath`, `requestTimeoutMs`, `authType`, `credentialRef`),
+provider tuning (`engine`, `modelVersion`, `contextWindowTokens`,
+`maxOutputTokens`, `temperatureMin`, `temperatureMax`,
+`supportsStreaming`, `supportsTools`, `maxBatchSize`), and
+language / content tags. See the OpenAPI spec for the full shape.
 
 ```json
-{ "user": <ChatMessage>, "assistant": <ChatMessage> }
+{
+  "name": "hf-mistral",
+  "provider": "huggingface",
+  "modelName": "mistralai/Mistral-7B-Instruct-v0.3",
+  "credentialRef": "env:HUGGINGFACE_API_KEY",
+  "maxOutputTokens": 1024
+}
 ```
 
-- **201** — `{ user, assistant }`
-- **404** `chat_not_found`
-- **503** `chat_disabled` — runtime booted without a `chat` block
+- **201** — the created `LlmService`
+- **400** `validation_error`
+- **404** `workspace_not_found`
+- **409** `conflict` — duplicate explicit `llmServiceId`
 
-### `POST /chats/{chatId}/messages/stream`  (SSE)
-Same body. Returns `text/event-stream`:
+### `GET /llm-services/{llmServiceId}` / `PATCH /{id}` / `DELETE /{id}`
 
-| Event | Payload |
-|---|---|
-| `user-message` | The persisted user `ChatMessage` |
-| `token` | `{ delta: string }` — one per model emission |
-| `done` | The persisted assistant `ChatMessage` (terminal on success) |
-| `error` | The persisted assistant `ChatMessage` with `metadata.finish_reason: "error"` (terminal on failure) |
-
-The stream emits exactly one of `done` / `error`. Client disconnect
-is treated as a clean stop — whatever was already streamed gets
-persisted with `finish_reason: "stop"`. See
-[`chat.md`](chat.md) for the full lifecycle.
-
-### `Chat` record
-
-| Field | Type | Notes |
-|---|---|---|
-| `workspaceId` | uuid | |
-| `chatId` | uuid | Server-assigned unless caller supplied. |
-| `title` | string \| null | Free-form. |
-| `knowledgeBaseIds` | uuid[] | Empty = "any KB in workspace". |
-| `createdAt` | iso-8601 | |
-
-### `ChatMessage` record
-
-| Field | Type | Notes |
-|---|---|---|
-| `workspaceId` | uuid | |
-| `chatId` | uuid | |
-| `messageId` | uuid | |
-| `messageTs` | iso-8601 | Cluster-key. Strictly increasing within a chat. |
-| `role` | `"user"` \| `"agent"` \| `"system"` | `agent` is Bobbie. |
-| `content` | string \| null | |
-| `tokenCount` | int \| null | If the provider reports it. |
-| `metadata` | `Record<string, string>` | RAG provenance (`context_document_ids`), `model`, `finish_reason` (`stop`/`length`/`error`), `error_message`. |
-
+Fetch / patch / delete. `PATCH` accepts every field from create
+(all optional). `DELETE` is **refused with `409 conflict` while any
+agent still references the service** via `llmServiceId`. Reassign
+or delete the dependent agents first.
 
 ## `/api/v1/workspaces/{workspaceId}/agents`
 
-User-defined agents — workspace-scoped personas that share the
-agentic tables with Bobbie. The `/chats` surface is a thin alias
-that talks to the deterministic Bobbie agent; this surface lets
-callers create their own. See [`agents.md`](agents.md) for the full
-walkthrough.
+User-defined agents — workspace-scoped personas backed by the
+Stage-2 agentic tables. See [`agents.md`](agents.md) for the full
+walkthrough; the route shapes are summarised below.
+
+> **Historical note.** Earlier drafts of this document described a
+> parallel `/chats` route surface and a singleton "Bobbie" agent.
+> Both were retired; the agent surface is the single way to chat
+> against a workspace.
 
 ### `GET /agents`
 
-List agents in the workspace, oldest-first. Paginated. Includes
-Bobbie if she has been ensured (any chat send creates her on
-first use).
+List agents in the workspace, oldest-first. Paginated.
 
 ### `POST /agents`
 
@@ -1001,7 +970,7 @@ first use).
 ### `PATCH /agents/{agentId}`
 
 Patch any optional field except `agentId`. Sends `null` to clear
-nullable fields.
+nullable fields (including `llmServiceId`).
 
 ### `DELETE /agents/{agentId}`
 
@@ -1020,18 +989,68 @@ List the agent's conversations, newest-first. Paginated.
 ### `GET|PATCH|DELETE /agents/{agentId}/conversations/{conversationId}`
 
 Single-conversation read / update (title + KB filter) / delete.
-Delete cascades messages.
+Delete cascades messages. **404** when the conversation does not
+belong to the named agent.
+
+### `GET /agents/{agentId}/conversations/{conversationId}/messages`
+
+Oldest-first message log, paginated.
+
+- **200** — paginated `ChatMessage` records
+- **404** when the workspace, agent, or conversation does not exist,
+  or when the conversation does not belong to the named agent
+
+### `POST /agents/{agentId}/conversations/{conversationId}/messages`  (synchronous)
+
+Body: `{ content }`. Persists the user turn, retrieves grounding
+context, calls the agent's LLM (per the resolution order below),
+persists the assistant turn, and returns:
+
+```json
+{ "user": <ChatMessage>, "assistant": <ChatMessage> }
+```
+
+**LLM resolution.** When `agent.llmServiceId` is set the runtime
+instantiates a chat service from the bound LLM-service record.
+When unset it falls back to the runtime's global `chat:` block.
+
+- **201** — `{ user, assistant }`
+- **404** when the conversation does not belong to the named agent
+- **422** `llm_provider_unsupported` — `agent.llmServiceId` points
+  at an LLM service whose `provider` is not `huggingface`
+- **422** `llm_credential_missing` — bound HuggingFace service has
+  no `credentialRef`
+- **503** `chat_disabled` — runtime has no global `chat:` block
+  configured **and** the agent has no `llmServiceId`
+
+### `POST /agents/{agentId}/conversations/{conversationId}/messages/stream`  (SSE)
+
+Same body. Returns `text/event-stream`:
+
+| Event | Payload |
+|---|---|
+| `user-message` | The persisted user `ChatMessage` |
+| `token` | `{ delta: string }` — one per model emission |
+| `done` | The persisted assistant `ChatMessage` (terminal on success) |
+| `error` | The persisted assistant `ChatMessage` with `metadata.finish_reason: "error"` (terminal on failure) |
+
+The stream emits exactly one of `done` / `error`. Client disconnect
+is treated as a clean stop — whatever was already streamed gets
+persisted with `finish_reason: "stop"`. Status codes are the same
+as the synchronous variant (404 / 422 / 503 surface as `error`
+events when they occur after the response has already started).
 
 ### `Agent` record
 
 | Field | Type | Notes |
 |---|---|---|
 | `workspaceId` | uuid | |
-| `agentId` | uuid | Bobbie's id is deterministic (sha256 of workspaceId); user agents are random UUIDs. |
+| `agentId` | uuid | Server-assigned unless caller supplied. |
 | `name` | string | |
 | `description` | string \| null | |
 | `systemPrompt` | string \| null | |
 | `userPrompt` | string \| null | |
+| `llmServiceId` | uuid \| null | When set, points at an LLM service in the same workspace; the agent's chat service is instantiated from that record. When null, the runtime's global `chat:` block is used. Mutable. |
 | `knowledgeBaseIds` | uuid[] | Default RAG-grounding set. |
 | `ragEnabled` | bool | |
 | `ragMaxResults` | int \| null | |
@@ -1053,12 +1072,18 @@ Delete cascades messages.
 | `knowledgeBaseIds` | uuid[] | Per-conversation override of the agent's default KB set. |
 | `createdAt` | iso-8601 | |
 
-### Conversation messages
+### `ChatMessage` record
 
-`POST /agents/{agentId}/conversations/{conversationId}/messages` is
-**not yet exposed** — Bobbie's chat send / streaming pipeline at
-`/chats/.../messages` covers the singleton case. Generalising the
-pipeline to any agent is a follow-up; see [`roadmap.md`](roadmap.md).
+| Field | Type | Notes |
+|---|---|---|
+| `workspaceId` | uuid | |
+| `conversationId` | uuid | |
+| `messageId` | uuid | |
+| `messageTs` | iso-8601 | Cluster-key. Strictly increasing within a conversation. |
+| `role` | `"user"` \| `"agent"` \| `"system"` \| `"tool"` | `agent` is the assistant turn. |
+| `content` | string \| null | |
+| `tokenCount` | int \| null | If the provider reports it. |
+| `metadata` | `Record<string, string>` | RAG provenance (`context_document_ids`, `context_chunks`), `model`, `finish_reason` (`stop`/`length`/`error`), `error_message`. |
 
 
 ## `/api/v1/workspaces/{workspaceId}/mcp`
@@ -1094,19 +1119,21 @@ scoping is enforced for free.
 
 These do not exist yet. Shapes may shift before they land.
 
-### Agent send + tool execution
+### Multi-provider LLM execution
 
-The agent surface above gives you CRUD over agents and conversation
-metadata. Send + streaming for arbitrary agents and MCP tool wiring
-are next:
+LLM services other than `huggingface` (OpenAI, Cohere, Anthropic,
+…) can be created and stored today, but agent send returns
+`422 llm_provider_unsupported` until the provider is wired into
+the chat-service factory. Adding a provider is mostly a one-case
+addition to the dispatcher.
 
-- `/api/v1/workspaces/{w}/llm-services` — CRUD
-- `/api/v1/workspaces/{w}/mcp-tools` — CRUD
-- `/api/v1/workspaces/{w}/agents/{a}/conversations/{c}/messages` —
-  send + streaming, generalization of `/chats/.../messages` to any
-  agent
-- `/api/v1/workspaces/{w}/agents/{a}/run` — execution loop with tool
-  use
+### MCP tool execution
+
+`/api/v1/workspaces/{w}/mcp-tools` — CRUD over the
+`wb_config_mcp_tools_by_workspace` rows, plus
+`/api/v1/workspaces/{w}/agents/{a}/run` for an agent execution loop
+with tool use. Now that the MCP server façade is in, the inverse —
+letting an agent **call** MCP tools — is the next step.
 
 See [`roadmap.md`](roadmap.md) for the phase plan.
 

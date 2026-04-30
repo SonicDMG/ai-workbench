@@ -149,32 +149,46 @@ describe("MCP server tools", () => {
 		}
 	});
 
-	test("list_chats returns Bobbie chats", async () => {
+	test("list_chats returns the agent's conversations", async () => {
 		const h = await makeMcpHarness();
 		try {
-			const chat = await h.store.createChat(h.workspaceId, {
-				title: "first",
+			const agent = await h.store.createAgent(h.workspaceId, {
+				name: "Helper",
 			});
+			const chat = await h.store.createConversation(
+				h.workspaceId,
+				agent.agentId,
+				{ title: "first" },
+			);
 			const result = await h.client.callTool({
 				name: "list_chats",
-				arguments: {},
+				arguments: { agentId: agent.agentId },
 			});
 			const payload = JSON.parse(textContent(result as never)) as Array<{
 				chatId: string;
+				agentId: string;
 				title: string;
 			}>;
 			expect(payload).toHaveLength(1);
 			expect(payload[0]?.chatId).toBe(chat.conversationId);
+			expect(payload[0]?.agentId).toBe(agent.agentId);
 			expect(payload[0]?.title).toBe("first");
 		} finally {
 			await h.cleanup();
 		}
 	});
 
-	test("list_chat_messages returns the chat's history", async () => {
+	test("list_chat_messages returns the conversation's history", async () => {
 		const h = await makeMcpHarness();
 		try {
-			const chat = await h.store.createChat(h.workspaceId, { title: "t" });
+			const agent = await h.store.createAgent(h.workspaceId, {
+				name: "Helper",
+			});
+			const chat = await h.store.createConversation(
+				h.workspaceId,
+				agent.agentId,
+				{ title: "t" },
+			);
 			await h.store.appendChatMessage(h.workspaceId, chat.conversationId, {
 				role: "user",
 				content: "hi",
@@ -224,10 +238,21 @@ describe("MCP server tools", () => {
 	test("chat_send (when exposed) persists and returns the assistant text", async () => {
 		const h = await makeMcpHarness({ exposeChat: true });
 		try {
-			const chat = await h.store.createChat(h.workspaceId, { title: "t" });
+			const agent = await h.store.createAgent(h.workspaceId, {
+				name: "Helper",
+			});
+			const chat = await h.store.createConversation(
+				h.workspaceId,
+				agent.agentId,
+				{ title: "t" },
+			);
 			const result = await h.client.callTool({
 				name: "chat_send",
-				arguments: { chatId: chat.conversationId, content: "hi" },
+				arguments: {
+					agentId: agent.agentId,
+					chatId: chat.conversationId,
+					content: "hi",
+				},
 			});
 			const reply = textContent(result as never);
 			expect(reply).toBe("echo: hi");

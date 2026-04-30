@@ -1,26 +1,31 @@
 import { z } from "zod";
 import { getAuthToken } from "./authToken";
 import {
+	AgentPageSchema,
+	type AgentRecord,
+	AgentRecordSchema,
 	ApiKeyPageSchema,
 	type ApiKeyRecord,
 	type AstraCliInfo,
 	AstraCliInfoSchema,
-	type Chat,
 	type ChatMessage,
 	ChatMessagePageSchema,
-	ChatPageSchema,
-	ChatRecordSchema,
 	ChunkingServicePageSchema,
 	type ChunkingServiceRecord,
 	ChunkingServiceRecordSchema,
+	ConversationPageSchema,
+	type ConversationRecord,
+	ConversationRecordSchema,
+	type CreateAgentInput,
 	type CreateApiKeyInput,
-	type CreateChatInput,
 	type CreateChunkingServiceInput,
+	type CreateConversationInput,
 	type CreatedApiKeyResponse,
 	CreatedApiKeyResponseSchema,
 	type CreateEmbeddingServiceInput,
 	type CreateKnowledgeBaseInput,
 	type CreateKnowledgeFilterInput,
+	type CreateLlmServiceInput,
 	type CreateRerankingServiceInput,
 	type CreateWorkspaceInput,
 	type DocumentChunk,
@@ -40,6 +45,9 @@ import {
 	KnowledgeFilterPageSchema,
 	type KnowledgeFilterRecord,
 	KnowledgeFilterRecordSchema,
+	LlmServicePageSchema,
+	type LlmServiceRecord,
+	LlmServiceRecordSchema,
 	RagDocumentPageSchema,
 	type RagDocumentRecord,
 	RerankingServicePageSchema,
@@ -52,9 +60,11 @@ import {
 	SendChatMessageResponseSchema,
 	type TestConnectionResult,
 	TestConnectionResultSchema,
-	type UpdateChatInput,
+	type UpdateAgentInput,
+	type UpdateConversationInput,
 	type UpdateKnowledgeBaseInput,
 	type UpdateKnowledgeFilterInput,
+	type UpdateLlmServiceInput,
 	type UpdateWorkspaceInput,
 	type Workspace,
 	WorkspacePageSchema,
@@ -483,77 +493,190 @@ export const api = {
 			null,
 		),
 
-	/* -------- Chat (Bobbie) -------- */
+	/* -------- Agents -------- */
 
-	listChats: (workspaceUid: string): Promise<Chat[]> =>
+	listAgents: (workspaceUid: string): Promise<AgentRecord[]> =>
 		request(
-			`/workspaces/${workspaceUid}/chats`,
+			`/workspaces/${workspaceUid}/agents`,
 			{ method: "GET" },
-			ChatPageSchema,
+			AgentPageSchema,
 		).then((page) => page.items),
 
-	getChat: (workspaceUid: string, chatId: string): Promise<Chat> =>
+	getAgent: (workspaceUid: string, agentId: string): Promise<AgentRecord> =>
 		request(
-			`/workspaces/${workspaceUid}/chats/${chatId}`,
+			`/workspaces/${workspaceUid}/agents/${agentId}`,
 			{ method: "GET" },
-			ChatRecordSchema,
+			AgentRecordSchema,
 		),
 
-	createChat: (workspaceUid: string, input: CreateChatInput): Promise<Chat> => {
+	createAgent: (
+		workspaceUid: string,
+		input: CreateAgentInput,
+	): Promise<AgentRecord> =>
+		request(
+			`/workspaces/${workspaceUid}/agents`,
+			{ method: "POST", body: JSON.stringify(stripUndefined(input)) },
+			AgentRecordSchema,
+		),
+
+	updateAgent: (
+		workspaceUid: string,
+		agentId: string,
+		patch: UpdateAgentInput,
+	): Promise<AgentRecord> =>
+		request(
+			`/workspaces/${workspaceUid}/agents/${agentId}`,
+			{ method: "PATCH", body: JSON.stringify(stripUndefined(patch)) },
+			AgentRecordSchema,
+		),
+
+	deleteAgent: (workspaceUid: string, agentId: string): Promise<void> =>
+		request(
+			`/workspaces/${workspaceUid}/agents/${agentId}`,
+			{ method: "DELETE" },
+			null,
+		),
+
+	/* -------- Conversations (agent-scoped) -------- */
+
+	listConversations: (
+		workspaceUid: string,
+		agentId: string,
+	): Promise<ConversationRecord[]> =>
+		request(
+			`/workspaces/${workspaceUid}/agents/${agentId}/conversations`,
+			{ method: "GET" },
+			ConversationPageSchema,
+		).then((page) => page.items),
+
+	getConversation: (
+		workspaceUid: string,
+		agentId: string,
+		conversationId: string,
+	): Promise<ConversationRecord> =>
+		request(
+			`/workspaces/${workspaceUid}/agents/${agentId}/conversations/${conversationId}`,
+			{ method: "GET" },
+			ConversationRecordSchema,
+		),
+
+	createConversation: (
+		workspaceUid: string,
+		agentId: string,
+		input: CreateConversationInput,
+	): Promise<ConversationRecord> => {
 		const body: Record<string, unknown> = {};
-		if (input.chatId !== undefined) body.chatId = input.chatId;
+		if (input.conversationId !== undefined)
+			body.conversationId = input.conversationId;
 		if (input.title !== undefined) body.title = input.title;
 		if (input.knowledgeBaseIds !== undefined)
 			body.knowledgeBaseIds = input.knowledgeBaseIds;
 		return request(
-			`/workspaces/${workspaceUid}/chats`,
+			`/workspaces/${workspaceUid}/agents/${agentId}/conversations`,
 			{ method: "POST", body: JSON.stringify(body) },
-			ChatRecordSchema,
+			ConversationRecordSchema,
 		);
 	},
 
-	updateChat: (
+	updateConversation: (
 		workspaceUid: string,
-		chatId: string,
-		patch: UpdateChatInput,
-	): Promise<Chat> => {
+		agentId: string,
+		conversationId: string,
+		patch: UpdateConversationInput,
+	): Promise<ConversationRecord> => {
 		const body: Record<string, unknown> = {};
 		if (patch.title !== undefined) body.title = patch.title;
 		if (patch.knowledgeBaseIds !== undefined)
 			body.knowledgeBaseIds = patch.knowledgeBaseIds;
 		return request(
-			`/workspaces/${workspaceUid}/chats/${chatId}`,
+			`/workspaces/${workspaceUid}/agents/${agentId}/conversations/${conversationId}`,
 			{ method: "PATCH", body: JSON.stringify(body) },
-			ChatRecordSchema,
+			ConversationRecordSchema,
 		);
 	},
 
-	deleteChat: (workspaceUid: string, chatId: string): Promise<void> =>
+	deleteConversation: (
+		workspaceUid: string,
+		agentId: string,
+		conversationId: string,
+	): Promise<void> =>
 		request(
-			`/workspaces/${workspaceUid}/chats/${chatId}`,
+			`/workspaces/${workspaceUid}/agents/${agentId}/conversations/${conversationId}`,
 			{ method: "DELETE" },
 			null,
 		),
 
-	listChatMessages: (
+	listConversationMessages: (
 		workspaceUid: string,
-		chatId: string,
+		agentId: string,
+		conversationId: string,
 	): Promise<ChatMessage[]> =>
 		request(
-			`/workspaces/${workspaceUid}/chats/${chatId}/messages`,
+			`/workspaces/${workspaceUid}/agents/${agentId}/conversations/${conversationId}/messages`,
 			{ method: "GET" },
 			ChatMessagePageSchema,
 		).then((page) => page.items),
 
-	sendChatMessage: (
+	sendConversationMessage: (
 		workspaceUid: string,
-		chatId: string,
+		agentId: string,
+		conversationId: string,
 		input: SendChatMessageInput,
 	): Promise<SendChatMessageResponse> =>
 		request(
-			`/workspaces/${workspaceUid}/chats/${chatId}/messages`,
+			`/workspaces/${workspaceUid}/agents/${agentId}/conversations/${conversationId}/messages`,
 			{ method: "POST", body: JSON.stringify(input) },
 			SendChatMessageResponseSchema,
+		),
+
+	/* -------- LLM services -------- */
+
+	listLlmServices: (workspaceUid: string): Promise<LlmServiceRecord[]> =>
+		request(
+			`/workspaces/${workspaceUid}/llm-services`,
+			{ method: "GET" },
+			LlmServicePageSchema,
+		).then((page) => page.items),
+
+	getLlmService: (
+		workspaceUid: string,
+		llmServiceId: string,
+	): Promise<LlmServiceRecord> =>
+		request(
+			`/workspaces/${workspaceUid}/llm-services/${llmServiceId}`,
+			{ method: "GET" },
+			LlmServiceRecordSchema,
+		),
+
+	createLlmService: (
+		workspaceUid: string,
+		input: CreateLlmServiceInput,
+	): Promise<LlmServiceRecord> =>
+		request(
+			`/workspaces/${workspaceUid}/llm-services`,
+			{ method: "POST", body: JSON.stringify(stripUndefined(input)) },
+			LlmServiceRecordSchema,
+		),
+
+	updateLlmService: (
+		workspaceUid: string,
+		llmServiceId: string,
+		patch: UpdateLlmServiceInput,
+	): Promise<LlmServiceRecord> =>
+		request(
+			`/workspaces/${workspaceUid}/llm-services/${llmServiceId}`,
+			{ method: "PATCH", body: JSON.stringify(stripUndefined(patch)) },
+			LlmServiceRecordSchema,
+		),
+
+	deleteLlmService: (
+		workspaceUid: string,
+		llmServiceId: string,
+	): Promise<void> =>
+		request(
+			`/workspaces/${workspaceUid}/llm-services/${llmServiceId}`,
+			{ method: "DELETE" },
+			null,
 		),
 
 	/* -------- KB documents -------- */
@@ -681,6 +804,23 @@ function stripEmptyStrings<T extends Record<string, unknown>>(
 	const out: Partial<T> = {};
 	for (const [k, v] of Object.entries(input)) {
 		if (v === "" || v === null || v === undefined) continue;
+		(out as Record<string, unknown>)[k] = v;
+	}
+	return out;
+}
+
+/**
+ * Drop only `undefined` entries — preserves explicit `null` (which is
+ * meaningful for nullable fields like `description` or `llmServiceId`)
+ * and empty arrays. Used by routes whose input schema accepts `null`
+ * to mean "clear this field".
+ */
+function stripUndefined<T extends Record<string, unknown>>(
+	input: T,
+): Partial<T> {
+	const out: Partial<T> = {};
+	for (const [k, v] of Object.entries(input)) {
+		if (v === undefined) continue;
 		(out as Record<string, unknown>)[k] = v;
 	}
 	return out;

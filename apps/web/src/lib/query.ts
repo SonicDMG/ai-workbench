@@ -21,11 +21,39 @@ export const keys = {
 		all: ["workspaces"] as const,
 		detail: (uid: string) => ["workspaces", uid] as const,
 	},
-	chats: {
-		all: (workspaceUid: string) => ["chats", workspaceUid] as const,
-		detail: (workspaceUid: string, chatId: string) =>
-			["chats", workspaceUid, chatId] as const,
-		messages: (workspaceUid: string, chatId: string) =>
-			["chats", workspaceUid, chatId, "messages"] as const,
+	agents: {
+		all: (workspaceUid: string) =>
+			["workspaces", workspaceUid, "agents"] as const,
+		detail: (workspaceUid: string, agentId: string) =>
+			["workspaces", workspaceUid, "agents", agentId] as const,
+	},
+	conversations: {
+		all: (workspaceUid: string, agentId: string) =>
+			["workspaces", workspaceUid, "agents", agentId, "conversations"] as const,
+		detail: (workspaceUid: string, agentId: string, conversationId: string) =>
+			[
+				"workspaces",
+				workspaceUid,
+				"agents",
+				agentId,
+				"conversations",
+				conversationId,
+			] as const,
+		messages: (workspaceUid: string, agentId: string, conversationId: string) =>
+			[
+				"workspaces",
+				workspaceUid,
+				"agents",
+				agentId,
+				"conversations",
+				conversationId,
+				"messages",
+			] as const,
+	},
+	llmServices: {
+		all: (workspaceUid: string) =>
+			["workspaces", workspaceUid, "llm-services"] as const,
+		detail: (workspaceUid: string, llmServiceId: string) =>
+			["workspaces", workspaceUid, "llm-services", llmServiceId] as const,
 	},
 };

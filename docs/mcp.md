@@ -19,8 +19,9 @@ who weren't planning to expand their attack surface.
    mcp:
      enabled: true
      # Optional: also expose `chat_send`, which routes a message
-     # through Bobbie. Inherits the runtime's `chat:` block; the
-     # tool is silently skipped when chat is unconfigured.
+     # through the runtime's global chat service. Inherits the
+     # `chat:` block; the tool is silently skipped when chat is
+     # unconfigured.
      exposeChat: false
    ```
 2. Restart the runtime.
@@ -67,7 +68,7 @@ API key per agent.**
 | `search_kb` | `{ knowledgeBaseId, text? \| vector?, topK?, hybrid?, rerank? }` | JSON array of search hits (`chunkId`, `score`, `documentId`, `content`) |
 | `list_chats` | none | JSON array of chat summaries (`chatId`, `title`, `knowledgeBaseIds`, `createdAt`) |
 | `list_chat_messages` | `{ chatId }` | Oldest-first message log (`messageId`, `role`, `content`, `messageTs`, `metadata`) |
-| `chat_send` *(opt-in)* | `{ chatId, content }` | Bobbie's reply as a single text block. Persists both turns. |
+| `chat_send` *(opt-in)* | `{ chatId, content }` | The assistant's reply as a single text block. Persists both turns through the runtime's global chat service; the system prompt falls back to `DEFAULT_AGENT_SYSTEM_PROMPT` when `chat.systemPrompt` is unset. |
 
 All tool results are returned as a single MCP `text` content item
 containing JSON; clients parse it into native objects. This keeps
@@ -102,10 +103,11 @@ long-running one is `chat_send`, and we return its full reply at
 once rather than streaming progress notifications), but the
 transport is ready when we add a streaming variant.
 
-For the chat-with-Bobbie UI's own streaming, see
-[`chat.md`](chat.md) — it uses a separate
-`POST /chats/{c}/messages/stream` endpoint that emits structured
-SSE events tailored to the UI rather than going through MCP.
+For the chat UI's own streaming, see
+[`agents.md`](agents.md) — it uses the
+`POST /agents/{a}/conversations/{c}/messages/stream` endpoint that
+emits structured SSE events tailored to the UI rather than going
+through MCP.
 
 ## Tunnelling and reverse-proxy notes
 
@@ -172,4 +174,4 @@ allows plain HTTP local addresses.
 - [Specification](https://modelcontextprotocol.io/specification/2025-06-18) — the MCP wire protocol.
 - [`docs/configuration.md`](configuration.md) — full `workbench.yaml` schema.
 - [`docs/auth.md`](auth.md) — the auth surface MCP inherits.
-- [`docs/chat.md`](chat.md) — the chat surface MCP optionally wraps.
+- [`docs/agents.md`](agents.md) — the agent surface that the chat UI uses; the `chat_send` MCP tool wraps the runtime's global chat service.

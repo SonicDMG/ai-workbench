@@ -624,70 +624,49 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
-		/* ---------------- Chat (workspace-scoped) ---------------- */
+		/* ---------------- Conversations + messages ---------------- */
 
-		test("ensureBobbieAgent is idempotent and converges on one row", async () => {
+		test("createConversation persists title + KB filter; listConversations returns it", async () => {
 			const { store, cleanup } = await factory();
 			try {
 				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
-				const a1 = await store.ensureBobbieAgent(ws.uid);
-				const a2 = await store.ensureBobbieAgent(ws.uid);
-				expect(a1.agentId).toBe(a2.agentId);
-				expect(a1.workspaceId).toBe(ws.uid);
-				expect(a1.name).toBe("Bobbie");
-				expect(a1.systemPrompt).toContain("Bobbie");
-				expect(a1.ragEnabled).toBe(true);
-				expect(a1.knowledgeBaseIds).toEqual([]);
-			} finally {
-				await cleanup?.();
-			}
-		});
-
-		test("ensureBobbieAgent throws on unknown workspace", async () => {
-			const { store, cleanup } = await factory();
-			try {
-				await expect(
-					store.ensureBobbieAgent("00000000-0000-0000-0000-000000000099"),
-				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
-			} finally {
-				await cleanup?.();
-			}
-		});
-
-		test("createChat persists title + KB filter; listChats returns it", async () => {
-			const { store, cleanup } = await factory();
-			try {
-				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
-				const before = await store.listChats(ws.uid);
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				const before = await store.listConversations(ws.uid, agent.agentId);
 				expect(before).toEqual([]);
-				const chat = await store.createChat(ws.uid, {
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
 					title: "First chat",
 					knowledgeBaseIds: ["kb-2", "kb-1", "kb-2"],
 				});
-				expect(chat.title).toBe("First chat");
+				expect(conv.title).toBe("First chat");
 				// Sorted, deduped by the store contract.
-				expect(chat.knowledgeBaseIds).toEqual(["kb-1", "kb-2"]);
-				expect(chat.workspaceId).toBe(ws.uid);
+				expect(conv.knowledgeBaseIds).toEqual(["kb-1", "kb-2"]);
+				expect(conv.workspaceId).toBe(ws.uid);
+				expect(conv.agentId).toBe(agent.agentId);
 
-				const list = await store.listChats(ws.uid);
+				const list = await store.listConversations(ws.uid, agent.agentId);
 				expect(list).toHaveLength(1);
-				expect(list[0]?.conversationId).toBe(chat.conversationId);
+				expect(list[0]?.conversationId).toBe(conv.conversationId);
 
-				const fetched = await store.getChat(ws.uid, chat.conversationId);
-				expect(fetched).toEqual(chat);
+				const fetched = await store.getConversation(
+					ws.uid,
+					agent.agentId,
+					conv.conversationId,
+				);
+				expect(fetched).toEqual(conv);
 			} finally {
 				await cleanup?.();
 			}
 		});
 
-		test("multiple chats per workspace coexist", async () => {
+		test("multiple conversations per agent coexist", async () => {
 			const { store, cleanup } = await factory();
 			try {
 				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
-				await store.createChat(ws.uid, { title: "A" });
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				await store.createConversation(ws.uid, agent.agentId, { title: "A" });
 				await new Promise((r) => setTimeout(r, 5));
-				await store.createChat(ws.uid, { title: "B" });
-				const list = await store.listChats(ws.uid);
+				await store.createConversation(ws.uid, agent.agentId, { title: "B" });
+				const list = await store.listConversations(ws.uid, agent.agentId);
 				expect(list).toHaveLength(2);
 				// Newest-first matches the table cluster ordering.
 				expect(list[0]?.title).toBe("B");
@@ -697,22 +676,29 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
-		test("updateChat patches title and knowledgeBaseIds independently", async () => {
+		test("updateConversation patches title and knowledgeBaseIds independently", async () => {
 			const { store, cleanup } = await factory();
 			try {
 				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
-				const chat = await store.createChat(ws.uid, {
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
 					title: "old",
 					knowledgeBaseIds: ["kb-1"],
 				});
-				const renamed = await store.updateChat(ws.uid, chat.conversationId, {
-					title: "new",
-				});
+				const renamed = await store.updateConversation(
+					ws.uid,
+					agent.agentId,
+					conv.conversationId,
+					{ title: "new" },
+				);
 				expect(renamed.title).toBe("new");
 				expect(renamed.knowledgeBaseIds).toEqual(["kb-1"]);
-				const refiltered = await store.updateChat(ws.uid, chat.conversationId, {
-					knowledgeBaseIds: ["kb-1", "kb-2"],
-				});
+				const refiltered = await store.updateConversation(
+					ws.uid,
+					agent.agentId,
+					conv.conversationId,
+					{ knowledgeBaseIds: ["kb-1", "kb-2"] },
+				);
 				expect(refiltered.title).toBe("new");
 				expect(refiltered.knowledgeBaseIds).toEqual(["kb-1", "kb-2"]);
 			} finally {
@@ -724,13 +710,16 @@ export function runContract(name: string, factory: ContractFactory): void {
 			const { store, cleanup } = await factory();
 			try {
 				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
-				const chat = await store.createChat(ws.uid, { title: "t" });
-				const u = await store.appendChatMessage(ws.uid, chat.conversationId, {
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
+					title: "t",
+				});
+				const u = await store.appendChatMessage(ws.uid, conv.conversationId, {
 					role: "user",
 					content: "hello",
 				});
 				await new Promise((r) => setTimeout(r, 5));
-				const a = await store.appendChatMessage(ws.uid, chat.conversationId, {
+				const a = await store.appendChatMessage(ws.uid, conv.conversationId, {
 					role: "agent",
 					content: "hi there",
 					metadata: {
@@ -739,7 +728,7 @@ export function runContract(name: string, factory: ContractFactory): void {
 						finish_reason: "stop",
 					},
 				});
-				const msgs = await store.listChatMessages(ws.uid, chat.conversationId);
+				const msgs = await store.listChatMessages(ws.uid, conv.conversationId);
 				expect(msgs).toHaveLength(2);
 				// Oldest-first matches the table cluster ordering.
 				expect(msgs[0]?.messageId).toBe(u.messageId);
@@ -755,15 +744,18 @@ export function runContract(name: string, factory: ContractFactory): void {
 			const { store, cleanup } = await factory();
 			try {
 				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
-				const chat = await store.createChat(ws.uid, { title: "t" });
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
+					title: "t",
+				});
 				const placeholder = await store.appendChatMessage(
 					ws.uid,
-					chat.conversationId,
+					conv.conversationId,
 					{ role: "agent", content: "", metadata: { model: "test-model" } },
 				);
 				const finalized = await store.updateChatMessage(
 					ws.uid,
-					chat.conversationId,
+					conv.conversationId,
 					placeholder.messageId,
 					{
 						content: "complete answer",
@@ -780,7 +772,7 @@ export function runContract(name: string, factory: ContractFactory): void {
 				// `undefined` values drop a metadata key.
 				const dropped = await store.updateChatMessage(
 					ws.uid,
-					chat.conversationId,
+					conv.conversationId,
 					placeholder.messageId,
 					{ metadata: { model: undefined } },
 				);
@@ -790,7 +782,7 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
-		test("appendChatMessage / listChatMessages reject unknown chat", async () => {
+		test("appendChatMessage / listChatMessages reject unknown conversation", async () => {
 			const { store, cleanup } = await factory();
 			try {
 				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
@@ -812,64 +804,83 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
-		test("createChat rejects duplicate explicit chatId", async () => {
+		test("createConversation rejects duplicate explicit conversationId", async () => {
 			const { store, cleanup } = await factory();
 			try {
 				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
-				const chatId = "00000000-0000-0000-0000-0000000000c1";
-				await store.createChat(ws.uid, { chatId });
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				const conversationId = "00000000-0000-0000-0000-0000000000c1";
+				await store.createConversation(ws.uid, agent.agentId, {
+					conversationId,
+				});
 				await expect(
-					store.createChat(ws.uid, { chatId }),
+					store.createConversation(ws.uid, agent.agentId, { conversationId }),
 				).rejects.toBeInstanceOf(ControlPlaneConflictError);
 			} finally {
 				await cleanup?.();
 			}
 		});
 
-		test("deleteChat cascades to its messages", async () => {
+		test("deleteConversation cascades to its messages", async () => {
 			const { store, cleanup } = await factory();
 			try {
 				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
-				const chat = await store.createChat(ws.uid, { title: "t" });
-				await store.appendChatMessage(ws.uid, chat.conversationId, {
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
+					title: "t",
+				});
+				await store.appendChatMessage(ws.uid, conv.conversationId, {
 					role: "user",
 					content: "hello",
 				});
-				const { deleted } = await store.deleteChat(ws.uid, chat.conversationId);
+				const { deleted } = await store.deleteConversation(
+					ws.uid,
+					agent.agentId,
+					conv.conversationId,
+				);
 				expect(deleted).toBe(true);
-				expect(await store.getChat(ws.uid, chat.conversationId)).toBeNull();
-				// Re-creating a chat with the same id starts clean.
-				await store.createChat(ws.uid, {
-					chatId: chat.conversationId,
+				expect(
+					await store.getConversation(
+						ws.uid,
+						agent.agentId,
+						conv.conversationId,
+					),
+				).toBeNull();
+				// Re-creating a conversation with the same id starts clean.
+				await store.createConversation(ws.uid, agent.agentId, {
+					conversationId: conv.conversationId,
 					title: "fresh",
 				});
-				const msgs = await store.listChatMessages(ws.uid, chat.conversationId);
+				const msgs = await store.listChatMessages(ws.uid, conv.conversationId);
 				expect(msgs).toEqual([]);
 			} finally {
 				await cleanup?.();
 			}
 		});
 
-		test("deleteWorkspace cascades to chats and messages", async () => {
+		test("deleteWorkspace cascades to conversations and messages", async () => {
 			const { store, cleanup } = await factory();
 			try {
 				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
-				const chat = await store.createChat(ws.uid, { title: "t" });
-				await store.appendChatMessage(ws.uid, chat.conversationId, {
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
+					title: "t",
+				});
+				await store.appendChatMessage(ws.uid, conv.conversationId, {
 					role: "user",
 					content: "hi",
 				});
 				await store.deleteWorkspace(ws.uid);
 
-				// Re-create the workspace with the same uid; chats should be
-				// gone, not visible from the previous incarnation.
+				// Re-create the workspace with the same uid; the previous
+				// agent + conversation rows must not be visible.
 				const reborn = await store.createWorkspace({
 					uid: ws.uid,
 					name: "w",
 					kind: "mock",
 				});
-				const list = await store.listChats(reborn.uid);
-				expect(list).toEqual([]);
+				const agents = await store.listAgents(reborn.uid);
+				expect(agents).toEqual([]);
 			} finally {
 				await cleanup?.();
 			}
@@ -976,39 +987,36 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
-		test("user-defined agent conversations are isolated from Bobbie's chats", async () => {
+		test("conversations from different agents in the same workspace are isolated", async () => {
 			const { store, cleanup } = await factory();
 			try {
 				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
-				// Bobbie path.
-				const bobbieChat = await store.createChat(ws.uid, {
-					title: "bob-chat",
+				const a = await store.createAgent(ws.uid, { name: "First" });
+				const b = await store.createAgent(ws.uid, { name: "Second" });
+				const aConv = await store.createConversation(ws.uid, a.agentId, {
+					title: "a-conv",
 				});
-				// User-defined path.
-				const a = await store.createAgent(ws.uid, { name: "Helper" });
-				const userConv = await store.createConversation(ws.uid, a.agentId, {
-					title: "user-conv",
+				const bConv = await store.createConversation(ws.uid, b.agentId, {
+					title: "b-conv",
 				});
-
-				// listChats only sees Bobbie's; listConversations(agentId)
-				// only sees its own.
-				const chats = await store.listChats(ws.uid);
-				expect(chats.map((c) => c.conversationId)).toEqual([
-					bobbieChat.conversationId,
+				const aList = await store.listConversations(ws.uid, a.agentId);
+				expect(aList.map((c) => c.conversationId)).toEqual([
+					aConv.conversationId,
 				]);
-				const userConvs = await store.listConversations(ws.uid, a.agentId);
-				expect(userConvs.map((c) => c.conversationId)).toEqual([
-					userConv.conversationId,
+				const bList = await store.listConversations(ws.uid, b.agentId);
+				expect(bList.map((c) => c.conversationId)).toEqual([
+					bConv.conversationId,
 				]);
 			} finally {
 				await cleanup?.();
 			}
 		});
 
-		test("deleteKnowledgeBase removes the kb id from chat KB filters", async () => {
+		test("deleteKnowledgeBase removes the kb id from conversation KB filters", async () => {
 			const { store, cleanup } = await factory();
 			try {
 				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
 				// Make real KBs so deleteKnowledgeBase can actually run.
 				const chunk = await store.createChunkingService(ws.uid, {
 					name: "c",
@@ -1030,12 +1038,16 @@ export function runContract(name: string, factory: ContractFactory): void {
 					chunkingServiceId: chunk.chunkingServiceId,
 					embeddingServiceId: embed.embeddingServiceId,
 				});
-				const chat = await store.createChat(ws.uid, {
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
 					title: "t",
 					knowledgeBaseIds: [kbA.knowledgeBaseId, kbB.knowledgeBaseId],
 				});
 				await store.deleteKnowledgeBase(ws.uid, kbA.knowledgeBaseId);
-				const after = await store.getChat(ws.uid, chat.conversationId);
+				const after = await store.getConversation(
+					ws.uid,
+					agent.agentId,
+					conv.conversationId,
+				);
 				expect(after?.knowledgeBaseIds).toEqual([kbB.knowledgeBaseId]);
 			} finally {
 				await cleanup?.();

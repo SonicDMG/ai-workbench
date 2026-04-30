@@ -23,8 +23,8 @@ runnable artifact and a stable slice of the HTTP contract.
 | Chat-5 | SSE token streaming end-to-end | ✅ Shipped |
 | MCP | Model Context Protocol façade — workspace as MCP tools | ✅ Shipped |
 | Agents-1 | Agent + conversation CRUD over the agentic tables | ✅ Shipped |
-| Agents-2 | Agent send + streaming pipeline (generalize chat-5 to any agent) | Planned |
-| 7+ | LLM-services CRUD, per-agent provider, MCP tool calls, polish | Planned (see "Next steps") |
+| Agents-2 | Agent send + streaming pipeline (generalize chat-5 to any agent) + LLM-services CRUD + Bobbie retirement | ✅ Shipped |
+| 7+ | Multi-provider LLM execution, MCP tool calls, polish | Planned (see "Next steps") |
 
 ## Phase 0 — Bootstrap ✅
 
@@ -320,42 +320,45 @@ Saved queries and the adopt-existing-collection flow were retired
 in this phase — the new shape doesn't need them, and re-adding
 either would land cleaner under the new model than as a port.
 
-## Chat phases ✅ — chat with Bobbie
+## Chat phases ✅ — retired in favor of the agent surface
 
-Shipped across five focused PRs. See [`chat.md`](chat.md) for the
-feature walkthrough.
+The `/chats` route surface (Chat-1 through Chat-5) shipped first as
+a singleton-Bobbie HTTP layer over the agentic tables. With
+Agents-2 the chat send + streaming pipeline was generalised to any
+user-defined agent and the `/chats` route was deleted; the chat UI
+now talks directly to the agent endpoints. Existing data on the
+agentic tables (originally written under the Bobbie row) is
+untouched and continues to work as ordinary agent records. See
+[`agents.md`](agents.md) for the current shape.
 
-- **Chat-1.** Workspace-level chat page (`/workspaces/{w}/chat`)
-  scaffold with placeholder UI; route + navigation entry from the
-  workspace detail page.
+The historical phase breakdown is preserved below for context — it
+maps directly onto the agent surface today.
+
+- **Chat-1.** Workspace-level chat page scaffold with placeholder
+  UI; route + navigation entry from the workspace detail page.
 - **Chat-2.** Persistence layer. Stage-2 agentic tables
   (`wb_agentic_agents_by_workspace`,
   `wb_agentic_conversations_by_agent`,
   `wb_agentic_messages_by_conversation`) wired through all three
-  control-plane backends with a chat-shaped façade. Bobbie is a
-  singleton agent with deterministic `agent_id` derived from
-  `sha256("bobbie:" + workspaceId)`. Cascade behavior covers
-  workspace delete, KB delete (kb-id stripped from any
-  conversation's `knowledge_base_ids` set), and chat delete.
-- **Chat-3.** CRUD HTTP surface
-  (`/api/v1/workspaces/{w}/chats[/{chatId}/messages]`). Full
-  conversation list / detail / patch / delete plus message history
-  + send. Functional ChatPage with sidebar conversation list,
-  composer, and URL-driven chat selection (`?id=<chatId>`).
+  control-plane backends. Cascade behavior covers workspace delete,
+  KB delete (kb-id stripped from any conversation's
+  `knowledge_base_ids` set), and conversation delete.
+- **Chat-3.** CRUD HTTP surface plus a functional ChatPage with
+  sidebar conversation list, composer, and URL-driven conversation
+  selection.
 - **Chat-4.** HuggingFace integration. New `chat/` module with
   `ChatService`, `HuggingFaceChatService` (over
   `@huggingface/inference`'s `chatCompletion`), prompt-assembly,
-  and multi-KB retrieval (per-KB fan-out via the existing
-  `dispatchSearch` helper, total context capped at
-  `retrievalK · √numKbs`). Optional `chat:` block in
-  `workbench.yaml`; without it, `503 chat_disabled`.
-- **Chat-5.** SSE token streaming.
-  `POST /chats/{c}/messages/stream` emits `user-message`, then one
-  `token` event per delta, then a terminal `done`/`error` event
-  carrying the persisted assistant row. The browser uses fetch
-  streaming (not `EventSource`) since the request is `POST` with a
-  JSON body. Cancel button wires the `AbortSignal` through to the
-  HF stream so the runtime stops paying for tokens nobody will see.
+  and multi-KB retrieval. Optional `chat:` block in
+  `workbench.yaml`; without it (and without an agent-bound LLM
+  service), agent send returns `503 chat_disabled`.
+- **Chat-5.** SSE token streaming. The stream emits `user-message`,
+  then one `token` event per delta, then a terminal `done`/`error`
+  event carrying the persisted assistant row. The browser uses
+  fetch streaming (not `EventSource`) since the request is `POST`
+  with a JSON body. Cancel button wires the `AbortSignal` through
+  to the HF stream so the runtime stops paying for tokens nobody
+  will see.
 
 ## MCP phase ✅ — Model Context Protocol façade
 
@@ -369,7 +372,7 @@ walkthrough.
   `list_knowledge_bases`, `list_documents`, `search_kb`
   (vector / hybrid / rerank), `list_chats`, `list_chat_messages`.
   Plus `chat_send` (opt-in via `mcp.exposeChat: true`) which routes
-  through Bobbie.
+  through the runtime's global chat service.
 - **Auth.** Reuses `assertWorkspaceAccess`, so a scoped workspace
   API key for workspace A cannot call MCP tools on workspace B.
 - **Off by default.** `mcp.enabled: true` opts in.
@@ -391,26 +394,30 @@ Followups deferred:
 The phases below are sequenced loosely; each is independently
 shippable so reordering doesn't burn earlier work.
 
-### User-defined agents (Agents-1 ✅, Agents-2 next)
+### User-defined agents (Agents-1 ✅, Agents-2 ✅)
 
 Agents-1 shipped the CRUD surface — agent + conversation
-primitives, with the chat surface refactored to be a thin alias
-that supplies the deterministic Bobbie agent id. See
-[`agents.md`](agents.md). Open work:
+primitives, with the chat surface still talking to its own
+deterministic singleton row. Agents-2 generalised the chat-5 send +
+streaming pipeline to any agent, wired
+`wb_config_llm_service_by_workspace` end-to-end as
+`/api/v1/workspaces/{w}/llm-services` (workspace-scoped CRUD), and
+retired the `/chats` route + Bobbie singleton entirely. See
+[`agents.md`](agents.md) for the current shape, including the
+`agent.llmServiceId` resolution order.
 
-- **Agents-2**: generalize the chat-5 send + streaming pipeline to
-  any agent.
-  `POST /api/v1/workspaces/{w}/agents/{a}/conversations/{c}/messages`
-  + `/messages/stream` should reuse the same handler that backs
-  `/chats/.../messages`, parameterised by `(agentId, agent)`. Today
-  custom agents support metadata + history CRUD only.
-- `wb_config_llm_service_by_workspace` — already declared but
-  unused. Wire CRUD + a per-agent `llmServiceId` so different
-  agents can use different providers / models without restarting
-  the runtime.
-- Tool execution via MCP. Now that the MCP server façade is in,
-  the inverse — letting Bobbie / a user agent **call** MCP tools —
-  is the same SDK, just on the client side.
+Remaining open work in this area:
+
+- **Multi-provider chat**. Today only `provider: "huggingface"` is
+  wired in the chat-service factory; LLM services with other
+  providers (OpenAI, Cohere, Anthropic, …) can be created and
+  stored, but agent send returns `422 llm_provider_unsupported`
+  until the dispatcher grows a case for them. The `ChatService`
+  abstraction is already provider-agnostic; this is mechanical.
+- **Tool execution via MCP**. Now that the MCP server façade is in,
+  the inverse — letting an agent **call** MCP tools — is the same
+  SDK, just on the client side. Lands alongside
+  `wb_config_mcp_tools_by_workspace` CRUD.
 
 ### Per-KB / per-agent rate limiting
 
@@ -421,14 +428,14 @@ endpoints.
 
 ### Markdown rendering + citation linkbacks ✅
 
-Shipped. Bobbie's assistant bubble renders sanitized GitHub-flavored
+Shipped. The assistant bubble renders sanitized GitHub-flavored
 markdown via `react-markdown` + `remark-gfm` + `rehype-sanitize`.
 Inline `[chunkId]` citations rewrite into deep links that auto-open
 the cited document's detail dialog in the KB explorer and scroll the
 matching chunk into view. The runtime persists the chunk → (KB,
 document) map on each assistant turn at `metadata.context_chunks`
 (JSON-encoded compact tuples), so the UI doesn't need a follow-up
-fetch. See [`chat.md`](chat.md#citation-linkbacks).
+fetch.
 
 ### Multi-provider chat backends
 

@@ -1346,6 +1346,7 @@ describe("authz source invariants", () => {
 			"kb-data-plane.ts",
 			"kb-documents.ts",
 			"knowledge-bases.ts",
+			"llm-services.ts",
 			"reranking-services.ts",
 			"workspaces.ts",
 		];

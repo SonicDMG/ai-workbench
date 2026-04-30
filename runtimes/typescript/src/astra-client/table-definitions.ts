@@ -76,10 +76,9 @@ export const API_KEY_LOOKUP_DEFINITION = {
 /*  Three layers, mirroring the CQL the design proposes:              */
 /*    • config — workspaces, knowledge bases, execution services      */
 /*    • rag    — documents, indexed three ways                        */
-/*    • agentic — agents, conversations, messages (chat-with-Bobbie:  */
-/*                Bobbie is the only agent today; the schema is       */
-/*                shared so future user-defined agents can land       */
-/*                without table churn)                                */
+/*    • agentic — agents, conversations, messages (workspaces hold   */
+/*                user-defined agents; conversations partition by    */
+/*                agent; messages partition by conversation)         */
 /*                                                                    */
 /*  All shapes use snake_case columns and partition keys that match   */
 /*  the access pattern in the route name. Application records         */
@@ -397,11 +396,9 @@ export const RAG_DOCUMENTS_BY_HASH_DEFINITION = {
 /**
  * `wb_agentic_agents_by_workspace` — agent definitions.
  *
- * Currently holds the singleton "Bobbie" row per workspace (chat-
- * with-Bobbie feature). Designed to host future user-defined agents
- * with their own random UUIDs; Bobbie's deterministic
- * `agent_id = uuidv5(workspaceId, "bobbie")` keeps the namespaces
- * from colliding.
+ * Holds user-defined agents, partitioned by workspace. Each agent
+ * has a random UUID; deletion cascades to its conversations and
+ * messages.
  */
 export const AGENTS_TABLE = "wb_agentic_agents_by_workspace";
 export const AGENTS_DEFINITION = {
@@ -413,6 +410,7 @@ export const AGENTS_DEFINITION = {
 		system_prompt: "text",
 		user_prompt: "text",
 		tool_ids: { type: "set", valueType: "uuid" },
+		llm_service_id: "uuid",
 		rag_enabled: "boolean",
 		knowledge_base_ids: { type: "set", valueType: "uuid" },
 		rag_max_results: "int",
@@ -435,9 +433,9 @@ export const AGENTS_DEFINITION = {
  * for free. `conversation_id` is part of the cluster key so two
  * conversations with identical timestamps don't collide.
  *
- * `knowledge_base_ids` is the per-conversation RAG-grounding set
- * (chat-with-Bobbie feature). Empty / null = the agent draws from
- * all KBs in the workspace; populated = restricted to those KBs.
+ * `knowledge_base_ids` is the per-conversation RAG-grounding set.
+ * Empty / null = the agent draws from all KBs in the workspace;
+ * populated = restricted to those KBs.
  * Stored on the conversation rather than the agent so a single
  * agent can host multiple conversations with different KB scopes.
  * Additive column — `CREATE TABLE IF NOT EXISTS` is idempotent on

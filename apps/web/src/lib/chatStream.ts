@@ -1,5 +1,6 @@
 /**
- * Browser-side SSE consumer for `POST .../chats/{id}/messages/stream`.
+ * Browser-side SSE consumer for
+ * `POST .../agents/{a}/conversations/{c}/messages/stream`.
  *
  * Why fetch-streaming and not `EventSource`? Because the server uses
  * `POST` with a JSON body — `EventSource` only supports `GET`. fetch
@@ -14,7 +15,7 @@ import { ChatMessageRecordSchema } from "@/lib/schemas";
 /**
  * Events the consumer fires while the stream is in flight. The
  * caller is expected to drive its own state machine off these —
- * `useSendChatStream` uses them to update the cached message list.
+ * `useSendConversationStream` uses them to update the cached message list.
  */
 export type ChatStreamUiEvent =
 	| { readonly type: "user-message"; readonly message: ChatMessage }
@@ -22,7 +23,7 @@ export type ChatStreamUiEvent =
 	| { readonly type: "done"; readonly assistant: ChatMessage }
 	| { readonly type: "error"; readonly assistant: ChatMessage };
 
-export interface SendChatStreamOptions {
+export interface SendConversationStreamOptions {
 	readonly content: string;
 	readonly signal?: AbortSignal;
 	readonly onEvent: (event: ChatStreamUiEvent) => void;
@@ -33,15 +34,16 @@ export interface SendChatStreamOptions {
  * the stream closes naturally; rejects on transport errors (network,
  * non-2xx response, malformed SSE). A `done` or `error` event always
  * fires before resolution when the server-side handler completes
- * normally — see `routes/api-v1/chats.ts`.
+ * normally — see `routes/api-v1/agents.ts`.
  */
-export async function sendChatStream(
+export async function sendConversationStream(
 	workspaceUid: string,
-	chatId: string,
-	opts: SendChatStreamOptions,
+	agentId: string,
+	conversationId: string,
+	opts: SendConversationStreamOptions,
 ): Promise<void> {
 	const res = await fetch(
-		`/api/v1/workspaces/${workspaceUid}/chats/${chatId}/messages/stream`,
+		`/api/v1/workspaces/${workspaceUid}/agents/${agentId}/conversations/${conversationId}/messages/stream`,
 		{
 			method: "POST",
 			credentials: "include",
@@ -56,11 +58,11 @@ export async function sendChatStream(
 	if (!res.ok) {
 		const text = await res.text();
 		throw new Error(
-			`chat stream failed: ${res.status} ${res.statusText}${text.length > 0 ? ` — ${text}` : ""}`,
+			`conversation stream failed: ${res.status} ${res.statusText}${text.length > 0 ? ` — ${text}` : ""}`,
 		);
 	}
 	if (!res.body) {
-		throw new Error("chat stream had no response body");
+		throw new Error("conversation stream had no response body");
 	}
 
 	const reader = res.body.getReader();

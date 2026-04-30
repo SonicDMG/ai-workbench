@@ -447,17 +447,100 @@ export const KbAsyncIngestResponseSchema = z.object({
 });
 export type KbAsyncIngestResponse = z.infer<typeof KbAsyncIngestResponseSchema>;
 
-/* ---------------- Chat (workspace-scoped, Bobbie) ---------------- */
+/* ---------------- Agents + conversations (workspace-scoped) ---------------- */
 
-export const ChatRecordSchema = z.object({
+export const AgentRecordSchema = z.object({
 	workspaceId: z.string().uuid(),
-	chatId: z.string().uuid(),
+	agentId: z.string().uuid(),
+	name: z.string(),
+	description: z.string().nullable(),
+	systemPrompt: z.string().nullable(),
+	userPrompt: z.string().nullable(),
+	llmServiceId: z.string().uuid().nullable(),
+	knowledgeBaseIds: z.array(z.string().uuid()),
+	ragEnabled: z.boolean(),
+	ragMaxResults: z.number().int().nullable(),
+	ragMinScore: z.number().nullable(),
+	rerankEnabled: z.boolean(),
+	rerankingServiceId: z.string().uuid().nullable(),
+	rerankMaxResults: z.number().int().nullable(),
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type AgentRecord = z.infer<typeof AgentRecordSchema>;
+export const AgentPageSchema = paginatedSchema(AgentRecordSchema);
+
+export const CreateAgentInputSchema = z.object({
+	agentId: z.string().uuid().optional(),
+	name: z.string().min(1, "Name is required"),
+	description: z.string().nullable().optional(),
+	systemPrompt: z.string().nullable().optional(),
+	userPrompt: z.string().nullable().optional(),
+	llmServiceId: z.string().uuid().nullable().optional(),
+	knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+	ragEnabled: z.boolean().optional(),
+	ragMaxResults: z.number().int().positive().nullable().optional(),
+	ragMinScore: z.number().nullable().optional(),
+	rerankEnabled: z.boolean().optional(),
+	rerankingServiceId: z.string().uuid().nullable().optional(),
+	rerankMaxResults: z.number().int().positive().nullable().optional(),
+});
+export type CreateAgentInput = z.infer<typeof CreateAgentInputSchema>;
+
+export const UpdateAgentInputSchema = z
+	.object({
+		name: z.string().min(1).optional(),
+		description: z.string().nullable().optional(),
+		systemPrompt: z.string().nullable().optional(),
+		userPrompt: z.string().nullable().optional(),
+		llmServiceId: z.string().uuid().nullable().optional(),
+		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+		ragEnabled: z.boolean().optional(),
+		ragMaxResults: z.number().int().positive().nullable().optional(),
+		ragMinScore: z.number().nullable().optional(),
+		rerankEnabled: z.boolean().optional(),
+		rerankingServiceId: z.string().uuid().nullable().optional(),
+		rerankMaxResults: z.number().int().positive().nullable().optional(),
+	})
+	.strict();
+export type UpdateAgentInput = z.infer<typeof UpdateAgentInputSchema>;
+
+export const ConversationRecordSchema = z.object({
+	workspaceId: z.string().uuid(),
+	agentId: z.string().uuid(),
+	conversationId: z.string().uuid(),
 	title: z.string().nullable(),
 	knowledgeBaseIds: z.array(z.string().uuid()),
 	createdAt: z.string(),
 });
-export type Chat = z.infer<typeof ChatRecordSchema>;
-export const ChatPageSchema = paginatedSchema(ChatRecordSchema);
+export type ConversationRecord = z.infer<typeof ConversationRecordSchema>;
+export const ConversationPageSchema = paginatedSchema(ConversationRecordSchema);
+
+export const CreateConversationInputSchema = z.object({
+	conversationId: z.string().uuid().optional(),
+	title: z.string().min(1).nullable().optional(),
+	knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+});
+export type CreateConversationInput = z.infer<
+	typeof CreateConversationInputSchema
+>;
+
+export const UpdateConversationInputSchema = z
+	.object({
+		title: z.string().min(1).nullable().optional(),
+		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+	})
+	.strict();
+export type UpdateConversationInput = z.infer<
+	typeof UpdateConversationInputSchema
+>;
+
+/* ---------------- Chat messages (agent-conversation-scoped) ---------------- */
+
+// Note: the wire field is still named `chatId` — it carries the
+// conversationId (see runtime `toChatMessageWire`). The UI keeps the
+// `chatId` field name on the wire shape to match the backend, but
+// every reference is to a conversation, not a Bobbie chat row.
 
 export const ChatMessageRoleSchema = z.enum(["user", "agent", "system"]);
 export type ChatMessageRole = z.infer<typeof ChatMessageRoleSchema>;
@@ -475,21 +558,6 @@ export const ChatMessageRecordSchema = z.object({
 export type ChatMessage = z.infer<typeof ChatMessageRecordSchema>;
 export const ChatMessagePageSchema = paginatedSchema(ChatMessageRecordSchema);
 
-export const CreateChatSchema = z.object({
-	chatId: z.string().uuid().optional(),
-	title: z.string().min(1).nullable().optional(),
-	knowledgeBaseIds: z.array(z.string().uuid()).optional(),
-});
-export type CreateChatInput = z.infer<typeof CreateChatSchema>;
-
-export const UpdateChatSchema = z
-	.object({
-		title: z.string().min(1).nullable().optional(),
-		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
-	})
-	.strict();
-export type UpdateChatInput = z.infer<typeof UpdateChatSchema>;
-
 export const SendChatMessageSchema = z.object({
 	content: z.string().min(1, "Type a message"),
 });
@@ -503,6 +571,69 @@ export const SendChatMessageResponseSchema = z.object({
 export type SendChatMessageResponse = z.infer<
 	typeof SendChatMessageResponseSchema
 >;
+
+/* ---------------- LLM services (workspace-scoped) ---------------- */
+
+export const LlmServiceRecordSchema = z.object({
+	workspaceId: z.string().uuid(),
+	llmServiceId: z.string().uuid(),
+	name: z.string(),
+	description: z.string().nullable(),
+	status: ServiceStatusSchema,
+	provider: z.string(),
+	engine: z.string().nullable(),
+	modelName: z.string(),
+	modelVersion: z.string().nullable(),
+	contextWindowTokens: z.number().int().nullable(),
+	maxOutputTokens: z.number().int().nullable(),
+	temperatureMin: z.number().nullable(),
+	temperatureMax: z.number().nullable(),
+	supportsStreaming: z.boolean().nullable(),
+	supportsTools: z.boolean().nullable(),
+	endpointBaseUrl: z.string().nullable(),
+	endpointPath: z.string().nullable(),
+	requestTimeoutMs: z.number().int().nullable(),
+	maxBatchSize: z.number().int().nullable(),
+	authType: AuthTypeSchema,
+	credentialRef: z.string().nullable(),
+	supportedLanguages: z.array(z.string()),
+	supportedContent: z.array(z.string()),
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type LlmServiceRecord = z.infer<typeof LlmServiceRecordSchema>;
+export const LlmServicePageSchema = paginatedSchema(LlmServiceRecordSchema);
+
+export const CreateLlmServiceInputSchema = z.object({
+	llmServiceId: z.string().uuid().optional(),
+	name: z.string().min(1, "Name is required"),
+	description: z.string().nullable().optional(),
+	status: ServiceStatusSchema.optional(),
+	provider: z.string().min(1, "Provider is required"),
+	engine: z.string().nullable().optional(),
+	modelName: z.string().min(1, "Model name is required"),
+	modelVersion: z.string().nullable().optional(),
+	contextWindowTokens: z.number().int().positive().nullable().optional(),
+	maxOutputTokens: z.number().int().positive().nullable().optional(),
+	temperatureMin: z.number().nullable().optional(),
+	temperatureMax: z.number().nullable().optional(),
+	supportsStreaming: z.boolean().nullable().optional(),
+	supportsTools: z.boolean().nullable().optional(),
+	endpointBaseUrl: z.string().nullable().optional(),
+	endpointPath: z.string().nullable().optional(),
+	requestTimeoutMs: z.number().int().positive().nullable().optional(),
+	maxBatchSize: z.number().int().positive().nullable().optional(),
+	authType: AuthTypeSchema.optional(),
+	credentialRef: z.string().nullable().optional(),
+	supportedLanguages: z.array(z.string()).optional(),
+	supportedContent: z.array(z.string()).optional(),
+});
+export type CreateLlmServiceInput = z.infer<typeof CreateLlmServiceInputSchema>;
+
+export const UpdateLlmServiceInputSchema = CreateLlmServiceInputSchema.partial()
+	.omit({ llmServiceId: true })
+	.strict();
+export type UpdateLlmServiceInput = z.infer<typeof UpdateLlmServiceInputSchema>;
 
 /* ---------------- astra-cli auto-detection ---------------- */
 

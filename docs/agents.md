@@ -1,34 +1,33 @@
 # User-defined agents
 
-The chat-with-Bobbie surface is the workspace's first **agent** — a
-named persona with a system prompt, a default RAG configuration, and
-a stable identity in the Stage-2 agentic tables. The agents API lets
-you define **more** agents per workspace and run conversations
-against any of them.
+Agents are the unit of chat in a workspace. Create one or more per
+workspace; each one carries its own persona, RAG defaults, optional
+LLM service, and conversation history. The runtime's send + streaming
+pipeline runs against any agent — there is no built-in chat surface
+above this layer.
 
-This page documents the agents surface. The chat-with-Bobbie surface
-([`chat.md`](chat.md)) stays as a thin alias — Bobbie is just an
-agent with a deterministic id and a built-in persona that the
-runtime auto-creates on first use.
+> **Historical note.** Earlier drafts of the runtime auto-provisioned
+> a singleton "Bobbie" agent and exposed a parallel `/chats` route as
+> a thin alias. Bobbie was retired alongside the chat surface; new
+> workspaces start with zero agents and the chat UI prompts the user
+> to create their first on first visit. Existing agent rows in
+> production tables (including any that were originally Bobbie) keep
+> working — they are ordinary agent records that can be renamed or
+> deleted.
 
 ## Concepts
 
 | Term | What it is |
 |---|---|
-| **Agent** | A row in `wb_agentic_agents_by_workspace`. Carries name, system / user prompts, RAG defaults (`ragEnabled`, `ragMaxResults`, `ragMinScore`, `knowledgeBaseIds`), and reranker overrides. Bobbie is the singleton agent the chat surface auto-provisions; user-defined agents coexist in the same table with random UUIDs. |
+| **Agent** | A row in `wb_agentic_agents_by_workspace`. Carries name, system / user prompts, RAG defaults (`ragEnabled`, `ragMaxResults`, `ragMinScore`, `knowledgeBaseIds`), reranker overrides, and an optional `llmServiceId` pointing at the LLM executor it uses. |
 | **Conversation** | A row in `wb_agentic_conversations_by_agent`. One conversation belongs to exactly one (workspace, agent) pair. Carries `title` and a per-conversation `knowledgeBaseIds` filter that overrides the agent's default at retrieval time. |
 | **Message** | A row in `wb_agentic_messages_by_conversation`. Same shape across all agents — `role ∈ {user, agent, system, tool}`, `metadata` carries RAG provenance / model id / finish reason. |
 
-The Bobbie chat at `/chats` is a thin wrapper over these primitives:
-
-- `listChats(ws)` ≡ `listConversations(ws, bobbieAgentId(ws))`
-- `createChat(ws, ...)` calls `ensureBobbieAgent` then
-  `createConversation(...)`.
-
-User-defined agents share the same primitives. When you delete an
-agent the cascade goes agent → its conversations → their messages.
-Deleting Bobbie is allowed; the next `/chats` send (or any
-`ensureBobbieAgent` call) recreates it from the deterministic id.
+There is no built-in agent. Workspaces start with zero agents; the
+chat UI prompts the user to create their first on first visit. When
+you delete an agent the cascade goes agent → its conversations →
+their messages. Workspace delete cascades workspace → agents →
+conversations → messages.
 
 ## Data model
 
@@ -46,6 +45,7 @@ interface AgentRecord {
   systemPrompt: string | null;
   userPrompt: string | null;
   toolIds: readonly string[];     // unused in v0; reserved for tool-using agents
+  llmServiceId: string | null;    // optional pointer to an LLM executor
   ragEnabled: boolean;
   knowledgeBaseIds: readonly string[];
   ragMaxResults: number | null;
@@ -72,6 +72,31 @@ interface ConversationRecord {
 when populated; empty means "fall back to the agent's default, or to
 all KBs in the workspace if the agent's set is also empty".
 
+## LLM service binding
+
+`agent.llmServiceId` is mutable and optional. Resolution order at
+send time:
+
+1. If `agent.llmServiceId` is set, the runtime fetches the matching
+   `wb_config_llm_service_by_workspace` row and instantiates a chat
+   service from it. **Today only `provider: "huggingface"` is wired
+   end-to-end** — agents pointing at any other provider get
+   `422 llm_provider_unsupported`. A bound HuggingFace service
+   without a `credentialRef` returns `422 llm_credential_missing`.
+2. If `agent.llmServiceId` is unset, the runtime falls back to the
+   global `chat:` block in `workbench.yaml`.
+3. If neither is configured, `POST .../messages` and
+   `POST .../messages/stream` return `503 chat_disabled`.
+
+Multi-provider support (OpenAI, Cohere, etc.) is a follow-up — the
+chat service abstraction is provider-agnostic; only the agent
+dispatcher's instantiation switch needs to grow.
+
+The system prompt resolves in the same layered way: `agent.systemPrompt`
+wins if set, otherwise `chatConfig.systemPrompt`, otherwise the
+runtime falls back to `DEFAULT_AGENT_SYSTEM_PROMPT` from
+[`control-plane/defaults.ts`](../runtimes/typescript/src/control-plane/defaults.ts).
+
 ## HTTP surface
 
 All routes are workspace-scoped, mounted under
@@ -82,10 +107,10 @@ All routes are workspace-scoped, mounted under
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/agents` | List agents in the workspace, oldest-first. Paginated. Includes Bobbie (if she has been ensured). |
-| `POST` | `/agents` | Create a new agent. Body: `{ agentId?, name, description?, systemPrompt?, userPrompt?, knowledgeBaseIds?, ragEnabled?, ragMaxResults?, ragMinScore?, rerankEnabled?, rerankingServiceId?, rerankMaxResults? }`. 409 on duplicate explicit `agentId`. |
+| `GET` | `/agents` | List agents in the workspace, oldest-first. Paginated. |
+| `POST` | `/agents` | Create a new agent. Body: `{ agentId?, name, description?, systemPrompt?, userPrompt?, llmServiceId?, knowledgeBaseIds?, ragEnabled?, ragMaxResults?, ragMinScore?, rerankEnabled?, rerankingServiceId?, rerankMaxResults? }`. 409 on duplicate explicit `agentId`. |
 | `GET` | `/agents/{agentId}` | Get one agent. |
-| `PATCH` | `/agents/{agentId}` | Patch any of the optional fields above (except `agentId`). |
+| `PATCH` | `/agents/{agentId}` | Patch any of the optional fields above (except `agentId`). `llmServiceId` accepts `null` to clear the binding. |
 | `DELETE` | `/agents/{agentId}` | 204; cascades the agent's conversations and their messages. |
 
 ### Conversations (per-agent)
@@ -98,17 +123,50 @@ All routes are workspace-scoped, mounted under
 | `PATCH` | `/agents/{agentId}/conversations/{conversationId}` | Update title and / or `knowledgeBaseIds`. |
 | `DELETE` | `/agents/{agentId}/conversations/{conversationId}` | 204; cascades messages. |
 
-### Why no `/messages` here yet
+### Messages (per-conversation)
 
-The Bobbie chat surface owns the streaming + retrieval pipeline at
-`/chats/{chatId}/messages` (sync) and
-`/chats/{chatId}/messages/stream` (SSE). User-defined agents will get
-the same pipeline in a follow-up PR — at that point the chat send
-path is generalised to take `(agentId, agent)` and the same handler
-backs both surfaces. Until then, user-defined agents support full
-CRUD over the conversation log (you can drive them programmatically
-from `appendChatMessage` at the store layer, but not from the HTTP
-API yet).
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/agents/{agentId}/conversations/{conversationId}/messages` | Oldest-first message log. Paginated. |
+| `POST` | `/agents/{agentId}/conversations/{conversationId}/messages` | **Synchronous** send. Body: `{ content }`. Persists the user turn, retrieves grounding context, calls the agent's LLM (per the resolution order above), persists the assistant turn, returns `{ user, assistant }`. |
+| `POST` | `/agents/{agentId}/conversations/{conversationId}/messages/stream` | **SSE** send. Same body. Emits `user-message`, then one `token` event per delta, then a terminal `done` (or `error`) carrying the persisted assistant row. |
+
+`POST /messages` and `POST /messages/stream` return:
+
+- **404** when the conversation does not belong to the named agent
+  (or when the workspace, agent, or conversation does not exist).
+- **422** `llm_provider_unsupported` when `agent.llmServiceId`
+  points at an LLM service whose `provider` is not `huggingface`.
+- **422** `llm_credential_missing` when the bound HuggingFace
+  service has no `credentialRef`.
+- **503** `chat_disabled` when the runtime has no global `chat:`
+  block configured **and** the agent has no `llmServiceId` — there
+  is no executor available.
+
+The streaming wire format is identical to what the now-retired
+`/chats/.../messages/stream` route emitted. Browser clients use
+`fetch` with `Accept: text/event-stream` and parse the response
+body manually (`EventSource` only supports `GET`). The runtime helper
+the web UI uses lives at
+[`apps/web/src/lib/chatStream.ts`](../apps/web/src/lib/chatStream.ts).
+
+```text
+event: user-message
+data: {"workspaceId":"…","conversationId":"…","role":"user","content":"hi","messageId":"…","messageTs":"…","metadata":{}}
+
+event: token
+data: {"delta":"Hello"}
+
+event: token
+data: {"delta":" there"}
+
+event: done
+data: {"workspaceId":"…","conversationId":"…","role":"agent","content":"Hello there","messageId":"…","messageTs":"…","metadata":{"model":"…","finish_reason":"stop","context_document_ids":"…"}}
+```
+
+On model failure the terminal event is `error` with the same shape,
+where `metadata.finish_reason === "error"` and the body carries the
+human-readable failure.
 
 ## Cascade rules
 
@@ -117,42 +175,18 @@ API yet).
   Other agents in the workspace are untouched.
 - **Conversation delete** → its messages.
 - **KB delete** → strips the kb id from every conversation's
-  `knowledgeBaseIds` set in the workspace (same sweep as for chats).
-  The agent-level `knowledgeBaseIds` is **not** stripped today; if
-  this becomes a problem we'll extend the cascade.
-
-## Relationship to the chat surface
-
-```
-          ┌───────────── /chats route ─────────────┐
-          │  thin alias: bobbieAgentId(ws) supplied │
-          │  automatically; ensureBobbieAgent on    │
-          │  first send                             │
-          └─────────────────┬───────────────────────┘
-                            │
-                ┌───────────▼───────────┐
-                │   ControlPlaneStore    │
-                │   agent + conversation │
-                │   + message methods    │
-                └───────────┬────────────┘
-                            │
-            ┌───────────────┼───────────────┐
-            │               │               │
-       agents          conversations     messages
-       (Bobbie +       (agent-scoped,    (conversation-
-        user-           per-agent)        scoped)
-        defined)
-```
-
-Both surfaces hit the same tables. The chat routes hide `agentId`
-from the wire (callers don't pick the agent — the runtime does); the
-agents routes surface it because callers explicitly drove the choice.
+  `knowledgeBaseIds` set in the workspace. The agent-level
+  `knowledgeBaseIds` is **not** stripped today; if this becomes a
+  problem we'll extend the cascade.
+- **LLM service delete** → refused with `409 conflict` while any
+  agent still references the service via `llmServiceId`. Reassign
+  or delete the dependent agents first.
 
 ## Testing
 
 - **Route-level**:
   [`runtimes/typescript/tests/agents.test.ts`](../runtimes/typescript/tests/agents.test.ts)
-  exercises the agent + conversation CRUD via `app.request`.
+  exercises the agent + conversation + message CRUD via `app.request`.
 - **Store contract**:
   [`runtimes/typescript/tests/control-plane/contract.ts`](../runtimes/typescript/tests/control-plane/contract.ts)
   runs the agent surface against memory / file / astra so all three
@@ -160,7 +194,8 @@ agents routes surface it because callers explicitly drove the choice.
 
 ## Related docs
 
-- [`chat.md`](chat.md) — Bobbie chat (the singleton-agent alias).
 - [`api-spec.md`](api-spec.md) — high-level API surface narrative.
 - [`workspaces.md`](workspaces.md) — workspace cascade semantics.
 - [`architecture.md`](architecture.md) — runtime composition.
+- [`configuration.md`](configuration.md) — `chat:` block (the
+  runtime-wide default executor) and other deployment knobs.

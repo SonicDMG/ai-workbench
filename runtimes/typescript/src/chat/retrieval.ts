@@ -1,5 +1,5 @@
 /**
- * Multi-KB retrieval for chat-with-Bobbie.
+ * Multi-KB retrieval for the agent chat surface.
  *
  * Given a user message and a conversation's effective KB filter,
  * fan out a vector search across each KB, merge by score, and
@@ -9,8 +9,8 @@
  *
  * Failure semantics: if a single KB's retrieval fails, we log via
  * the supplied logger and skip that KB rather than aborting the
- * whole reply. Bobbie answering with partial context is still better
- * than a hard error in the user's face.
+ * whole reply. Answering with partial context is still better than
+ * a hard error in the user's face.
  */
 
 import type { ControlPlaneStore } from "../control-plane/store.js";
@@ -95,7 +95,7 @@ export async function retrieveContext(
 
 /**
  * Resolve the effective KB set for a chat turn. Empty filter falls
- * back to "every KB in the workspace" — Bobbie can grasp at any
+ * back to "every KB in the workspace" — the agent can grasp at any
  * available context. A populated filter is honored verbatim, even
  * if some KBs in it have since been deleted; the per-KB retrieval
  * loop will silently skip the dead ones (resolveKb 404s, caught by

@@ -11,10 +11,12 @@
  *   - `list_knowledge_bases`   read-only KB metadata
  *   - `list_documents`         paginated documents in a KB
  *   - `search_kb`              vector / hybrid / rerank search
- *   - `list_chats`             chat thread metadata
- *   - `list_chat_messages`     turn-by-turn chat history
+ *   - `list_chats`             agent-scoped conversation metadata
+ *   - `list_chat_messages`     turn-by-turn message history
  *   - `chat_send`              optional, gated on `mcp.exposeChat`
- *                              + `chat` config; runs Bobbie and
+ *                              + `chat` config; appends a user turn
+ *                              to an agent's conversation, runs the
+ *                              configured chat-completion model, and
  *                              returns the reply as a single text
  *                              block (streaming would require MCP
  *                              progress notifications which most
@@ -33,7 +35,7 @@ import { assemblePrompt } from "../chat/prompt.js";
 import { retrieveContext } from "../chat/retrieval.js";
 import type { ChatService } from "../chat/types.js";
 import type { ChatConfig } from "../config/schema.js";
-import { BOBBIE_SYSTEM_PROMPT } from "../control-plane/defaults.js";
+import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../control-plane/defaults.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
@@ -178,7 +180,7 @@ export function buildMcpServer(
 		{
 			title: "List documents in a knowledge base",
 			description:
-				"Paginated document metadata for a single knowledge base. Use this to discover which sources Bobbie / your agent can ground on. Returns id, source filename, status, content hash, and chunk count.",
+				"Paginated document metadata for a single knowledge base. Use this to discover which sources an agent can ground on. Returns id, source filename, status, content hash, and chunk count.",
 			inputSchema: {
 				knowledgeBaseId: z.string().uuid(),
 				limit: z.number().int().positive().max(200).optional(),
@@ -262,15 +264,18 @@ export function buildMcpServer(
 	server.registerTool(
 		"list_chats",
 		{
-			title: "List chats",
+			title: "List chats for an agent",
 			description:
-				"List Bobbie chats in the workspace. Useful when an external agent wants to read or audit prior conversations before adding to them.",
-			inputSchema: {},
+				"List the conversations belonging to an agent in the workspace. Use the agentId returned by `list_agents` (or the value returned when the agent was created). Useful when an external client wants to read or audit prior conversations before adding to them.",
+			inputSchema: {
+				agentId: z.string().uuid(),
+			},
 		},
-		async () => {
-			const rows = await deps.store.listChats(workspaceId);
+		async ({ agentId }) => {
+			const rows = await deps.store.listConversations(workspaceId, agentId);
 			const summary = rows.map((c) => ({
 				chatId: c.conversationId,
+				agentId: c.agentId,
 				title: c.title,
 				knowledgeBaseIds: c.knowledgeBaseIds,
 				createdAt: c.createdAt,
@@ -286,7 +291,7 @@ export function buildMcpServer(
 		{
 			title: "List chat messages",
 			description:
-				"Oldest-first message history for one chat. Returns role, content, timestamp, and (for assistant turns) RAG provenance metadata.",
+				"Oldest-first message history for one conversation. Returns role, content, timestamp, and (for assistant turns) RAG provenance metadata.",
 			inputSchema: {
 				chatId: z.string().uuid(),
 			},
@@ -332,14 +337,19 @@ function registerChatTool(
 		{
 			title: "Send a chat message",
 			description:
-				"Persist a user turn in an existing chat, retrieve grounding context across the chat's KB filter, run the configured chat-completion model, persist Bobbie's reply, and return the assistant text. Returns the assistant content as a single text block (streaming via MCP progress isn't surfaced by most clients yet).",
+				"Persist a user turn in an agent-owned conversation, retrieve grounding context across the conversation's KB filter, run the configured chat-completion model, persist the assistant reply, and return the assistant text. Returns the assistant content as a single text block (streaming via MCP progress isn't surfaced by most clients yet).",
 			inputSchema: {
+				agentId: z.string().uuid(),
 				chatId: z.string().uuid(),
 				content: z.string().min(1).max(32_000),
 			},
 		},
-		async ({ chatId, content }) => {
-			const chat = await deps.store.getChat(workspaceId, chatId);
+		async ({ agentId, chatId, content }) => {
+			const chat = await deps.store.getConversation(
+				workspaceId,
+				agentId,
+				chatId,
+			);
 			if (!chat) {
 				return {
 					isError: true,
@@ -367,7 +377,8 @@ function registerChatTool(
 			);
 			const history = await deps.store.listChatMessages(workspaceId, chatId);
 			const prompt = assemblePrompt({
-				systemPrompt: deps.chatConfig.systemPrompt ?? BOBBIE_SYSTEM_PROMPT,
+				systemPrompt:
+					deps.chatConfig.systemPrompt ?? DEFAULT_AGENT_SYSTEM_PROMPT,
 				chunks,
 				history,
 				userTurn: content,
@@ -375,7 +386,7 @@ function registerChatTool(
 			const completion = await deps.chatService.complete({ messages: prompt });
 			const replyText =
 				completion.finishReason === "error"
-					? (completion.errorMessage ?? "Bobbie couldn't answer this turn.")
+					? (completion.errorMessage ?? "The agent couldn't answer this turn.")
 					: completion.content;
 			// Force the assistant turn strictly after the user turn so the
 			// `message_ts ASC` cluster ordering is unambiguous — the column
@@ -388,6 +399,7 @@ function registerChatTool(
 			).toISOString();
 			await deps.store.appendChatMessage(workspaceId, chatId, {
 				role: "agent",
+				authorId: agentId,
 				messageTs: assistantTs,
 				content: replyText,
 				tokenCount: completion.tokenCount,

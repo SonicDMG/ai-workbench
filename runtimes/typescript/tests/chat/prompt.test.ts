@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { assemblePrompt, type RetrievedChunk } from "../../src/chat/prompt.js";
 import type { MessageRecord } from "../../src/control-plane/types.js";
 
-const SYSTEM = "You are Bobbie.";
+const SYSTEM = "You are a helpful assistant.";
 
 function userMsg(
 	content: string,

@@ -373,6 +373,11 @@ export interface AgentRecord {
 	readonly systemPrompt: string | null;
 	readonly userPrompt: string | null;
 	readonly toolIds: readonly string[];
+	/** Optional pointer to an LLM service in the same workspace. When
+	 * set, agent send/stream resolves the model + provider from the
+	 * service record. When null, the global runtime `chat:` block is
+	 * used (transitional). Mutable. */
+	readonly llmServiceId: string | null;
 	readonly ragEnabled: boolean;
 	readonly knowledgeBaseIds: readonly string[];
 	readonly ragMaxResults: number | null;

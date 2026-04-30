@@ -248,10 +248,11 @@ there's nothing to seed.
 
 ## `chat` *(optional)*
 
-Wires up chat-with-Bobbie. When unset, the chat CRUD routes still
-work but `POST .../messages` and `POST .../messages/stream` return
-`503 chat_disabled`. See [`chat.md`](chat.md) for the full feature
-walkthrough.
+Wires up the runtime-wide default chat-completion executor used by
+agents that have no `llmServiceId` of their own. When unset and
+the agent also has no LLM service bound, agent send + streaming
+return `503 chat_disabled`. See [`agents.md`](agents.md) for the
+agent surface and the per-agent LLM-service binding.
 
 ```yaml
 chat:
@@ -267,8 +268,16 @@ chat:
 | `tokenRef` | SecretRef | required | Resolved once at boot. `env:VAR` or `file:/path`. |
 | `model` | string | `mistralai/Mistral-7B-Instruct-v0.3` | Any chat-completion-compatible HuggingFace Inference API model. |
 | `maxOutputTokens` | int (1–8192) | `1024` | Per-turn cap on the assistant's reply length. |
-| `retrievalK` | int (1–64) | `6` | Top-K KB chunks **per knowledge base**. The total injected into the prompt is `retrievalK * ceil(sqrt(numKbs))` so multi-KB chats don't blow up the prompt. |
-| `systemPrompt` | string \| null | `null` | Override Bobbie's built-in persona. `null` keeps the default. |
+| `retrievalK` | int (1–64) | `6` | Top-K KB chunks **per knowledge base**. The total injected into the prompt is `retrievalK * ceil(sqrt(numKbs))` so multi-KB conversations don't blow up the prompt. |
+| `systemPrompt` | string \| null | `null` | Default system prompt when neither the agent nor the agent's LLM service supplies one. `null` falls back to the runtime's persona-agnostic `DEFAULT_AGENT_SYSTEM_PROMPT`. |
+
+**Per-agent override.** When an agent has `llmServiceId` set, the
+agent's bound LLM service overrides this block — the runtime
+instantiates a chat service from the LLM-service record instead of
+using the global block. The agent's own `systemPrompt` likewise
+wins over `chat.systemPrompt` when present. Multi-provider support
+is a follow-up; today only `provider: "huggingface"` LLM services
+are wired end-to-end.
 
 ## `mcp` *(optional)*
 

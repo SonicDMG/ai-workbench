@@ -1,6 +1,6 @@
 /**
- * Coverage for {@link MarkdownContent} — markdown rendering of
- * Bobbie's assistant content plus `[chunkId]` citation linkback
+ * Coverage for {@link MarkdownContent} — markdown rendering of the
+ * agent's assistant content plus `[chunkId]` citation linkback
  * rewriting against the chunk map persisted in
  * `metadata.context_chunks`.
  */

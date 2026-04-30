@@ -90,7 +90,7 @@ export function WorkspaceDetailPage() {
 							<Button variant="secondary" asChild>
 								<Link to={`/workspaces/${data.workspaceId}/chat`}>
 									<MessageSquare className="h-4 w-4" />
-									Chat with Bobbie
+									Chat
 								</Link>
 							</Button>
 						) : null}

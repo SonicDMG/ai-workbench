@@ -29,6 +29,7 @@ import type {
 	KnowledgeBaseStatus,
 	KnowledgeFilterRecord,
 	LexicalConfig,
+	LlmServiceRecord,
 	MessageRecord,
 	RagDocumentRecord,
 	RerankingServiceRecord,
@@ -232,19 +233,35 @@ export type UpdateRerankingServiceInput = Partial<
 	Omit<CreateRerankingServiceInput, "uid">
 >;
 
-/* ------------------------------------------------------------------ */
-/* Chat (workspace-scoped, backed by the agentic tables)              */
-/* ------------------------------------------------------------------ */
+export interface CreateLlmServiceInput extends ServiceEndpointInput {
+	readonly uid?: string;
+	readonly name: string;
+	readonly description?: string | null;
+	readonly status?: ServiceStatus;
+	readonly provider: string;
+	readonly engine?: string | null;
+	readonly modelName: string;
+	readonly modelVersion?: string | null;
+	readonly contextWindowTokens?: number | null;
+	readonly maxOutputTokens?: number | null;
+	readonly temperatureMin?: number | null;
+	readonly temperatureMax?: number | null;
+	readonly supportsStreaming?: boolean | null;
+	readonly supportsTools?: boolean | null;
+	readonly maxBatchSize?: number | null;
+	readonly supportedLanguages?: ReadonlySet<string> | readonly string[];
+	readonly supportedContent?: ReadonlySet<string> | readonly string[];
+}
+
+export type UpdateLlmServiceInput = Partial<Omit<CreateLlmServiceInput, "uid">>;
 
 /* ------------------------------------------------------------------ */
 /* Agents (workspace-scoped, agentic-tables-backed)                   */
 /* ------------------------------------------------------------------ */
 
 /**
- * Input for {@link ControlPlaneStore.createAgent}. Custom agents
- * coexist with the built-in Bobbie singleton. Bobbie's `agent_id`
- * is deterministic (sha256 of workspaceId); user-defined agents
- * use random UUIDs, so the namespaces don't collide.
+ * Input for {@link ControlPlaneStore.createAgent}. User-defined
+ * agents use random UUIDs (or a caller-supplied UUID).
  *
  * `knowledgeBaseIds` here is the **agent's default** — at chat
  * time the conversation row's per-conversation
@@ -259,6 +276,7 @@ export interface CreateAgentInput {
 	readonly systemPrompt?: string | null;
 	readonly userPrompt?: string | null;
 	readonly knowledgeBaseIds?: readonly string[];
+	readonly llmServiceId?: string | null;
 	readonly ragEnabled?: boolean;
 	readonly ragMaxResults?: number | null;
 	readonly ragMinScore?: number | null;
@@ -270,11 +288,14 @@ export interface CreateAgentInput {
 export type UpdateAgentInput = Partial<Omit<CreateAgentInput, "agentId">>;
 
 /**
- * Input for {@link ControlPlaneStore.createConversation} — the
- * agent-aware generalization of {@link CreateChatInput}.
- * `/chats` callers continue to use {@link CreateChatInput}; the
- * store implements `createChat` as an alias of `createConversation`
- * with the Bobbie agent id supplied.
+ * Input for {@link ControlPlaneStore.createConversation}.
+ *
+ * `knowledgeBaseIds` is the per-conversation RAG-grounding set.
+ * Empty / omitted = the conversation draws from all KBs in the
+ * workspace at retrieval time. Populated = restricted to those KBs
+ * (must exist; the store does **not** validate KB existence here —
+ * the route layer does, so deleted KBs eventually disappear from the
+ * set via {@link ControlPlaneStore.deleteKnowledgeBase}'s cascade).
  */
 export interface CreateConversationInput {
 	readonly conversationId?: string;
@@ -283,29 +304,6 @@ export interface CreateConversationInput {
 }
 
 export interface UpdateConversationInput {
-	readonly title?: string | null;
-	readonly knowledgeBaseIds?: readonly string[];
-}
-
-/**
- * Input for {@link ControlPlaneStore.createChat}. The owning agent
- * (Bobbie) is implicit — `ensureBobbieAgent` is called inside the
- * store, so callers don't need to worry about agent management.
- *
- * `knowledgeBaseIds` is the per-conversation RAG-grounding set.
- * Empty / omitted = the chat draws from all KBs in the workspace
- * at retrieval time. Populated = restricted to those KBs (must
- * exist; the store does **not** validate KB existence here — the
- * route layer does, so deleted KBs eventually disappear from the
- * set via {@link ControlPlaneStore.deleteKnowledgeBase}'s cascade).
- */
-export interface CreateChatInput {
-	readonly chatId?: string;
-	readonly title?: string | null;
-	readonly knowledgeBaseIds?: readonly string[];
-}
-
-export interface UpdateChatInput {
 	readonly title?: string | null;
 	readonly knowledgeBaseIds?: readonly string[];
 }
@@ -530,12 +528,33 @@ export interface ControlPlaneStore {
 		uid: string,
 	): Promise<{ deleted: boolean }>;
 
-	/* Agents (workspace-scoped). User-defined agents coexist with the
-	 * singleton Bobbie row. Listing returns Bobbie + any user agents.
-	 * `deleteAgent` cascades the agent's conversations + messages.
-	 * Deleting the deterministic Bobbie agent is allowed — the next
-	 * `ensureBobbieAgent` call (or a chat send through `/chats`)
-	 * recreates it. */
+	/* LLM services. Workspace-scoped definitions of how to call a
+	 * chat/generation model. Multiple agents in the same workspace may
+	 * reference one by id via `agent.llmServiceId`. Deleting a service
+	 * that an agent points at is rejected with 409 (matches the
+	 * embedding/chunking pattern). */
+	listLlmServices(workspace: string): Promise<readonly LlmServiceRecord[]>;
+	getLlmService(
+		workspace: string,
+		uid: string,
+	): Promise<LlmServiceRecord | null>;
+	createLlmService(
+		workspace: string,
+		input: CreateLlmServiceInput,
+	): Promise<LlmServiceRecord>;
+	updateLlmService(
+		workspace: string,
+		uid: string,
+		patch: UpdateLlmServiceInput,
+	): Promise<LlmServiceRecord>;
+	deleteLlmService(
+		workspace: string,
+		uid: string,
+	): Promise<{ deleted: boolean }>;
+
+	/* Agents (workspace-scoped). User-defined agents are created
+	 * explicitly via `createAgent`. `deleteAgent` cascades the
+	 * agent's conversations + messages. */
 	listAgents(workspaceId: string): Promise<readonly AgentRecord[]>;
 	getAgent(workspaceId: string, agentId: string): Promise<AgentRecord | null>;
 	createAgent(
@@ -552,9 +571,10 @@ export interface ControlPlaneStore {
 		agentId: string,
 	): Promise<{ deleted: boolean }>;
 
-	/* Conversations (agent-scoped). The agent-aware generalization of
-	 * the chat methods below. The chat methods stay as a Bobbie alias
-	 * for the existing /chats route layer. */
+	/* Conversations (agent-scoped). The agent-aware surface backing
+	 * `/agents/{a}/conversations[/{c}/messages]`. Messages live in a
+	 * separate (workspace, conversation) partition — see the
+	 * `*ChatMessage*` methods below. */
 	listConversations(
 		workspaceId: string,
 		agentId: string,
@@ -581,59 +601,31 @@ export interface ControlPlaneStore {
 		conversationId: string,
 	): Promise<{ deleted: boolean }>;
 
-	/* Chat (workspace-scoped, agentic-tables-backed). The store owns
-	 * the singleton "Bobbie" agent: callers never construct or manage
-	 * agent rows directly. Multi-conversation per workspace; KB
-	 * grounding is per-conversation via knowledgeBaseIds. These are
-	 * thin aliases of the agent-aware methods above with the Bobbie
-	 * agent id supplied automatically. */
+	/* Chat messages (conversation-scoped). Agent-agnostic from the
+	 * storage POV — messages are partitioned by (workspace,
+	 * conversation), not by agent — so the agent doesn't appear in
+	 * these signatures. The legacy method names are retained for
+	 * Phase C; a follow-up pass will rename them to
+	 * `*ConversationMessage*`. */
 
 	/**
-	 * Idempotently ensure a singleton "Bobbie" agent row exists for
-	 * the workspace and return it. Deterministic agent_id derived
-	 * from the workspace, so concurrent first-use calls converge on
-	 * one row. Throws {@link ControlPlaneNotFoundError} if the
-	 * workspace itself doesn't exist.
-	 */
-	ensureBobbieAgent(workspaceId: string): Promise<AgentRecord>;
-
-	listChats(workspaceId: string): Promise<readonly ConversationRecord[]>;
-	getChat(
-		workspaceId: string,
-		chatId: string,
-	): Promise<ConversationRecord | null>;
-	createChat(
-		workspaceId: string,
-		input: CreateChatInput,
-	): Promise<ConversationRecord>;
-	updateChat(
-		workspaceId: string,
-		chatId: string,
-		patch: UpdateChatInput,
-	): Promise<ConversationRecord>;
-	deleteChat(
-		workspaceId: string,
-		chatId: string,
-	): Promise<{ deleted: boolean }>;
-
-	/**
-	 * Chronologically-ordered message history for a chat. Returns
-	 * messages oldest-first (matching the underlying table's
+	 * Chronologically-ordered message history for a conversation.
+	 * Returns messages oldest-first (matching the underlying table's
 	 * `message_ts ASC` cluster key); the UI flips for display.
 	 */
 	listChatMessages(
 		workspaceId: string,
-		chatId: string,
+		conversationId: string,
 	): Promise<readonly MessageRecord[]>;
 
 	/**
 	 * Append a turn. Throws {@link ControlPlaneNotFoundError} if the
-	 * chat doesn't exist. Stamps `messageId` (random UUID) and
-	 * `messageTs` (now) when omitted.
+	 * conversation doesn't exist. Stamps `messageId` (random UUID)
+	 * and `messageTs` (now) when omitted.
 	 */
 	appendChatMessage(
 		workspaceId: string,
-		chatId: string,
+		conversationId: string,
 		input: AppendChatMessageInput,
 	): Promise<MessageRecord>;
 
@@ -645,7 +637,7 @@ export interface ControlPlaneStore {
 	 */
 	updateChatMessage(
 		workspaceId: string,
-		chatId: string,
+		conversationId: string,
 		messageId: string,
 		patch: UpdateChatMessageInput,
 	): Promise<MessageRecord>;
