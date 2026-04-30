@@ -144,15 +144,15 @@ describe("operational routes", () => {
 		expect(JSON.stringify(body)).not.toContain("token");
 	});
 
-	test("GET /features defaults mcp.enabled to false when no mcpConfig is passed", async () => {
+	test("GET /features defaults mcp.enabled to false (and baseUrl null) when no mcpConfig is passed", async () => {
 		const { app } = makeApp();
 		const res = await app.request("/features");
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		expect(body).toEqual({ mcp: { enabled: false } });
+		expect(body).toEqual({ mcp: { enabled: false, baseUrl: null } });
 	});
 
-	test("GET /features reflects mcpConfig.enabled when MCP is on", async () => {
+	test("GET /features reflects mcpConfig.enabled and derives baseUrl from the inbound URL", async () => {
 		const store = new MemoryControlPlaneStore();
 		const driver = new MockVectorStoreDriver();
 		const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
@@ -171,10 +171,41 @@ describe("operational routes", () => {
 			embedders,
 			mcpConfig: { enabled: true, exposeChat: false },
 		});
-		const res = await app.request("/features");
+		const res = await app.request("http://runtime.local:8080/features");
 		expect(res.status).toBe(200);
 		const body = await json(res);
 		expect(body.mcp.enabled).toBe(true);
+		expect(body.mcp.baseUrl).toBe("http://runtime.local:8080");
+	});
+
+	test("GET /features prefers X-Forwarded-* headers when behind a TLS-terminating proxy", async () => {
+		const store = new MemoryControlPlaneStore();
+		const driver = new MockVectorStoreDriver();
+		const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const auth = new AuthResolver({
+			mode: "disabled",
+			anonymousPolicy: "allow",
+			verifiers: [],
+		});
+		const embedders = makeFakeEmbedderFactory();
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders,
+			mcpConfig: { enabled: true, exposeChat: false },
+		});
+		const res = await app.request("http://runtime.internal:8080/features", {
+			headers: {
+				"x-forwarded-host": "workbench.example.com",
+				"x-forwarded-proto": "https",
+			},
+		});
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.mcp.baseUrl).toBe("https://workbench.example.com");
 	});
 
 	test("unhandled errors return a generic envelope", async () => {

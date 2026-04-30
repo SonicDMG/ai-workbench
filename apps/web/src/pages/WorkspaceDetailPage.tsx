@@ -41,7 +41,8 @@ export function WorkspaceDetailPage() {
 	const update = useUpdateWorkspace(workspaceId ?? "");
 	const del = useDeleteWorkspace();
 	const features = useFeatures();
-	const mcpEnabled = features.data?.mcp.enabled === true;
+	const mcpBaseUrl =
+		features.data?.mcp.enabled === true ? features.data.mcp.baseUrl : null;
 	const [editing, setEditing] = useState(false);
 	const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -97,8 +98,11 @@ export function WorkspaceDetailPage() {
 										Agents
 									</Link>
 								</Button>
-								{mcpEnabled ? (
-									<McpUrlButton workspaceId={data.workspaceId} />
+								{mcpBaseUrl ? (
+									<McpUrlButton
+										workspaceId={data.workspaceId}
+										baseUrl={mcpBaseUrl}
+									/>
 								) : null}
 								<div
 									aria-hidden="true"

@@ -683,7 +683,10 @@ export type AstraCliInfo = z.infer<typeof AstraCliInfoSchema>;
 /* ---------------- runtime feature flags ---------------- */
 
 export const FeaturesSchema = z.object({
-	mcp: z.object({ enabled: z.boolean() }),
+	mcp: z.object({
+		enabled: z.boolean(),
+		baseUrl: z.string().url().nullable(),
+	}),
 });
 export type Features = z.infer<typeof FeaturesSchema>;
 

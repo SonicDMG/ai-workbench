@@ -54,12 +54,20 @@ export const VersionSchema = z
 /**
  * Runtime feature flags exposed to the web UI so it can hide
  * affordances that aren't wired up server-side. Read-only — flips
- * driven by `workbench.yaml` at startup.
+ * driven by `workbench.yaml` at startup. `mcp.baseUrl` is computed
+ * per-request from the inbound URL / `Forwarded` headers so MCP
+ * clients running outside the browser (Claude Code, Cursor) get a
+ * URL that bypasses the Vite dev proxy / TLS-terminating LB.
  */
 export const FeaturesSchema = z
 	.object({
 		mcp: z.object({
 			enabled: z.boolean().openapi({ example: false }),
+			baseUrl: z
+				.string()
+				.url()
+				.nullable()
+				.openapi({ example: "http://localhost:8080" }),
 		}),
 	})
 	.openapi("Features");

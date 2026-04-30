@@ -169,22 +169,59 @@ export function operationalRoutes(
 			tags: ["operational"],
 			summary: "Runtime feature flags",
 			description:
-				"Read-only feature toggles the web UI uses to hide affordances that aren't wired up server-side (e.g. MCP). Mirrors the relevant `workbench.yaml` flags as resolved at startup.",
+				"Read-only feature toggles + reachable URLs the web UI uses to surface affordances that aren't safely derivable client-side (e.g. the MCP endpoint when the UI is served behind a dev-server proxy or a TLS-terminating load balancer).",
 			responses: {
 				200: {
 					content: { "application/json": { schema: FeaturesSchema } },
-					description: "Feature flag snapshot",
+					description: "Feature flag + URL snapshot",
 				},
 			},
 		}),
-		(c) =>
-			c.json(
+		(c) => {
+			const enabled = mcpConfig?.enabled === true;
+			return c.json(
 				{
-					mcp: { enabled: mcpConfig?.enabled === true },
+					mcp: {
+						enabled,
+						baseUrl: enabled ? resolvePublicBaseUrl(c.req.raw) : null,
+					},
 				},
 				200,
-			),
+			);
+		},
 	);
 
 	return app;
+}
+
+/**
+ * Reconstruct the URL the request reached the runtime through, so the
+ * UI can display an MCP endpoint that's actually reachable from
+ * outside the browser (Claude Code, Cursor, etc. don't go through the
+ * Vite dev proxy). Honors the standard reverse-proxy headers so a
+ * TLS-terminating load balancer in front of an HTTP runtime still
+ * gets the public `https://` form.
+ *
+ * Order of precedence: `Forwarded` (RFC 7239) > `X-Forwarded-*` >
+ * the inbound URL itself.
+ */
+function resolvePublicBaseUrl(req: Request): string {
+	const headers = req.headers;
+	const forwarded = headers.get("forwarded");
+	if (forwarded) {
+		const parts = forwarded.split(";").map((p) => p.trim());
+		const protoPart = parts.find((p) => /^proto=/i.test(p));
+		const hostPart = parts.find((p) => /^host=/i.test(p));
+		const proto = protoPart?.split("=")[1]?.replace(/"/g, "");
+		const host = hostPart?.split("=")[1]?.replace(/"/g, "");
+		if (proto && host) return `${proto}://${host}`;
+	}
+	const xfHost = headers.get("x-forwarded-host");
+	const xfProto = headers.get("x-forwarded-proto");
+	if (xfHost) {
+		const proto = xfProto?.split(",")[0]?.trim() || "https";
+		return `${proto}://${xfHost.split(",")[0]?.trim()}`;
+	}
+	const url = new URL(req.url);
+	return `${url.protocol}//${url.host}`;
 }

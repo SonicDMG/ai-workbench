@@ -15,16 +15,21 @@ import {
  * Action-row button that surfaces the workspace's MCP endpoint.
  *
  * Clicking opens a small dialog displaying the absolute URL plus a
- * copy button. The caller is responsible for hiding this button when
- * MCP is disabled — gate on the runtime's `/features` flag (see
- * {@link ../../hooks/useFeatures.useFeatures}).
+ * copy button. The base URL must come from the runtime's `/features`
+ * payload — `window.location.origin` is wrong in dev (Vite proxy
+ * redirects browser traffic but external MCP clients don't use the
+ * proxy) and behind any TLS-terminating load balancer. The caller is
+ * also responsible for hiding this button when MCP is disabled.
  */
-export function McpUrlButton({ workspaceId }: { workspaceId: string }) {
+export function McpUrlButton({
+	workspaceId,
+	baseUrl,
+}: {
+	workspaceId: string;
+	baseUrl: string;
+}) {
 	const [open, setOpen] = useState(false);
-	const url =
-		typeof window !== "undefined"
-			? `${window.location.origin}/api/v1/workspaces/${workspaceId}/mcp`
-			: `/api/v1/workspaces/${workspaceId}/mcp`;
+	const url = `${baseUrl}/api/v1/workspaces/${workspaceId}/mcp`;
 
 	return (
 		<>

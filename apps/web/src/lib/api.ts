@@ -224,7 +224,7 @@ export const api = {
 	 * keep working.
 	 */
 	getFeatures: async (): Promise<Features> => {
-		const fallback: Features = { mcp: { enabled: false } };
+		const fallback: Features = { mcp: { enabled: false, baseUrl: null } };
 		try {
 			const res = await fetch("/features", {
 				credentials: "include",
