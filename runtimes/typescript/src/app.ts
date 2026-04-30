@@ -45,20 +45,10 @@ import { rateLimit } from "./lib/rate-limit.js";
 import { requestId } from "./lib/request-id.js";
 import { SCALAR_CDN_PINNED, securityHeaders } from "./lib/security-headers.js";
 import type { AppEnv } from "./lib/types.js";
-import { agentRoutes } from "./routes/api-v1/agents.js";
-import { apiKeyRoutes } from "./routes/api-v1/api-keys.js";
-import { chunkingServiceRoutes } from "./routes/api-v1/chunking-services.js";
-import { embeddingServiceRoutes } from "./routes/api-v1/embedding-services.js";
+import { buildDefaultRoutePlugins } from "./plugins/default-plugins.js";
+import type { RoutePluginRegistry } from "./plugins/registry.js";
 import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
-import { jobRoutes } from "./routes/api-v1/jobs.js";
-import { kbDataPlaneRoutes } from "./routes/api-v1/kb-data-plane.js";
-import { kbDocumentRoutes } from "./routes/api-v1/kb-documents.js";
-import { knowledgeBaseRoutes } from "./routes/api-v1/knowledge-bases.js";
-import { knowledgeFilterRoutes } from "./routes/api-v1/knowledge-filters.js";
-import { llmServiceRoutes } from "./routes/api-v1/llm-services.js";
 import { mountMcpRoutes } from "./routes/api-v1/mcp.js";
-import { rerankingServiceRoutes } from "./routes/api-v1/reranking-services.js";
-import { workspaceRoutes } from "./routes/api-v1/workspaces.js";
 import { authLoginRoutes } from "./routes/auth.js";
 import type { ReadinessSignal } from "./routes/operational.js";
 import { operationalRoutes } from "./routes/operational.js";
@@ -145,6 +135,13 @@ export interface AppOptions {
 	 * [`docs/mcp.md`](../../../docs/mcp.md).
 	 */
 	readonly mcpConfig?: McpConfig;
+	/**
+	 * Optional override for the workspace-scoped route plugins. Defaults
+	 * to {@link buildDefaultRoutePlugins} which mounts the in-tree
+	 * routes. Tests can pass a smaller registry to exercise a subset;
+	 * future external plugins register via this hook.
+	 */
+	readonly routePlugins?: RoutePluginRegistry;
 }
 
 const DEFAULT_API_RATE_LIMIT: Required<
@@ -305,34 +302,28 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			}),
 		);
 	}
-	app.route(
-		"/api/v1/workspaces",
-		workspaceRoutes({
-			store: opts.store,
-			secrets: opts.secrets,
-			drivers: opts.drivers,
-		}),
-	);
-	app.route("/api/v1/workspaces", jobRoutes({ jobs: jobsStore }));
-	app.route("/api/v1/workspaces", apiKeyRoutes(opts.store));
-	// Knowledge-base routes (issue #98). The legacy /catalogs and
-	// /vector-stores surface was retired in phase 1c.
-	app.route(
-		"/api/v1/workspaces",
-		knowledgeBaseRoutes({ store: opts.store, drivers: opts.drivers }),
-	);
-	app.route("/api/v1/workspaces", knowledgeFilterRoutes(opts.store));
-	app.route(
-		"/api/v1/workspaces",
-		agentRoutes({
-			store: opts.store,
-			drivers: opts.drivers,
-			embedders: opts.embedders,
-			secrets: opts.secrets,
-			chatService: opts.chatService ?? null,
-			chatConfig: opts.chatConfig ?? null,
-		}),
-	);
+	// Workspace-scoped routes are mounted through the route-plugin
+	// registry. `buildDefaultRoutePlugins` returns the in-tree set
+	// (workspaces, KB, agents, services, jobs, …); tests can pass
+	// `routePlugins` to override or trim it. See
+	// `docs/route-plugins.md`.
+	const routePluginCtx = {
+		store: opts.store,
+		drivers: opts.drivers,
+		embedders: opts.embedders,
+		secrets: opts.secrets,
+		jobs: jobsStore,
+		chatService: opts.chatService ?? null,
+		chatConfig: opts.chatConfig ?? null,
+		replicaId,
+	};
+	const plugins = opts.routePlugins ?? buildDefaultRoutePlugins(routePluginCtx);
+	for (const plugin of plugins.list()) {
+		app.route(plugin.mountPath, plugin.build(routePluginCtx));
+	}
+	// MCP stays hand-wired for now: it has its own enabled flag and
+	// pulls chat-service options not part of the standard plugin
+	// context. Migration is tracked alongside docs/route-plugins.md.
 	mountMcpRoutes(app, {
 		store: opts.store,
 		drivers: opts.drivers,
@@ -341,28 +332,6 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		chatConfig: opts.chatConfig ?? null,
 		mcpConfig: opts.mcpConfig ?? { enabled: false, exposeChat: false },
 	});
-	app.route("/api/v1/workspaces", chunkingServiceRoutes(opts.store));
-	app.route("/api/v1/workspaces", embeddingServiceRoutes(opts.store));
-	app.route("/api/v1/workspaces", rerankingServiceRoutes(opts.store));
-	app.route("/api/v1/workspaces", llmServiceRoutes(opts.store));
-	app.route(
-		"/api/v1/workspaces",
-		kbDataPlaneRoutes({
-			store: opts.store,
-			drivers: opts.drivers,
-			embedders: opts.embedders,
-		}),
-	);
-	app.route(
-		"/api/v1/workspaces",
-		kbDocumentRoutes({
-			store: opts.store,
-			drivers: opts.drivers,
-			embedders: opts.embedders,
-			jobs: jobsStore,
-			replicaId,
-		}),
-	);
 
 	registerCommonErrorResponses(app);
 	registerSecuritySchemes(app);

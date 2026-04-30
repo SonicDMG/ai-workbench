@@ -382,6 +382,144 @@ export function buildAgentMetadata(
  * history but aren't returned here — keeps the wire response shape
  * stable for callers that just want the user-visible reply.
  */
+/**
+ * Shared persistence primitives used by both `dispatchAgentSend` and
+ * `dispatchAgentSendStream`. Pulling these out collapses ~80 lines of
+ * literal-for-literal duplication between the two loops and means a
+ * change to the assistant-message shape lands in one place rather
+ * than two.
+ *
+ * Each helper takes `prevTs` and returns the `messageTs` it minted so
+ * the caller can chain — message timestamps must be strictly
+ * monotonic so `listChatMessages` returns turns in the order they
+ * happened.
+ */
+interface PersistTurnContext {
+	readonly deps: AgentDispatchDeps;
+	readonly workspaceId: string;
+	readonly conversationId: string;
+	readonly agent: AgentRecord;
+	readonly chatService: ChatService;
+	readonly chunks: readonly RetrievedChunk[];
+}
+
+interface AssistantToolCallTurn {
+	readonly content: string;
+	readonly toolCalls: readonly ToolCall[];
+	readonly tokenCount: number | null;
+}
+
+async function persistAssistantToolCallTurn(
+	ctx: PersistTurnContext,
+	prevTs: string,
+	turn: AssistantToolCallTurn,
+): Promise<string> {
+	const ts = strictlyAfter(prevTs);
+	await ctx.deps.store.appendChatMessage(ctx.workspaceId, ctx.conversationId, {
+		role: "agent",
+		authorId: ctx.agent.agentId,
+		messageTs: ts,
+		content: turn.content,
+		tokenCount: turn.tokenCount,
+		toolCallPayload: { toolCalls: turn.toolCalls },
+		metadata: {
+			model: ctx.chatService.modelId,
+			finish_reason: "tool_calls",
+		},
+	});
+	return ts;
+}
+
+async function persistToolResult(
+	ctx: PersistTurnContext,
+	prevTs: string,
+	call: ToolCall,
+	resultText: string,
+): Promise<string> {
+	const ts = strictlyAfter(prevTs);
+	await ctx.deps.store.appendChatMessage(ctx.workspaceId, ctx.conversationId, {
+		role: "tool",
+		messageTs: ts,
+		toolId: call.name,
+		toolResponse: { content: resultText, toolCallId: call.id },
+	});
+	return ts;
+}
+
+async function persistFinalAssistant(
+	ctx: PersistTurnContext,
+	prevTs: string,
+	args: {
+		readonly content: string;
+		readonly tokenCount: number | null;
+		readonly finishReason: "stop" | "length" | "tool_calls" | "error";
+		readonly errorMessage?: string | null;
+	},
+): Promise<MessageRecord> {
+	const ts = strictlyAfter(prevTs);
+	return await ctx.deps.store.appendChatMessage(
+		ctx.workspaceId,
+		ctx.conversationId,
+		{
+			role: "agent",
+			authorId: ctx.agent.agentId,
+			messageTs: ts,
+			content: args.content,
+			tokenCount: args.tokenCount,
+			metadata: buildAgentMetadata(ctx.chunks, ctx.chatService.modelId, {
+				finishReason: args.finishReason,
+				errorMessage: args.errorMessage ?? null,
+			}),
+		},
+	);
+}
+
+/**
+ * Run the model-side tool-execution loop. Returns either the persisted
+ * tool-call turn (so the caller can append a `turns` entry and emit any
+ * SSE side-effects) or signals the caller to terminate (final answer
+ * already persisted, or the tool list was empty).
+ *
+ * Kept as a helper rather than a full loop unifier because the
+ * non-streaming dispatcher decides "final answer or continue" based on
+ * `completion.toolCalls`, while the streaming dispatcher must also
+ * decide whether to flush its token buffer — different enough that
+ * keeping the two outer loops readable beats one over-clever loop.
+ */
+async function executeToolCalls(
+	ctx: PersistTurnContext,
+	resolved: { readonly toolDeps: AgentToolDeps },
+	toolCalls: readonly ToolCall[],
+	startTs: string,
+	onResult?: (call: ToolCall, resultText: string) => Promise<void>,
+): Promise<{
+	readonly endTs: string;
+	readonly turns: readonly ChatTurn[];
+}> {
+	let prevTs = startTs;
+	const turns: ChatTurn[] = [];
+	for (const call of toolCalls) {
+		const resultText = await runToolCall(call, resolved.toolDeps);
+		prevTs = await persistToolResult(ctx, prevTs, call, resultText);
+		turns.push({
+			role: "tool",
+			toolCallId: call.id,
+			name: call.name,
+			content: resultText,
+		});
+		// Fire the per-call hook *after* persistence so the streaming
+		// dispatcher can emit a `tool-result` SSE event as soon as the
+		// row is durable — matches the old behavior of "one result on
+		// the wire as soon as the tool finishes."
+		if (onResult) await onResult(call, resultText);
+	}
+	return { endTs: prevTs, turns };
+}
+
+const ITERATION_CAP_MESSAGE =
+	"the agent kept calling tools without converging on an answer; aborting after the iteration cap.";
+const ITERATION_CAP_REASON = "tool-call iteration cap reached";
+
 export async function dispatchAgentSend(
 	deps: AgentDispatchDeps,
 	ctx: AgentDispatchContext,
@@ -422,6 +560,14 @@ export async function dispatchAgentSend(
 	const turns: ChatTurn[] = [...initialPrompt];
 	let lastTokenCount: number | null = null;
 	let prevTs = userRecord.messageTs;
+	const persistCtx: PersistTurnContext = {
+		deps,
+		workspaceId,
+		conversationId,
+		agent,
+		chatService: resolved.chatService,
+		chunks,
+	};
 
 	for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
 		const completion = await resolved.chatService.complete({
@@ -431,110 +577,58 @@ export async function dispatchAgentSend(
 		lastTokenCount = completion.tokenCount;
 
 		if (completion.finishReason === "error") {
-			const ts = strictlyAfter(prevTs);
-			const assistantRecord = await deps.store.appendChatMessage(
-				workspaceId,
-				conversationId,
-				{
-					role: "agent",
-					authorId: agent.agentId,
-					messageTs: ts,
-					content:
-						completion.errorMessage ?? "the agent couldn't answer this turn.",
-					tokenCount: completion.tokenCount,
-					metadata: buildAgentMetadata(
-						chunks,
-						resolved.chatService.modelId,
-						completion,
-					),
-				},
-			);
+			const assistantRecord = await persistFinalAssistant(persistCtx, prevTs, {
+				content:
+					completion.errorMessage ?? "the agent couldn't answer this turn.",
+				tokenCount: completion.tokenCount,
+				finishReason: "error",
+				errorMessage: completion.errorMessage,
+			});
 			return { user: userRecord, assistant: assistantRecord };
 		}
 
 		// Final answer — no tool calls.
 		if (completion.toolCalls.length === 0) {
-			const ts = strictlyAfter(prevTs);
-			const assistantRecord = await deps.store.appendChatMessage(
-				workspaceId,
-				conversationId,
-				{
-					role: "agent",
-					authorId: agent.agentId,
-					messageTs: ts,
-					content: completion.content,
-					tokenCount: completion.tokenCount,
-					metadata: buildAgentMetadata(
-						chunks,
-						resolved.chatService.modelId,
-						completion,
-					),
-				},
-			);
+			const assistantRecord = await persistFinalAssistant(persistCtx, prevTs, {
+				content: completion.content,
+				tokenCount: completion.tokenCount,
+				finishReason: completion.finishReason,
+				errorMessage: null,
+			});
 			return { user: userRecord, assistant: assistantRecord };
 		}
 
-		// Tool-call iteration: persist the assistant turn (carrying the
-		// tool calls), execute each tool, persist + append a tool turn
-		// for each result, then loop.
-		const assistantTs = strictlyAfter(prevTs);
-		await deps.store.appendChatMessage(workspaceId, conversationId, {
-			role: "agent",
-			authorId: agent.agentId,
-			messageTs: assistantTs,
+		// Tool-call iteration: persist the assistant turn carrying the
+		// tool calls, then execute each tool and persist its result.
+		prevTs = await persistAssistantToolCallTurn(persistCtx, prevTs, {
 			content: completion.content,
+			toolCalls: completion.toolCalls,
 			tokenCount: completion.tokenCount,
-			toolCallPayload: { toolCalls: completion.toolCalls },
-			metadata: {
-				model: resolved.chatService.modelId,
-				finish_reason: completion.finishReason,
-			},
 		});
-		prevTs = assistantTs;
 		turns.push({
 			role: "assistant",
 			content: completion.content,
 			toolCalls: completion.toolCalls,
 		});
 
-		for (const call of completion.toolCalls) {
-			const resultText = await runToolCall(call, resolved.toolDeps);
-			const toolTs = strictlyAfter(prevTs);
-			await deps.store.appendChatMessage(workspaceId, conversationId, {
-				role: "tool",
-				messageTs: toolTs,
-				toolId: call.name,
-				toolResponse: { content: resultText, toolCallId: call.id },
-			});
-			prevTs = toolTs;
-			turns.push({
-				role: "tool",
-				toolCallId: call.id,
-				name: call.name,
-				content: resultText,
-			});
-		}
+		const toolStep = await executeToolCalls(
+			persistCtx,
+			resolved,
+			completion.toolCalls,
+			prevTs,
+		);
+		prevTs = toolStep.endTs;
+		turns.push(...toolStep.turns);
 	}
 
 	// Hit the iteration cap without convergence. Persist a friendly
 	// error so the chat reflects what happened.
-	const failTs = strictlyAfter(prevTs);
-	const assistantRecord = await deps.store.appendChatMessage(
-		workspaceId,
-		conversationId,
-		{
-			role: "agent",
-			authorId: agent.agentId,
-			messageTs: failTs,
-			content:
-				"the agent kept calling tools without converging on an answer; aborting after the iteration cap.",
-			tokenCount: lastTokenCount,
-			metadata: buildAgentMetadata(chunks, resolved.chatService.modelId, {
-				finishReason: "error",
-				errorMessage: "tool-call iteration cap reached",
-			}),
-		},
-	);
+	const assistantRecord = await persistFinalAssistant(persistCtx, prevTs, {
+		content: ITERATION_CAP_MESSAGE,
+		tokenCount: lastTokenCount,
+		finishReason: "error",
+		errorMessage: ITERATION_CAP_REASON,
+	});
 	return { user: userRecord, assistant: assistantRecord };
 }
 
@@ -620,6 +714,14 @@ export async function dispatchAgentSendStream(
 	const tools = resolved.tools;
 	let prevTs = userRecord.messageTs;
 	let lastTokenCount: number | null = null;
+	const persistCtx: PersistTurnContext = {
+		deps,
+		workspaceId,
+		conversationId,
+		agent,
+		chatService: resolved.chatService,
+		chunks,
+	};
 
 	for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
 		// Buffer tokens locally on each iteration. We only forward them
@@ -638,22 +740,12 @@ export async function dispatchAgentSendStream(
 		lastTokenCount = final.tokenCount;
 
 		if (final.kind === "error") {
-			const ts = strictlyAfter(prevTs);
-			const assistantRecord = await deps.store.appendChatMessage(
-				workspaceId,
-				conversationId,
-				{
-					role: "agent",
-					authorId: agent.agentId,
-					messageTs: ts,
-					content: final.errorMessage ?? "the agent couldn't answer this turn.",
-					tokenCount: final.tokenCount,
-					metadata: buildAgentMetadata(chunks, resolved.chatService.modelId, {
-						finishReason: "error",
-						errorMessage: final.errorMessage,
-					}),
-				},
-			);
+			const assistantRecord = await persistFinalAssistant(persistCtx, prevTs, {
+				content: final.errorMessage ?? "the agent couldn't answer this turn.",
+				tokenCount: final.tokenCount,
+				finishReason: "error",
+				errorMessage: final.errorMessage,
+			});
 			await sse.writeSSE({
 				event: "error",
 				data: serializer.serializeAssistantMessage(assistantRecord),
@@ -670,22 +762,12 @@ export async function dispatchAgentSendStream(
 					data: JSON.stringify({ delta }),
 				});
 			}
-			const ts = strictlyAfter(prevTs);
-			const assistantRecord = await deps.store.appendChatMessage(
-				workspaceId,
-				conversationId,
-				{
-					role: "agent",
-					authorId: agent.agentId,
-					messageTs: ts,
-					content: final.content,
-					tokenCount: final.tokenCount,
-					metadata: buildAgentMetadata(chunks, resolved.chatService.modelId, {
-						finishReason: final.finishReason,
-						errorMessage: null,
-					}),
-				},
-			);
+			const assistantRecord = await persistFinalAssistant(persistCtx, prevTs, {
+				content: final.content,
+				tokenCount: final.tokenCount,
+				finishReason: final.finishReason,
+				errorMessage: null,
+			});
 			await sse.writeSSE({
 				event: "done",
 				data: serializer.serializeAssistantMessage(assistantRecord),
@@ -696,20 +778,11 @@ export async function dispatchAgentSendStream(
 		// Tool-call iteration. Persist the assistant turn (with
 		// tool_calls) + each tool result, surface progress on the
 		// stream, and loop.
-		const assistantTs = strictlyAfter(prevTs);
-		await deps.store.appendChatMessage(workspaceId, conversationId, {
-			role: "agent",
-			authorId: agent.agentId,
-			messageTs: assistantTs,
+		prevTs = await persistAssistantToolCallTurn(persistCtx, prevTs, {
 			content: final.content,
+			toolCalls: final.toolCalls,
 			tokenCount: final.tokenCount,
-			toolCallPayload: { toolCalls: final.toolCalls },
-			metadata: {
-				model: resolved.chatService.modelId,
-				finish_reason: "tool_calls",
-			},
 		});
-		prevTs = assistantTs;
 		await sse.writeSSE({
 			event: "tool-call",
 			data: JSON.stringify({ toolCalls: final.toolCalls }),
@@ -720,50 +793,32 @@ export async function dispatchAgentSendStream(
 			toolCalls: final.toolCalls,
 		});
 
-		for (const call of final.toolCalls) {
-			const resultText = await runToolCall(call, resolved.toolDeps);
-			const toolTs = strictlyAfter(prevTs);
-			await deps.store.appendChatMessage(workspaceId, conversationId, {
-				role: "tool",
-				messageTs: toolTs,
-				toolId: call.name,
-				toolResponse: { content: resultText, toolCallId: call.id },
-			});
-			prevTs = toolTs;
-			turns.push({
-				role: "tool",
-				toolCallId: call.id,
-				name: call.name,
-				content: resultText,
-			});
-			await sse.writeSSE({
-				event: "tool-result",
-				data: JSON.stringify({
-					toolCallId: call.id,
-					name: call.name,
-					content: resultText,
-				}),
-			});
-		}
+		const toolStep = await executeToolCalls(
+			persistCtx,
+			resolved,
+			final.toolCalls,
+			prevTs,
+			async (call, resultText) => {
+				await sse.writeSSE({
+					event: "tool-result",
+					data: JSON.stringify({
+						toolCallId: call.id,
+						name: call.name,
+						content: resultText,
+					}),
+				});
+			},
+		);
+		prevTs = toolStep.endTs;
+		turns.push(...toolStep.turns);
 	}
 
-	const ts = strictlyAfter(prevTs);
-	const assistantRecord = await deps.store.appendChatMessage(
-		workspaceId,
-		conversationId,
-		{
-			role: "agent",
-			authorId: agent.agentId,
-			messageTs: ts,
-			content:
-				"the agent kept calling tools without converging on an answer; aborting after the iteration cap.",
-			tokenCount: lastTokenCount,
-			metadata: buildAgentMetadata(chunks, resolved.chatService.modelId, {
-				finishReason: "error",
-				errorMessage: "tool-call iteration cap reached",
-			}),
-		},
-	);
+	const assistantRecord = await persistFinalAssistant(persistCtx, prevTs, {
+		content: ITERATION_CAP_MESSAGE,
+		tokenCount: lastTokenCount,
+		finishReason: "error",
+		errorMessage: ITERATION_CAP_REASON,
+	});
 	await sse.writeSSE({
 		event: "error",
 		data: serializer.serializeAssistantMessage(assistantRecord),

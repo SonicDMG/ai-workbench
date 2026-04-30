@@ -319,7 +319,14 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 				maxAgeSeconds: 0,
 				httpOnly: true,
 				secure: isSecure(c, opts),
-				sameSite: "Lax",
+				// Strict: the session cookie is only sent on requests
+				// originating from the same site as the runtime. Workbench
+				// is an admin-style SPA — users reach it by typing the
+				// origin or via the OIDC redirect flow, both of which
+				// don't depend on session-cookie attachment to a
+				// cross-site top-level navigation. Strict closes the
+				// CSRF-via-state-changing-GET hole that Lax leaves open.
+				sameSite: "Strict",
 			}),
 		);
 		audit(c, {
@@ -436,7 +443,8 @@ function setSessionCookie(
 			maxAgeSeconds: maxAge,
 			httpOnly: true,
 			secure: isSecure(c, security),
-			sameSite: "Lax",
+			// See the logout handler for the rationale on Strict.
+			sameSite: "Strict",
 		}),
 	);
 }
@@ -454,7 +462,7 @@ function clearSessionCookie(
 			maxAgeSeconds: 0,
 			httpOnly: true,
 			secure: isSecure(c, security),
-			sameSite: "Lax",
+			sameSite: "Strict",
 		}),
 	);
 }

@@ -72,7 +72,47 @@ Fixture: `fixtures/workspace-api-key-lifecycle.json`.
 
 ---
 
-> Knowledge-base scenarios (KB CRUD, RAG document CRUD, KB-scoped
-> ingest sync + async, KB-scoped search) are tracked as runtime-level
-> tests for now and will move into this conformance set in a follow-up
-> once the cross-runtime KB surface stabilises.
+## Scenario 6 — `knowledge-base-crud-basic`
+
+Knowledge-base CRUD lifecycle. Workspace POST auto-seeds the default
+chunking + embedding services; the KB binds to one of each by id, then
+we round-trip through GET / list / PATCH / DELETE.
+
+Fixture: `fixtures/knowledge-base-crud-basic.json`.
+
+---
+
+## Scenario 7 — `kb-document-crud-basic`
+
+Document CRUD on a knowledge base WITHOUT triggering ingest. Pins the
+wire shape of the document record (status, sourceFilename, metadata,
+chunkCount). Ingest-with-chunking is excluded from conformance because
+chunk counts depend on the chunker's tokenization, which is allowed to
+vary across runtimes.
+
+Fixture: `fixtures/kb-document-crud-basic.json`.
+
+---
+
+## Scenario 8 — `kb-search-empty`
+
+Search on an empty knowledge base returns an empty results array with
+the canonical envelope. This pins the response shape every runtime
+must emit when no documents have been ingested. Search-with-results
+scenarios are excluded because they depend on embedder/chunker
+behavior that's allowed to vary; conformance only pins the wire shape
+on the empty-result path.
+
+Fixture: `fixtures/kb-search-empty.json`.
+
+---
+
+## Scenario 9 — `agent-crud-basic`
+
+Agent + conversation CRUD lifecycle WITHOUT triggering chat sends.
+Workspace POST auto-seeds the default LLM service; we bind an agent to
+it, open a conversation, and tear down. Sending messages is excluded
+from conformance because chat completion depends on the upstream LLM
+API that's not part of the runtime contract.
+
+Fixture: `fixtures/agent-crud-basic.json`.

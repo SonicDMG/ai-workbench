@@ -70,6 +70,13 @@ export default defineConfig({
 				],
 			},
 			{
+				text: "Agents & integrations",
+				items: [
+					{ text: "Agents", link: "/agents" },
+					{ text: "MCP server", link: "/mcp" },
+				],
+			},
+			{
 				text: "UX",
 				items: [{ text: "Playground", link: "/playground" }],
 			},

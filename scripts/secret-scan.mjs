@@ -41,6 +41,28 @@ const RULES = [
 		pattern: /sk-(?:proj-)?[A-Za-z0-9_-]{20,}/g,
 	},
 	{
+		name: "Anthropic API key",
+		// `sk-ant-api03-...` and historical variants. The trailing
+		// segment is base64-ish + dashes/underscores; cap at 20+ to
+		// avoid matching the literal `sk-ant-` prefix in docs.
+		pattern: /sk-ant-(?:api\d+-)?[A-Za-z0-9_-]{20,}/g,
+	},
+	{
+		name: "HuggingFace user access token",
+		// HF tokens are `hf_<35-40 alnum>`. `\b` boundary keeps URLs
+		// like `https://hf_co/...` (which never appear in practice but
+		// match the prefix) from triggering.
+		pattern: /\bhf_[A-Za-z0-9]{30,}\b/g,
+	},
+	{
+		name: "AWS access key id",
+		// `AKIA*` is the long-lived IAM user credential prefix. Other
+		// AWS prefixes (`ASIA` for STS, `AROA` for roles) are
+		// deliberately not matched — `AKIA` is the only one that
+		// commonly leaks in source.
+		pattern: /\bAKIA[0-9A-Z]{16}\b/g,
+	},
+	{
 		name: "GitHub token",
 		pattern: /gh[pousr]_[A-Za-z0-9_]{30,}/g,
 	},

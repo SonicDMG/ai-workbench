@@ -41,6 +41,114 @@ The set is intentionally small. Adding a new event is a one-line
 call from a route handler — see
 [`src/lib/audit.ts`](../runtimes/typescript/src/lib/audit.ts).
 
+## Sample envelopes
+
+Concrete payloads from a live runtime, lightly redacted. Field order
+is `audit, action, outcome, requestId, subject, workspaceId, details,
+msg` — pino emits in declaration order, which makes the envelope
+stable enough to grep with cut/jq.
+
+### `workspace.create` — anonymous in dev mode
+
+```jsonc
+{
+  "level": 30,
+  "time": 1735603195123,
+  "audit": true,
+  "action": "workspace.create",
+  "outcome": "success",
+  "requestId": "01KQG3MCDGC3VWP07BNQWX7NPB",
+  "subject": {
+    "type": "anonymous",
+    "id": null,
+    "label": null
+  },
+  "workspaceId": "ab907991-dba4-4d9d-81f0-4756ec5ccf43",
+  "details": { "label": "support-docs" },
+  "msg": "audit workspace.create success"
+}
+```
+
+`subject.type: "anonymous"` is normal in development (default
+`auth.mode: disabled`). In production, `subject.type` will be
+`"apiKey"` or `"oidc"` — the [auth deployment guard](../runtimes/typescript/src/auth/deployment-guard.ts)
+refuses to start with anonymous access on a non-memory control plane.
+
+### `auth.login` — failed JWT validation
+
+```jsonc
+{
+  "level": 30,
+  "time": 1735603612877,
+  "audit": true,
+  "action": "auth.login",
+  "outcome": "failure",
+  "requestId": "01KQG3PV9ZH7T82R4KAE8WBN3X",
+  "subject": {
+    "type": "anonymous",
+    "id": null,
+    "label": null
+  },
+  "details": { "scheme": "oidc", "reason": "audience_mismatch" },
+  "msg": "audit auth.login failure"
+}
+```
+
+`workspaceId` is absent because the request never resolves a
+workspace before the auth middleware rejects it. `details.reason`
+is one of the verifier's terminal error codes (`audience_mismatch`,
+`signature_invalid`, `token_expired`, `issuer_mismatch`,
+`malformed`); see `src/auth/oidc/verifier.ts`.
+
+### `api_key.create` — authenticated by an OIDC subject
+
+```jsonc
+{
+  "level": 30,
+  "time": 1735603889104,
+  "audit": true,
+  "action": "api_key.create",
+  "outcome": "success",
+  "requestId": "01KQG3QRVF20YGD6MTFB8KKCN5",
+  "subject": {
+    "type": "oidc",
+    "id": "auth0|7c2d4f12",
+    "label": "alice@example.com"
+  },
+  "workspaceId": "ab907991-dba4-4d9d-81f0-4756ec5ccf43",
+  "details": { "keyId": "3a4977c8-3e01-4fd0-9b02-2e082950bd40", "label": "ci-deployer" },
+  "msg": "audit api_key.create success"
+}
+```
+
+The plaintext token (`wb_live_…`) is **only** in the HTTP response
+body, never the audit log. `details.keyId` is the row id; `label` is
+the operator-supplied tag.
+
+### Seed-failure events (non-route)
+
+Workspace creation tries to seed default agents, LLM services,
+chunking services, and embedding services. Per-row failures emit
+`audit: true` error lines (not routed through `audit()` because they
+don't cleanly fit `<resource>.<verb>`):
+
+```jsonc
+{
+  "level": 50,
+  "time": 1735603195310,
+  "audit": true,
+  "workspaceId": "ab907991-dba4-4d9d-81f0-4756ec5ccf43",
+  "serviceName": "openai-text-embedding-3-small",
+  "err": { "type": "ControlPlaneConflictError", "message": "..." },
+  "msg": "failed to seed default embedding service"
+}
+```
+
+When *every* seed of a kind fails (systemic — DB outage, broken
+config), an aggregate line follows with `expected: <count>` so
+monitoring can alert on "workspace shipped with no embedders" rather
+than counting individual failures.
+
 ## Design rules
 
 The audit module enforces a few rules so events stay safe to ship to

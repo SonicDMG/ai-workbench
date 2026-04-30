@@ -205,12 +205,21 @@ const AuthSchema = z
 		// deployments to create their first workspace/API key without
 		// briefly opening anonymous access.
 		bootstrapTokenRef: SecretRef.nullable().default(null),
+		// Operator opt-in for running with open auth on a durable
+		// control plane (file/astra). The runtime refuses to start in
+		// that combination unless this is set to `true` — see
+		// `assertSafeAuthDeployment` in root.ts. Useful for the rare
+		// case of a trusted reverse proxy that handles its own
+		// authentication; in every other case, set `auth.mode` to
+		// apiKey/oidc/any and `anonymousPolicy: reject` instead.
+		acknowledgeOpenAccess: z.boolean().default(false),
 		oidc: OidcSchema.optional(),
 	})
 	.default({
 		mode: "disabled",
 		anonymousPolicy: "allow",
 		bootstrapTokenRef: null,
+		acknowledgeOpenAccess: false,
 	})
 	.superRefine((cfg, ctx) => {
 		if ((cfg.mode === "oidc" || cfg.mode === "any") && !cfg.oidc) {
@@ -415,6 +424,22 @@ export const ConfigSchema = z
 				path: ["seedWorkspaces"],
 				message:
 					"seedWorkspaces is only meaningful with controlPlane.driver='memory'; use the API to create workspaces on file/astra",
+			});
+		}
+		// Cross-replica orphan sweeping needs a durable job store to
+		// sweep — there's nothing for a sibling replica to pick up if
+		// the leases live in another replica's process memory. Refuse
+		// the misconfiguration up front so a clustered deploy doesn't
+		// look healthy until the first crash.
+		if (
+			cfg.controlPlane.jobsResume?.enabled === true &&
+			cfg.controlPlane.driver === "memory"
+		) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["controlPlane", "jobsResume", "enabled"],
+				message:
+					"controlPlane.jobsResume requires a durable control plane (file or astra); the in-memory job store has no leases visible to other replicas",
 			});
 		}
 		const names = new Set<string>();

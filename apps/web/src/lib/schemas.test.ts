@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { WorkspacePageSchema, WorkspaceRecordSchema } from "./schemas";
+import type { components } from "./api-types.generated";
+import {
+	WorkspaceKindSchema,
+	WorkspacePageSchema,
+	WorkspaceRecordSchema,
+} from "./schemas";
 
 const FULL = {
 	workspaceId: "11111111-2222-4333-8444-555555555555",
@@ -53,5 +58,33 @@ describe("WorkspaceRecordSchema", () => {
 		expect(parsed.items[0]?.url).toBeNull();
 		expect(parsed.items[0]?.credentials).toEqual({});
 		expect(parsed.items[1]?.url).toBe("https://prod.example");
+	});
+});
+
+describe("schema/openapi drift detection", () => {
+	test("WorkspaceKindSchema enum matches the generated OpenAPI type", () => {
+		// `WorkspaceKind` (the type alias) is derived from
+		// `components["schemas"]["Workspace"]["kind"]`, so a backend
+		// change that adds a new kind makes the generated types include
+		// the new value automatically. The hand-written Zod enum below
+		// is what the UI uses for runtime parsing — verify it's a
+		// superset of the type-level union by attempting to satisfy
+		// each branch.
+		type RuntimeKind = components["schemas"]["Workspace"]["kind"];
+		const exhaust: Record<RuntimeKind, true> = {
+			astra: true,
+			hcd: true,
+			openrag: true,
+			mock: true,
+		};
+		// If the contract grows a new kind, this object literal no
+		// longer satisfies `Record<RuntimeKind, true>` and the build
+		// breaks — forcing the developer to update the Zod enum below.
+		void exhaust;
+
+		const enumValues = WorkspaceKindSchema.options;
+		expect([...enumValues].sort()).toEqual(
+			["astra", "hcd", "mock", "openrag"].sort(),
+		);
 	});
 });

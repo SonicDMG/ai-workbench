@@ -28,6 +28,10 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import {
+	PRESET_NONE,
+	useServicePresetState,
+} from "@/hooks/useServicePresetState";
+import {
 	useChunkingServices,
 	useCreateChunkingService,
 	useCreateEmbeddingService,
@@ -59,8 +63,6 @@ import {
 	RERANKING_PRESETS,
 	RERANKING_PROVIDERS,
 } from "@/lib/service-catalog";
-
-const PRESET_NONE = "_preset_none_";
 
 /**
  * Workspace-scoped panel for the three execution-service surfaces.
@@ -104,55 +106,51 @@ function EmbeddingSubpanel({ workspace }: { workspace: string }) {
 	const del = useDeleteEmbeddingService(workspace);
 	const [open, setOpen] = useState(false);
 	const [createOpen, setCreateOpen] = useState(false);
-	const [presetId, setPresetId] = useState<string>(PRESET_NONE);
-	const [draft, setDraft] =
-		useState<CreateEmbeddingServiceInput>(EMBEDDING_BLANK);
-	const [providerCustom, setProviderCustom] = useState(false);
-	const [modelCustom, setModelCustom] = useState(false);
-
-	function reset(): void {
-		setPresetId(PRESET_NONE);
-		setDraft(EMBEDDING_BLANK);
-		setProviderCustom(false);
-		setModelCustom(false);
-	}
-
-	function applyPreset(id: string): void {
-		setPresetId(id);
-		if (id === PRESET_NONE) {
-			setDraft(EMBEDDING_BLANK);
-			setProviderCustom(false);
-			setModelCustom(false);
-			return;
-		}
-		const preset = EMBEDDING_PRESETS.find((p) => p.id === id);
-		if (!preset) return;
-		setDraft(preset.input);
-		setProviderCustom(
-			!EMBEDDING_PROVIDERS.some((p) => p.value === preset.input.provider),
-		);
-		const knownModels = EMBEDDING_MODELS[preset.input.provider] ?? [];
-		setModelCustom(
-			!knownModels.some((m) => m.value === preset.input.modelName),
-		);
-	}
+	const {
+		presetId,
+		draft,
+		setDraft,
+		customMode,
+		setCustomMode,
+		applyPreset,
+		reset,
+	} = useServicePresetState<CreateEmbeddingServiceInput>({
+		blank: EMBEDDING_BLANK,
+		presets: EMBEDDING_PRESETS,
+		customFields: [
+			{
+				key: "provider",
+				isCustom: (input) =>
+					!EMBEDDING_PROVIDERS.some((p) => p.value === input.provider),
+			},
+			{
+				key: "model",
+				isCustom: (input) => {
+					const known = EMBEDDING_MODELS[input.provider] ?? [];
+					return !known.some((m) => m.value === input.modelName);
+				},
+			},
+		],
+	});
+	const providerCustom = customMode.provider ?? false;
+	const modelCustom = customMode.model ?? false;
 
 	function setProvider(value: string): void {
 		if (value === CUSTOM_OPTION) {
-			setProviderCustom(true);
+			setCustomMode("provider", true);
 			return;
 		}
-		setProviderCustom(false);
-		setModelCustom(false);
+		setCustomMode("provider", false);
+		setCustomMode("model", false);
 		setDraft((d) => ({ ...d, provider: value, modelName: "" }));
 	}
 
 	function setModel(value: string): void {
 		if (value === CUSTOM_OPTION) {
-			setModelCustom(true);
+			setCustomMode("model", true);
 			return;
 		}
-		setModelCustom(false);
+		setCustomMode("model", false);
 		const knownDim = EMBEDDING_MODELS[draft.provider]?.find(
 			(m) => m.value === value,
 		)?.dimension;
@@ -336,56 +334,53 @@ function ChunkingSubpanel({ workspace }: { workspace: string }) {
 	const del = useDeleteChunkingService(workspace);
 	const [open, setOpen] = useState(false);
 	const [createOpen, setCreateOpen] = useState(false);
-	const [presetId, setPresetId] = useState<string>(PRESET_NONE);
-	const [draft, setDraft] =
-		useState<CreateChunkingServiceInput>(CHUNKING_BLANK);
-	const [engineCustom, setEngineCustom] = useState(false);
-	const [strategyCustom, setStrategyCustom] = useState(false);
-
-	function reset(): void {
-		setPresetId(PRESET_NONE);
-		setDraft(CHUNKING_BLANK);
-		setEngineCustom(false);
-		setStrategyCustom(false);
-	}
-
-	function applyPreset(id: string): void {
-		setPresetId(id);
-		if (id === PRESET_NONE) {
-			setDraft(CHUNKING_BLANK);
-			setEngineCustom(false);
-			setStrategyCustom(false);
-			return;
-		}
-		const preset = CHUNKING_PRESETS.find((p) => p.id === id);
-		if (!preset) return;
-		setDraft(preset.input);
-		setEngineCustom(
-			!CHUNKING_ENGINES.some((e) => e.value === preset.input.engine),
-		);
-		const knownStrategies = CHUNKING_STRATEGIES[preset.input.engine] ?? [];
-		setStrategyCustom(
-			!!preset.input.strategy &&
-				!knownStrategies.some((s) => s.value === preset.input.strategy),
-		);
-	}
+	const {
+		presetId,
+		draft,
+		setDraft,
+		customMode,
+		setCustomMode,
+		applyPreset,
+		reset,
+	} = useServicePresetState<CreateChunkingServiceInput>({
+		blank: CHUNKING_BLANK,
+		presets: CHUNKING_PRESETS,
+		customFields: [
+			{
+				key: "engine",
+				isCustom: (input) =>
+					!CHUNKING_ENGINES.some((e) => e.value === input.engine),
+			},
+			{
+				key: "strategy",
+				isCustom: (input) => {
+					const known = CHUNKING_STRATEGIES[input.engine] ?? [];
+					return (
+						!!input.strategy && !known.some((s) => s.value === input.strategy)
+					);
+				},
+			},
+		],
+	});
+	const engineCustom = customMode.engine ?? false;
+	const strategyCustom = customMode.strategy ?? false;
 
 	function setEngine(value: string): void {
 		if (value === CUSTOM_OPTION) {
-			setEngineCustom(true);
+			setCustomMode("engine", true);
 			return;
 		}
-		setEngineCustom(false);
-		setStrategyCustom(false);
+		setCustomMode("engine", false);
+		setCustomMode("strategy", false);
 		setDraft((d) => ({ ...d, engine: value, strategy: null }));
 	}
 
 	function setStrategy(value: string): void {
 		if (value === CUSTOM_OPTION) {
-			setStrategyCustom(true);
+			setCustomMode("strategy", true);
 			return;
 		}
-		setStrategyCustom(false);
+		setCustomMode("strategy", false);
 		setDraft((d) => ({ ...d, strategy: value }));
 	}
 
@@ -524,55 +519,51 @@ function RerankingSubpanel({ workspace }: { workspace: string }) {
 	const del = useDeleteRerankingService(workspace);
 	const [open, setOpen] = useState(false);
 	const [createOpen, setCreateOpen] = useState(false);
-	const [presetId, setPresetId] = useState<string>(PRESET_NONE);
-	const [draft, setDraft] =
-		useState<CreateRerankingServiceInput>(RERANKING_BLANK);
-	const [providerCustom, setProviderCustom] = useState(false);
-	const [modelCustom, setModelCustom] = useState(false);
-
-	function reset(): void {
-		setPresetId(PRESET_NONE);
-		setDraft(RERANKING_BLANK);
-		setProviderCustom(false);
-		setModelCustom(false);
-	}
-
-	function applyPreset(id: string): void {
-		setPresetId(id);
-		if (id === PRESET_NONE) {
-			setDraft(RERANKING_BLANK);
-			setProviderCustom(false);
-			setModelCustom(false);
-			return;
-		}
-		const preset = RERANKING_PRESETS.find((p) => p.id === id);
-		if (!preset) return;
-		setDraft(preset.input);
-		setProviderCustom(
-			!RERANKING_PROVIDERS.some((p) => p.value === preset.input.provider),
-		);
-		const knownModels = RERANKING_MODELS[preset.input.provider] ?? [];
-		setModelCustom(
-			!knownModels.some((m) => m.value === preset.input.modelName),
-		);
-	}
+	const {
+		presetId,
+		draft,
+		setDraft,
+		customMode,
+		setCustomMode,
+		applyPreset,
+		reset,
+	} = useServicePresetState<CreateRerankingServiceInput>({
+		blank: RERANKING_BLANK,
+		presets: RERANKING_PRESETS,
+		customFields: [
+			{
+				key: "provider",
+				isCustom: (input) =>
+					!RERANKING_PROVIDERS.some((p) => p.value === input.provider),
+			},
+			{
+				key: "model",
+				isCustom: (input) => {
+					const known = RERANKING_MODELS[input.provider] ?? [];
+					return !known.some((m) => m.value === input.modelName);
+				},
+			},
+		],
+	});
+	const providerCustom = customMode.provider ?? false;
+	const modelCustom = customMode.model ?? false;
 
 	function setProvider(value: string): void {
 		if (value === CUSTOM_OPTION) {
-			setProviderCustom(true);
+			setCustomMode("provider", true);
 			return;
 		}
-		setProviderCustom(false);
-		setModelCustom(false);
+		setCustomMode("provider", false);
+		setCustomMode("model", false);
 		setDraft((d) => ({ ...d, provider: value, modelName: "" }));
 	}
 
 	function setModel(value: string): void {
 		if (value === CUSTOM_OPTION) {
-			setModelCustom(true);
+			setCustomMode("model", true);
 			return;
 		}
-		setModelCustom(false);
+		setCustomMode("model", false);
 		setDraft((d) => ({ ...d, modelName: value }));
 	}
 

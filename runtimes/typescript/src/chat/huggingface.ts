@@ -71,6 +71,67 @@ export class HuggingFaceChatService implements ChatService {
 			};
 		}
 	}
+
+	async *completeStream(
+		request: ChatCompletionRequest,
+		options?: ChatStreamOptions,
+	): AsyncIterable<ChatStreamEvent> {
+		const buffer: string[] = [];
+		let finishRaw: string | undefined;
+		let tokenCount: number | null = null;
+		try {
+			const stream = this.client.chatCompletionStream({
+				model: this.modelId,
+				max_tokens: this.maxOutputTokens,
+				messages: toHuggingFaceMessages(request.messages),
+			});
+			for await (const chunk of stream) {
+				if (options?.signal?.aborted) {
+					// Treat client disconnect as a clean stop with whatever
+					// we've already buffered. Persistence still runs in the
+					// route — better to keep the partial reply than to drop
+					// it on the floor.
+					return yield {
+						type: "done",
+						content: buffer.join(""),
+						finishReason: "stop",
+						tokenCount,
+					};
+				}
+				const choice = chunk.choices[0];
+				const delta = choice?.delta?.content;
+				if (delta && delta.length > 0) {
+					buffer.push(delta);
+					yield { type: "token", delta };
+				}
+				if (choice?.finish_reason) finishRaw = choice.finish_reason;
+				if (chunk.usage?.total_tokens != null) {
+					tokenCount = chunk.usage.total_tokens;
+				}
+			}
+			const content = buffer.join("").trim();
+			if (content.length === 0) {
+				return yield {
+					type: "error",
+					errorMessage:
+						"HuggingFace returned an empty completion — try again, or pick a different model.",
+					tokenCount,
+				};
+			}
+			return yield {
+				type: "done",
+				content,
+				finishReason: normalizeFinishReason(finishRaw),
+				tokenCount,
+			};
+		} catch (err) {
+			return yield {
+				type: "error",
+				errorMessage: `HuggingFace inference failed: ${safeErrorMessage(err)}`,
+				tokenCount,
+			};
+		}
+	}
 }
 
 /**
@@ -108,79 +169,3 @@ function normalizeFinishReason(
 	if (raw === "length") return "length";
 	return "stop";
 }
-
-// Extend the class declaration in-place rather than as a separate
-// edit — keeps the prototype tidy and the file readable top-down.
-declare module "./huggingface.js" {
-	interface HuggingFaceChatService {
-		completeStream(
-			request: ChatCompletionRequest,
-			options?: ChatStreamOptions,
-		): AsyncIterable<ChatStreamEvent>;
-	}
-}
-
-HuggingFaceChatService.prototype.completeStream = async function* (
-	this: HuggingFaceChatService,
-	request: ChatCompletionRequest,
-	options?: ChatStreamOptions,
-): AsyncIterable<ChatStreamEvent> {
-	// biome-ignore lint/suspicious/noExplicitAny: structurally accessing private members on `this`
-	const self = this as any;
-	const client: InferenceClient = self.client;
-	const buffer: string[] = [];
-	let finishRaw: string | undefined;
-	let tokenCount: number | null = null;
-	try {
-		const stream = client.chatCompletionStream({
-			model: this.modelId,
-			max_tokens: self.maxOutputTokens,
-			messages: toHuggingFaceMessages(request.messages),
-		});
-		for await (const chunk of stream) {
-			if (options?.signal?.aborted) {
-				// Treat client disconnect as a clean stop with whatever
-				// we've already buffered. Persistence still runs in the
-				// route — better to keep the partial reply than to drop
-				// it on the floor.
-				return yield {
-					type: "done",
-					content: buffer.join(""),
-					finishReason: "stop",
-					tokenCount,
-				};
-			}
-			const choice = chunk.choices[0];
-			const delta = choice?.delta?.content;
-			if (delta && delta.length > 0) {
-				buffer.push(delta);
-				yield { type: "token", delta };
-			}
-			if (choice?.finish_reason) finishRaw = choice.finish_reason;
-			if (chunk.usage?.total_tokens != null) {
-				tokenCount = chunk.usage.total_tokens;
-			}
-		}
-		const content = buffer.join("").trim();
-		if (content.length === 0) {
-			return yield {
-				type: "error",
-				errorMessage:
-					"HuggingFace returned an empty completion — try again, or pick a different model.",
-				tokenCount,
-			};
-		}
-		return yield {
-			type: "done",
-			content,
-			finishReason: normalizeFinishReason(finishRaw),
-			tokenCount,
-		};
-	} catch (err) {
-		return yield {
-			type: "error",
-			errorMessage: `HuggingFace inference failed: ${safeErrorMessage(err)}`,
-			tokenCount,
-		};
-	}
-};

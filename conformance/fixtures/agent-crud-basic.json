@@ -1,0 +1,219 @@
+{
+	"slug": "agent-crud-basic",
+	"description": "Agent + conversation CRUD lifecycle WITHOUT triggering chat sends. Workspace POST auto-seeds the default LLM service; we bind an agent to it, open a conversation, and tear down. The GET /agents list step is intentionally omitted because workspace POST also auto-seeds two default agents (Bobby + Heidi) whose createdAt timestamps frequently collide at millisecond resolution and sort nondeterministically — the per-agent GET below already pins the wire shape every runtime must produce. Sending messages is excluded from conformance because chat completion depends on the upstream LLM API that's not part of the runtime contract.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentials": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"updatedAt": "{{TS}}",
+					"url": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/llm-services"
+			},
+			"response": {
+				"body": {
+					"items": [
+						{
+							"authType": "api_key",
+							"contextWindowTokens": 128000,
+							"createdAt": "{{TS}}",
+							"credentialRef": "env:OPENAI_API_KEY",
+							"description": "Default. OpenAI `gpt-4o-mini` chat completion with native function calling. Used by Bobby + Heidi to call the workspace tools (search_kb, list_documents, summarize_kb, etc.).",
+							"endpointBaseUrl": null,
+							"endpointPath": null,
+							"engine": null,
+							"llmServiceId": "{{UUID_2}}",
+							"maxBatchSize": null,
+							"maxOutputTokens": 1024,
+							"modelName": "gpt-4o-mini",
+							"modelVersion": null,
+							"name": "openai-gpt-4o-mini",
+							"provider": "openai",
+							"requestTimeoutMs": null,
+							"status": "active",
+							"supportedContent": ["text"],
+							"supportedLanguages": ["en", "multi"],
+							"supportsStreaming": true,
+							"supportsTools": true,
+							"temperatureMax": null,
+							"temperatureMin": null,
+							"updatedAt": "{{TS}}",
+							"workspaceId": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
+				"status": 200
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"description": "internal-docs Q&A",
+					"llmServiceId": "{{UUID_2}}",
+					"name": "researcher"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents"
+			},
+			"response": {
+				"body": {
+					"agentId": "{{UUID_3}}",
+					"createdAt": "{{TS}}",
+					"description": "internal-docs Q&A",
+					"knowledgeBaseIds": [],
+					"llmServiceId": "{{UUID_2}}",
+					"name": "researcher",
+					"ragEnabled": false,
+					"ragMaxResults": null,
+					"ragMinScore": null,
+					"rerankEnabled": false,
+					"rerankMaxResults": null,
+					"rerankingServiceId": null,
+					"systemPrompt": null,
+					"updatedAt": "{{TS}}",
+					"userPrompt": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents/{{UUID_3}}"
+			},
+			"response": {
+				"body": {
+					"agentId": "{{UUID_3}}",
+					"createdAt": "{{TS}}",
+					"description": "internal-docs Q&A",
+					"knowledgeBaseIds": [],
+					"llmServiceId": "{{UUID_2}}",
+					"name": "researcher",
+					"ragEnabled": false,
+					"ragMaxResults": null,
+					"ragMinScore": null,
+					"rerankEnabled": false,
+					"rerankMaxResults": null,
+					"rerankingServiceId": null,
+					"systemPrompt": null,
+					"updatedAt": "{{TS}}",
+					"userPrompt": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": {
+					"title": "thread one"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents/{{UUID_3}}/conversations"
+			},
+			"response": {
+				"body": {
+					"agentId": "{{UUID_3}}",
+					"conversationId": "{{UUID_4}}",
+					"createdAt": "{{TS}}",
+					"knowledgeBaseIds": [],
+					"title": "thread one",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 5
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents/{{UUID_3}}/conversations"
+			},
+			"response": {
+				"body": {
+					"items": [
+						{
+							"agentId": "{{UUID_3}}",
+							"conversationId": "{{UUID_4}}",
+							"createdAt": "{{TS}}",
+							"knowledgeBaseIds": [],
+							"title": "thread one",
+							"workspaceId": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
+				"status": 200
+			},
+			"step": 6
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents/{{UUID_3}}/conversations/{{UUID_4}}/messages"
+			},
+			"response": {
+				"body": {
+					"items": [],
+					"nextCursor": null
+				},
+				"status": 200
+			},
+			"step": 7
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents/{{UUID_3}}/conversations/{{UUID_4}}"
+			},
+			"response": {
+				"body": null,
+				"status": 204
+			},
+			"step": 8
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents/{{UUID_3}}"
+			},
+			"response": {
+				"body": null,
+				"status": 204
+			},
+			"step": 9
+		}
+	]
+}

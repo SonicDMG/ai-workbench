@@ -470,6 +470,57 @@ straight to it.
 
 ## `/api/v1/workspaces/{workspaceId}/knowledge-bases`
 
+### Knowledge base provisioning
+
+A knowledge base is the runtime's atomic *retrieval unit*: a logical
+group of documents indexed by exactly one embedding service and one
+chunking service, optionally re-ranked by one reranker. Creating a
+KB through `POST` does three things in lockstep:
+
+1. **Materialize the underlying vector collection on the workspace's
+   driver.** The driver (`mock` for tests, `astra` for production)
+   creates a collection sized for the bound embedding service's
+   `embeddingDimension` with the requested `vectorSimilarity`. For
+   Astra workspaces with an `astra`-provider embedding service, the
+   collection is provisioned with a `service:` block so embedding
+   runs server-side ([see Configuration §Vectorize-on-ingest](configuration.md#embedding-services-and-vectorize-on-ingest)).
+2. **Insert the control-plane row.** The `KnowledgeBase` record is
+   only persisted *after* the collection is materialized — if step
+   #1 fails, no row is written and the operator gets a clean error
+   instead of an orphan KB pointing at a non-existent collection.
+3. **Seed any default knowledge filters** declared on the workspace.
+   Filters are mutable post-create via `POST /{kb}/filters`.
+
+**Collection naming.** `vectorCollection` defaults to
+`wb_vectors_<knowledgeBaseId-with-hyphens-stripped>` so the name is
+deterministic from the KB id. Supply your own at create time to
+adopt a pre-existing collection — the driver verifies its dimension
+and similarity match the bound embedding service before the row is
+written. Renaming after create is not supported (would require a
+re-index).
+
+**Idempotence.** `POST` is **not** idempotent on its own — re-issuing
+the same request creates a second KB with a fresh `knowledgeBaseId`.
+To make creation safe to retry, supply an explicit `knowledgeBaseId`
+in the body; if the row already exists with the same name and
+service bindings, the route returns `409 conflict` rather than
+mutating the existing KB. Drop the KB explicitly before re-creating.
+
+**Dimension binding.** The bound embedding service's
+`embeddingDimension` is captured into the collection at create time
+and is *not* re-checked on subsequent ingest / search calls — the
+driver trusts the collection's dimension. Changing the embedding
+service binding via `PATCH` is rejected (the field is immutable)
+because the collection's stored vectors would no longer match the
+new service's dimension.
+
+**Cascade on `DELETE`.** The route drops the underlying collection
+*before* the control-plane row so a partial failure leaves the KB
+intact. Once the collection is gone, the row is removed and the
+cascade clears RAG documents, knowledge filters, and any conversation
+references in `agent.knowledgeBaseIds` /
+`conversation.knowledgeBaseIds`.
+
 ### `GET`
 
 List knowledge bases in the workspace.

@@ -182,6 +182,31 @@ describe("ConfigSchema", () => {
 		).toThrow(/only meaningful with controlPlane.driver='memory'/);
 	});
 
+	test("rejects jobsResume.enabled with memory control plane", () => {
+		expect(() =>
+			ConfigSchema.parse({
+				version: 1,
+				controlPlane: {
+					driver: "memory",
+					jobsResume: { enabled: true },
+				},
+			}),
+		).toThrow(/jobsResume requires a durable control plane/);
+	});
+
+	test("accepts jobsResume.enabled with file control plane", () => {
+		expect(() =>
+			ConfigSchema.parse({
+				version: 1,
+				controlPlane: {
+					driver: "file",
+					root: "/tmp/x",
+					jobsResume: { enabled: true },
+				},
+			}),
+		).not.toThrow();
+	});
+
 	test("rejects duplicate seed workspace names", () => {
 		expect(() =>
 			ConfigSchema.parse({

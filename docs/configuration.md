@@ -246,6 +246,52 @@ Using `seedWorkspaces` with any driver other than `memory` is a
 validation error — workspaces already persist in the backend, so
 there's nothing to seed.
 
+## Embedding services and vectorize-on-ingest
+
+Embedding services are workspace-scoped *runtime data* — created via
+`POST /api/v1/workspaces/{w}/embedding-services`, not in
+`workbench.yaml`. The yaml only seeds workspaces; everything past
+that flows through the API. Embedding services control how the
+runtime turns text into vectors during ingest and search.
+
+The runtime supports two execution paths:
+
+- **Client-side embedding (the default).** The runtime resolves
+  `endpointBaseUrl` + `endpointPath` + `credentialRef`, calls the
+  provider's HTTP API at ingest / search time, and writes the
+  resulting vectors to Astra. Works with any embedding provider
+  (OpenAI, Cohere, NVIDIA NIM, self-hosted, etc.) — the runtime
+  carries the bytes.
+- **Vectorize-on-ingest (server-side, Astra-only).** When the
+  embedding service has `provider: "astra"` *and* the bound vector
+  collection was created with a matching Astra `service` block (e.g.
+  `nvidia:nvidia/nv-embedqa-e5-v5`), the runtime delegates embedding
+  to Astra's `$vectorize` column type. Documents are upserted with
+  raw text; Astra runs the embedding model in its own infrastructure
+  and stores both the text and the vector. Search likewise sends the
+  query as text and Astra embeds it server-side.
+
+The vectorize path is faster on hot paths (no extra round-trip to a
+provider), simpler to operate (no provider credential lives on the
+runtime), and avoids the dimension-mismatch class of errors. Two
+constraints to know:
+
+1. **The embedding service and the collection must agree.** Creating
+   a knowledge base with `provider: "astra"` materializes the Astra
+   collection with the service block baked in. Changing the embedding
+   service binding on an existing KB is rejected if the dimension or
+   provider doesn't match what the collection was provisioned with.
+2. **`credentialRef` is irrelevant on the runtime side.** Astra
+   itself holds whatever provider credentials the vectorize service
+   needs; the runtime never sees them. Setting `credentialRef` on a
+   `provider: "astra"` embedding service is a no-op.
+
+Mixed-batch upserts (some records carry a precomputed `vector`,
+others carry `text`) always fall back to client-side embedding so
+the entire batch lands in one transactional call. See
+[`api-spec.md`](api-spec.md) §`POST /{knowledgeBaseId}/records` for
+the exact dispatch rules.
+
 ## `chat` *(optional)*
 
 Wires up the runtime-wide default chat-completion executor used by

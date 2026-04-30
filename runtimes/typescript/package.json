@@ -18,7 +18,8 @@
 		"test:watch": "vitest",
 		"conformance:mock": "tsx ../../conformance/mock-astra/server.ts",
 		"conformance:regenerate": "tsx scripts/conformance-regenerate.ts",
-		"smoke:astra": "tsx scripts/smoke-astra.ts"
+		"smoke:astra": "tsx scripts/smoke-astra.ts",
+		"dump:openapi": "tsx scripts/dump-openapi.ts dist/openapi.json"
 	},
 	"dependencies": {
 		"@datastax/astra-db-ts": "^2.2.1",

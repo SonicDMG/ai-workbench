@@ -350,6 +350,7 @@ async function seedDefaultAgents(
 	workspaceId: string,
 	llmServiceId: string | null,
 ): Promise<void> {
+	let failures = 0;
 	for (const spec of DEFAULT_WORKSPACE_AGENTS) {
 		try {
 			await store.createAgent(workspaceId, {
@@ -357,11 +358,24 @@ async function seedDefaultAgents(
 				...(llmServiceId && { llmServiceId }),
 			});
 		} catch (err) {
-			logger.warn(
-				{ workspaceId, agentName: spec.name, err },
+			failures += 1;
+			// Audit-tagged so monitoring can surface seed failures even
+			// when the workspace-create response itself succeeds.
+			logger.error(
+				{ audit: true, workspaceId, agentName: spec.name, err },
 				"failed to seed default agent",
 			);
 		}
+	}
+	if (failures > 0 && failures === DEFAULT_WORKSPACE_AGENTS.length) {
+		// Every seed failed — that's a systemic problem (DB outage, bad
+		// config) rather than the spec-specific issues the partial-
+		// failure path tolerates. Surface it as an audit-level error so
+		// the operator notices the workspace shipped without any agents.
+		logger.error(
+			{ audit: true, workspaceId, expected: DEFAULT_WORKSPACE_AGENTS.length },
+			"all default agents failed to seed — workspace will have no agents until they are created manually",
+		);
 	}
 }
 
@@ -380,16 +394,28 @@ async function seedDefaultLlmServices(
 	workspaceId: string,
 ): Promise<string | null> {
 	let firstId: string | null = null;
+	let failures = 0;
 	for (const spec of DEFAULT_WORKSPACE_SEED_LLM_SERVICES) {
 		try {
 			const created = await store.createLlmService(workspaceId, spec);
 			if (firstId === null) firstId = created.llmServiceId;
 		} catch (err) {
-			logger.warn(
-				{ workspaceId, serviceName: spec.name, err },
+			failures += 1;
+			logger.error(
+				{ audit: true, workspaceId, serviceName: spec.name, err },
 				"failed to seed default llm service",
 			);
 		}
+	}
+	if (failures > 0 && failures === DEFAULT_WORKSPACE_SEED_LLM_SERVICES.length) {
+		logger.error(
+			{
+				audit: true,
+				workspaceId,
+				expected: DEFAULT_WORKSPACE_SEED_LLM_SERVICES.length,
+			},
+			"all default llm services failed to seed — agents in this workspace will have no LLM until services are created manually",
+		);
 	}
 	return firstId;
 }
@@ -411,24 +437,54 @@ async function seedDefaultServices(
 	store: ControlPlaneStore,
 	workspaceId: string,
 ): Promise<void> {
+	let chunkingFailures = 0;
 	for (const spec of DEFAULT_WORKSPACE_SEED_SERVICES.chunking) {
 		try {
 			await store.createChunkingService(workspaceId, spec);
 		} catch (err) {
-			logger.warn(
-				{ workspaceId, serviceName: spec.name, err },
+			chunkingFailures += 1;
+			logger.error(
+				{ audit: true, workspaceId, serviceName: spec.name, err },
 				"failed to seed default chunking service",
 			);
 		}
 	}
+	if (
+		chunkingFailures > 0 &&
+		chunkingFailures === DEFAULT_WORKSPACE_SEED_SERVICES.chunking.length
+	) {
+		logger.error(
+			{
+				audit: true,
+				workspaceId,
+				expected: DEFAULT_WORKSPACE_SEED_SERVICES.chunking.length,
+			},
+			"all default chunking services failed to seed — knowledge bases in this workspace will need a chunker created manually",
+		);
+	}
+	let embeddingFailures = 0;
 	for (const spec of DEFAULT_WORKSPACE_SEED_SERVICES.embedding) {
 		try {
 			await store.createEmbeddingService(workspaceId, spec);
 		} catch (err) {
-			logger.warn(
-				{ workspaceId, serviceName: spec.name, err },
+			embeddingFailures += 1;
+			logger.error(
+				{ audit: true, workspaceId, serviceName: spec.name, err },
 				"failed to seed default embedding service",
 			);
 		}
+	}
+	if (
+		embeddingFailures > 0 &&
+		embeddingFailures === DEFAULT_WORKSPACE_SEED_SERVICES.embedding.length
+	) {
+		logger.error(
+			{
+				audit: true,
+				workspaceId,
+				expected: DEFAULT_WORKSPACE_SEED_SERVICES.embedding.length,
+			},
+			"all default embedding services failed to seed — knowledge bases in this workspace will need an embedder created manually",
+		);
 	}
 }

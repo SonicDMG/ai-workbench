@@ -87,13 +87,24 @@ export function useSilentRefresh(): void {
 			Math.max(Math.floor(remaining * 0.8), 30),
 			30 * 60,
 		);
-		const handle = window.setTimeout(async () => {
-			const result = await refreshSession(refreshPath);
-			if (result !== null) {
-				// Bump /auth/me so the next render sees the new expiry
-				// and schedules the next refresh.
-				await qc.invalidateQueries({ queryKey: ["auth", "me"] });
-			}
+		const handle = window.setTimeout(() => {
+			// `setTimeout` doesn't await its callback, so an `async`
+			// callback's rejection would otherwise be swallowed silently.
+			// Wrap with an explicit `.catch` and invalidate the session
+			// query on failure so the next render falls through to the
+			// 401-driven reactive refresh path in `lib/api.ts`.
+			void (async () => {
+				try {
+					const result = await refreshSession(refreshPath);
+					if (result !== null) {
+						// Bump /auth/me so the next render sees the new expiry
+						// and schedules the next refresh.
+						await qc.invalidateQueries({ queryKey: ["auth", "me"] });
+					}
+				} catch {
+					await qc.invalidateQueries({ queryKey: ["auth", "me"] });
+				}
+			})();
 		}, targetSeconds * 1000);
 		return () => window.clearTimeout(handle);
 	}, [refreshPath, canRefresh, expiresAt, qc]);

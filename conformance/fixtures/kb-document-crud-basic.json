@@ -1,0 +1,343 @@
+{
+	"slug": "kb-document-crud-basic",
+	"description": "Document CRUD on a knowledge base WITHOUT triggering ingest. Pins the wire shape of the document record (status, sourceFilename, metadata, chunkCount) and the list/get/patch/delete envelope. Ingest with chunking is excluded from conformance because chunk counts depend on the chunker's tokenization, which is allowed to vary across runtimes.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentials": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"updatedAt": "{{TS}}",
+					"url": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/embedding-services"
+			},
+			"response": {
+				"body": {
+					"items": [
+						{
+							"authType": "api_key",
+							"createdAt": "{{TS}}",
+							"credentialRef": "env:OPENAI_API_KEY",
+							"description": "Default. OpenAI `text-embedding-3-small` (1536-dim, cosine). Astra `$vectorize`-eligible — server-side embedding when the workspace uses the Astra driver.",
+							"distanceMetric": "cosine",
+							"embeddingDimension": 1536,
+							"embeddingServiceId": "{{UUID_2}}",
+							"endpointBaseUrl": null,
+							"endpointPath": null,
+							"maxBatchSize": 512,
+							"maxInputTokens": 8191,
+							"modelName": "text-embedding-3-small",
+							"name": "openai-text-embedding-3-small",
+							"provider": "openai",
+							"requestTimeoutMs": null,
+							"status": "active",
+							"supportedContent": ["text"],
+							"supportedLanguages": ["en", "multi"],
+							"updatedAt": "{{TS}}",
+							"workspaceId": "{{UUID_1}}"
+						},
+						{
+							"authType": "none",
+							"createdAt": "{{TS}}",
+							"credentialRef": null,
+							"description": "NVIDIA `nvidia/nv-embedqa-e5-v5` (1024-dim, cosine). Multilingual, retrieval-tuned. Matches the default Astra-bundled NIM embedding model — auth is handled by Astra's KMS, no client-side API key needed. Useful when attaching to a pre-existing Astra collection that uses NVIDIA vectorize.",
+							"distanceMetric": "cosine",
+							"embeddingDimension": 1024,
+							"embeddingServiceId": "{{UUID_3}}",
+							"endpointBaseUrl": null,
+							"endpointPath": null,
+							"maxBatchSize": 64,
+							"maxInputTokens": 512,
+							"modelName": "nvidia/nv-embedqa-e5-v5",
+							"name": "nvidia-nv-embedqa-e5-v5",
+							"provider": "nvidia",
+							"requestTimeoutMs": null,
+							"status": "active",
+							"supportedContent": ["text"],
+							"supportedLanguages": ["multi"],
+							"updatedAt": "{{TS}}",
+							"workspaceId": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
+				"status": 200
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/chunking-services"
+			},
+			"response": {
+				"body": {
+					"items": [
+						{
+							"authType": "none",
+							"chunkUnit": "characters",
+							"chunkingServiceId": "{{UUID_4}}",
+							"createdAt": "{{TS}}",
+							"credentialRef": null,
+							"description": "Default. Recursive character splitter (1000 chars / 150 overlap) honoring paragraph, sentence, and word boundaries. Good for prose, markdown, mixed content.",
+							"enableOcr": null,
+							"endpointBaseUrl": null,
+							"endpointPath": null,
+							"engine": "langchain_ts",
+							"engineVersion": null,
+							"extractFigures": null,
+							"extractTables": null,
+							"language": null,
+							"maxChunkSize": 1000,
+							"maxPayloadSizeKb": null,
+							"minChunkSize": 100,
+							"name": "recursive-char-1000",
+							"overlapSize": 150,
+							"overlapUnit": "characters",
+							"preserveStructure": true,
+							"readingOrder": null,
+							"requestTimeoutMs": null,
+							"status": "active",
+							"strategy": "recursive",
+							"updatedAt": "{{TS}}",
+							"workspaceId": "{{UUID_1}}"
+						},
+						{
+							"authType": "none",
+							"chunkUnit": "characters",
+							"chunkingServiceId": "{{UUID_5}}",
+							"createdAt": "{{TS}}",
+							"credentialRef": null,
+							"description": "Line-based splitter (2000 chars per chunk, snaps to `\\n` boundaries). Default for CSV, JSONL, and other newline-delimited content where rows must stay intact.",
+							"enableOcr": null,
+							"endpointBaseUrl": null,
+							"endpointPath": null,
+							"engine": "langchain_ts",
+							"engineVersion": null,
+							"extractFigures": null,
+							"extractTables": null,
+							"language": null,
+							"maxChunkSize": 2000,
+							"maxPayloadSizeKb": null,
+							"minChunkSize": 0,
+							"name": "line-2000",
+							"overlapSize": 0,
+							"overlapUnit": "characters",
+							"preserveStructure": true,
+							"readingOrder": null,
+							"requestTimeoutMs": null,
+							"status": "active",
+							"strategy": "line",
+							"updatedAt": "{{TS}}",
+							"workspaceId": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
+				"status": 200
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"chunkingServiceId": "{{UUID_4}}",
+					"embeddingServiceId": "{{UUID_2}}",
+					"name": "kb"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/knowledge-bases"
+			},
+			"response": {
+				"body": {
+					"chunkingServiceId": "{{UUID_4}}",
+					"createdAt": "{{TS}}",
+					"description": null,
+					"embeddingServiceId": "{{UUID_2}}",
+					"knowledgeBaseId": "{{UUID_6}}",
+					"language": null,
+					"lexical": {
+						"analyzer": null,
+						"enabled": false,
+						"options": {}
+					},
+					"name": "kb",
+					"owned": true,
+					"rerankingServiceId": null,
+					"status": "active",
+					"updatedAt": "{{TS}}",
+					"vectorCollection": "{{VEC_COLL_1}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": {
+					"metadata": {
+						"tag": "intro"
+					},
+					"sourceFilename": "alpha.txt"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/knowledge-bases/{{UUID_6}}/documents"
+			},
+			"response": {
+				"body": {
+					"chunkTotal": null,
+					"contentHash": null,
+					"documentId": "{{UUID_7}}",
+					"errorMessage": null,
+					"fileSize": null,
+					"fileType": null,
+					"ingestedAt": null,
+					"knowledgeBaseId": "{{UUID_6}}",
+					"metadata": {
+						"tag": "intro"
+					},
+					"sourceDocId": null,
+					"sourceFilename": "alpha.txt",
+					"status": "pending",
+					"updatedAt": "{{TS}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 5
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/knowledge-bases/{{UUID_6}}/documents"
+			},
+			"response": {
+				"body": {
+					"items": [
+						{
+							"chunkTotal": null,
+							"contentHash": null,
+							"documentId": "{{UUID_7}}",
+							"errorMessage": null,
+							"fileSize": null,
+							"fileType": null,
+							"ingestedAt": null,
+							"knowledgeBaseId": "{{UUID_6}}",
+							"metadata": {
+								"tag": "intro"
+							},
+							"sourceDocId": null,
+							"sourceFilename": "alpha.txt",
+							"status": "pending",
+							"updatedAt": "{{TS}}",
+							"workspaceId": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
+				"status": 200
+			},
+			"step": 6
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/knowledge-bases/{{UUID_6}}/documents/{{UUID_7}}"
+			},
+			"response": {
+				"body": {
+					"chunkTotal": null,
+					"contentHash": null,
+					"documentId": "{{UUID_7}}",
+					"errorMessage": null,
+					"fileSize": null,
+					"fileType": null,
+					"ingestedAt": null,
+					"knowledgeBaseId": "{{UUID_6}}",
+					"metadata": {
+						"tag": "intro"
+					},
+					"sourceDocId": null,
+					"sourceFilename": "alpha.txt",
+					"status": "pending",
+					"updatedAt": "{{TS}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 7
+		},
+		{
+			"request": {
+				"body": {
+					"metadata": {
+						"reviewed": "yes",
+						"tag": "intro"
+					}
+				},
+				"method": "PATCH",
+				"path": "/api/v1/workspaces/{{UUID_1}}/knowledge-bases/{{UUID_6}}/documents/{{UUID_7}}"
+			},
+			"response": {
+				"body": {
+					"chunkTotal": null,
+					"contentHash": null,
+					"documentId": "{{UUID_7}}",
+					"errorMessage": null,
+					"fileSize": null,
+					"fileType": null,
+					"ingestedAt": null,
+					"knowledgeBaseId": "{{UUID_6}}",
+					"metadata": {
+						"reviewed": "yes",
+						"tag": "intro"
+					},
+					"sourceDocId": null,
+					"sourceFilename": "alpha.txt",
+					"status": "pending",
+					"updatedAt": "{{TS}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 8
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}/knowledge-bases/{{UUID_6}}/documents/{{UUID_7}}"
+			},
+			"response": {
+				"body": null,
+				"status": 204
+			},
+			"step": 9
+		}
+	]
+}

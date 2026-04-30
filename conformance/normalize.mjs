@@ -33,6 +33,12 @@
 // API tokens: full `wb_live_<12>_<32>`. Matched FIRST so the inner
 // 12-char segment doesn't get picked up by the prefix rule.
 const WB_TOKEN_RE = /\bwb_live_[a-z0-9]{12}_[a-z0-9]{32}\b/g;
+// Vector-collection name auto-assigned to a knowledge base on create:
+// `wb_vectors_<32-char hex>`. The hex segment is a UUID with hyphens
+// stripped, so it would NOT be caught by the regular UUID rule below.
+// Matched before UUID/REQID so the embedded hex doesn't get a separate
+// placeholder.
+const VECTOR_COLLECTION_RE = /\bwb_vectors_[0-9a-f]{32}\b/g;
 const UUID_RE =
 	/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 const TS_RE = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/g;
@@ -64,6 +70,12 @@ function substituteFlat(input, pattern, placeholder) {
 function normalizeString(s, state) {
 	let out = s;
 	out = substituteIndexed(out, WB_TOKEN_RE, "WB_TOKEN", state.wbTokens);
+	out = substituteIndexed(
+		out,
+		VECTOR_COLLECTION_RE,
+		"VEC_COLL",
+		state.vecColls,
+	);
 	out = substituteIndexed(out, UUID_RE, "UUID", state.uuids);
 	out = substituteFlat(out, TS_RE, "{{TS}}");
 	out = substituteIndexed(out, ULID_RE, "REQID", state.reqIds);
@@ -98,6 +110,7 @@ export function normalize(input) {
 		reqIds: {},
 		wbTokens: {},
 		wbPrefixes: {},
+		vecColls: {},
 	};
 	return normalizeValue(input, state);
 }

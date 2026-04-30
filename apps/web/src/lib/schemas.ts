@@ -1,12 +1,30 @@
 import { z } from "zod";
+import type { components } from "./api-types.generated";
 
 // Mirror of the runtime's schemas (see
-// runtimes/typescript/src/openapi/schemas.ts). Keep in sync when the
-// contract changes — the runtime tests will catch shifts in the
-// backend, but the UI is on its own to track them here.
+// runtimes/typescript/src/openapi/schemas.ts). The TS *types* below
+// are derived from `api-types.generated.ts` (run `npm run gen:types`
+// to refresh from the live OpenAPI spec); the *Zod schemas* are kept
+// hand-written because the UI uses them for runtime parsing of
+// network responses, where openapi-typescript is types-only.
+//
+// The drift-detection test in `lib/schemas.test.ts` compares the
+// hand-written Zod enums to the generated types so a backend change
+// breaks CI even if a developer forgets to rerun `gen:types`.
 
-export const WorkspaceKindSchema = z.enum(["astra", "hcd", "openrag", "mock"]);
-export type WorkspaceKind = z.infer<typeof WorkspaceKindSchema>;
+/**
+ * Source of truth for the workspace-kind union, derived from the
+ * generated OpenAPI types. The Zod enum below is kept in sync via
+ * the schemas.test.ts drift check.
+ */
+export type WorkspaceKind = components["schemas"]["Workspace"]["kind"];
+
+export const WorkspaceKindSchema: z.ZodType<WorkspaceKind> = z.enum([
+	"astra",
+	"hcd",
+	"openrag",
+	"mock",
+]);
 
 export const SecretRefSchema = z
 	.string()

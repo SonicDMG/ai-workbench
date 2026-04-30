@@ -79,6 +79,7 @@ function authConfig(): AuthConfig {
 		mode: "oidc",
 		anonymousPolicy: "reject",
 		bootstrapTokenRef: null,
+		acknowledgeOpenAccess: false,
 		oidc: {
 			issuer: ISSUER,
 			audience: AUD,
@@ -303,7 +304,7 @@ describe("/auth/* flow", () => {
 			const setCookie = cbRes.headers.get("set-cookie") ?? "";
 			expect(setCookie).toMatch(/^wb_session=/);
 			expect(setCookie).toMatch(/HttpOnly/);
-			expect(setCookie).toMatch(/SameSite=Lax/);
+			expect(setCookie).toMatch(/SameSite=Strict/);
 			const cookieValue = setCookie.slice(
 				"wb_session=".length,
 				setCookie.indexOf(";"),

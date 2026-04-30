@@ -103,6 +103,7 @@ async function main(): Promise<void> {
 			mode: "disabled" as const,
 			anonymousPolicy: "allow" as const,
 			bootstrapTokenRef: null,
+			acknowledgeOpenAccess: false,
 		},
 		seedWorkspaces: [],
 		mcp: { enabled: false, exposeChat: false },

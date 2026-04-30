@@ -77,25 +77,41 @@ all KBs in the workspace if the agent's set is also empty".
 `agent.llmServiceId` is mutable and optional. Resolution order at
 send time:
 
-1. If `agent.llmServiceId` is set, the runtime fetches the matching
-   `wb_config_llm_service_by_workspace` row and instantiates a chat
-   service from it. **Today only `provider: "huggingface"` is wired
-   end-to-end** — agents pointing at any other provider get
-   `422 llm_provider_unsupported`. A bound HuggingFace service
-   without a `credentialRef` returns `422 llm_credential_missing`.
-2. If `agent.llmServiceId` is unset, the runtime falls back to the
-   global `chat:` block in `workbench.yaml`.
-3. If neither is configured, `POST .../messages` and
-   `POST .../messages/stream` return `503 chat_disabled`.
+1. **Per-agent service.** If `agent.llmServiceId` is set, the runtime
+   fetches the matching `wb_config_llm_service_by_workspace` row and
+   instantiates a chat service from it. Two providers are wired
+   end-to-end today: `provider: "huggingface"` (via the HuggingFace
+   Inference API) and `provider: "openai"` (the only one with native
+   function calling, required for the agent tool-call loop). Any
+   other provider returns `422 llm_provider_unsupported` until its
+   adapter lands. A bound service without a `credentialRef` returns
+   `422 llm_credential_missing`.
+2. **Workspace fallback.** If `agent.llmServiceId` is unset, the
+   runtime falls back to the global `chat:` block in
+   `workbench.yaml`. The fallback only ever uses HuggingFace —
+   `chat:` predates the per-agent LLM service surface and has no
+   provider field.
+3. **Hard stop.** If neither is configured, `POST .../messages` and
+   `POST .../messages/stream` return `503 chat_disabled`. The agent
+   record itself is unaffected; you can still list / patch / delete
+   it without an LLM available.
 
-Multi-provider support (OpenAI, Cohere, etc.) is a follow-up — the
-chat service abstraction is provider-agnostic; only the agent
-dispatcher's instantiation switch needs to grow.
-
-The system prompt resolves in the same layered way: `agent.systemPrompt`
-wins if set, otherwise `chatConfig.systemPrompt`, otherwise the
-runtime falls back to `DEFAULT_AGENT_SYSTEM_PROMPT` from
+The system prompt resolves in the same layered way:
+`agent.systemPrompt` wins if set, otherwise `chatConfig.systemPrompt`
+from `workbench.yaml`, otherwise the runtime falls back to
+`DEFAULT_AGENT_SYSTEM_PROMPT` from
 [`control-plane/defaults.ts`](../runtimes/typescript/src/control-plane/defaults.ts).
+The same precedence holds for the system prompt regardless of which
+chat service provider was selected — the prompt is added as the first
+turn in the prompt envelope before any RAG-retrieved chunks.
+
+**Tool calling.** The agent dispatcher's tool-execution loop (RAG
+search, list KBs, summarize, etc.) requires the underlying provider
+to support native function calling. OpenAI does. HuggingFace's chat-
+completion API does not, so the dispatcher serves only the
+no-tool-call path when bound to a HuggingFace service — the agent
+still answers, but it can't dispatch tools. Default workspace seeds
+ship one OpenAI `gpt-4o-mini` LLM service for this reason.
 
 ## HTTP surface
 

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { type AppLoginOptions, createApp } from "./app.js";
+import { assertSafeAuthDeployment } from "./auth/deployment-guard.js";
 import { buildAuthResolver } from "./auth/factory.js";
 import {
 	generateSessionKey,
@@ -86,7 +87,7 @@ async function main(): Promise<void> {
 	const drivers = buildVectorStoreDriverRegistry({ secrets });
 	const embedders = makeEmbedderFactory({ secrets });
 	const auth = await buildAuthResolver(config.auth, { store, secrets });
-	warnOnOpenProductionAuth(config);
+	assertSafeAuthDeployment(config);
 	warnOnOpenMcpAuth(config);
 
 	const login = await buildLoginOptions(config.auth, secrets, {
@@ -268,32 +269,6 @@ async function main(): Promise<void> {
 	process.on("SIGTERM", shutdown("SIGTERM"));
 }
 
-function warnOnOpenProductionAuth(config: {
-	readonly controlPlane: { readonly driver: string };
-	readonly auth: {
-		readonly mode: string;
-		readonly anonymousPolicy: string;
-		readonly bootstrapTokenRef?: string | null;
-	};
-}): void {
-	if (
-		config.controlPlane.driver === "memory" ||
-		(config.auth.mode !== "disabled" &&
-			config.auth.anonymousPolicy === "reject")
-	) {
-		return;
-	}
-	logger.warn(
-		{
-			controlPlane: config.controlPlane.driver,
-			authMode: config.auth.mode,
-			anonymousPolicy: config.auth.anonymousPolicy,
-			hasBootstrapToken: config.auth.bootstrapTokenRef != null,
-		},
-		"non-memory control plane is accepting anonymous API access; set auth.mode to apiKey/oidc/any with anonymousPolicy: reject before exposing this runtime",
-	);
-}
-
 /**
  * Warn when MCP is enabled but auth is in its default open state.
  *
@@ -375,9 +350,14 @@ async function buildLoginOptions(
 			);
 		}
 	} else {
+		// Reaching here means `assertSafeAuthDeployment` already
+		// confirmed we're on a memory control plane (the durable-store
+		// gate would have refused to start otherwise). Ephemeral key is
+		// fine for an in-memory dev runtime; sessions die with the
+		// process anyway.
 		sessionKey = generateSessionKey();
 		logger.warn(
-			"auth.oidc.client.sessionSecretRef is not set — generated an ephemeral session key. All browser sessions invalidate on restart; set a persistent secret for production.",
+			"auth.oidc.client.sessionSecretRef is not set — generated an ephemeral session key for the in-memory control plane. All browser sessions invalidate on restart; this is rejected automatically on file/astra control planes.",
 		);
 	}
 	const cookie = makeCookieSigner(sessionKey);

@@ -4,6 +4,9 @@ coverage/
 *.log
 .env
 .env.*
+# `pkill -USR2` writes nginx-style backup files; pin explicitly
+# so a misconfigured `!.env.foo` allowlist below can't override it.
+.env.save
 !.env.example
 .DS_Store
 .vscode/

@@ -10,6 +10,16 @@ import { Input } from "@/components/ui/input";
  * component does soft validation inline. The API layer prunes empty
  * rows before the PATCH/POST.
  */
+interface CredentialRow {
+	readonly id: string;
+	readonly key: string;
+	readonly val: string;
+}
+
+function newRow(key = "", val = ""): CredentialRow {
+	return { id: crypto.randomUUID(), key, val };
+}
+
 export function CredentialsEditor({
 	value,
 	onChange,
@@ -19,13 +29,13 @@ export function CredentialsEditor({
 	onChange: (next: Record<string, string>) => void;
 	disabled?: boolean;
 }) {
-	const initialRows =
+	const initialRows: CredentialRow[] =
 		Object.keys(value).length === 0
-			? [{ key: "", val: "" }]
-			: Object.entries(value).map(([key, val]) => ({ key, val }));
-	const [rows, setRows] = useState(initialRows);
+			? [newRow()]
+			: Object.entries(value).map(([key, val]) => newRow(key, val));
+	const [rows, setRows] = useState<CredentialRow[]>(initialRows);
 
-	function emit(next: typeof rows) {
+	function emit(next: CredentialRow[]) {
 		setRows(next);
 		const out: Record<string, string> = {};
 		for (const r of next) {
@@ -35,18 +45,20 @@ export function CredentialsEditor({
 	}
 
 	function updateRow(i: number, key: string, val: string) {
+		const existing = rows[i];
+		if (!existing) return;
 		const next = [...rows];
-		next[i] = { key, val };
+		next[i] = { id: existing.id, key, val };
 		emit(next);
 	}
 
 	function addRow() {
-		emit([...rows, { key: "", val: "" }]);
+		emit([...rows, newRow()]);
 	}
 
 	function removeRow(i: number) {
 		const next = rows.filter((_, idx) => idx !== i);
-		emit(next.length === 0 ? [{ key: "", val: "" }] : next);
+		emit(next.length === 0 ? [newRow()] : next);
 	}
 
 	return (
@@ -63,8 +75,7 @@ export function CredentialsEditor({
 			<div className="flex flex-col gap-2">
 				{rows.map((row, i) => (
 					<div
-						// biome-ignore lint/suspicious/noArrayIndexKey: rows are intentionally unkeyed user input
-						key={i}
+						key={row.id}
 						className="grid grid-cols-[1fr_1.5fr_auto] items-center gap-2"
 					>
 						<Input

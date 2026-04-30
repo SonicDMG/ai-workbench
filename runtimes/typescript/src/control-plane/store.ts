@@ -358,6 +358,46 @@ export interface UpdateChatMessageInput {
  * Canonical control-plane interface. All methods MUST behave identically
  * across backends modulo durability — a record written must be visible
  * to subsequent reads on the same store instance.
+ *
+ * **Conventions applied uniformly across every method group below.**
+ * Individual methods don't repeat these in their own JSDoc; deviations
+ * are called out per-method.
+ *
+ * - **Lookup misses return `null`** for `get*` methods. Mutating
+ *   methods (`update*`, `delete*`, `revoke*`) on a missing parent or
+ *   target throw {@link ControlPlaneNotFoundError} — the route layer
+ *   maps that to a `404 *_not_found` envelope.
+ * - **Conflicts throw {@link ControlPlaneConflictError}**: re-using an
+ *   explicit `*Id` that already exists, persisting an API key whose
+ *   prefix is already indexed, mutating an immutable field, etc. The
+ *   route layer maps that to `409 *_conflict`.
+ * - **List ordering is deterministic.** Workspace and service rows
+ *   sort by `(createdAt, id)` ascending; conversations sort by
+ *   `createdAt DESC` (newest-first); chat messages sort by
+ *   `messageTs ASC` (oldest-first). Ordering matches Astra's
+ *   physical clustering so the wire shape doesn't depend on the
+ *   backend.
+ * - **Cascade on parent delete.** Deleting a workspace removes its
+ *   API keys, knowledge bases, RAG documents, services, agents,
+ *   conversations, and messages. Deleting a knowledge base removes
+ *   its RAG documents and knowledge filters. Deleting an agent
+ *   removes its conversations and messages.
+ * - **Inputs are immutable shapes.** `Create*Input` and
+ *   `Update*Input` are validated by the route layer before reaching
+ *   the store; the store may assume well-formed input but MUST still
+ *   enforce referential integrity (e.g. an agent's `llmServiceId`
+ *   must point at an existing service in the same workspace).
+ * - **Mutation returns the post-mutation record.** `update*` and
+ *   `appendChat*` methods return the row exactly as a subsequent
+ *   `get*` would see it — callers don't need to re-read.
+ * - **`update*` patches are partial.** Fields absent from the patch
+ *   are left untouched; an explicit `null` clears them. Fields that
+ *   are immutable post-create are absent from the `Update*Input`
+ *   shape entirely (e.g. workspace `kind`).
+ * - **No transactional guarantees across method calls.** Operations
+ *   that span multiple records (cascade delete, KB+collection
+ *   create) run as best-effort sequences. The route layer is
+ *   responsible for any compensating cleanup.
  */
 export interface ControlPlaneStore {
 	/* Workspaces */
@@ -368,6 +408,12 @@ export interface ControlPlaneStore {
 		uid: string,
 		patch: UpdateWorkspaceInput,
 	): Promise<WorkspaceRecord>;
+	/**
+	 * Cascade-delete the workspace and every dependent resource (api
+	 * keys, KBs, RAG documents, services, agents, conversations,
+	 * messages). Returns `{ deleted: false }` if the workspace was
+	 * already gone — idempotent re-deletes don't error.
+	 */
 	deleteWorkspace(uid: string): Promise<{ deleted: boolean }>;
 
 	/* API keys */
@@ -425,6 +471,19 @@ export interface ControlPlaneStore {
 		workspace: string,
 		uid: string,
 	): Promise<KnowledgeBaseRecord | null>;
+	/**
+	 * Create a knowledge base record. Does NOT provision the underlying
+	 * vector collection — that's the route layer's job (it uses the
+	 * driver registry so the same call works on every backend). The
+	 * returned record carries the auto-assigned `vectorCollection`
+	 * name; the route then asks the driver to materialize a collection
+	 * with that name and dimension.
+	 *
+	 * Validates that the bound `embeddingServiceId` /
+	 * `chunkingServiceId` / optional `rerankingServiceId` exist in the
+	 * same workspace; throws {@link ControlPlaneNotFoundError} if any
+	 * are missing.
+	 */
 	createKnowledgeBase(
 		workspace: string,
 		input: CreateKnowledgeBaseInput,
@@ -434,6 +493,12 @@ export interface ControlPlaneStore {
 		uid: string,
 		patch: UpdateKnowledgeBaseInput,
 	): Promise<KnowledgeBaseRecord>;
+	/**
+	 * Delete the KB row + cascade through RAG documents and knowledge
+	 * filters. Does NOT drop the underlying vector collection — the
+	 * route layer drops the collection BEFORE this call so a partial
+	 * failure leaves the KB intact, not orphaned-with-no-collection.
+	 */
 	deleteKnowledgeBase(
 		workspace: string,
 		uid: string,
