@@ -204,6 +204,30 @@ const COHERE_MULTILINGUAL: CreateEmbeddingServiceInput = {
 	supportedContent: ["text"],
 };
 
+/**
+ * NVIDIA NV-EmbedQA-E5-v5 — Astra's bundled NVIDIA NIM embedding model.
+ * 1024-dim, multilingual, retrieval-tuned. Pre-existing collections in
+ * Astra often default to this model, so seeding it makes the
+ * "Attach existing" KB flow work out of the box without the user
+ * having to hand-create a matching embedding service.
+ */
+const NVIDIA_NV_EMBEDQA_E5_V5: CreateEmbeddingServiceInput = {
+	name: "nvidia-nv-embedqa-e5-v5",
+	description:
+		"NVIDIA `nvidia/nv-embedqa-e5-v5` (1024-dim, cosine). Multilingual, retrieval-tuned. Matches the default Astra-bundled NIM embedding model — useful when attaching to a pre-existing Astra collection that uses NVIDIA vectorize.",
+	status: "active",
+	provider: "nvidia",
+	modelName: "nvidia/nv-embedqa-e5-v5",
+	embeddingDimension: 1024,
+	distanceMetric: "cosine",
+	authType: "api_key",
+	credentialRef: "env:NVIDIA_API_KEY",
+	maxBatchSize: 64,
+	maxInputTokens: 512,
+	supportedLanguages: ["multi"],
+	supportedContent: ["text"],
+};
+
 export const DEFAULT_SERVICES: DefaultServices = {
 	chunking: [
 		RECURSIVE_CHAR_DEFAULT,
@@ -214,17 +238,25 @@ export const DEFAULT_SERVICES: DefaultServices = {
 		LINE_BASED_SMALL,
 		LINE_BASED_LARGE,
 	],
-	embedding: [OPENAI_SMALL, OPENAI_LARGE, COHERE_MULTILINGUAL],
+	embedding: [
+		OPENAI_SMALL,
+		OPENAI_LARGE,
+		COHERE_MULTILINGUAL,
+		NVIDIA_NV_EMBEDQA_E5_V5,
+	],
 };
 
 /**
  * Curated subset of {@link DEFAULT_SERVICES} that the workspace POST
  * handler auto-seeds into every freshly-created workspace via the
  * public API. Intentionally small — one canonical character chunker,
- * one canonical line chunker, and one canonical OpenAI embedder — so a
- * brand-new workspace can ingest something without first POST-ing a
- * service config, but without flooding the UI's service pickers with
- * presets the operator never asked for.
+ * one canonical line chunker, plus the two embedders most likely to
+ * match collections users already have:
+ *   - OpenAI `text-embedding-3-small` (1536-dim) for new collections
+ *     and most public datasets.
+ *   - NVIDIA `nv-embedqa-e5-v5` (1024-dim) for Astra collections that
+ *     use the bundled NIM vectorize service — seeding this is what
+ *     makes "Attach existing" work out of the box for those.
  *
  * Operators can delete or replace any of them via the regular
  * service-CRUD routes; the full {@link DEFAULT_SERVICES} catalog is
@@ -234,7 +266,7 @@ export const DEFAULT_SERVICES: DefaultServices = {
  */
 export const DEFAULT_WORKSPACE_SEED_SERVICES: DefaultServices = {
 	chunking: [RECURSIVE_CHAR_DEFAULT, LINE_BASED_DEFAULT],
-	embedding: [OPENAI_SMALL],
+	embedding: [OPENAI_SMALL, NVIDIA_NV_EMBEDQA_E5_V5],
 };
 
 /** OpenAI `gpt-4o-mini` — the default chat LLM auto-seeded into every
