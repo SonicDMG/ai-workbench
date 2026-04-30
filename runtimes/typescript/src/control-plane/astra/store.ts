@@ -65,6 +65,14 @@ import {
 	ControlPlaneConflictError,
 	ControlPlaneNotFoundError,
 } from "../errors.js";
+import {
+	buildAgentRecord,
+	byAgentCreatedAtAsc,
+	byConversationCreatedAtDesc,
+	byMessageTsAsc,
+	freezeStringSet,
+	mergeMetadata as mergeMessageMetadata,
+} from "../shared/records.js";
 import type {
 	AppendChatMessageInput,
 	ControlPlaneStore,
@@ -106,62 +114,10 @@ import type {
 	WorkspaceRecord,
 } from "../types.js";
 
-function freezeStringSet(
-	value: ReadonlySet<string> | readonly string[] | undefined,
-): readonly string[] {
-	return Object.freeze([...new Set(value ?? [])].sort());
-}
-
-/**
- * Newest-first sort for chat conversations. Mirrors the table's
- * `created_at DESC` cluster ordering so list output is deterministic
- * even when the underlying transport (real Astra vs the test fake)
- * doesn't preserve cluster order.
- */
-function byCreatedAtDescConv(
-	a: ConversationRecord,
-	b: ConversationRecord,
-): number {
-	if (a.createdAt > b.createdAt) return -1;
-	if (a.createdAt < b.createdAt) return 1;
-	if (a.conversationId < b.conversationId) return -1;
-	if (a.conversationId > b.conversationId) return 1;
-	return 0;
-}
-
-/**
- * Oldest-first sort for agent rows. Tie-break on agent_id for total order.
- */
-function byCreatedAtAscAgent(a: AgentRecord, b: AgentRecord): number {
-	if (a.createdAt < b.createdAt) return -1;
-	if (a.createdAt > b.createdAt) return 1;
-	if (a.agentId < b.agentId) return -1;
-	if (a.agentId > b.agentId) return 1;
-	return 0;
-}
-
-/**
- * Oldest-first sort for chat messages. Mirrors `message_ts ASC`.
- */
-function byMessageTsAsc(a: MessageRecord, b: MessageRecord): number {
-	if (a.messageTs < b.messageTs) return -1;
-	if (a.messageTs > b.messageTs) return 1;
-	if (a.messageId < b.messageId) return -1;
-	if (a.messageId > b.messageId) return 1;
-	return 0;
-}
-
-function mergeMessageMetadata(
-	existing: Readonly<Record<string, string>>,
-	patch: Readonly<Record<string, string | undefined>>,
-): Readonly<Record<string, string>> {
-	const next: Record<string, string> = { ...existing };
-	for (const [k, v] of Object.entries(patch)) {
-		if (v === undefined) delete next[k];
-		else next[k] = v;
-	}
-	return Object.freeze(next);
-}
+// Pure record helpers (sort comparators, normalisation, agent
+// construction, metadata merge) live in `../shared/records.ts` so all
+// three backends use the exact same logic. See that module for the
+// rationale and the cross-backend contract.
 
 export class AstraControlPlaneStore implements ControlPlaneStore {
 	constructor(private readonly tables: TablesBundle) {}
@@ -1354,7 +1310,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		const rows = await this.tables.agents
 			.find({ workspace_id: workspaceId })
 			.toArray();
-		return rows.map(agentFromRow).sort(byCreatedAtAscAgent);
+		return rows.map(agentFromRow).sort(byAgentCreatedAtAsc);
 	}
 
 	async getAgent(
@@ -1390,26 +1346,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 				`agent with id '${agentId}' already exists`,
 			);
 		}
-		const now = nowIso();
-		const record: AgentRecord = {
-			workspaceId,
-			agentId,
-			name: input.name,
-			description: input.description ?? null,
-			systemPrompt: input.systemPrompt ?? null,
-			userPrompt: input.userPrompt ?? null,
-			toolIds: freezeStringSet([]),
-			llmServiceId: input.llmServiceId ?? null,
-			ragEnabled: input.ragEnabled ?? false,
-			knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
-			ragMaxResults: input.ragMaxResults ?? null,
-			ragMinScore: input.ragMinScore ?? null,
-			rerankEnabled: input.rerankEnabled ?? false,
-			rerankingServiceId: input.rerankingServiceId ?? null,
-			rerankMaxResults: input.rerankMaxResults ?? null,
-			createdAt: now,
-			updatedAt: now,
-		};
+		const record = buildAgentRecord(workspaceId, agentId, input);
 		await this.tables.agents.insertOne(agentToRow(record));
 		return record;
 	}
@@ -1539,7 +1476,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		// Astra's `created_at DESC` cluster ordering is enforced server-
 		// side, but the fake bundle in tests doesn't honor cluster keys.
 		// Sort defensively so tests and prod agree.
-		return rows.map(conversationFromRow).sort(byCreatedAtDescConv);
+		return rows.map(conversationFromRow).sort(byConversationCreatedAtDesc);
 	}
 
 	async getConversation(

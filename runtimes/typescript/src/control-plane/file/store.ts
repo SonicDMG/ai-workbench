@@ -40,6 +40,14 @@ import {
 	ControlPlaneConflictError,
 	ControlPlaneNotFoundError,
 } from "../errors.js";
+import {
+	buildAgentRecord,
+	byAgentCreatedAtAsc,
+	byConversationCreatedAtDesc,
+	byMessageTsAsc,
+	freezeStringSet,
+	mergeMetadata as mergeMessageMetadata,
+} from "../shared/records.js";
 import type {
 	AppendChatMessageInput,
 	ControlPlaneStore,
@@ -113,69 +121,10 @@ const TABLE_FILES: Record<Table, string> = {
 	messages: "messages.json",
 };
 
-function freezeStringSet(
-	value: ReadonlySet<string> | readonly string[] | undefined,
-): readonly string[] {
-	return Object.freeze([...new Set(value ?? [])].sort());
-}
-
-/**
- * Newest-first sort for chat conversations, matching the Astra
- * `created_at DESC` cluster ordering. Tie-break by conversation_id
- * for total ordering across same-tick creates.
- */
-function byCreatedAtDescConv(
-	a: ConversationRecord,
-	b: ConversationRecord,
-): number {
-	if (a.createdAt > b.createdAt) return -1;
-	if (a.createdAt < b.createdAt) return 1;
-	if (a.conversationId < b.conversationId) return -1;
-	if (a.conversationId > b.conversationId) return 1;
-	return 0;
-}
-
-/**
- * Oldest-first sort for agent rows. Agent listing uses creation order
- * so the first-created agent sits at the top. Tie-break by agent_id
- * for stability.
- */
-function byCreatedAtAscAgent(a: AgentRecord, b: AgentRecord): number {
-	if (a.createdAt < b.createdAt) return -1;
-	if (a.createdAt > b.createdAt) return 1;
-	if (a.agentId < b.agentId) return -1;
-	if (a.agentId > b.agentId) return 1;
-	return 0;
-}
-
-/**
- * Oldest-first sort for chat messages, matching the Astra
- * `message_ts ASC` cluster ordering. UI flips for display.
- */
-function byMessageTsAsc(a: MessageRecord, b: MessageRecord): number {
-	if (a.messageTs < b.messageTs) return -1;
-	if (a.messageTs > b.messageTs) return 1;
-	if (a.messageId < b.messageId) return -1;
-	if (a.messageId > b.messageId) return 1;
-	return 0;
-}
-
-/**
- * Merge a message metadata patch into the existing map.
- * `undefined`-valued patch entries drop the corresponding key
- * (matches the {@link UpdateChatMessageInput} contract).
- */
-function mergeMessageMetadata(
-	existing: Readonly<Record<string, string>>,
-	patch: Readonly<Record<string, string | undefined>>,
-): Readonly<Record<string, string>> {
-	const next: Record<string, string> = { ...existing };
-	for (const [k, v] of Object.entries(patch)) {
-		if (v === undefined) delete next[k];
-		else next[k] = v;
-	}
-	return Object.freeze(next);
-}
+// Pure record helpers (sort comparators, normalisation, agent
+// construction, metadata merge) live in `../shared/records.ts` so all
+// three backends use the exact same logic. See that module for the
+// rationale and the cross-backend contract.
 
 export interface FileControlPlaneOptions {
 	readonly root: string;
@@ -1401,7 +1350,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		const all = await this.readAll<AgentRecord>("agents");
 		return all
 			.filter((a) => a.workspaceId === workspaceId)
-			.sort(byCreatedAtAscAgent);
+			.sort(byAgentCreatedAtAsc);
 	}
 
 	async getAgent(
@@ -1436,26 +1385,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 					`agent with id '${agentId}' already exists`,
 				);
 			}
-			const now = nowIso();
-			const record: AgentRecord = {
-				workspaceId,
-				agentId,
-				name: input.name,
-				description: input.description ?? null,
-				systemPrompt: input.systemPrompt ?? null,
-				userPrompt: input.userPrompt ?? null,
-				toolIds: freezeStringSet([]),
-				llmServiceId: input.llmServiceId ?? null,
-				ragEnabled: input.ragEnabled ?? false,
-				knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
-				ragMaxResults: input.ragMaxResults ?? null,
-				ragMinScore: input.ragMinScore ?? null,
-				rerankEnabled: input.rerankEnabled ?? false,
-				rerankingServiceId: input.rerankingServiceId ?? null,
-				rerankMaxResults: input.rerankMaxResults ?? null,
-				createdAt: now,
-				updatedAt: now,
-			};
+			const record = buildAgentRecord(workspaceId, agentId, input);
 			return { rows: [...rows, record], result: record };
 		});
 	}
@@ -1575,7 +1505,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		const all = await this.readAll<ConversationRecord>("conversations");
 		return all
 			.filter((c) => c.workspaceId === workspaceId && c.agentId === agentId)
-			.sort(byCreatedAtDescConv);
+			.sort(byConversationCreatedAtDesc);
 	}
 
 	async getConversation(

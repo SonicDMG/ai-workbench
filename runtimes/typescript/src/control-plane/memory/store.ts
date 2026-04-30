@@ -29,6 +29,17 @@ import {
 	ControlPlaneConflictError,
 	ControlPlaneNotFoundError,
 } from "../errors.js";
+import {
+	buildAgentRecord,
+	byAgentCreatedAtAsc,
+	byConversationCreatedAtDesc,
+	byMessageTsAsc,
+	freezeCredentials,
+	freezeFilter,
+	freezeMetadata,
+	freezeStringSet,
+	mergeMetadata,
+} from "../shared/records.js";
 import type {
 	AppendChatMessageInput,
 	ControlPlaneStore,
@@ -71,130 +82,8 @@ import type {
 } from "../types.js";
 import { MemoryApiKeyRepository } from "./api-key-repository.js";
 
-/**
- * Normalise a `Set | array | undefined` input into a deduplicated,
- * sorted, frozen array. Sorted because callers expect deterministic
- * ordering on the wire — and the Astra column type is `SET<TEXT>`,
- * which is also deduplicated. */
-function freezeStringSet(
-	value: ReadonlySet<string> | readonly string[] | undefined,
-): readonly string[] {
-	const arr = [...new Set(value ?? [])].sort();
-	return Object.freeze(arr);
-}
-
 function docKey(workspace: string, catalog: string): string {
 	return `${workspace}:${catalog}`;
-}
-
-function freezeMetadata(
-	m: Readonly<Record<string, string>> | undefined,
-): Readonly<Record<string, string>> {
-	return Object.freeze({ ...(m ?? {}) });
-}
-
-function freezeFilter(
-	filter: Readonly<Record<string, unknown>> | undefined,
-): Readonly<Record<string, unknown>> {
-	return Object.freeze({ ...(filter ?? {}) });
-}
-
-function freezeCredentials(
-	c: Readonly<Record<string, string>> | undefined,
-): Readonly<Record<string, string>> {
-	return Object.freeze({ ...(c ?? {}) });
-}
-
-/**
- * Newest-first sort for conversation rows, matching the Astra
- * `created_at DESC` cluster ordering on `wb_agentic_conversations_by_agent`.
- * Tie-break by conversation_id so the result is a total order.
- */
-function byCreatedAtDesc<
-	T extends { readonly createdAt: string; readonly conversationId: string },
->(a: T, b: T): number {
-	if (a.createdAt > b.createdAt) return -1;
-	if (a.createdAt < b.createdAt) return 1;
-	if (a.conversationId < b.conversationId) return -1;
-	if (a.conversationId > b.conversationId) return 1;
-	return 0;
-}
-
-/**
- * Oldest-first sort for chat message rows, matching the Astra
- * `message_ts ASC` cluster ordering on `wb_agentic_messages_by_conversation`.
- */
-function byMessageTsAsc<
-	T extends { readonly messageTs: string; readonly messageId: string },
->(a: T, b: T): number {
-	if (a.messageTs < b.messageTs) return -1;
-	if (a.messageTs > b.messageTs) return 1;
-	if (a.messageId < b.messageId) return -1;
-	if (a.messageId > b.messageId) return 1;
-	return 0;
-}
-
-/**
- * Oldest-first sort for agent rows. Agent listing uses creation order
- * so the first-created agent sits at the top of the list.
- */
-function byCreatedAtAscAgent<
-	T extends { readonly createdAt: string; readonly agentId: string },
->(a: T, b: T): number {
-	if (a.createdAt < b.createdAt) return -1;
-	if (a.createdAt > b.createdAt) return 1;
-	if (a.agentId < b.agentId) return -1;
-	if (a.agentId > b.agentId) return 1;
-	return 0;
-}
-
-/**
- * Build a fresh {@link AgentRecord} from {@link CreateAgentInput}.
- * Centralised so memory/file/astra all default the same fields the
- * same way, mirroring the pattern used for KBs and services.
- */
-function buildAgentRecord(
-	workspaceId: string,
-	agentId: string,
-	input: CreateAgentInput,
-): AgentRecord {
-	const now = nowIso();
-	return {
-		workspaceId,
-		agentId,
-		name: input.name,
-		description: input.description ?? null,
-		systemPrompt: input.systemPrompt ?? null,
-		userPrompt: input.userPrompt ?? null,
-		toolIds: freezeStringSet([]),
-		llmServiceId: input.llmServiceId ?? null,
-		ragEnabled: input.ragEnabled ?? false,
-		knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
-		ragMaxResults: input.ragMaxResults ?? null,
-		ragMinScore: input.ragMinScore ?? null,
-		rerankEnabled: input.rerankEnabled ?? false,
-		rerankingServiceId: input.rerankingServiceId ?? null,
-		rerankMaxResults: input.rerankMaxResults ?? null,
-		createdAt: now,
-		updatedAt: now,
-	};
-}
-
-/**
- * Merge a metadata patch into an existing metadata map. Patch values
- * of `undefined` drop the corresponding key (mirroring the
- * {@link UpdateChatMessageInput} contract).
- */
-function mergeMetadata(
-	existing: Readonly<Record<string, string>>,
-	patch: Readonly<Record<string, string | undefined>>,
-): Readonly<Record<string, string>> {
-	const next: Record<string, string> = { ...existing };
-	for (const [k, v] of Object.entries(patch)) {
-		if (v === undefined) delete next[k];
-		else next[k] = v;
-	}
-	return Object.freeze(next);
 }
 
 export class MemoryControlPlaneStore implements ControlPlaneStore {
@@ -1238,7 +1127,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		await this.assertWorkspace(workspaceId);
 		const byAgent = this.agents.get(workspaceId);
 		if (!byAgent) return [];
-		return Array.from(byAgent.values()).sort(byCreatedAtAscAgent);
+		return Array.from(byAgent.values()).sort(byAgentCreatedAtAsc);
 	}
 
 	async getAgent(
@@ -1359,7 +1248,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		if (!byChat) return [];
 		// Newest-first matches the table's `created_at DESC` cluster
 		// ordering.
-		return Array.from(byChat.values()).sort(byCreatedAtDesc);
+		return Array.from(byChat.values()).sort(byConversationCreatedAtDesc);
 	}
 
 	async getConversation(

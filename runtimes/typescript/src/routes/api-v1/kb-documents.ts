@@ -49,8 +49,8 @@ import {
 	UpdateRagDocumentInputSchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
-import { toWireJob } from "./job-wire.js";
 import { resolveKb } from "./kb-descriptor.js";
+import { toWireJob } from "./serdes/index.js";
 
 export interface KbDocumentRouteDeps {
 	readonly store: ControlPlaneStore;

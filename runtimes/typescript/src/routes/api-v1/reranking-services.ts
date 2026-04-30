@@ -25,7 +25,7 @@ import {
 	UpdateRerankingServiceInputSchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
-import { toWirePage, toWireReranking } from "./service-serdes.js";
+import { toWirePage, toWireReranking } from "./serdes/index.js";
 
 export function rerankingServiceRoutes(
 	store: ControlPlaneStore,

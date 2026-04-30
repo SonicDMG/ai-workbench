@@ -5,8 +5,7 @@ Status snapshot:
 | Slice | Status |
 |---|---|
 | `RoutePlugin` interface + registry scaffold | ✅ shipped |
-| Migrate one existing route group (api-keys) onto the registry | 📋 next |
-| Migrate the remaining `/api/v1/*` route groups | 📋 follow-up |
+| Migrate every `/api/v1/*` route group onto the registry (incl. MCP) | ✅ shipped |
 | External plugin loading from `workbench.yaml` | 🔭 future |
 
 ## The problem

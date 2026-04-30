@@ -43,6 +43,7 @@ import {
 } from "../../openapi/schemas.js";
 import type { SecretResolver } from "../../secrets/provider.js";
 import { resolveKb } from "./kb-descriptor.js";
+import { toWireWorkspace } from "./serdes/index.js";
 
 export interface WorkspaceRouteDeps {
 	readonly store: ControlPlaneStore;
@@ -325,10 +326,7 @@ async function dropWorkspaceCollections(args: {
 	}
 }
 
-function toWireWorkspace(record: WorkspaceRecord) {
-	const { uid, ...rest } = record;
-	return { workspaceId: uid, ...rest };
-}
+// `toWireWorkspace` lives in `serdes/workspace.ts`.
 
 /**
  * Seed each freshly created workspace with the {@link DEFAULT_WORKSPACE_AGENTS}

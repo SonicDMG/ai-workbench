@@ -34,7 +34,7 @@ by filter.
 | `workspace.create` | `POST /api/v1/workspaces` | Includes the workspace `label` (the human-friendly `name`). |
 | `workspace.delete` | `DELETE /api/v1/workspaces/{w}` | Emitted **after** the cascade completes. |
 | `auth.login` | OIDC `/auth/callback` | `outcome: "success"` once the access token passes the runtime's own verifier; `outcome: "failure"` with `reason` on token-validation errors. |
-| `auth.refresh` | OIDC `/auth/refresh` | Successful silent refresh. Failure paths log a warn line (no audit event yet — feedback wanted). |
+| `auth.refresh` | OIDC `/auth/refresh` | `outcome: "success"` on a clean rotate. `outcome: "failure"` with `reason` ∈ `{ "no_refresh_token", "idp_rejected", "token_validation_failed" }` covers the three failure paths (missing cookie, IdP refused the refresh_token, freshly-issued access token failed self-verification). |
 | `auth.logout` | OIDC `/auth/logout` | Emitted on every cookie clear, even when no session was present. |
 
 The set is intentionally small. Adding a new event is a one-line

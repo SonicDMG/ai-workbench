@@ -18,11 +18,9 @@ import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
 import type { IngestInput } from "../ingest/pipeline.js";
 import { runKbIngest } from "../ingest/pipeline.js";
-import { logger } from "../lib/logger.js";
-import { safeErrorMessage } from "../lib/safe-error.js";
 import { resolveKb } from "../routes/api-v1/kb-descriptor.js";
+import { JobScheduler } from "./scheduler.js";
 import type { JobStore } from "./store.js";
-import type { JobRecord } from "./types.js";
 
 export interface IngestWorkerDeps {
 	readonly store: ControlPlaneStore;
@@ -45,119 +43,51 @@ export interface IngestWorkerArgs {
 	readonly input: IngestInput;
 }
 
-async function failJob(
-	jobs: JobStore,
-	workspaceId: string,
-	jobId: string,
-	message: string,
-): Promise<void> {
-	await jobs
-		.update(workspaceId, jobId, {
-			status: "failed",
-			errorMessage: safeErrorMessage(message),
-			leasedBy: null,
-			leasedAt: null,
-		})
-		.catch(() => undefined);
+/**
+ * Build a {@link JobScheduler} pre-registered with the KB-ingest
+ * handler. Today this is the only handler; future kinds (reindex, bulk
+ * export, …) call `register()` here too.
+ */
+export function buildIngestScheduler(deps: IngestWorkerDeps): JobScheduler {
+	const scheduler = new JobScheduler(deps.jobs);
+	scheduler.register<IngestInput>(
+		"ingest",
+		async ({ job, workspaceId, input, heartbeat }) => {
+			if (!job.knowledgeBaseId || !job.documentId) {
+				throw new Error(
+					"job is missing knowledgeBaseId or documentId; cannot run kb ingest pipeline",
+				);
+			}
+			const resolved = await resolveKb(
+				deps.store,
+				workspaceId,
+				job.knowledgeBaseId,
+			);
+			const result = await runKbIngest(
+				{ store: deps.store, drivers: deps.drivers, embedders: deps.embedders },
+				{
+					workspace: resolved.workspace,
+					knowledgeBase: resolved.knowledgeBase,
+					descriptor: resolved.descriptor,
+					documentId: job.documentId,
+				},
+				input,
+				(p) => heartbeat({ processed: p.processed, total: p.total }),
+			);
+			return { chunks: result.chunks };
+		},
+	);
+	return scheduler;
 }
 
 /**
- * KB-scoped sibling of {@link runIngestJob}. Drives the KB ingest
- * pipeline for one job to terminal state; resolves the KB descriptor
- * on each call so the sweeper can revive jobs whose schema was
- * mutated mid-flight (e.g. KB renamed or its embedding service
- * patched). Same lease + heartbeat semantics as the catalog path.
+ * KB-ingest entry point. Builds the scheduler, registers the ingest
+ * handler, and drives one job to terminal. Lease + heartbeat + error
+ * capture live in {@link JobScheduler}; the only kind-specific code is
+ * inside the handler above.
  */
 export async function runKbIngestJob(args: IngestWorkerArgs): Promise<void> {
 	const { deps, workspaceId, jobId, replicaId, input } = args;
-	const { store, drivers, embedders, jobs } = deps;
-
-	let job: JobRecord | null;
-	try {
-		job = await jobs.get(workspaceId, jobId);
-	} catch (err) {
-		logger.warn(
-			{
-				workspace: workspaceId,
-				jobId,
-				err: err instanceof Error ? err.message : String(err),
-			},
-			"kb ingest worker: get(job) failed; aborting",
-		);
-		return;
-	}
-	if (!job) {
-		logger.warn(
-			{ workspace: workspaceId, jobId },
-			"kb ingest worker: job not found; aborting",
-		);
-		return;
-	}
-	if (job.status === "succeeded" || job.status === "failed") {
-		return;
-	}
-	if (!job.knowledgeBaseId || !job.documentId) {
-		await failJob(
-			jobs,
-			workspaceId,
-			jobId,
-			"job is missing knowledgeBaseId or documentId; cannot run kb ingest pipeline",
-		);
-		return;
-	}
-
-	let resolved: Awaited<ReturnType<typeof resolveKb>>;
-	try {
-		resolved = await resolveKb(store, workspaceId, job.knowledgeBaseId);
-	} catch (err) {
-		await failJob(
-			jobs,
-			workspaceId,
-			jobId,
-			`kb resolution failed: ${safeErrorMessage(err)}`,
-		);
-		return;
-	}
-
-	try {
-		await jobs.update(workspaceId, jobId, {
-			status: "running",
-			leasedBy: replicaId,
-			leasedAt: new Date().toISOString(),
-		});
-		const result = await runKbIngest(
-			{ store, drivers, embedders },
-			{
-				workspace: resolved.workspace,
-				knowledgeBase: resolved.knowledgeBase,
-				descriptor: resolved.descriptor,
-				documentId: job.documentId,
-			},
-			input,
-			(p) => {
-				void jobs
-					.update(workspaceId, jobId, {
-						processed: p.processed,
-						total: p.total,
-						leasedAt: new Date().toISOString(),
-					})
-					.catch(() => undefined);
-			},
-		);
-		await jobs.update(workspaceId, jobId, {
-			status: "succeeded",
-			result: { chunks: result.chunks },
-			leasedBy: null,
-			leasedAt: null,
-		});
-	} catch (err) {
-		await jobs
-			.update(workspaceId, jobId, {
-				status: "failed",
-				errorMessage: safeErrorMessage(err),
-				leasedBy: null,
-				leasedAt: null,
-			})
-			.catch(() => undefined);
-	}
+	const scheduler = buildIngestScheduler(deps);
+	await scheduler.run<IngestInput>(workspaceId, jobId, replicaId, input);
 }

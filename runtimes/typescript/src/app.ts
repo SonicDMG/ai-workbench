@@ -48,7 +48,6 @@ import type { AppEnv } from "./lib/types.js";
 import { buildDefaultRoutePlugins } from "./plugins/default-plugins.js";
 import type { RoutePluginRegistry } from "./plugins/registry.js";
 import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
-import { mountMcpRoutes } from "./routes/api-v1/mcp.js";
 import { authLoginRoutes } from "./routes/auth.js";
 import type { ReadinessSignal } from "./routes/operational.js";
 import { operationalRoutes } from "./routes/operational.js";
@@ -307,7 +306,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	}
 	// Workspace-scoped routes are mounted through the route-plugin
 	// registry. `buildDefaultRoutePlugins` returns the in-tree set
-	// (workspaces, KB, agents, services, jobs, …); tests can pass
+	// (workspaces, KB, agents, services, jobs, MCP, …); tests can pass
 	// `routePlugins` to override or trim it. See
 	// `docs/route-plugins.md`.
 	const routePluginCtx = {
@@ -318,23 +317,13 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		jobs: jobsStore,
 		chatService: opts.chatService ?? null,
 		chatConfig: opts.chatConfig ?? null,
+		mcpConfig: opts.mcpConfig ?? { enabled: false, exposeChat: false },
 		replicaId,
 	};
 	const plugins = opts.routePlugins ?? buildDefaultRoutePlugins(routePluginCtx);
 	for (const plugin of plugins.list()) {
 		app.route(plugin.mountPath, plugin.build(routePluginCtx));
 	}
-	// MCP stays hand-wired for now: it has its own enabled flag and
-	// pulls chat-service options not part of the standard plugin
-	// context. Migration is tracked alongside docs/route-plugins.md.
-	mountMcpRoutes(app, {
-		store: opts.store,
-		drivers: opts.drivers,
-		embedders: opts.embedders,
-		chatService: opts.chatService ?? null,
-		chatConfig: opts.chatConfig ?? null,
-		mcpConfig: opts.mcpConfig ?? { enabled: false, exposeChat: false },
-	});
 
 	registerCommonErrorResponses(app);
 	registerSecuritySchemes(app);

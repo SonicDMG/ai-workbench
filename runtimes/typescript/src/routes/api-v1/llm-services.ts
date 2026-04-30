@@ -25,7 +25,7 @@ import {
 	UpdateLlmServiceInputSchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
-import { toWireLlm, toWirePage } from "./service-serdes.js";
+import { toWireLlm, toWirePage } from "./serdes/index.js";
 
 export function llmServiceRoutes(
 	store: ControlPlaneStore,

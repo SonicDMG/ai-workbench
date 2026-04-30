@@ -1,6 +1,5 @@
 /**
- * Mutable-array serialization helpers for execution-service records
- * (issue #98).
+ * Wire converters for execution-service records (issue #98).
  *
  * Records expose `supportedLanguages` / `supportedContent` / `tags` as
  * `readonly string[]`. Hono's OpenAPI response typing — derived from
@@ -13,7 +12,7 @@ import type {
 	LlmServiceRecord,
 	McpToolRecord,
 	RerankingServiceRecord,
-} from "../../control-plane/types.js";
+} from "../../../control-plane/types.js";
 
 export function toWireEmbedding(r: EmbeddingServiceRecord) {
 	return {

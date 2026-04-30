@@ -16,7 +16,14 @@
  * counterpart in `<repo>/docs/` and shouldn't.
  */
 
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+	copyFile,
+	mkdir,
+	readdir,
+	readFile,
+	rm,
+	writeFile,
+} from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,6 +31,7 @@ const HERE = fileURLToPath(new URL(".", import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
 const DOCS_SRC = resolve(REPO_ROOT, "docs");
 const STAGED = resolve(HERE, "..", ".docs-staged");
+const SITE_THEME_SRC = resolve(HERE, "..", ".vitepress", "theme");
 // `README.md` is the docs-folder index (TOC) and points at relative
 // paths from the docs/ folder; it doesn't make sense as a route on
 // the site. Skip.
@@ -32,10 +40,9 @@ const SKIP = new Set(["README.md"]);
 await rm(STAGED, { recursive: true, force: true });
 await mkdir(STAGED, { recursive: true });
 
-// Symlink the VitePress config so it lives next to the staged
-// markdown files. The config itself lives in `site/.vitepress/` (so
-// it's tracked); we mirror it into `.docs-staged/.vitepress/` so
-// `vitepress build .docs-staged` finds it.
+// Re-export the VitePress config + custom theme into the staged tree.
+// The canonical sources live in `site/.vitepress/`; this mirror is
+// what `vitepress build .docs-staged` actually loads.
 await mkdir(join(STAGED, ".vitepress"), { recursive: true });
 await writeFile(
 	join(STAGED, ".vitepress", "config.ts"),
@@ -45,6 +52,17 @@ await writeFile(
 		`export { default } from "../../.vitepress/config.ts";\n`,
 	"utf8",
 );
+
+// Stage the custom theme (entry + stylesheet) so VitePress picks up
+// the brand polish on the landing page.
+await mkdir(join(STAGED, ".vitepress", "theme"), { recursive: true });
+const themeFiles = await readdir(SITE_THEME_SRC).catch(() => []);
+for (const file of themeFiles) {
+	await copyFile(
+		join(SITE_THEME_SRC, file),
+		join(STAGED, ".vitepress", "theme", file),
+	);
+}
 
 const entries = await readdir(DOCS_SRC, { withFileTypes: true });
 let count = 0;
@@ -59,79 +77,173 @@ for (const entry of entries) {
 
 // Custom landing page using VitePress's `home` layout. Hand-rolled
 // here rather than living in the canonical docs/ — it's
-// VitePress-specific markup that doesn't belong in the source-of-
-// truth markdown.
+// VitePress-specific markup (hero/features blocks + custom HTML for
+// the stats strip) that doesn't belong in the source-of-truth
+// markdown.
 const indexMd = `---
 layout: home
 
 hero:
   name: AI Workbench
-  text: Build, inspect, and operate retrieval workflows.
+  text: A self-hosted retrieval control plane for Astra.
   tagline: |
-    A self-hosted product surface for teams building knowledge-backed
-    AI applications on DataStax Astra. Manage workspaces, catalogs,
-    vector stores, ingest jobs, saved queries, API keys, and retrieval
-    experiments from one deployable runtime and UI.
+    Stand up workspaces, knowledge bases, ingest pipelines, agents,
+    and a retrieval playground in one Docker image. Stable
+    /api/v1/* contract. MIT-licensed. Backend-pluggable from
+    in-memory to Astra tables.
   actions:
     - theme: brand
-      text: Start with the product
+      text: Quickstart
       link: /overview
     - theme: alt
-      text: Explore the architecture
+      text: Architecture
       link: /architecture
+    - theme: alt
+      text: GitHub →
+      link: https://github.com/datastax/ai-workbench
 
 features:
   - icon: 🧭
-    title: Workspace command center
+    title: Workspaces as the unit of isolation
     details: |
-      Create isolated workspaces for projects, tenants, or
-      environments. Each workspace owns its catalogs, vector stores,
-      documents, saved queries, jobs, credentials, and API keys.
-  - icon: 🗂️
-    title: Catalogs and ingest
+      One workspace per project / tenant / environment. Each owns its
+      knowledge bases, agents, services, documents, jobs, credentials,
+      and API keys — with cascade-delete formalized in the store
+      contract so cleanup is exhaustive.
+  - icon: 📚
+    title: Knowledge bases as first-class resources
     details: |
-      Turn files or raw text into searchable catalog content through
-      sync or async ingest. Background jobs stream progress over SSE
-      so operators can see what happened and when it finished.
+      A KB binds its chunking, embedding, and (optional) reranking
+      services. Astra collections are auto-provisioned on create and
+      dropped on delete. No SDK gymnastics required to spin one up.
+  - icon: 🛠️
+    title: Sync and async ingest, with resume
+    details: |
+      Ingest text or files into a KB synchronously, or kick off an
+      async job that streams progress over SSE. Cross-replica orphan
+      sweeper claims abandoned leases and resumes the pipeline.
   - icon: 🔎
-    title: Retrieval playground
+    title: Retrieval playground in the UI
     details: |
       Run text, vector, hybrid, and rerank searches against real
-      workspace data. Expand results, compare behavior, and save
-      repeatable queries without leaving the browser.
+      workspace data. Inspect scores, expand chunks, compare behavior
+      — all without writing a script.
+  - icon: 🤖
+    title: Agents with persona, RAG, and tools
+    details: |
+      User-defined agents carry a persona, KB scope, retrieval defaults,
+      and an LLM service binding. Conversations stream tokens over SSE
+      and persist tool-call history for audit.
+  - icon: 🔌
+    title: MCP façade, off by default
+    details: |
+      Expose a workspace as MCP tools so external agents can list KBs,
+      search, and chat with workspace-scoped auth. One config flag
+      turns it on; the surface returns 404 when off.
   - icon: 🔐
-    title: Safer operations by default
+    title: OIDC + workspace API keys + audit
     details: |
-      Credentials stay behind \`SecretRef\` pointers such as
-      \`env:OPENAI_API_KEY\` or \`file:/path\`. The runtime resolves
-      them only when a workspace operation needs them.
+      Browser OIDC login with PKCE, signed cookies, silent refresh.
+      API keys per workspace with rotation. Structured pino audit
+      events for every privileged action — drift-tested against the
+      docs.
   - icon: 🧱
-    title: Production-ready foundation
+    title: Pluggable from demo to production
     details: |
-      Start in memory for demos, switch to file-backed state for
-      single-node deployments, or use Astra Data API tables for a
-      durable control plane.
+      Memory backend for CI and \`docker run\`. File backend for
+      single-node self-host. Astra Data API tables for the durable
+      control plane. Same interface, same conformance suite.
   - icon: 🟩
-    title: Technical depth when you need it
+    title: Polyglot "green-box" architecture
     details: |
-      The stable \`/api/v1/*\` contract, language-native runtimes, and
-      fixture-based conformance suite are still here - just behind the
-      product workflow instead of in front of it.
+      The TypeScript runtime is the production ship path. Python
+      (FastAPI) and Java (Spring Boot) scaffolds boot the same
+      /api/v1/* contract for a real cross-runtime conformance test.
 ---
+
+<div class="workbench-stats">
+  <div class="stat">
+    <div class="num">1</div>
+    <div class="label">Docker image — runtime + UI</div>
+  </div>
+  <div class="stat">
+    <div class="num">3</div>
+    <div class="label">Pluggable control-plane backends</div>
+  </div>
+  <div class="stat">
+    <div class="num">12+</div>
+    <div class="label">Workspace-scoped resource kinds</div>
+  </div>
+  <div class="stat">
+    <div class="num">MIT</div>
+    <div class="label">License — fork freely</div>
+  </div>
+</div>
+
+## What you get
+
+AI Workbench is the control plane between your team's data sources and
+the agents you want to ground on them. It's the surface where someone
+on the operations side picks "ingest this PDF into the policy KB" and
+the surface where someone on the application side decides "this agent
+should retrieve from policy + tickets but not invoices."
+
+The implementation is intentionally boring underneath: a Hono HTTP
+runtime, [Zod](https://zod.dev) at every boundary, the
+[Astra Data API SDK](https://github.com/datastax/astra-db-ts) for
+storage, and a [conformance harness](/conformance) so the contract
+holds across runtimes.
 
 ## Quickstart
 
+Boot with the in-memory control plane — no external services required.
+
 \`\`\`bash
+git clone https://github.com/datastax/ai-workbench
+cd ai-workbench
 npm ci && npm run install:ts
+
 npm run dev                            # http://localhost:8080
+curl http://localhost:8080/healthz     # {"status":"ok"}
+curl http://localhost:8080/docs        # Scalar-rendered API reference
 \`\`\`
 
-Open the UI, create a workspace, attach a vector store, ingest content
-from a catalog, and use the playground to inspect retrieval behavior.
+Want a durable control plane? Switch to Astra tables — it's a YAML
+change. See [Configuration](/configuration). The runtime can even
+auto-detect Astra credentials from the
+[\`astra\` CLI](/astra-cli) if you have a profile configured.
 
-Want the implementation model? Read [Architecture](/architecture). Want
-the HTTP surface? Open [API spec](/api-spec) or the Scalar reference at
-\`/docs\` on a running runtime.
+## Map the docs
+
+- **[Product overview](/overview)** — workflows, mental model, and the
+  quickstart path.
+- **[Architecture](/architecture)** — components, data flow, and how
+  the layers fit together.
+- **[Green boxes](/green-boxes)** — the multi-runtime story: TS today,
+  Python and Java scaffolds tracking the same contract.
+- **[API spec](/api-spec)** — every \`/api/v1/*\` route with request /
+  response shape.
+- **[Authentication](/auth)** — middleware, OIDC login, silent refresh,
+  threat model.
+- **[Audit logging](/audit)** — what gets logged, the envelope, and the
+  doc-drift test.
+- **[Configuration](/configuration)** — \`workbench.yaml\` schema
+  reference.
+- **[Workspaces](/workspaces)** — scoping, cascade semantics, defaults.
+- **[Playground](/playground)** — UX for text / vector / hybrid /
+  rerank, ingest dialog.
+- **[Agents](/agents)** — personas, RAG defaults, per-agent LLM
+  binding, conversation routes.
+- **[MCP server](/mcp)** — expose a workspace as MCP tools for
+  external agents.
+- **[Conformance](/conformance)** — cross-runtime contract testing.
+- **[Roadmap](/roadmap)** — phased delivery plan and open questions.
+
+## License
+
+AI Workbench is [MIT-licensed](https://github.com/datastax/ai-workbench/blob/main/LICENSE) — fork it, embed it, ship it. Issues
+and pull requests welcome on
+[GitHub](https://github.com/datastax/ai-workbench).
 `;
 
 await writeFile(join(STAGED, "index.md"), indexMd, "utf8");

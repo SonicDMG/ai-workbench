@@ -377,11 +377,14 @@ export interface UpdateChatMessageInput {
  *   `messageTs ASC` (oldest-first). Ordering matches Astra's
  *   physical clustering so the wire shape doesn't depend on the
  *   backend.
- * - **Cascade on parent delete.** Deleting a workspace removes its
- *   API keys, knowledge bases, RAG documents, services, agents,
- *   conversations, and messages. Deleting a knowledge base removes
- *   its RAG documents and knowledge filters. Deleting an agent
- *   removes its conversations and messages.
+ * - **Cascade on parent delete.** The exact set + order of dependent
+ *   resources removed by each parent delete is enumerated in
+ *   [`./cascade.ts`](./cascade.ts) — `WORKSPACE_CASCADE_STEPS`,
+ *   `KNOWLEDGE_BASE_CASCADE_STEPS`, `AGENT_CASCADE_STEPS`. The
+ *   contract test at
+ *   `tests/control-plane/cascade-contract.test.ts` runs every backend
+ *   through that list, so adding a new workspace-scoped resource
+ *   without wiring it into the cascade fails CI.
  * - **Inputs are immutable shapes.** `Create*Input` and
  *   `Update*Input` are validated by the route layer before reaching
  *   the store; the store may assume well-formed input but MUST still

@@ -34,6 +34,7 @@ import {
 	PaginationQuerySchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
+import { toWireApiKey } from "./serdes/index.js";
 
 export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
@@ -175,17 +176,4 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 	return app;
 }
 
-/** Remove secret material and expose the public id naming convention. */
-function stripHash<T extends { readonly hash: string }>(
-	rec: T,
-): Omit<T, "hash"> {
-	const { hash: _hash, ...rest } = rec;
-	return rest;
-}
-
-function toWireApiKey<
-	T extends { readonly hash: string; readonly workspace: string },
->(rec: T) {
-	const { workspace, ...rest } = stripHash(rec);
-	return { workspaceId: workspace, ...rest };
-}
+// `toWireApiKey` lives in `serdes/api-key.ts`.

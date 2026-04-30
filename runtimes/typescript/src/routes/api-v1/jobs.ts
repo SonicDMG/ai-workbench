@@ -28,7 +28,7 @@ import {
 	JobRecordSchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
-import { toWireJob } from "./job-wire.js";
+import { toWireJob } from "./serdes/index.js";
 
 export interface JobsRouteDeps {
 	readonly jobs: JobStore;

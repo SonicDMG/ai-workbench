@@ -24,7 +24,7 @@ import {
 	UpdateEmbeddingServiceInputSchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
-import { toWireEmbedding, toWirePage } from "./service-serdes.js";
+import { toWireEmbedding, toWirePage } from "./serdes/index.js";
 
 export function embeddingServiceRoutes(
 	store: ControlPlaneStore,

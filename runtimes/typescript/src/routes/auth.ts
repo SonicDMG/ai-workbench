@@ -239,6 +239,11 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 		);
 		const payload = cookieValue ? cookie.verify(cookieValue) : null;
 		if (!payload?.refreshToken) {
+			audit(c, {
+				action: "auth.refresh",
+				outcome: "failure",
+				details: { scheme: "oidc", reason: "no_refresh_token" },
+			});
 			return c.json(
 				{
 					error: {
@@ -264,6 +269,11 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 				{ err: err instanceof Error ? err.message : String(err) },
 				"oidc refresh failed",
 			);
+			audit(c, {
+				action: "auth.refresh",
+				outcome: "failure",
+				details: { scheme: "oidc", reason: "idp_rejected" },
+			});
 			// Clear the cookie — the refresh_token is dead from the IdP's
 			// perspective; carrying it forward just produces another
 			// failed refresh on the next attempt.
@@ -291,6 +301,11 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 				{ err: err instanceof Error ? err.message : String(err) },
 				"refreshed access token failed self-verification",
 			);
+			audit(c, {
+				action: "auth.refresh",
+				outcome: "failure",
+				details: { scheme: "oidc", reason: "token_validation_failed" },
+			});
 			clearSessionCookie(c, clientCfg.sessionCookieName, opts);
 			return c.json({ error: { code: "token_validation_failed" } }, 502);
 		}

@@ -12,7 +12,8 @@
  * isn't probeable from the wire.
  */
 
-import type { Context, Hono } from "hono";
+import { OpenAPIHono } from "@hono/zod-openapi";
+import type { Context } from "hono";
 import { assertWorkspaceAccess } from "../../auth/authz.js";
 import type { ChatService } from "../../chat/types.js";
 import type { ChatConfig, McpConfig } from "../../config/schema.js";
@@ -33,13 +34,19 @@ export interface McpRouteDeps {
 }
 
 /**
- * Mount onto an existing OpenAPIHono app. The MCP transport doesn't
- * fit the OpenAPI route description (it's JSON-RPC under the hood),
- * so we register it as a plain catch-all on the four methods the
- * Streamable-HTTP spec uses (`GET`, `POST`, `DELETE`, `OPTIONS`).
+ * Build the MCP sub-app — mounted by the route-plugin registry under
+ * `/api/v1/workspaces`, so the visible path is
+ * `/api/v1/workspaces/:workspaceId/mcp`.
+ *
+ * The MCP transport doesn't fit the OpenAPI route description (it's
+ * JSON-RPC under the hood), so we register it as a plain catch-all on
+ * the four methods the Streamable-HTTP spec uses (`GET`, `POST`,
+ * `DELETE`, `OPTIONS`). The sub-app type is still `OpenAPIHono<AppEnv>`
+ * to satisfy the {@link RoutePlugin.build} contract; it just contains
+ * no OpenAPI-described routes.
  */
-export function mountMcpRoutes(app: Hono<AppEnv>, deps: McpRouteDeps): void {
-	const path = "/api/v1/workspaces/:workspaceId/mcp";
+export function mcpRoutes(deps: McpRouteDeps): OpenAPIHono<AppEnv> {
+	const app = new OpenAPIHono<AppEnv>();
 	const handler = async (c: Context<AppEnv>) => {
 		if (!deps.mcpConfig.enabled) {
 			throw new ApiError(
@@ -74,5 +81,6 @@ export function mountMcpRoutes(app: Hono<AppEnv>, deps: McpRouteDeps): void {
 			},
 		});
 	};
-	app.all(path, handler);
+	app.all("/:workspaceId/mcp", handler);
+	return app;
 }

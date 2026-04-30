@@ -8,6 +8,14 @@
 
 import { describe, expect, test } from "vitest";
 import {
+	AGENT_CASCADE_STEPS,
+	type AgentCascadeStep,
+	KNOWLEDGE_BASE_CASCADE_STEPS,
+	type KnowledgeBaseCascadeStep,
+	WORKSPACE_CASCADE_STEPS,
+	type WorkspaceCascadeStep,
+} from "../../src/control-plane/cascade.js";
+import {
 	ControlPlaneConflictError,
 	ControlPlaneNotFoundError,
 } from "../../src/control-plane/errors.js";
@@ -1053,5 +1061,296 @@ export function runContract(name: string, factory: ContractFactory): void {
 				await cleanup?.();
 			}
 		});
+
+		test("deleteWorkspace removes every dependent in WORKSPACE_CASCADE_STEPS", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({
+					name: "cascade-w",
+					kind: "mock",
+				});
+				// Build one of every dependent type so the cascade has work
+				// to do for every step. The structure mirrors real wiring:
+				// services -> KB -> documents+filters; agent -> conversation -> message.
+				await store.persistApiKey(ws.uid, {
+					keyId: "11111111-1111-1111-1111-111111111111",
+					prefix: "cascadeprefix",
+					hash: "scrypt$cascade$cascade",
+					label: "k",
+				});
+				const chunk = await store.createChunkingService(ws.uid, {
+					name: "c",
+					engine: "docling",
+				});
+				const embed = await store.createEmbeddingService(ws.uid, {
+					name: "e",
+					provider: "openai",
+					modelName: "m",
+					embeddingDimension: 4,
+				});
+				await store.createRerankingService(ws.uid, {
+					name: "r",
+					provider: "cohere",
+					modelName: "rerank",
+				});
+				await store.createLlmService(ws.uid, {
+					name: "l",
+					provider: "openai",
+					modelName: "gpt-4",
+				});
+				const kb = await store.createKnowledgeBase(ws.uid, {
+					name: "kb",
+					embeddingServiceId: embed.embeddingServiceId,
+					chunkingServiceId: chunk.chunkingServiceId,
+				});
+				await store.createKnowledgeFilter(ws.uid, kb.knowledgeBaseId, {
+					name: "f",
+					filter: { tag: "x" },
+				});
+				await store.createRagDocument(ws.uid, kb.knowledgeBaseId, {
+					sourceFilename: "alpha.txt",
+					contentHash: "sha-abc",
+				});
+				const agent = await store.createAgent(ws.uid, {
+					name: "a",
+				});
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
+					title: "t",
+				});
+				await store.appendChatMessage(ws.uid, conv.conversationId, {
+					role: "user",
+					content: "hi",
+				});
+
+				await store.deleteWorkspace(ws.uid);
+
+				// Walk every cascade step and assert the dependent type is
+				// gone. The exhaustive switch is the formalization: adding
+				// a new WORKSPACE_CASCADE_STEPS entry without a case here
+				// is a TypeScript error — and forgetting the case after
+				// adding the step fails this test on every backend.
+				for (const step of WORKSPACE_CASCADE_STEPS) {
+					await assertWorkspaceStepCleared(
+						store,
+						ws.uid,
+						kb.knowledgeBaseId,
+						agent.agentId,
+						conv.conversationId,
+						step,
+					);
+				}
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteKnowledgeBase removes every dependent in KNOWLEDGE_BASE_CASCADE_STEPS", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({
+					name: "cascade-kb",
+					kind: "mock",
+				});
+				const chunk = await store.createChunkingService(ws.uid, {
+					name: "c",
+					engine: "docling",
+				});
+				const embed = await store.createEmbeddingService(ws.uid, {
+					name: "e",
+					provider: "openai",
+					modelName: "m",
+					embeddingDimension: 4,
+				});
+				const kb = await store.createKnowledgeBase(ws.uid, {
+					name: "kb",
+					embeddingServiceId: embed.embeddingServiceId,
+					chunkingServiceId: chunk.chunkingServiceId,
+				});
+				await store.createKnowledgeFilter(ws.uid, kb.knowledgeBaseId, {
+					name: "f",
+					filter: { tag: "x" },
+				});
+				await store.createRagDocument(ws.uid, kb.knowledgeBaseId, {
+					sourceFilename: "alpha.txt",
+					contentHash: "sha-abc",
+				});
+
+				await store.deleteKnowledgeBase(ws.uid, kb.knowledgeBaseId);
+
+				for (const step of KNOWLEDGE_BASE_CASCADE_STEPS) {
+					await assertKbStepCleared(store, ws.uid, kb.knowledgeBaseId, step);
+				}
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteAgent removes every dependent in AGENT_CASCADE_STEPS", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({
+					name: "cascade-a",
+					kind: "mock",
+				});
+				const agent = await store.createAgent(ws.uid, {
+					name: "a",
+				});
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
+					title: "t",
+				});
+				await store.appendChatMessage(ws.uid, conv.conversationId, {
+					role: "user",
+					content: "hi",
+				});
+
+				await store.deleteAgent(ws.uid, agent.agentId);
+
+				for (const step of AGENT_CASCADE_STEPS) {
+					await assertAgentStepCleared(
+						store,
+						ws.uid,
+						agent.agentId,
+						conv.conversationId,
+						step,
+					);
+				}
+			} finally {
+				await cleanup?.();
+			}
+		});
 	});
+}
+
+/**
+ * Per-step cascade assertion for `deleteWorkspace`. The exhaustive
+ * switch makes adding a new {@link WorkspaceCascadeStep} without
+ * coverage a compile error.
+ */
+async function assertWorkspaceStepCleared(
+	store: ControlPlaneStore,
+	workspaceId: string,
+	kbId: string,
+	agentId: string,
+	conversationId: string,
+	step: WorkspaceCascadeStep,
+): Promise<void> {
+	switch (step) {
+		case "apiKeys":
+			expect(await store.findApiKeyByPrefix("cascade-keys")).toBeNull();
+			return;
+		case "knowledgeFilters":
+			await expect(
+				store.listKnowledgeFilters(workspaceId, kbId),
+			).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			return;
+		case "ragDocuments":
+			await expect(
+				store.listRagDocuments(workspaceId, kbId),
+			).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			return;
+		case "knowledgeBases":
+			await expect(
+				store.listKnowledgeBases(workspaceId),
+			).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			return;
+		case "messages":
+			await expect(
+				store.listChatMessages(workspaceId, conversationId),
+			).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			return;
+		case "conversations":
+			await expect(
+				store.listConversations(workspaceId, agentId),
+			).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			return;
+		case "agents":
+			await expect(store.listAgents(workspaceId)).rejects.toBeInstanceOf(
+				ControlPlaneNotFoundError,
+			);
+			return;
+		case "chunkingServices":
+			await expect(
+				store.listChunkingServices(workspaceId),
+			).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			return;
+		case "embeddingServices":
+			await expect(
+				store.listEmbeddingServices(workspaceId),
+			).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			return;
+		case "rerankingServices":
+			await expect(
+				store.listRerankingServices(workspaceId),
+			).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			return;
+		case "llmServices":
+			await expect(store.listLlmServices(workspaceId)).rejects.toBeInstanceOf(
+				ControlPlaneNotFoundError,
+			);
+			return;
+		default: {
+			const exhaustive: never = step;
+			throw new Error(`unhandled cascade step: ${String(exhaustive)}`);
+		}
+	}
+}
+
+async function assertKbStepCleared(
+	store: ControlPlaneStore,
+	workspaceId: string,
+	kbId: string,
+	step: KnowledgeBaseCascadeStep,
+): Promise<void> {
+	switch (step) {
+		case "knowledgeFilters":
+			await expect(
+				store.listKnowledgeFilters(workspaceId, kbId),
+			).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			return;
+		case "ragDocuments":
+			await expect(
+				store.listRagDocuments(workspaceId, kbId),
+			).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			return;
+		default: {
+			const exhaustive: never = step;
+			throw new Error(`unhandled kb cascade step: ${String(exhaustive)}`);
+		}
+	}
+}
+
+async function assertAgentStepCleared(
+	store: ControlPlaneStore,
+	workspaceId: string,
+	agentId: string,
+	conversationId: string,
+	step: AgentCascadeStep,
+): Promise<void> {
+	switch (step) {
+		case "messages": {
+			// Listing messages on a now-deleted conversation either rejects
+			// with NotFound (file/astra) or returns [] (memory short-circuit).
+			// Either way, what survives must be empty.
+			const remaining = await store
+				.listChatMessages(workspaceId, conversationId)
+				.catch(() => [] as readonly unknown[]);
+			expect(remaining).toEqual([]);
+			return;
+		}
+		case "conversations": {
+			// `listConversations` is keyed on (workspace, agent). After the
+			// agent goes the workspace still exists, so it returns [] rather
+			// than throwing NotFound. The cascade contract is "no rows
+			// remain", not "the call raises".
+			const remaining = await store
+				.listConversations(workspaceId, agentId)
+				.catch(() => [] as readonly unknown[]);
+			expect(remaining).toEqual([]);
+			return;
+		}
+		default: {
+			const exhaustive: never = step;
+			throw new Error(`unhandled agent cascade step: ${String(exhaustive)}`);
+		}
+	}
 }

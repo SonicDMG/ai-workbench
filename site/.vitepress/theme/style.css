@@ -1,0 +1,82 @@
+/*
+ * AI Workbench — landing-page brand polish.
+ *
+ * Overrides VitePress's default-theme CSS variables so the hero +
+ * features block carries DataStax accent colors without forking the
+ * whole theme. Scoped to `.VPHome` so doc pages keep VitePress's
+ * standard reading look.
+ */
+
+:root {
+	--vp-c-brand-1: #2b6cb0;
+	--vp-c-brand-2: #2c5282;
+	--vp-c-brand-3: #1a365d;
+	--vp-c-brand-soft: rgba(43, 108, 176, 0.14);
+
+	--vp-home-hero-name-color: transparent;
+	--vp-home-hero-name-background: linear-gradient(
+		120deg,
+		#2b6cb0 30%,
+		#38b2ac 70%
+	);
+
+	--vp-home-hero-image-background-image: linear-gradient(
+		-45deg,
+		#2b6cb0 50%,
+		#38b2ac 50%
+	);
+	--vp-home-hero-image-filter: blur(48px);
+}
+
+.dark {
+	--vp-c-brand-1: #63b3ed;
+	--vp-c-brand-2: #4299e1;
+	--vp-c-brand-3: #2b6cb0;
+	--vp-c-brand-soft: rgba(99, 179, 237, 0.16);
+}
+
+/* Tighter hero — VitePress default leaves a *lot* of space. */
+.VPHome .VPHero {
+	padding-bottom: 32px;
+}
+
+/* Section spacing for the hand-rolled blocks below the features grid. */
+.VPHome .vp-doc h2 {
+	margin-top: 56px;
+	padding-top: 24px;
+	border-top: 1px solid var(--vp-c-divider);
+}
+
+.VPHome .vp-doc h2:first-of-type {
+	margin-top: 64px;
+}
+
+/* Stats strip — three pills the home page uses to show "this is a real,
+ * shipped product, not a demo". Rendered via plain markdown so the
+ * landing page stays pure markdown + CSS. */
+.workbench-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 16px;
+	margin: 28px 0 8px;
+}
+
+.workbench-stats > .stat {
+	border: 1px solid var(--vp-c-divider);
+	border-radius: 12px;
+	padding: 18px 20px;
+	background: var(--vp-c-bg-soft);
+}
+
+.workbench-stats .stat .num {
+	font-size: 28px;
+	font-weight: 700;
+	color: var(--vp-c-brand-1);
+	line-height: 1.1;
+}
+
+.workbench-stats .stat .label {
+	margin-top: 6px;
+	color: var(--vp-c-text-2);
+	font-size: 14px;
+}

@@ -1,7 +1,7 @@
 /**
  * Default route-plugin registry — wraps every in-tree workspace-
  * scoped route module as a {@link RoutePlugin} so `app.ts` can mount
- * them through one iteration instead of 12 hand-wired `app.route(...)`
+ * them through one iteration instead of 13 hand-wired `app.route(...)`
  * calls.
  *
  * Adding a new workspace-scoped route should now mean:
@@ -12,10 +12,9 @@
  * exercise a subset of routes; production wiring goes through
  * `buildDefaultRoutePlugins(ctx)`.
  *
- * MCP routes are intentionally NOT plugged in here — they're gated by
- * `mcpConfig.enabled` and need access to chat-service options that
- * aren't part of the standard {@link RoutePluginContext}. Mounted
- * inline in `app.ts` for now.
+ * MCP is plugged in alongside the rest. It is gated at request time by
+ * `ctx.mcpConfig.enabled` (returns 404 when off) so the surface isn't
+ * probeable from the wire when disabled.
  */
 
 import { agentRoutes } from "../routes/api-v1/agents.js";
@@ -28,6 +27,7 @@ import { kbDocumentRoutes } from "../routes/api-v1/kb-documents.js";
 import { knowledgeBaseRoutes } from "../routes/api-v1/knowledge-bases.js";
 import { knowledgeFilterRoutes } from "../routes/api-v1/knowledge-filters.js";
 import { llmServiceRoutes } from "../routes/api-v1/llm-services.js";
+import { mcpRoutes } from "../routes/api-v1/mcp.js";
 import { rerankingServiceRoutes } from "../routes/api-v1/reranking-services.js";
 import { workspaceRoutes } from "../routes/api-v1/workspaces.js";
 import { RoutePluginRegistry } from "./registry.js";
@@ -138,6 +138,19 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					embedders: ctx.embedders,
 					jobs: ctx.jobs,
 					replicaId: ctx.replicaId,
+				}),
+		},
+		{
+			id: "mcp",
+			mountPath: WORKSPACE_MOUNT,
+			build: () =>
+				mcpRoutes({
+					store: ctx.store,
+					drivers: ctx.drivers,
+					embedders: ctx.embedders,
+					chatService: ctx.chatService,
+					chatConfig: ctx.chatConfig,
+					mcpConfig: ctx.mcpConfig,
 				}),
 		},
 	];

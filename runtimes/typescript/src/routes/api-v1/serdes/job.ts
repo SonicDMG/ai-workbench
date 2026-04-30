@@ -1,4 +1,4 @@
-import type { JobRecord } from "../../jobs/types.js";
+import type { JobRecord } from "../../../jobs/types.js";
 
 /** Convert the internal job record to the public API naming convention. */
 export function toWireJob(job: JobRecord) {

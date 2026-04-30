@@ -19,7 +19,7 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { ChatService } from "../chat/types.js";
-import type { ChatConfig } from "../config/schema.js";
+import type { ChatConfig, McpConfig } from "../config/schema.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
@@ -30,6 +30,13 @@ import type { SecretResolver } from "../secrets/provider.js";
 /**
  * Narrowed view of {@link AppOptions} that plugins receive. Adding a
  * field here is a breaking change for every plugin — keep it small.
+ *
+ * `chatService` / `chatConfig` are the chat-completion façade and its
+ * config; either may be null when chat isn't configured.
+ *
+ * `mcpConfig` carries the MCP feature flag + `exposeChat` toggle; it is
+ * always non-null (defaults to `{ enabled: false, exposeChat: false }`)
+ * so the MCP plugin can hard-gate its surface without optional-chaining.
  */
 export interface RoutePluginContext {
 	readonly store: ControlPlaneStore;
@@ -39,6 +46,7 @@ export interface RoutePluginContext {
 	readonly jobs: JobStore;
 	readonly chatService: ChatService | null;
 	readonly chatConfig: ChatConfig | null;
+	readonly mcpConfig: McpConfig;
 	readonly replicaId: string;
 }
 

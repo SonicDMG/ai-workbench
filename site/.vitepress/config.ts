@@ -95,7 +95,8 @@ export default defineConfig({
 			},
 		],
 		footer: {
-			message: "Released under the TBD license.",
+			message:
+				'Released under the <a href="https://github.com/datastax/ai-workbench/blob/main/LICENSE">MIT license</a>.',
 			copyright: "Copyright © 2026 DataStax",
 		},
 	},
