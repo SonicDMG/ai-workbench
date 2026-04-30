@@ -680,6 +680,13 @@ export const AstraCliInfoSchema = z.discriminatedUnion("detected", [
 ]);
 export type AstraCliInfo = z.infer<typeof AstraCliInfoSchema>;
 
+/* ---------------- runtime feature flags ---------------- */
+
+export const FeaturesSchema = z.object({
+	mcp: z.object({ enabled: z.boolean() }),
+});
+export type Features = z.infer<typeof FeaturesSchema>;
+
 export const KIND_LABELS: Record<WorkspaceKind, string> = {
 	astra: "Astra DB",
 	hcd: "Hyper-Converged Database",

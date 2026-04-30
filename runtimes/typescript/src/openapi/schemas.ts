@@ -52,6 +52,19 @@ export const VersionSchema = z
 	.openapi("Version");
 
 /**
+ * Runtime feature flags exposed to the web UI so it can hide
+ * affordances that aren't wired up server-side. Read-only — flips
+ * driven by `workbench.yaml` at startup.
+ */
+export const FeaturesSchema = z
+	.object({
+		mcp: z.object({
+			enabled: z.boolean().openapi({ example: false }),
+		}),
+	})
+	.openapi("Features");
+
+/**
  * Public shape of `astra-cli` auto-detection at runtime startup.
  * Whether the runtime resolved a profile/database from the `astra`
  * CLI, and which one. The token is never exposed on the wire — the

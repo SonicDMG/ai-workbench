@@ -144,6 +144,39 @@ describe("operational routes", () => {
 		expect(JSON.stringify(body)).not.toContain("token");
 	});
 
+	test("GET /features defaults mcp.enabled to false when no mcpConfig is passed", async () => {
+		const { app } = makeApp();
+		const res = await app.request("/features");
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body).toEqual({ mcp: { enabled: false } });
+	});
+
+	test("GET /features reflects mcpConfig.enabled when MCP is on", async () => {
+		const store = new MemoryControlPlaneStore();
+		const driver = new MockVectorStoreDriver();
+		const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const auth = new AuthResolver({
+			mode: "disabled",
+			anonymousPolicy: "allow",
+			verifiers: [],
+		});
+		const embedders = makeFakeEmbedderFactory();
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders,
+			mcpConfig: { enabled: true, exposeChat: false },
+		});
+		const res = await app.request("/features");
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.mcp.enabled).toBe(true);
+	});
+
 	test("unhandled errors return a generic envelope", async () => {
 		const { app } = makeApp();
 		app.get("/boom", () => {

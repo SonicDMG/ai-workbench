@@ -1,4 +1,11 @@
-import { ArrowLeft, Bot, ExternalLink, Pencil, Trash2, X } from "lucide-react";
+import {
+	ArrowLeft,
+	ExternalLink,
+	Pencil,
+	Sparkles,
+	Trash2,
+	X,
+} from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -10,9 +17,11 @@ import { ApiKeysPanel } from "@/components/workspaces/ApiKeysPanel";
 import { DeleteDialog } from "@/components/workspaces/DeleteDialog";
 import { KindBadge } from "@/components/workspaces/KindBadge";
 import { KnowledgeBasesPanel } from "@/components/workspaces/KnowledgeBasesPanel";
+import { McpUrlButton } from "@/components/workspaces/McpUrlButton";
 import { ServicesPanel } from "@/components/workspaces/ServicesPanel";
 import { TestConnectionPanel } from "@/components/workspaces/TestConnectionPanel";
 import { WorkspaceForm } from "@/components/workspaces/WorkspaceForm";
+import { useFeatures } from "@/hooks/useFeatures";
 import {
 	useDeleteWorkspace,
 	useUpdateWorkspace,
@@ -31,6 +40,8 @@ export function WorkspaceDetailPage() {
 	const { data, isLoading, isError, error } = useWorkspace(workspaceId);
 	const update = useUpdateWorkspace(workspaceId ?? "");
 	const del = useDeleteWorkspace();
+	const features = useFeatures();
+	const mcpEnabled = features.data?.mcp.enabled === true;
 	const [editing, setEditing] = useState(false);
 	const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -79,15 +90,22 @@ export function WorkspaceDetailPage() {
 				<div className="flex shrink-0 flex-col items-end gap-2">
 					<div className="flex items-center gap-2">
 						{!editing ? (
-							<TestConnectionPanel workspaceId={data.workspaceId} />
-						) : null}
-						{!editing ? (
-							<Button variant="secondary" asChild>
-								<Link to={`/workspaces/${data.workspaceId}/agents`}>
-									<Bot className="h-4 w-4" />
-									Agents
-								</Link>
-							</Button>
+							<>
+								<Button variant="brand" asChild>
+									<Link to={`/workspaces/${data.workspaceId}/agents`}>
+										<Sparkles className="h-4 w-4" />
+										Agents
+									</Link>
+								</Button>
+								{mcpEnabled ? (
+									<McpUrlButton workspaceId={data.workspaceId} />
+								) : null}
+								<div
+									aria-hidden="true"
+									className="mx-1 h-6 w-px bg-slate-200"
+								/>
+								<TestConnectionPanel workspaceId={data.workspaceId} />
+							</>
 						) : null}
 						{editing ? (
 							<Button variant="ghost" onClick={() => setEditing(false)}>

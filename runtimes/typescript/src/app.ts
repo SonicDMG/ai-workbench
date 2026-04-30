@@ -282,7 +282,12 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 
 	app.route(
 		"/",
-		operationalRoutes(opts.store, opts.readiness, opts.astraCli ?? null),
+		operationalRoutes(
+			opts.store,
+			opts.readiness,
+			opts.astraCli ?? null,
+			opts.mcpConfig ?? null,
+		),
 	);
 
 	if (opts.login) {

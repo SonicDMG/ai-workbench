@@ -36,6 +36,8 @@ import {
 	type EmbeddingServiceRecord,
 	EmbeddingServiceRecordSchema,
 	ErrorEnvelopeSchema,
+	type Features,
+	FeaturesSchema,
 	type JobRecord,
 	JobRecordSchema,
 	type KbAsyncIngestResponse,
@@ -212,6 +214,28 @@ export const api = {
 			return parsed.success ? parsed.data : null;
 		} catch {
 			return null;
+		}
+	},
+
+	/**
+	 * Runtime feature flags. Lives outside `/api/v1` (see also
+	 * `/astra-cli`) so the UI can read it without auth, and falls back
+	 * to all-disabled when the endpoint is unreachable so older runtimes
+	 * keep working.
+	 */
+	getFeatures: async (): Promise<Features> => {
+		const fallback: Features = { mcp: { enabled: false } };
+		try {
+			const res = await fetch("/features", {
+				credentials: "include",
+				headers: { accept: "application/json" },
+			});
+			if (!res.ok) return fallback;
+			const body = (await res.json()) as unknown;
+			const parsed = FeaturesSchema.safeParse(body);
+			return parsed.success ? parsed.data : fallback;
+		} catch {
+			return fallback;
 		}
 	},
 

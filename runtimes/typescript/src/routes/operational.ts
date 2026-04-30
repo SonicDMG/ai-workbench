@@ -1,5 +1,6 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { AstraCliInfo } from "../config/astra-cli.js";
+import type { McpConfig } from "../config/schema.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import { errorEnvelope } from "../lib/errors.js";
 import { makeOpenApi } from "../lib/openapi.js";
@@ -8,6 +9,7 @@ import {
 	AstraCliInfoSchema,
 	BannerSchema,
 	ErrorEnvelopeSchema,
+	FeaturesSchema,
 	HealthSchema,
 	ReadySchema,
 	VersionSchema,
@@ -29,6 +31,7 @@ export function operationalRoutes(
 	store: ControlPlaneStore,
 	readiness?: ReadinessSignal,
 	astraCli: AstraCliInfo | null = null,
+	mcpConfig: McpConfig | null = null,
 ): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
 
@@ -154,6 +157,30 @@ export function operationalRoutes(
 					commit: COMMIT,
 					buildTime: BUILD_TIME,
 					node: process.version,
+				},
+				200,
+			),
+	);
+
+	app.openapi(
+		createRoute({
+			method: "get",
+			path: "/features",
+			tags: ["operational"],
+			summary: "Runtime feature flags",
+			description:
+				"Read-only feature toggles the web UI uses to hide affordances that aren't wired up server-side (e.g. MCP). Mirrors the relevant `workbench.yaml` flags as resolved at startup.",
+			responses: {
+				200: {
+					content: { "application/json": { schema: FeaturesSchema } },
+					description: "Feature flag snapshot",
+				},
+			},
+		}),
+		(c) =>
+			c.json(
+				{
+					mcp: { enabled: mcpConfig?.enabled === true },
 				},
 				200,
 			),
