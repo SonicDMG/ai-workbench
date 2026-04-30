@@ -88,7 +88,10 @@ function toAgentWire(record: AgentRecord): AgentWire {
 		description: record.description,
 		systemPrompt: record.systemPrompt,
 		userPrompt: record.userPrompt,
-		llmServiceId: record.llmServiceId,
+		// Coerce undefined → null so legacy file-stored rows that pre-date
+		// the `llmServiceId` column don't leak `undefined` (which JSON
+		// drops, breaking nullable-but-required client schemas).
+		llmServiceId: record.llmServiceId ?? null,
 		knowledgeBaseIds: [...record.knowledgeBaseIds],
 		ragEnabled: record.ragEnabled,
 		ragMaxResults: record.ragMaxResults,

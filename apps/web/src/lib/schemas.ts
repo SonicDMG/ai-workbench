@@ -449,21 +449,26 @@ export type KbAsyncIngestResponse = z.infer<typeof KbAsyncIngestResponseSchema>;
 
 /* ---------------- Agents + conversations (workspace-scoped) ---------------- */
 
+// Use `.nullish()` (= nullable + optional) on every nullable field so
+// agent rows persisted before this branch (file driver, legacy Bobbie
+// rows) don't fail validation when fields haven't been backfilled.
+// JSON.stringify drops `undefined`, so a missing-column path lands here
+// as the field being absent rather than explicitly null.
 export const AgentRecordSchema = z.object({
 	workspaceId: z.string().uuid(),
 	agentId: z.string().uuid(),
 	name: z.string(),
-	description: z.string().nullable(),
-	systemPrompt: z.string().nullable(),
-	userPrompt: z.string().nullable(),
-	llmServiceId: z.string().uuid().nullable(),
-	knowledgeBaseIds: z.array(z.string().uuid()),
+	description: z.string().nullish(),
+	systemPrompt: z.string().nullish(),
+	userPrompt: z.string().nullish(),
+	llmServiceId: z.string().uuid().nullish(),
+	knowledgeBaseIds: z.array(z.string().uuid()).default([]),
 	ragEnabled: z.boolean(),
-	ragMaxResults: z.number().int().nullable(),
-	ragMinScore: z.number().nullable(),
+	ragMaxResults: z.number().int().nullish(),
+	ragMinScore: z.number().nullish(),
 	rerankEnabled: z.boolean(),
-	rerankingServiceId: z.string().uuid().nullable(),
-	rerankMaxResults: z.number().int().nullable(),
+	rerankingServiceId: z.string().uuid().nullish(),
+	rerankMaxResults: z.number().int().nullish(),
 	createdAt: z.string(),
 	updatedAt: z.string(),
 });
