@@ -545,20 +545,17 @@ describe("knowledge-base routes", () => {
 			rerankModel: null,
 		});
 
-		const res = await app.request(
-			`/api/v1/workspaces/${ws}/knowledge-bases`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					name: "attached",
-					embeddingServiceId: embId,
-					chunkingServiceId: chunkId,
-					attach: true,
-					vectorCollection: "preexisting",
-				}),
-			},
-		);
+		const res = await app.request(`/api/v1/workspaces/${ws}/knowledge-bases`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "attached",
+				embeddingServiceId: embId,
+				chunkingServiceId: chunkId,
+				attach: true,
+				vectorCollection: "preexisting",
+			}),
+		});
 		expect(res.status, await res.clone().text()).toBe(201);
 		const kb = await json(res);
 		expect(kb.vectorCollection).toBe("preexisting");
@@ -592,19 +589,16 @@ describe("knowledge-base routes", () => {
 			name: "c",
 			engine: "docling",
 		});
-		const res = await app.request(
-			`/api/v1/workspaces/${ws}/knowledge-bases`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					name: "no-target",
-					embeddingServiceId: embId,
-					chunkingServiceId: chunkId,
-					attach: true,
-				}),
-			},
-		);
+		const res = await app.request(`/api/v1/workspaces/${ws}/knowledge-bases`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "no-target",
+				embeddingServiceId: embId,
+				chunkingServiceId: chunkId,
+				attach: true,
+			}),
+		});
 		expect(res.status).toBe(400);
 		expect((await json(res)).error.code).toBe("vector_collection_required");
 	});
@@ -622,20 +616,17 @@ describe("knowledge-base routes", () => {
 			name: "c",
 			engine: "docling",
 		});
-		const res = await app.request(
-			`/api/v1/workspaces/${ws}/knowledge-bases`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					name: "nope",
-					embeddingServiceId: embId,
-					chunkingServiceId: chunkId,
-					attach: true,
-					vectorCollection: "does-not-exist",
-				}),
-			},
-		);
+		const res = await app.request(`/api/v1/workspaces/${ws}/knowledge-bases`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "nope",
+				embeddingServiceId: embId,
+				chunkingServiceId: chunkId,
+				attach: true,
+				vectorCollection: "does-not-exist",
+			}),
+		});
 		expect(res.status).toBe(404);
 		expect((await json(res)).error.code).toBe("collection_not_found");
 	});
@@ -663,20 +654,17 @@ describe("knowledge-base routes", () => {
 			rerankProvider: null,
 			rerankModel: null,
 		});
-		const res = await app.request(
-			`/api/v1/workspaces/${ws}/knowledge-bases`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					name: "mismatch",
-					embeddingServiceId: embId,
-					chunkingServiceId: chunkId,
-					attach: true,
-					vectorCollection: "small_dim",
-				}),
-			},
-		);
+		const res = await app.request(`/api/v1/workspaces/${ws}/knowledge-bases`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "mismatch",
+				embeddingServiceId: embId,
+				chunkingServiceId: chunkId,
+				attach: true,
+				vectorCollection: "small_dim",
+			}),
+		});
 		expect(res.status).toBe(400);
 		expect((await json(res)).error.code).toBe("dimension_mismatch");
 	});
