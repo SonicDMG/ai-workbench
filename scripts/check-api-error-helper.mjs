@@ -39,6 +39,10 @@ const ALLOWLIST = new Set([
 	// WorkspaceDetailPage so deep links to a deleted workspace's chat
 	// surface a friendly empty state instead of the generic error.
 	resolve(WEB_SRC, "pages/ChatPage.tsx"),
+	// AgentsPage uses the same `workspace_not_found` short-circuit so
+	// deep links to a deleted workspace's agent management surface a
+	// friendly empty state instead of the generic error.
+	resolve(WEB_SRC, "pages/AgentsPage.tsx"),
 ]);
 
 const PATTERN = /instanceof\s+ApiError\b/;

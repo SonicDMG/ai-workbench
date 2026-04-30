@@ -1,5 +1,6 @@
 import {
 	ArrowLeft,
+	Bot,
 	ExternalLink,
 	MessageSquare,
 	Pencil,
@@ -86,6 +87,14 @@ export function WorkspaceDetailPage() {
 				<div className="flex shrink-0 flex-col items-end gap-2">
 					<div className="flex items-center gap-2">
 						{!editing ? <TestConnectionPanel uid={data.workspaceId} /> : null}
+						{!editing ? (
+							<Button variant="secondary" asChild>
+								<Link to={`/workspaces/${data.workspaceId}/agents`}>
+									<Bot className="h-4 w-4" />
+									Agents
+								</Link>
+							</Button>
+						) : null}
 						{!editing ? (
 							<Button variant="secondary" asChild>
 								<Link to={`/workspaces/${data.workspaceId}/chat`}>

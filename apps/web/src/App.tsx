@@ -37,6 +37,9 @@ const KnowledgeBaseExplorerPage = lazy(() =>
 const ChatPage = lazy(() =>
 	import("@/pages/ChatPage").then((m) => ({ default: m.ChatPage })),
 );
+const AgentsPage = lazy(() =>
+	import("@/pages/AgentsPage").then((m) => ({ default: m.AgentsPage })),
+);
 
 export function App() {
 	return (
@@ -85,6 +88,10 @@ function RoutedView() {
 						element={<WorkspaceDetailPage />}
 					/>
 					<Route path="/workspaces/:workspaceUid/chat" element={<ChatPage />} />
+					<Route
+						path="/workspaces/:workspaceUid/agents"
+						element={<AgentsPage />}
+					/>
 					<Route
 						path="/workspaces/:workspaceUid/knowledge-bases/:knowledgeBaseUid"
 						element={<KnowledgeBaseExplorerPage />}
