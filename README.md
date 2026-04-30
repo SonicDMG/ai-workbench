@@ -125,40 +125,37 @@ All routes documented at `/docs` (Scalar UI) and
 
 ### `/api/v1/*`
 
-> Paths in this table are wrapped in `<sub>` so GitHub renders them at a
-> smaller size — every `{w}` workspace path is long enough that the
-> default font would crush the Purpose column. The shape of the table
-> is otherwise unchanged.
+> All paths below are relative to the `/api/v1` prefix — e.g. `workspaces` resolves to `/api/v1/workspaces`. Stripping the prefix from each row keeps the Path column narrow enough that the Purpose column has room to breathe.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET / POST` | <sub>`/api/v1/workspaces`</sub> | List / create workspaces |
-| `GET / PATCH / DELETE` | <sub>`/api/v1/workspaces/{w}`</sub> | Workspace CRUD (DELETE cascades) |
-| `POST` | <sub>`/api/v1/workspaces/{w}/test-connection`</sub> | Run a live workspace connection check |
-| `GET / POST` | <sub>`/api/v1/workspaces/{w}/knowledge-bases`</sub> | List / create knowledge bases (POST auto-provisions the underlying vector collection) |
-| `GET / PATCH / DELETE` | <sub>`/api/v1/workspaces/{w}/knowledge-bases/{kb}`</sub> | KB CRUD (DELETE drops the collection + cascades RAG documents) |
-| `GET / POST` | <sub>`/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents`</sub> | List / register a document in a KB |
-| `GET / PATCH / DELETE` | <sub>`/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents/{d}`</sub> | Document metadata CRUD (DELETE cascades chunks in the KB's collection) |
-| `GET` | <sub>`/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents/{d}/chunks`</sub> | List the chunks under a document |
-| `POST` | <sub>`/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest`</sub> | Sync ingest (chunk → embed → upsert → register Document) |
-| `POST` | <sub>`/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest?async=true`</sub> | Same pipeline, returns 202 + job pointer |
-| `POST` | <sub>`/api/v1/workspaces/{w}/knowledge-bases/{kb}/records`</sub> | Upsert vector or text records (text → server-side `$vectorize` when supported, otherwise client-side embed) |
-| `DELETE` | <sub>`/api/v1/workspaces/{w}/knowledge-bases/{kb}/records/{rid}`</sub> | Delete one |
-| `POST` | <sub>`/api/v1/workspaces/{w}/knowledge-bases/{kb}/search`</sub> | KB-scoped search (vector / text, optional hybrid + rerank) |
-| `GET / POST / DELETE` | <sub>`/api/v1/workspaces/{w}/chunking-services`</sub> | Chunking-service CRUD |
-| `GET / POST / DELETE` | <sub>`/api/v1/workspaces/{w}/embedding-services`</sub> | Embedding-service CRUD |
-| `GET / POST / DELETE` | <sub>`/api/v1/workspaces/{w}/reranking-services`</sub> | Reranking-service CRUD |
-| `GET` | <sub>`/api/v1/workspaces/{w}/jobs/{jobId}`</sub> | Poll an async-ingest job |
-| `GET` | <sub>`/api/v1/workspaces/{w}/jobs/{jobId}/events`</sub> | SSE stream of job updates until terminal state |
-| `GET / POST / PATCH / DELETE` | <sub>`/api/v1/workspaces/{w}/llm-services`</sub> | LLM-service CRUD (workspace-scoped chat-completion executors) |
-| `GET / POST / PATCH / DELETE` | <sub>`/api/v1/workspaces/{w}/agents`</sub> | User-defined agent CRUD — each carries persona, RAG defaults, and an optional `llmServiceId` |
-| `GET / POST / PATCH / DELETE` | <sub>`/api/v1/workspaces/{w}/agents/{a}/conversations`</sub> | Per-agent conversation CRUD |
-| `GET` | <sub>`/api/v1/workspaces/{w}/agents/{a}/conversations/{c}/messages`</sub> | Conversation history, oldest-first |
-| `POST` | <sub>`/api/v1/workspaces/{w}/agents/{a}/conversations/{c}/messages`</sub> | Send a message; sync reply with retrieval-grounded chat-completion |
-| `POST` | <sub>`/api/v1/workspaces/{w}/agents/{a}/conversations/{c}/messages/stream`</sub> | Same flow as SSE — `user-message` + `token` deltas + terminal `done`/`error` |
-| `POST` | <sub>`/api/v1/workspaces/{w}/mcp`</sub> | Model Context Protocol façade (optional, `mcp.enabled: true`) — exposes the workspace as MCP tools for external agents |
-| `GET / POST` | <sub>`/api/v1/workspaces/{w}/api-keys`</sub> | List / issue workspace API keys |
-| `DELETE` | <sub>`/api/v1/workspaces/{w}/api-keys/{keyId}`</sub> | Revoke a workspace API key |
+| `GET / POST` | `workspaces` | List / create workspaces |
+| `GET / PATCH / DELETE` | `workspaces/{w}` | Workspace CRUD (DELETE cascades) |
+| `POST` | `workspaces/{w}/test-connection` | Run a live workspace connection check |
+| `GET / POST` | `workspaces/{w}/knowledge-bases` | List / create knowledge bases (POST auto-provisions the underlying vector collection) |
+| `GET / PATCH / DELETE` | `workspaces/{w}/knowledge-bases/{kb}` | KB CRUD (DELETE drops the collection + cascades RAG documents) |
+| `GET / POST` | `workspaces/{w}/knowledge-bases/{kb}/documents` | List / register a document in a KB |
+| `GET / PATCH / DELETE` | `workspaces/{w}/knowledge-bases/{kb}/documents/{d}` | Document metadata CRUD (DELETE cascades chunks in the KB's collection) |
+| `GET` | `workspaces/{w}/knowledge-bases/{kb}/documents/{d}/chunks` | List the chunks under a document |
+| `POST` | `workspaces/{w}/knowledge-bases/{kb}/ingest` | Sync ingest (chunk → embed → upsert → register Document) |
+| `POST` | `workspaces/{w}/knowledge-bases/{kb}/ingest?async=true` | Same pipeline, returns 202 + job pointer |
+| `POST` | `workspaces/{w}/knowledge-bases/{kb}/records` | Upsert vector or text records (text → server-side `$vectorize` when supported, otherwise client-side embed) |
+| `DELETE` | `workspaces/{w}/knowledge-bases/{kb}/records/{rid}` | Delete one |
+| `POST` | `workspaces/{w}/knowledge-bases/{kb}/search` | KB-scoped search (vector / text, optional hybrid + rerank) |
+| `GET / POST / DELETE` | `workspaces/{w}/chunking-services` | Chunking-service CRUD |
+| `GET / POST / DELETE` | `workspaces/{w}/embedding-services` | Embedding-service CRUD |
+| `GET / POST / DELETE` | `workspaces/{w}/reranking-services` | Reranking-service CRUD |
+| `GET` | `workspaces/{w}/jobs/{jobId}` | Poll an async-ingest job |
+| `GET` | `workspaces/{w}/jobs/{jobId}/events` | SSE stream of job updates until terminal state |
+| `GET / POST / PATCH / DELETE` | `workspaces/{w}/llm-services` | LLM-service CRUD (workspace-scoped chat-completion executors) |
+| `GET / POST / PATCH / DELETE` | `workspaces/{w}/agents` | User-defined agent CRUD — each carries persona, RAG defaults, and an optional `llmServiceId` |
+| `GET / POST / PATCH / DELETE` | `workspaces/{w}/agents/{a}/conversations` | Per-agent conversation CRUD |
+| `GET` | `workspaces/{w}/agents/{a}/conversations/{c}/messages` | Conversation history, oldest-first |
+| `POST` | `workspaces/{w}/agents/{a}/conversations/{c}/messages` | Send a message; sync reply with retrieval-grounded chat-completion |
+| `POST` | `workspaces/{w}/agents/{a}/conversations/{c}/messages/stream` | Same flow as SSE — `user-message` + `token` deltas + terminal `done`/`error` |
+| `POST` | `workspaces/{w}/mcp` | Model Context Protocol façade (optional, `mcp.enabled: true`) — exposes the workspace as MCP tools for external agents |
+| `GET / POST` | `workspaces/{w}/api-keys` | List / issue workspace API keys |
+| `DELETE` | `workspaces/{w}/api-keys/{keyId}` | Revoke a workspace API key |
 
 ### `/auth/*` (browser OIDC login, optional)
 
