@@ -210,18 +210,28 @@ const COHERE_MULTILINGUAL: CreateEmbeddingServiceInput = {
  * Astra often default to this model, so seeding it makes the
  * "Attach existing" KB flow work out of the box without the user
  * having to hand-create a matching embedding service.
+ *
+ * `credentialRef` is intentionally null: Astra ships an Astra-managed
+ * KMS shared-secret for the bundled NIM models, so embedding traffic
+ * is server-side and the runtime should NOT attach an
+ * `x-embedding-api-key` header. Operators who wire NVIDIA via their
+ * own API key can patch this service to set `credentialRef`.
+ *
+ * `authType` is also `"none"` for the same reason — not because the
+ * upstream is unauthenticated, but because there's no client-side
+ * credential to manage on this preset.
  */
 const NVIDIA_NV_EMBEDQA_E5_V5: CreateEmbeddingServiceInput = {
 	name: "nvidia-nv-embedqa-e5-v5",
 	description:
-		"NVIDIA `nvidia/nv-embedqa-e5-v5` (1024-dim, cosine). Multilingual, retrieval-tuned. Matches the default Astra-bundled NIM embedding model — useful when attaching to a pre-existing Astra collection that uses NVIDIA vectorize.",
+		"NVIDIA `nvidia/nv-embedqa-e5-v5` (1024-dim, cosine). Multilingual, retrieval-tuned. Matches the default Astra-bundled NIM embedding model — auth is handled by Astra's KMS, no client-side API key needed. Useful when attaching to a pre-existing Astra collection that uses NVIDIA vectorize.",
 	status: "active",
 	provider: "nvidia",
 	modelName: "nvidia/nv-embedqa-e5-v5",
 	embeddingDimension: 1024,
 	distanceMetric: "cosine",
-	authType: "api_key",
-	credentialRef: "env:NVIDIA_API_KEY",
+	authType: "none",
+	credentialRef: null,
 	maxBatchSize: 64,
 	maxInputTokens: 512,
 	supportedLanguages: ["multi"],
