@@ -12,6 +12,7 @@ import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.js";
 import { AuthResolver } from "../src/auth/resolver.js";
 import type { ChatService } from "../src/chat/types.js";
+import { DEFAULT_WORKSPACE_AGENTS } from "../src/control-plane/defaults.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
@@ -80,6 +81,33 @@ async function createAgent(
 }
 
 describe("agent routes", () => {
+	test("workspace POST auto-seeds the default Bobby + Heidi agents", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+
+		const list = await app.request(`/api/v1/workspaces/${ws}/agents`);
+		expect(list.status).toBe(200);
+		const items = (await json(list)).items as Array<{
+			name: string;
+			description: string | null;
+			systemPrompt: string | null;
+			llmServiceId: string | null;
+		}>;
+
+		expect(items.length).toBe(DEFAULT_WORKSPACE_AGENTS.length);
+		const names = items.map((a) => a.name).sort();
+		expect(names).toEqual(["Bobby", "Heidi"]);
+
+		// Defaults must not pin to a workspace LLM service — otherwise a
+		// fresh workspace can't actually use them until the user creates
+		// one.
+		for (const item of items) {
+			expect(item.llmServiceId).toBeNull();
+			expect(item.description).toBeTruthy();
+			expect(item.systemPrompt).toBeTruthy();
+		}
+	});
+
 	test("POST creates; GET list returns it; GET detail echoes", async () => {
 		const app = makeApp();
 		const ws = await createWorkspace(app);
@@ -106,10 +134,11 @@ describe("agent routes", () => {
 		const list = await app.request(`/api/v1/workspaces/${ws}/agents`);
 		expect(list.status).toBe(200);
 		const lBody = await json(list);
-		// listAgents returns oldest-first; only the user-created agent
-		// exists (workspaces no longer auto-create a singleton agent).
-		expect(lBody.items.length).toBe(1);
-		expect(lBody.items[0].agentId).toBe(created.agentId);
+		// Workspaces auto-seed DEFAULT_WORKSPACE_AGENTS on POST, so the
+		// list contains those defaults plus the agent we just created.
+		expect(lBody.items.length).toBe(DEFAULT_WORKSPACE_AGENTS.length + 1);
+		const ids = lBody.items.map((a: { agentId: string }) => a.agentId);
+		expect(ids).toContain(created.agentId);
 
 		const detail = await app.request(
 			`/api/v1/workspaces/${ws}/agents/${created.agentId}`,

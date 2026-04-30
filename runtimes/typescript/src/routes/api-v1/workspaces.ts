@@ -13,6 +13,7 @@ import {
 	assertWorkspaceAccess,
 	filterToAccessibleWorkspaces,
 } from "../../auth/authz.js";
+import { DEFAULT_WORKSPACE_AGENTS } from "../../control-plane/defaults.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type {
@@ -21,6 +22,7 @@ import type {
 } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import { audit } from "../../lib/audit.js";
+import { logger } from "../../lib/logger.js";
 import { makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import { safeErrorMessage } from "../../lib/safe-error.js";
@@ -113,6 +115,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 				...body,
 				uid: body.workspaceId,
 			});
+			await seedDefaultAgents(store, record.uid);
 			audit(c, {
 				action: "workspace.create",
 				outcome: "success",
@@ -316,4 +319,31 @@ async function dropWorkspaceCollections(args: {
 function toWireWorkspace(record: WorkspaceRecord) {
 	const { uid, ...rest } = record;
 	return { workspaceId: uid, ...rest };
+}
+
+/**
+ * Seed each freshly created workspace with the {@link DEFAULT_WORKSPACE_AGENTS}
+ * starter agents (Bobby + Heidi) so the user lands in a non-empty agent
+ * list and can start chatting immediately.
+ *
+ * Failures are logged but do not abort the workspace creation: a
+ * workspace with zero agents is still a valid workspace, and the user
+ * can always create agents manually. Surfacing a 500 here would leave
+ * the caller with an orphaned workspace that the API claimed it
+ * couldn't create.
+ */
+async function seedDefaultAgents(
+	store: ControlPlaneStore,
+	workspaceId: string,
+): Promise<void> {
+	for (const spec of DEFAULT_WORKSPACE_AGENTS) {
+		try {
+			await store.createAgent(workspaceId, spec);
+		} catch (err) {
+			logger.warn(
+				{ workspaceId, agentName: spec.name, err },
+				"failed to seed default agent",
+			);
+		}
+	}
 }

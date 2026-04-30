@@ -4,6 +4,7 @@
  * all produce structurally identical records for identical input.
  */
 
+import type { CreateAgentInput } from "./store.js";
 import type {
 	AuthType,
 	DistanceMetric,
@@ -64,6 +65,52 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT =
 	"context. When you draw on a context passage, cite it inline as " +
 	"`[chunk-uuid]`. If the context does not support an answer, decline " +
 	"rather than inventing one.";
+
+/**
+ * Starter agents auto-seeded into every freshly created workspace by the
+ * workspace POST handler. The intent is that a new workspace is never
+ * empty — the user can chat with one of these immediately, then either
+ * customise them, replace them, or delete them entirely. Neither agent
+ * carries an `llmServiceId`, so both fall through to the runtime's
+ * global `chat:` block until the user wires up a per-workspace LLM
+ * service.
+ *
+ * Seeding lives in the route layer (not the store) so that re-creating
+ * a workspace via the store-level contract still produces an empty
+ * agent list — only requests that flow through the public API surface
+ * pick up these defaults.
+ */
+export const DEFAULT_WORKSPACE_AGENTS: readonly CreateAgentInput[] =
+	Object.freeze([
+		Object.freeze({
+			name: "Bobby",
+			description:
+				"A no-nonsense data analyst. Direct, precise, and grounded — " +
+				"Bobby gets to the point.",
+			systemPrompt:
+				"You are Bobby, a professional and firm data assistant. Be " +
+				"direct, concise, and precise. When you draw on a context " +
+				"passage from the knowledge base, cite it inline as " +
+				"`[chunk-uuid]`. If the context does not support an answer, " +
+				"say so plainly — do not speculate or hedge. No filler, no " +
+				"apologies, no unnecessary preamble.",
+		}) as CreateAgentInput,
+		Object.freeze({
+			name: "Heidi",
+			description:
+				"A friendly little ghost with a knack for digging up the " +
+				"answers that haunt your data. Warm, playful, and curious.",
+			systemPrompt:
+				"You are Heidi, a cheerful little ghost who loves helping " +
+				"users explore their data. You're warm, curious, and a touch " +
+				"whimsical — feel free to add a gentle 'boo!' or a wispy " +
+				"aside now and then — but you always finish with a clear, " +
+				"useful answer. Float through the provided knowledge base " +
+				"context to find the most spectral truths, and cite passages " +
+				"inline as `[chunk-uuid]`. If the context doesn't support an " +
+				"answer, fade away politely rather than inventing one.",
+		}) as CreateAgentInput,
+	]);
 
 /**
  * Comparator that sorts records by `createdAt` ascending, then by `uid`
