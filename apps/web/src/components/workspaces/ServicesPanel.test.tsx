@@ -169,9 +169,11 @@ beforeEach(resetState);
 describe("ServicesPanel", () => {
 	it("renders the three subpanel section headers", () => {
 		render(<ServicesPanel workspace="ws-1" />);
-		// Header copy + the three subpanel labels render together in the
-		// outer container.
-		expect(screen.getByText(/Execution services/)).toBeInTheDocument();
+		// Page shell now owns the "Execution services" title; the panel
+		// renders only the descriptive blurb + the three subpanels.
+		expect(
+			screen.getByText(/Chunkers, embedders, and rerankers/),
+		).toBeInTheDocument();
 		expect(screen.getByText(/Embedding services/)).toBeInTheDocument();
 		expect(screen.getByText(/Chunking services/)).toBeInTheDocument();
 		expect(screen.getByText(/Reranking services/)).toBeInTheDocument();

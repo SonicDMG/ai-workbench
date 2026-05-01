@@ -56,16 +56,13 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 	return (
 		<div className="flex flex-col gap-4">
 			<div className="flex items-start justify-between gap-3 flex-wrap">
-				<div>
-					<p className="text-sm font-medium text-slate-900">API keys</p>
-					<p className="text-xs text-slate-500 leading-relaxed mt-0.5">
-						Workspace-scoped bearer tokens. Clients send them as{" "}
-						<code className="font-mono">Authorization: Bearer wb_live_…</code>.
-						{rows.length === 0
-							? " No keys yet."
-							: ` ${activeCount} active · ${rows.length} total (including revoked).`}
-					</p>
-				</div>
+				<p className="text-xs text-slate-500 leading-relaxed">
+					Bearer tokens; sent as{" "}
+					<code className="font-mono">Authorization: Bearer wb_live_…</code>.
+					{rows.length === 0
+						? " No keys yet."
+						: ` ${activeCount} active · ${rows.length} total.`}
+				</p>
 				<div className="flex items-center gap-2 shrink-0">
 					<Button
 						variant="ghost"

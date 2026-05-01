@@ -14,14 +14,11 @@ import { RerankingSubpanel } from "./RerankingSubpanel";
 export function ServicesPanel({ workspace }: { workspace: string }) {
 	return (
 		<div className="flex flex-col gap-4">
-			<div>
-				<p className="text-sm font-medium text-slate-900">Execution services</p>
-				<p className="text-xs text-slate-500 mt-0.5">
-					Chunkers, embedders, and rerankers a knowledge base can bind to. A KB
-					composes exactly one chunking + one embedding service at create time,
-					plus an optional reranker.
-				</p>
-			</div>
+			<p className="text-xs text-slate-500">
+				Chunkers, embedders, and rerankers a knowledge base can bind to. A KB
+				composes exactly one chunking + one embedding service at create time,
+				plus an optional reranker.
+			</p>
 			<EmbeddingSubpanel workspace={workspace} />
 			<ChunkingSubpanel workspace={workspace} />
 			<RerankingSubpanel workspace={workspace} />

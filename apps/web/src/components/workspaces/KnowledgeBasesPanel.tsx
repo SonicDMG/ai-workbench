@@ -1,5 +1,5 @@
 import {
-	ArrowUpRight,
+	ChevronDown,
 	Database,
 	Loader2,
 	Pencil,
@@ -103,14 +103,11 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 	return (
 		<div className="flex flex-col gap-4">
 			<div className="flex items-start justify-between gap-3 flex-wrap">
-				<div>
-					<p className="text-sm font-medium text-slate-900">Knowledge bases</p>
-					<p className="text-xs text-slate-500 mt-0.5">
-						{rows.length === 0
-							? "No knowledge bases yet — create one to start ingesting documents."
-							: `${rows.length} knowledge base${rows.length === 1 ? "" : "s"} in this workspace.`}
-					</p>
-				</div>
+				<p className="text-xs text-slate-500">
+					{rows.length === 0
+						? "No knowledge bases yet — create one to start ingesting documents."
+						: `${rows.length} knowledge base${rows.length === 1 ? "" : "s"} in this workspace.`}
+				</p>
 				<Button variant="brand" size="sm" onClick={() => setCreateOpen(true)}>
 					<Plus className="h-4 w-4" /> New knowledge base
 				</Button>
@@ -216,14 +213,22 @@ function KnowledgeBaseRow({
 		? services.reranking.get(kb.rerankingServiceId)
 		: null;
 
+	const detailPath = `/workspaces/${workspace}/knowledge-bases/${kb.knowledgeBaseId}`;
 	return (
-		<div className="rounded-lg border border-slate-200 bg-white">
+		<div className="rounded-lg border border-slate-200 bg-white transition-colors hover:border-slate-300">
 			<div className="flex items-center gap-3 p-3">
-				<button
-					type="button"
-					onClick={onToggle}
-					className="flex min-w-0 flex-1 items-center gap-2 text-left"
-					aria-expanded={expanded}
+				{/*
+				 * Primary action — clicking the info zone (icon + name + chips
+				 * + date) navigates to the explorer page. Keeping the action
+				 * buttons (Ingest / Playground / Edit / Delete) outside the
+				 * Link avoids the nested-anchor / button-inside-link
+				 * accessibility footgun. Expand-for-document-preview moved
+				 * to a dedicated chevron toggle on the right.
+				 */}
+				<Link
+					to={detailPath}
+					className="-m-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+					title={`Open ${kb.name}`}
 				>
 					<Database className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
 					<div className="min-w-0 flex-1">
@@ -265,25 +270,29 @@ function KnowledgeBaseRow({
 					<span className="text-xs text-slate-500 shrink-0">
 						{formatDate(kb.createdAt)}
 					</span>
-				</button>
+				</Link>
 				<div className="shrink-0 flex items-center gap-1">
+					<button
+						type="button"
+						onClick={onToggle}
+						aria-expanded={expanded}
+						aria-label={`${expanded ? "Collapse" : "Expand"} documents for ${kb.name}`}
+						title={expanded ? "Hide documents" : "Show documents"}
+						className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+					>
+						<ChevronDown
+							className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+						/>
+					</button>
 					<Button variant="secondary" size="sm" onClick={onIngest}>
 						<Upload className="h-4 w-4" /> Ingest
 					</Button>
 					<Button variant="secondary" size="sm" asChild>
 						<Link
-							to={`/workspaces/${workspace}/knowledge-bases/${kb.knowledgeBaseId}/playground`}
+							to={`${detailPath}/playground`}
 							title="Open the playground for this knowledge base"
 						>
 							<Sparkles className="h-4 w-4" /> Playground
-						</Link>
-					</Button>
-					<Button variant="ghost" size="sm" asChild>
-						<Link
-							to={`/workspaces/${workspace}/knowledge-bases/${kb.knowledgeBaseId}`}
-							title="Open the knowledge-base explorer"
-						>
-							Open <ArrowUpRight className="h-3.5 w-3.5" />
 						</Link>
 					</Button>
 					<Button
