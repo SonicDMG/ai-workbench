@@ -11,13 +11,13 @@
  */
 
 /** Maximum JSON body size accepted by `/api/v1/workspaces/*`. */
-export const MAX_API_JSON_BODY_BYTES = 5_000_000;
+export const MAX_API_JSON_BODY_BYTES = 50_000_000;
 
 /** Maximum raw document text accepted by `POST .../ingest`. Sized to
  * cover real-world long-form documents (textbook chapters, full
  * CHANGELOGs, long technical specs); the previous 200k cap rejected
  * routine-size markdown files. */
-export const MAX_INGEST_TEXT_CHARS = 2_000_000;
+export const MAX_INGEST_TEXT_CHARS = 20_000_000;
 
 /** Maximum text query / saved-query text length. */
 export const MAX_QUERY_TEXT_CHARS = 8_192;
