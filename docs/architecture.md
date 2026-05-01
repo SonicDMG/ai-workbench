@@ -87,8 +87,10 @@ boots from [`runtimes/typescript/src/root.ts`](../runtimes/typescript/src/root.t
 ### Control-plane store
 
 Backend-agnostic interface in
-[`runtimes/typescript/src/control-plane/store.ts`](../runtimes/typescript/src/control-plane/store.ts). Three
-implementations:
+[`runtimes/typescript/src/control-plane/store.ts`](../runtimes/typescript/src/control-plane/store.ts),
+composed from per-aggregate **repo interfaces** under
+[`runtimes/typescript/src/control-plane/repos/`](../runtimes/typescript/src/control-plane/repos/) (WorkspaceRepo,
+KnowledgeBaseRepo, ChatMessageRepo, etc.). Three backend implementations:
 
 | Backend | File | When to use |
 |---|---|---|
@@ -96,7 +98,8 @@ implementations:
 | `file` | [`file/store.ts`](../runtimes/typescript/src/control-plane/file/store.ts) | Single-node self-hosted. Per-table mutex + atomic rename. |
 | `astra` | [`astra/store.ts`](../runtimes/typescript/src/control-plane/astra/store.ts) | Production. Data API Tables via `astra-db-ts`. |
 
-All three pass the same shared contract suite in
+Each backend still implements all twelve repos in a single class (PR #156 split the interface layer;
+per-aggregate impl extraction is queued). All three pass the same shared contract suite in
 [`runtimes/typescript/tests/control-plane/contract.ts`](../runtimes/typescript/tests/control-plane/contract.ts)
 (24 assertions today; grows as routes ship).
 
@@ -178,6 +181,7 @@ talking to workspace-scoped backends.
 | [`api-v1/kb-documents.ts`](../runtimes/typescript/src/routes/api-v1/kb-documents.ts) | `…/knowledge-bases/{kb}/{documents,ingest}` | Document metadata, sync + async ingest, chunk listing |
 | [`api-v1/kb-descriptor.ts`](../runtimes/typescript/src/routes/api-v1/kb-descriptor.ts) | — | `resolveKb()` — synthesises a driver-facing descriptor from a KB + bound services |
 | [`api-v1/{chunking,embedding,reranking}-services.ts`](../runtimes/typescript/src/routes/api-v1/) | `…/{chunking,embedding,reranking}-services` | Service CRUD |
+| [`api-v1/agents.ts`](../runtimes/typescript/src/routes/api-v1/agents.ts) | `/api/v1/workspaces/{w}/agents` | Agent + conversation CRUD, chat send + SSE stream |
 | [`api-v1/jobs.ts`](../runtimes/typescript/src/routes/api-v1/jobs.ts) | `/api/v1/workspaces/{w}/jobs` | Job poll + SSE stream |
 | [`api-v1/api-keys.ts`](../runtimes/typescript/src/routes/api-v1/api-keys.ts) | `/api/v1/workspaces/{w}/api-keys` | Per-workspace API-key management |
 | [`api-v1/helpers.ts`](../runtimes/typescript/src/routes/api-v1/helpers.ts) | — | Error mapping (invoked from app-level `onError`) |
@@ -279,7 +283,33 @@ lands with agent tool-use),
 `wb_agentic_messages_by_conversation`. The agent surface — CRUD
 plus send + streaming — runs against the last three tables; an
 agent's optional `llmServiceId` points at a row in the LLM-service
-table for per-agent provider selection.
+table for per-agent provider selection. `ChatMessageRepo` tracks
+agent-role messages per conversation, with cascade delete wired via
+the `AGENT_CASCADE_STEPS` contract.
+
+## Agent chat dispatch layer
+
+The agent message send/stream flow lives in
+[`runtimes/typescript/src/chat/`](../runtimes/typescript/src/chat/)
+and is layered:
+
+- **`agent-dispatch.ts`** — Outer dispatcher loop. Owns the iteration-cap
+  loop (MAX_TOOL_ITERATIONS = 6) and the SSE stream variant. Coordinates
+  per-turn resolution, RAG retrieval, persistence, and tool dispatch.
+- **`agent-resolution.ts`** — Per-turn effective config resolution. Binds
+  agent + conversation + workspace, resolves the LLM service.
+- **`agent-persistence.ts`** — Persistence + tool execution helpers.
+  Persists user/assistant turns, wires tool outputs back into the prompt.
+- **`tools/dispatcher.ts`** — Per-call workspace tool dispatch. Executes
+  tool calls, tracks results.
+- **`prompt.ts`** — Prompt assembly. Builds the full request to the LLM
+  from conversation history, system prompt, and RAG context.
+- **`retrieval.ts`** — RAG retrieval. Fetches context chunks if enabled.
+
+The SSE wire emits events in sequence: `user-message → token+ → token-reset?
+→ tool-call → tool-result → done|error`. The `token-reset` event fires after
+each tool-call iteration so the SPA can clear pre-tool-call narration from the
+live preview before iteration N+1 streams in.
 
 ## Isolation and scoping
 
@@ -291,15 +321,18 @@ table for per-agent provider selection.
 - Cascade delete:
   - `DELETE /api/v1/workspaces/{w}` → drops the workspace, all
     knowledge bases (and their underlying collections), all
-    execution services, all RAG documents, all API keys.
+    execution services, all RAG documents, all agents, all API keys.
+    The exact order is enumerated in [`cascade.ts`](../runtimes/typescript/src/control-plane/cascade.ts).
   - `DELETE /api/v1/workspaces/{w}/knowledge-bases/{kb}` → drops
     the underlying Astra collection first, then the KB row, then
     cascades RAG document rows.
+  - `DELETE /api/v1/workspaces/{w}/agents/{a}` → cascades conversations
+    and messages owned by that agent.
 - **Service → KB binding is N:1.** A KB binds exactly one
   embedding service, one chunking service, and (optionally) one
   reranking service. Multiple KBs can share the same service. A
   service deletion is refused (409) while any KB still references
-  it.
+  it (error code specialized per `IN_USE_CODES`).
 - **Service references are immutable post-create.** The
   `embeddingServiceId` and `chunkingServiceId` on a KB are pinned
   at creation time — vectors and chunks on disk are bound to the
@@ -357,18 +390,39 @@ TypeScript runtime via `npm run conformance:regenerate`.
 
 See [`conformance.md`](conformance.md) for details.
 
+## Cross-replica job coordination
+
+Async ingest jobs are backed by the Astra
+[`wb_jobs_by_workspace`](../runtimes/typescript/src/astra-client/table-definitions.ts)
+table and visible via `/api/v1/workspaces/{w}/jobs`. Every replica can poll
+or SSE-stream job progress.
+
+The **orphan-reclaim mechanism** in
+[`jobs/sweeper.ts`](../runtimes/typescript/src/jobs/sweeper.ts)
+periodically scans for `status: "running"` jobs whose lease (`leasedAt`) is
+stale. On a successful CAS-claim of the orphan:
+
+- If the job carries an **`ingestInput` snapshot** and a `resume` callback is
+  configured, the sweeper hands off to the async-ingest worker, which replays
+  the pipeline (chunk IDs are deterministic, so re-upserting is idempotent —
+  wasted embedding cost, correct final state).
+- Otherwise, the sweeper marks it `failed` with an actionable error.
+
+The snapshot is taken at ingest time and captured in `ingest_input_json` on
+the job row. It enables resumption even if the originating replica has died.
+The sweeper is **opt-in** via `controlPlane.jobsResume` config.
+
+See [`cross-replica-jobs.md`](cross-replica-jobs.md) for details.
+
 ## Out of scope (for now)
 
 - Multi-tenant SaaS concerns (quotas, billing, per-tenant encryption
   keys).
 - General cluster coordination — horizontal scale comes from running
   multiple containers behind a load balancer with an `astra` (or
-  future `hcd`) control plane as the shared source of truth. Async
-  ingest already has Astra-backed cross-replica job polling, leases,
-  heartbeats, and orphan reclaim; broader distributed concerns such as
-  quotas, global rate limits, and external event streams remain
-  deployment-level responsibilities. See
-  [`cross-replica-jobs.md`](cross-replica-jobs.md).
+  future `hcd`) control plane as the shared source of truth. Broader
+  distributed concerns such as quotas, global rate limits, and external
+  event streams remain deployment-level responsibilities.
 - Direct database migrations — Astra manages its own.
 
 ## Open questions

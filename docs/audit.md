@@ -199,4 +199,15 @@ table **and** the `AuditAction` union in
 [`src/lib/audit.ts`](../runtimes/typescript/src/lib/audit.ts) — the
 `audit-doc-drift` test will fail otherwise.
 
+## Resolved findings
+
+The following audit gaps have been addressed in the commits listed:
+
+| Finding | Status | Resolution |
+|---------|--------|-----------|
+| Unbounded agent `systemPrompt` / `userPrompt` fields | Resolved in #147 (8dbf741) | Capped at 128 KB; `name` at 200 chars, `description` at 2 KB. |
+| Monolithic body-size cap (50 MB) on all `/api/v1/workspaces/*` | Resolved in #147 (8dbf741) | Split: 10 MB default, 50 MB only on explicit `.../knowledge-bases/*/ingest`. |
+| Sequential `Promise.all` on multi-KB agent tools | Resolved in #147 (8dbf741) | Parallelized with `Promise.allSettled` in `chat/tools/registry.ts`. |
+| SSRF surface on service endpoint URLs (RFC1918, loopback, cloud metadata) | Resolved in #147 (8dbf741) | Layered validation in `openapi/schemas.ts` + `root.ts`; `runtime.blockPrivateNetworkEndpoints` config flag. |
+
 PRs welcome.
