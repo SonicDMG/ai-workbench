@@ -43,6 +43,11 @@ const ALLOWLIST = new Set([
 	// deep links to a deleted workspace's agent management surface a
 	// friendly empty state instead of the generic error.
 	resolve(WEB_SRC, "pages/AgentsPage.tsx"),
+	// ConversationThread uses a `conversation_not_found` short-circuit
+	// so deep links to a deleted conversation surface a friendly empty
+	// state instead of the generic error. Moved out of ChatPage.tsx as
+	// part of the per-component split.
+	resolve(WEB_SRC, "pages/chat/ConversationThread.tsx"),
 ]);
 
 const PATTERN = /instanceof\s+ApiError\b/;
