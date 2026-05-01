@@ -39,12 +39,13 @@ export default defineConfig({
 				},
 				// Workspace dashboard surface — the largest component
 				// tree and the highest-traffic regression zone. Floors
-				// reflect the current suite of 14 component tests.
+				// ratcheted up after adding DocumentDetailDialog tests
+				// (the prior 0%-coverage hole in this folder).
 				"src/components/workspaces/**/*.{ts,tsx}": {
-					lines: 70,
-					statements: 67,
-					branches: 60,
-					functions: 58,
+					lines: 72,
+					statements: 69,
+					branches: 62,
+					functions: 60,
 				},
 			},
 		},
