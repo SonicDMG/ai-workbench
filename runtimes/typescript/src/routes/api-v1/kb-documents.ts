@@ -21,10 +21,7 @@ import {
 	DOCUMENT_SCOPE_KEY,
 	KB_SCOPE_KEY,
 } from "../../ingest/payload-keys.js";
-import { runKbIngest } from "../../ingest/pipeline.js";
-import { runKbIngestJob } from "../../jobs/ingest-worker.js";
 import type { JobStore } from "../../jobs/store.js";
-import type { IngestInputSnapshot } from "../../jobs/types.js";
 import { ApiError } from "../../lib/errors.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
@@ -43,6 +40,7 @@ import {
 	UpdateRagDocumentInputSchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
+import { createIngestService } from "../../services/ingest-service.js";
 import { resolveKb } from "./kb-descriptor.js";
 import { toWireJob } from "./serdes/index.js";
 
@@ -57,7 +55,8 @@ export interface KbDocumentRouteDeps {
 export function kbDocumentRoutes(
 	deps: KbDocumentRouteDeps,
 ): OpenAPIHono<AppEnv> {
-	const { store, drivers, embedders, jobs, replicaId } = deps;
+	const { store, drivers } = deps;
+	const ingestService = createIngestService(deps);
 	const app = makeOpenApi();
 
 	app.openapi(
@@ -179,74 +178,25 @@ export function kbDocumentRoutes(
 			const { async: asyncMode } = c.req.valid("query");
 			const body = c.req.valid("json");
 
-			const resolved = await resolveKb(store, workspaceId, knowledgeBaseId);
-
-			const document = await store.createRagDocument(
+			const outcome = await ingestService.ingest(
 				workspaceId,
 				knowledgeBaseId,
-				{
-					uid: body.documentId,
-					sourceDocId: body.sourceDocId,
-					sourceFilename: body.sourceFilename,
-					fileType: body.fileType,
-					fileSize: body.fileSize,
-					contentHash: body.contentHash,
-					status: "writing",
-					metadata: body.metadata,
-				},
+				body,
+				{ async: asyncMode === "true" },
 			);
 
-			const ingestCtx = {
-				workspace: resolved.workspace,
-				knowledgeBase: resolved.knowledgeBase,
-				descriptor: resolved.descriptor,
-				documentId: document.documentId,
-			};
-
-			if (asyncMode === "true") {
-				const ingestSnapshot: IngestInputSnapshot = {
-					text: body.text,
-					...(body.metadata !== undefined && { metadata: body.metadata }),
-					...(body.chunker !== undefined && {
-						chunker: body.chunker as Readonly<Record<string, unknown>>,
-					}),
-				};
-				const job = await jobs.create({
-					workspace: workspaceId,
-					kind: "ingest",
-					knowledgeBaseId: knowledgeBaseId,
-					documentId: document.documentId,
-					ingestInput: ingestSnapshot,
-				});
-				void runKbIngestJob({
-					deps: { store, drivers, embedders, jobs },
-					workspaceId: workspaceId,
-					jobId: job.jobId,
-					replicaId,
-					input: body,
-				});
+			if (outcome.kind === "queued") {
 				c.header(
 					"Location",
-					`/api/v1/workspaces/${workspaceId}/jobs/${job.jobId}`,
+					`/api/v1/workspaces/${workspaceId}/jobs/${outcome.job.jobId}`,
 				);
-				return c.json({ job: toWireJob(job), document }, 202);
+				return c.json(
+					{ job: toWireJob(outcome.job), document: outcome.document },
+					202,
+				);
 			}
-
-			const result = await runKbIngest(
-				{ store, drivers, embedders },
-				ingestCtx,
-				body,
-			);
-			const ready = await store.getRagDocument(
-				workspaceId,
-				knowledgeBaseId,
-				document.documentId,
-			);
 			return c.json(
-				{
-					document: ready ?? document,
-					chunks: result.chunks,
-				},
+				{ document: outcome.document, chunks: outcome.chunks },
 				201,
 			);
 		},
