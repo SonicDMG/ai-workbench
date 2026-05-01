@@ -71,6 +71,7 @@ describe("agent tool registry", () => {
 		expect(names).toEqual([
 			"count_documents",
 			"get_document",
+			"list_chunks",
 			"list_documents",
 			"list_kbs",
 			"search_kb",
@@ -313,6 +314,142 @@ describe("get_document", () => {
 			fileType: "text/markdown",
 			fileSize: 42,
 		});
+	});
+});
+
+describe("list_chunks", () => {
+	/** Seed a KB + document, then upsert N chunks directly via the mock
+	 * driver with the same payload keys the ingest pipeline stamps. The
+	 * tool reads through `driver.listRecords` filtered to the document
+	 * scope, so this mirrors the real ingest output without spinning up
+	 * the full pipeline. */
+	async function seedDocWithChunks(
+		f: Fixture,
+		kbId: string,
+		texts: readonly string[],
+	): Promise<string> {
+		const doc = await f.store.createRagDocument(f.workspaceId, kbId, {
+			sourceFilename: "rows.csv",
+			fileType: "text/csv",
+			fileSize: 100,
+		});
+		const kb = await f.store.getKnowledgeBase(f.workspaceId, kbId);
+		const emb = await f.store.getEmbeddingService(
+			f.workspaceId,
+			kb?.embeddingServiceId ?? "",
+		);
+		const ws = await f.store.getWorkspace(f.workspaceId);
+		if (!kb || !emb || !ws) throw new Error("seed failed");
+		const descriptor = {
+			workspace: ws.uid,
+			uid: kb.knowledgeBaseId,
+			name: kb.name,
+			vectorDimension: emb.embeddingDimension,
+			vectorSimilarity: emb.distanceMetric,
+			embedding: {
+				provider: emb.provider,
+				model: emb.modelName,
+				endpoint: emb.endpointBaseUrl,
+				dimension: emb.embeddingDimension,
+				secretRef: emb.credentialRef,
+			},
+			lexical: kb.lexical,
+			reranking: {
+				enabled: false,
+				provider: null,
+				model: null,
+				endpoint: null,
+				secretRef: null,
+			},
+			createdAt: kb.createdAt,
+			updatedAt: kb.updatedAt,
+		};
+		const driver = f.deps.drivers.for(ws);
+		await driver.createCollection({ workspace: ws, descriptor });
+		const records = texts.map((text, i) => ({
+			id: `${doc.documentId}:${i}`,
+			vector: new Array(emb.embeddingDimension).fill(0),
+			payload: {
+				knowledgeBaseId: kbId,
+				documentId: doc.documentId,
+				chunkIndex: i,
+				chunkText: text,
+			},
+		}));
+		await driver.upsert({ workspace: ws, descriptor }, records);
+		return doc.documentId;
+	}
+
+	test("returns chunks ordered by chunkIndex, with text, default limit 10", async () => {
+		const f = await fixture();
+		const kb = await seedKb(f.store, f.workspaceId, "alpha");
+		const docId = await seedDocWithChunks(f, kb, [
+			"row 0",
+			"row 1",
+			"row 2",
+			"row 3",
+		]);
+		const out = await resolveTool("list_chunks")?.execute(
+			{ knowledgeBaseId: kb, documentId: docId },
+			f.deps,
+		);
+		const parsed = JSON.parse(out as string);
+		expect(parsed.documentId).toBe(docId);
+		expect(parsed.knowledgeBaseId).toBe(kb);
+		expect(parsed.returned).toBe(4);
+		expect(parsed.chunks.map((c: { text: string }) => c.text)).toEqual([
+			"row 0",
+			"row 1",
+			"row 2",
+			"row 3",
+		]);
+		expect(
+			parsed.chunks.map((c: { chunkIndex: number }) => c.chunkIndex),
+		).toEqual([0, 1, 2, 3]);
+	});
+
+	test("honors limit and offset for paging through a larger document", async () => {
+		const f = await fixture();
+		const kb = await seedKb(f.store, f.workspaceId, "alpha");
+		const docId = await seedDocWithChunks(
+			f,
+			kb,
+			Array.from({ length: 12 }, (_, i) => `row ${i}`),
+		);
+		const out = await resolveTool("list_chunks")?.execute(
+			{ knowledgeBaseId: kb, documentId: docId, limit: 4, offset: 5 },
+			f.deps,
+		);
+		const parsed = JSON.parse(out as string);
+		expect(parsed.offset).toBe(5);
+		expect(parsed.returned).toBe(4);
+		expect(parsed.chunks.map((c: { text: string }) => c.text)).toEqual([
+			"row 5",
+			"row 6",
+			"row 7",
+			"row 8",
+		]);
+	});
+
+	test("returns Error: when the document doesn't exist", async () => {
+		const f = await fixture();
+		const kb = await seedKb(f.store, f.workspaceId, "alpha");
+		const out = await resolveTool("list_chunks")?.execute(
+			{ knowledgeBaseId: kb, documentId: randomUUID() },
+			f.deps,
+		);
+		expect(out).toMatch(/^Error:.*not found/);
+	});
+
+	test("rejects limit above the hard cap", async () => {
+		const f = await fixture();
+		const kb = await seedKb(f.store, f.workspaceId, "alpha");
+		const docId = randomUUID();
+		const out = await resolveTool("list_chunks")?.execute(
+			{ knowledgeBaseId: kb, documentId: docId, limit: 9999 },
+			f.deps,
+		);
+		expect(out).toMatch(/^Error:/);
 	});
 });
 

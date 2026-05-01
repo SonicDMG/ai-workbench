@@ -27,6 +27,12 @@ import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { KnowledgeBaseRecord } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
+import {
+	CHUNK_INDEX_KEY,
+	CHUNK_TEXT_KEY,
+	DOCUMENT_SCOPE_KEY,
+	KB_SCOPE_KEY,
+} from "../../ingest/payload-keys.js";
 import type { Logger } from "../../lib/logger.js";
 import { resolveKb } from "../../routes/api-v1/kb-descriptor.js";
 import { dispatchSearch } from "../../routes/api-v1/search-dispatch.js";
@@ -60,6 +66,8 @@ const MAX_DOCS_LISTED = 25;
 const MAX_KBS_LISTED = 25;
 const MAX_SEARCH_RESULTS = 8;
 const MAX_CHUNK_PREVIEW_CHARS = 400;
+const MAX_CHUNKS_LISTED = 50;
+const MAX_CHUNK_TEXT_CHARS = 1500;
 
 /* ----------------------------- list_kbs ---------------------------- */
 
@@ -411,6 +419,120 @@ const searchKb: AgentTool = {
 	},
 };
 
+/* --------------------------- list_chunks --------------------------- */
+
+const listChunksArgs = z
+	.object({
+		knowledgeBaseId: z.string().uuid(),
+		documentId: z.string().uuid(),
+		limit: z.number().int().positive().max(MAX_CHUNKS_LISTED).optional(),
+		offset: z.number().int().nonnegative().optional(),
+	})
+	.strict();
+
+const listChunks: AgentTool = {
+	definition: {
+		name: "list_chunks",
+		description:
+			"Return the literal chunks (rows / passages) of a specific document, in order. Use this when the user asks for actual content — e.g. 'show me 4 rows of the CSV', 'what's in the document', 'first few entries' — rather than a semantic question that would route through search_kb. Pass `limit` and `offset` to page; chunks are returned sorted by `chunkIndex`.",
+		parameters: {
+			type: "object",
+			required: ["knowledgeBaseId", "documentId"],
+			properties: {
+				knowledgeBaseId: {
+					type: "string",
+					description: "Knowledge base UUID.",
+				},
+				documentId: { type: "string", description: "Document UUID." },
+				limit: {
+					type: "integer",
+					minimum: 1,
+					maximum: MAX_CHUNKS_LISTED,
+					description: `Max chunks to return (default 10, hard cap ${MAX_CHUNKS_LISTED}).`,
+				},
+				offset: {
+					type: "integer",
+					minimum: 0,
+					description:
+						"Number of leading chunks to skip — use to page beyond the first batch.",
+				},
+			},
+			additionalProperties: false,
+		},
+	},
+	async execute(rawArgs, deps) {
+		const parsed = listChunksArgs.safeParse(rawArgs);
+		if (!parsed.success) return formatZodError(parsed.error);
+		const limit = parsed.data.limit ?? 10;
+		const offset = parsed.data.offset ?? 0;
+
+		const doc = await deps.store.getRagDocument(
+			deps.workspaceId,
+			parsed.data.knowledgeBaseId,
+			parsed.data.documentId,
+		);
+		if (!doc) {
+			return `Error: document ${parsed.data.documentId} not found in knowledge base ${parsed.data.knowledgeBaseId}.`;
+		}
+
+		const ctx = await resolveKb(
+			deps.store,
+			deps.workspaceId,
+			parsed.data.knowledgeBaseId,
+		);
+		const driver = deps.drivers.for(ctx.workspace);
+		if (typeof driver.listRecords !== "function") {
+			return `Error: driver for workspace kind '${ctx.workspace.kind}' doesn't support listRecords; can't enumerate chunks.`;
+		}
+
+		// Pull a window large enough to honor offset + limit, then trim.
+		// Driver `listRecords` with the per-document scope filter mirrors
+		// what the public chunks route does.
+		const records = await driver.listRecords(
+			{ workspace: ctx.workspace, descriptor: ctx.descriptor },
+			{
+				filter: {
+					[KB_SCOPE_KEY]: parsed.data.knowledgeBaseId,
+					[DOCUMENT_SCOPE_KEY]: parsed.data.documentId,
+				},
+				limit: offset + limit,
+			},
+		);
+
+		const sorted = records
+			.map((r) => ({
+				id: r.id,
+				chunkIndex:
+					typeof r.payload[CHUNK_INDEX_KEY] === "number"
+						? (r.payload[CHUNK_INDEX_KEY] as number)
+						: null,
+				text:
+					typeof r.payload[CHUNK_TEXT_KEY] === "string"
+						? (r.payload[CHUNK_TEXT_KEY] as string)
+						: "",
+			}))
+			.sort((a, b) => {
+				if (a.chunkIndex === null) return 1;
+				if (b.chunkIndex === null) return -1;
+				return a.chunkIndex - b.chunkIndex;
+			});
+
+		const window = sorted.slice(offset, offset + limit).map((c) => ({
+			...c,
+			text: truncate(c.text, MAX_CHUNK_TEXT_CHARS),
+		}));
+
+		return JSON.stringify({
+			documentId: doc.documentId,
+			knowledgeBaseId: doc.knowledgeBaseId,
+			chunkTotal: doc.chunkTotal ?? sorted.length,
+			offset,
+			returned: window.length,
+			chunks: window,
+		});
+	},
+};
+
 /* ---------------------------- get_document ------------------------- */
 
 const getDocumentArgs = z
@@ -478,6 +600,7 @@ export const DEFAULT_AGENT_TOOLS: readonly AgentTool[] = Object.freeze([
 	summarizeKb,
 	searchKb,
 	getDocument,
+	listChunks,
 ]);
 
 export function defaultToolDefinitions(): readonly ToolDefinition[] {

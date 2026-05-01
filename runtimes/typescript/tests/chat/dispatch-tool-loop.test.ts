@@ -238,6 +238,7 @@ describe("dispatchAgentSend tool-call loop", () => {
 		expect(names).toEqual([
 			"count_documents",
 			"get_document",
+			"list_chunks",
 			"list_documents",
 			"list_kbs",
 			"search_kb",
