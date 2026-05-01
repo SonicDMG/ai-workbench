@@ -8,19 +8,19 @@
  * the descriptor's `lexical.enabled` / `reranking.enabled` unless the
  * caller explicitly opts in or out.
  *
- * Dispatch order:
+ * Path selection (mirrors the upsert dispatcher):
  *
- *   1. Resolve the query vector — from `body.vector` directly, or by
- *      embedding `body.text` via `driver.searchByText`'s native path
- *      (Astra `$vectorize`) or client-side via the descriptor's
- *      embedding config.
- *   2. If **hybrid** is on and the driver implements `searchHybrid`,
- *      run it with both vector + text. If the driver throws
- *      NotSupported we surface it — users who explicitly asked for
- *      hybrid should see the 501, not a silent vector-only result.
- *   3. Otherwise run a vector search through `driver.search`.
- *   4. If **rerank** is on and the driver implements `rerank`, post-
- *      process the hits. Same NotSupported contract as above.
+ *   1. Caller supplied `vector` → straight to `driver.search`.
+ *   2. Caller supplied only `text` and the driver implements
+ *      `searchByText` → use the driver-native path (Astra
+ *      `$vectorize`, mock provider). No client-side embedder is
+ *      built — that path doesn't need a vector handle, and forcing
+ *      one breaks `$vectorize` collections whose embedding service
+ *      is server-side only (no `secretRef`).
+ *   3. Hybrid retrieval needs a vector AND text. If the caller
+ *      supplied only text we embed it client-side at this point.
+ *   4. Driver throws {@link NotSupportedError} from `searchByText`
+ *      → embed client-side and retry through `driver.search`.
  *
  * Rerank without a query text doesn't make sense — if `body.text` is
  * missing and `rerank: true` was explicitly set, we reject with
@@ -36,6 +36,7 @@ import {
 	type SearchHit,
 } from "../../drivers/vector-store.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
+import type { Embedder } from "../../embeddings/types.js";
 import { ApiError } from "../../lib/errors.js";
 import { safeErrorMessage } from "../../lib/safe-error.js";
 
@@ -63,7 +64,7 @@ export interface SearchDispatchArgs {
 export async function dispatchSearch(
 	args: SearchDispatchArgs,
 ): Promise<readonly SearchHit[]> {
-	const { ctx, driver, body } = args;
+	const { ctx, driver, embedders, body } = args;
 	const sharedOpts = {
 		topK: body.topK,
 		filter: body.filter,
@@ -75,20 +76,78 @@ export async function dispatchSearch(
 	const hybridRequested = body.hybrid ?? ctx.descriptor.lexical.enabled;
 	const rerankRequested = body.rerank ?? ctx.descriptor.reranking.enabled;
 
-	// 1. Pre-retrieval: resolve a query vector + optional text.
-	const resolved = await resolveQuery(args);
+	if (body.vector === undefined && body.text === undefined) {
+		throw new ApiError(
+			"validation_error",
+			"exactly one of 'vector' or 'text' is required",
+			400,
+		);
+	}
 
-	// 2. Retrieval: hybrid if asked-and-supported, otherwise vector.
-	let hits = await retrieve({
-		args,
-		resolved,
-		hybridRequested,
-		sharedOpts,
-	});
+	// Build-once, use-on-demand client-side embedder. Only paths that
+	// genuinely need a vector handle (hybrid retrieval, or fallback when
+	// the driver's text path errors out) ever call this. Server-side
+	// `$vectorize` collections with no client `secretRef` therefore stay
+	// happy — same shape as the ingest dispatcher.
+	let cachedEmbedder: Embedder | null = null;
+	const embedClientSide = async (text: string): Promise<readonly number[]> => {
+		if (!cachedEmbedder) {
+			cachedEmbedder = await buildEmbedderOr400(ctx, embedders);
+		}
+		return cachedEmbedder.embed(text);
+	};
 
-	// 3. Rerank if asked-and-supported.
+	let hits: readonly SearchHit[];
+
+	if (hybridRequested) {
+		const text = body.text;
+		if (!text) {
+			throw new ApiError(
+				"validation_error",
+				"'hybrid: true' requires 'text' in the request — a lexical lane can't operate on vectors alone",
+				400,
+			);
+		}
+		if (!driver.searchHybrid) {
+			throw new ApiError(
+				"hybrid_not_supported",
+				`driver for workspace kind '${ctx.workspace.kind}' does not implement searchHybrid`,
+				501,
+			);
+		}
+		const vector = body.vector ?? (await embedClientSide(text));
+		try {
+			hits = [
+				...(await driver.searchHybrid(ctx, {
+					vector,
+					text,
+					lexicalWeight: body.lexicalWeight,
+					...sharedOpts,
+				})),
+			];
+		} catch (err) {
+			if (err instanceof NotSupportedError) {
+				throw new ApiError("hybrid_not_supported", err.message, 501);
+			}
+			throw err;
+		}
+	} else if (body.vector !== undefined) {
+		hits = [
+			...(await driver.search(ctx, { vector: body.vector, ...sharedOpts })),
+		];
+	} else {
+		const text = body.text as string;
+		hits = await retrieveFromText({
+			ctx,
+			driver,
+			text,
+			sharedOpts,
+			embedClientSide,
+		});
+	}
+
 	if (rerankRequested) {
-		if (!resolved.text) {
+		if (!body.text) {
 			throw new ApiError(
 				"validation_error",
 				"'rerank' requires 'text' in the request — vectors alone give the reranker nothing to re-score against",
@@ -103,7 +162,9 @@ export async function dispatchSearch(
 			);
 		}
 		try {
-			hits = [...(await driver.rerank(ctx, { text: resolved.text, hits }))];
+			hits = [
+				...(await driver.rerank(ctx, { text: body.text, hits: [...hits] })),
+			];
 		} catch (err) {
 			if (err instanceof NotSupportedError) {
 				throw new ApiError("rerank_not_supported", err.message, 501);
@@ -115,118 +176,40 @@ export async function dispatchSearch(
 	return hits;
 }
 
-interface ResolvedQuery {
-	readonly vector: readonly number[];
-	readonly text: string | null;
-}
-
-async function resolveQuery(args: SearchDispatchArgs): Promise<ResolvedQuery> {
-	const { ctx, driver, embedders, body } = args;
-	if (body.vector !== undefined) {
-		return { vector: body.vector, text: body.text ?? null };
-	}
-	const text = body.text;
-	if (text === undefined) {
-		throw new ApiError(
-			"validation_error",
-			"exactly one of 'vector' or 'text' is required",
-			400,
-		);
-	}
-	// Prefer the driver-native text-embedding path where available; the
-	// hybrid / rerank routes below need the embedding vector regardless
-	// of which path produced it, so we always return one.
-	if (driver.searchByText) {
-		// The driver's own embedding service (Astra `$vectorize`) is
-		// used for retrieval but we still need a vector handle to
-		// pass into `searchHybrid` if hybrid fires. Falling back to
-		// the client-side embedder in that case — cheap and avoids
-		// splitting the dispatch across two code paths.
-	}
-	const embedder = await buildEmbedderOr400(ctx, embedders);
-	const vector = await embedder.embed(text);
-	return { vector, text };
-}
-
-async function retrieve(args: {
-	readonly args: SearchDispatchArgs;
-	readonly resolved: ResolvedQuery;
-	readonly hybridRequested: boolean;
+/**
+ * Resolve a text-only query into hits. Prefers the driver's native
+ * text-embedding path (Astra `$vectorize`, mock); falls back to
+ * client-side embedding only when the driver doesn't implement
+ * `searchByText` or surfaces {@link NotSupportedError}.
+ */
+async function retrieveFromText(opts: {
+	readonly ctx: SearchDispatchArgs["ctx"];
+	readonly driver: SearchDispatchArgs["driver"];
+	readonly text: string;
 	readonly sharedOpts: {
 		topK?: number;
 		filter?: Readonly<Record<string, unknown>>;
 		includeEmbeddings?: boolean;
 	};
-}): Promise<SearchHit[]> {
-	const { args: a, resolved, hybridRequested, sharedOpts } = args;
-	const { ctx, driver, body } = a;
-
-	if (hybridRequested) {
-		if (!resolved.text) {
-			throw new ApiError(
-				"validation_error",
-				"'hybrid: true' requires 'text' in the request — a lexical lane can't operate on vectors alone",
-				400,
-			);
-		}
-		if (!driver.searchHybrid) {
-			throw new ApiError(
-				"hybrid_not_supported",
-				`driver for workspace kind '${ctx.workspace.kind}' does not implement searchHybrid`,
-				501,
-			);
-		}
+	readonly embedClientSide: (text: string) => Promise<readonly number[]>;
+}): Promise<readonly SearchHit[]> {
+	const { ctx, driver, text, sharedOpts, embedClientSide } = opts;
+	if (driver.searchByText) {
 		try {
-			const hits = await driver.searchHybrid(ctx, {
-				vector: resolved.vector,
-				text: resolved.text,
-				lexicalWeight: body.lexicalWeight,
-				...sharedOpts,
-			});
-			return [...hits];
-		} catch (err) {
-			if (err instanceof NotSupportedError) {
-				throw new ApiError("hybrid_not_supported", err.message, 501);
-			}
-			throw err;
-		}
-	}
-
-	// Vector-only retrieval. If the caller gave us only text, we
-	// already embedded it in `resolveQuery`; otherwise we have a
-	// caller-supplied vector.
-	if (
-		body.text !== undefined &&
-		body.vector === undefined &&
-		driver.searchByText
-	) {
-		// Preserve the existing driver-native text-search path when
-		// hybrid / rerank aren't involved — the route layer used to
-		// call this directly and the resulting hits may carry
-		// driver-specific scores that vector-fallback can't reproduce.
-		try {
-			const hits = await driver.searchByText(ctx, {
-				text: body.text,
-				...sharedOpts,
-			});
-			return [...hits];
+			return [...(await driver.searchByText(ctx, { text, ...sharedOpts }))];
 		} catch (err) {
 			if (!(err instanceof NotSupportedError)) throw err;
 		}
 	}
-
-	const hits = await driver.search(ctx, {
-		vector: resolved.vector,
-		...sharedOpts,
-	});
-	return [...hits];
+	const vector = await embedClientSide(text);
+	return [...(await driver.search(ctx, { vector, ...sharedOpts }))];
 }
 
 async function buildEmbedderOr400(
 	ctx: { readonly descriptor: VectorStoreRecord },
 	embedders: EmbedderFactory,
-) {
-	let embedder: Awaited<ReturnType<EmbedderFactory["forConfig"]>>;
+): Promise<Embedder> {
+	let embedder: Embedder;
 	try {
 		embedder = await embedders.forConfig(ctx.descriptor.embedding);
 	} catch (err) {
