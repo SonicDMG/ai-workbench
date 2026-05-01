@@ -313,109 +313,178 @@ export async function dispatchAgentSendStream(
 		chunks,
 	};
 
-	for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-		// Forward content tokens to the SSE consumer as they land. Pre-
-		// tool-call narration (e.g. "let me look that up...") will leak
-		// into the live preview when an iteration ends with tool calls;
-		// the dispatcher emits `token-reset` after the iteration so the
-		// frontend can clear the buffer before the next iteration's
-		// tokens stream in. The persisted assistant row is still drawn
-		// only from the final iteration's content, so the canonical
-		// thread is unaffected.
-		const final = await consumeStreamIteration(
-			resolved.chatService,
-			turns,
-			tools.map((t) => t.definition),
-			abort.signal,
-			async (delta) => {
+	// The iteration body persists rows + writes SSE events one-at-a-time;
+	// any uncaught throw in the middle would leave the wire half-formed
+	// (tool-result events landed but no terminal `done`/`error`). Wrap
+	// the whole loop so every termination path goes through
+	// {@link emitTerminalError} and the SPA always sees exactly one
+	// terminal event.
+	try {
+		for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+			// Forward content tokens to the SSE consumer as they land.
+			// Pre-tool-call narration (e.g. "let me look that up...") will
+			// leak into the live preview when an iteration ends with tool
+			// calls; the dispatcher emits `token-reset` after the iteration
+			// so the frontend can clear the buffer before the next
+			// iteration's tokens stream in. The persisted assistant row is
+			// still drawn only from the final iteration's content, so the
+			// canonical thread is unaffected.
+			const final = await consumeStreamIteration(
+				resolved.chatService,
+				turns,
+				tools.map((t) => t.definition),
+				abort.signal,
+				async (delta) => {
+					await sse.writeSSE({
+						event: "token",
+						data: JSON.stringify({ delta }),
+					});
+				},
+			);
+			lastTokenCount = final.tokenCount;
+
+			if (final.kind === "error") {
+				await emitTerminalError(
+					persistCtx,
+					prevTs,
+					final.tokenCount,
+					final.errorMessage ?? "the agent couldn't answer this turn.",
+					sse,
+					serializer,
+				);
+				return;
+			}
+
+			if (final.toolCalls.length === 0) {
+				// Final answer. Tokens already streamed live; just persist
+				// and emit `done` so the frontend can swap the live preview
+				// for the canonical persisted row.
+				const assistantRecord = await persistFinalAssistant(
+					persistCtx,
+					prevTs,
+					{
+						content: final.content,
+						tokenCount: final.tokenCount,
+						finishReason: final.finishReason,
+						errorMessage: null,
+					},
+				);
 				await sse.writeSSE({
-					event: "token",
-					data: JSON.stringify({ delta }),
+					event: "done",
+					data: serializer.serializeAssistantMessage(assistantRecord),
 				});
-			},
-		);
-		lastTokenCount = final.tokenCount;
+				return;
+			}
 
-		if (final.kind === "error") {
-			const assistantRecord = await persistFinalAssistant(persistCtx, prevTs, {
-				content: final.errorMessage ?? "the agent couldn't answer this turn.",
-				tokenCount: final.tokenCount,
-				finishReason: "error",
-				errorMessage: final.errorMessage,
-			});
-			await sse.writeSSE({
-				event: "error",
-				data: serializer.serializeAssistantMessage(assistantRecord),
-			});
-			return;
-		}
-
-		if (final.toolCalls.length === 0) {
-			// Final answer. Tokens already streamed live; just persist and
-			// emit `done` so the frontend can swap the live preview for
-			// the canonical persisted row.
-			const assistantRecord = await persistFinalAssistant(persistCtx, prevTs, {
+			// Tool-call iteration. Tell the frontend to clear any pre-tool-
+			// call narration that streamed into the live preview, persist
+			// the assistant tool-call turn, and surface tool progress.
+			await sse.writeSSE({ event: "token-reset", data: "{}" });
+			prevTs = await persistAssistantToolCallTurn(persistCtx, prevTs, {
 				content: final.content,
+				toolCalls: final.toolCalls,
 				tokenCount: final.tokenCount,
-				finishReason: final.finishReason,
-				errorMessage: null,
 			});
 			await sse.writeSSE({
-				event: "done",
-				data: serializer.serializeAssistantMessage(assistantRecord),
+				event: "tool-call",
+				data: JSON.stringify({ toolCalls: final.toolCalls }),
 			});
-			return;
+			turns.push({
+				role: "assistant",
+				content: final.content,
+				toolCalls: final.toolCalls,
+			});
+
+			const toolStep = await executeToolCalls(
+				persistCtx,
+				resolved,
+				final.toolCalls,
+				prevTs,
+				async (call, resultText) => {
+					await sse.writeSSE({
+						event: "tool-result",
+						data: JSON.stringify({
+							toolCallId: call.id,
+							name: call.name,
+							content: resultText,
+						}),
+					});
+				},
+			);
+			prevTs = toolStep.endTs;
+			turns.push(...toolStep.turns);
 		}
 
-		// Tool-call iteration. Tell the frontend to clear any pre-tool-call
-		// narration that streamed into the live preview, persist the
-		// assistant tool-call turn, and surface tool progress.
-		await sse.writeSSE({ event: "token-reset", data: "{}" });
-		prevTs = await persistAssistantToolCallTurn(persistCtx, prevTs, {
-			content: final.content,
-			toolCalls: final.toolCalls,
-			tokenCount: final.tokenCount,
-		});
-		await sse.writeSSE({
-			event: "tool-call",
-			data: JSON.stringify({ toolCalls: final.toolCalls }),
-		});
-		turns.push({
-			role: "assistant",
-			content: final.content,
-			toolCalls: final.toolCalls,
-		});
-
-		const toolStep = await executeToolCalls(
+		await emitTerminalError(
 			persistCtx,
-			resolved,
-			final.toolCalls,
 			prevTs,
-			async (call, resultText) => {
-				await sse.writeSSE({
-					event: "tool-result",
-					data: JSON.stringify({
-						toolCallId: call.id,
-						name: call.name,
-						content: resultText,
-					}),
-				});
-			},
+			lastTokenCount,
+			ITERATION_CAP_MESSAGE,
+			sse,
+			serializer,
+			ITERATION_CAP_REASON,
 		);
-		prevTs = toolStep.endTs;
-		turns.push(...toolStep.turns);
+	} catch (err) {
+		const errorMessage = err instanceof Error ? err.message : String(err);
+		deps.logger?.warn?.(
+			{ err, conversationId },
+			"streaming dispatcher caught a mid-iteration failure; emitting terminal error",
+		);
+		await emitTerminalError(
+			persistCtx,
+			prevTs,
+			lastTokenCount,
+			errorMessage,
+			sse,
+			serializer,
+		);
 	}
+}
 
-	const assistantRecord = await persistFinalAssistant(persistCtx, prevTs, {
-		content: ITERATION_CAP_MESSAGE,
-		tokenCount: lastTokenCount,
-		finishReason: "error",
-		errorMessage: ITERATION_CAP_REASON,
-	});
-	await sse.writeSSE({
-		event: "error",
-		data: serializer.serializeAssistantMessage(assistantRecord),
-	});
+/**
+ * Best-effort terminal `error` envelope. Tries to persist a final
+ * assistant row carrying the failure, then tries to write one terminal
+ * `error` SSE event. Both steps swallow their own errors: persistence
+ * may fail if the control plane is the very thing that died, and the
+ * SSE write may fail if the client has already disconnected. In either
+ * case the route layer's outer `streamSSE` wrapper provides the
+ * last-resort guarantee that *something* terminal lands on the wire.
+ */
+async function emitTerminalError(
+	persistCtx: PersistTurnContext,
+	prevTs: string,
+	lastTokenCount: number | null,
+	errorMessage: string,
+	sse: AgentSseWriter,
+	serializer: AgentStreamSerializer,
+	persistedErrorMessage?: string,
+): Promise<void> {
+	let assistantRecord: MessageRecord | null = null;
+	try {
+		assistantRecord = await persistFinalAssistant(persistCtx, prevTs, {
+			content: errorMessage,
+			tokenCount: lastTokenCount,
+			finishReason: "error",
+			errorMessage: persistedErrorMessage ?? errorMessage,
+		});
+	} catch (persistErr) {
+		persistCtx.deps.logger?.warn?.(
+			{ err: persistErr },
+			"streaming dispatcher could not persist terminal error row",
+		);
+	}
+	if (!assistantRecord) return;
+	try {
+		await sse.writeSSE({
+			event: "error",
+			data: serializer.serializeAssistantMessage(assistantRecord),
+		});
+	} catch (sseErr) {
+		persistCtx.deps.logger?.debug?.(
+			{ err: sseErr },
+			"streaming dispatcher could not emit terminal error SSE (client gone)",
+		);
+	}
 }
 
 type IterationResult =

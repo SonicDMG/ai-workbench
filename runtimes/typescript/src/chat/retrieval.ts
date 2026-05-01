@@ -16,6 +16,7 @@
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
+import { CHUNK_TEXT_KEY } from "../ingest/payload-keys.js";
 import type { Logger } from "../lib/logger.js";
 import { resolveKb } from "../routes/api-v1/kb-descriptor.js";
 import { dispatchSearch } from "../routes/api-v1/search-dispatch.js";
@@ -120,12 +121,19 @@ function toChunk(hit: SearchHitLike, knowledgeBaseId: string): RetrievedChunk {
 	const payload = hit.payload ?? {};
 	const documentId =
 		typeof payload.documentId === "string" ? payload.documentId : null;
+	// Ingest stamps text under the reserved `CHUNK_TEXT_KEY`. The
+	// `content` / `text` fallbacks survive for older data and for
+	// drivers that don't round-trip the reserved key — without them,
+	// every ragEnabled agent gets an empty context block.
+	const reservedText = payload[CHUNK_TEXT_KEY];
 	const content =
-		typeof payload.content === "string"
-			? payload.content
-			: typeof payload.text === "string"
-				? payload.text
-				: "";
+		typeof reservedText === "string"
+			? reservedText
+			: typeof payload.content === "string"
+				? payload.content
+				: typeof payload.text === "string"
+					? payload.text
+					: "";
 	return {
 		chunkId: hit.id,
 		knowledgeBaseId,

@@ -39,6 +39,7 @@ import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../control-plane/defaults.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
+import { CHUNK_TEXT_KEY } from "../ingest/payload-keys.js";
 import { logger } from "../lib/logger.js";
 import { resolveKb } from "../routes/api-v1/kb-descriptor.js";
 import { dispatchSearch } from "../routes/api-v1/search-dispatch.js";
@@ -242,20 +243,25 @@ export function buildMcpServer(
 				embedders: deps.embedders,
 				body: { text, vector, topK, hybrid, rerank },
 			});
-			const summary = hits.map((h) => ({
-				chunkId: h.id,
-				score: h.score,
-				documentId:
-					typeof h.payload?.documentId === "string"
-						? h.payload.documentId
-						: null,
-				content:
-					typeof h.payload?.content === "string"
-						? h.payload.content
-						: typeof h.payload?.text === "string"
-							? h.payload.text
+			const summary = hits.map((h) => {
+				const reservedText = h.payload?.[CHUNK_TEXT_KEY];
+				return {
+					chunkId: h.id,
+					score: h.score,
+					documentId:
+						typeof h.payload?.documentId === "string"
+							? h.payload.documentId
 							: null,
-			}));
+					content:
+						typeof reservedText === "string"
+							? reservedText
+							: typeof h.payload?.content === "string"
+								? h.payload.content
+								: typeof h.payload?.text === "string"
+									? h.payload.text
+									: null,
+				};
+			});
 			return {
 				content: [{ type: "text", text: JSON.stringify(summary, null, 2) }],
 			};
