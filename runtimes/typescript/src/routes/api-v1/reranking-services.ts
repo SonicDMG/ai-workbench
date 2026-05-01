@@ -192,7 +192,10 @@ export function rerankingServiceRoutes(
 			responses: {
 				204: { description: "Deleted" },
 				...errorResponse(404, "Workspace or service not found"),
-				...errorResponse(409, "Service is still referenced by a knowledge base"),
+				...errorResponse(
+					409,
+					"Service is still referenced by a knowledge base",
+				),
 			},
 		}),
 		async (c) => {

@@ -174,7 +174,10 @@ export function kbDocumentRoutes(
 					},
 					description: "Ingest queued; poll the job for progress",
 				},
-				...errorResponse(400, "Validation, chunker config, or dimension mismatch"),
+				...errorResponse(
+					400,
+					"Validation, chunker config, or dimension mismatch",
+				),
 				...errorResponse(404, "Workspace or knowledge base not found"),
 			},
 		}),
@@ -282,7 +285,10 @@ export function kbDocumentRoutes(
 					},
 					description: "Chunks under the document",
 				},
-				...errorResponse(404, "Workspace, knowledge base, or document not found"),
+				...errorResponse(
+					404,
+					"Workspace, knowledge base, or document not found",
+				),
 				...errorResponse(501, "Driver doesn't support listRecords"),
 			},
 		}),
@@ -360,7 +366,10 @@ export function kbDocumentRoutes(
 					},
 					description: "Document",
 				},
-				...errorResponse(404, "Workspace, knowledge base, or document not found"),
+				...errorResponse(
+					404,
+					"Workspace, knowledge base, or document not found",
+				),
 			},
 		}),
 		async (c) => {
@@ -401,7 +410,10 @@ export function kbDocumentRoutes(
 					},
 					description: "Updated document",
 				},
-				...errorResponse(404, "Workspace, knowledge base, or document not found"),
+				...errorResponse(
+					404,
+					"Workspace, knowledge base, or document not found",
+				),
 			},
 		}),
 		async (c) => {
@@ -433,7 +445,10 @@ export function kbDocumentRoutes(
 			},
 			responses: {
 				204: { description: "Deleted" },
-				...errorResponse(404, "Workspace, knowledge base, or document not found"),
+				...errorResponse(
+					404,
+					"Workspace, knowledge base, or document not found",
+				),
 			},
 		}),
 		async (c) => {

@@ -1,4 +1,11 @@
-import { Box, ChevronDown, ChevronRight, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+	Box,
+	ChevronDown,
+	ChevronRight,
+	Plus,
+	RefreshCw,
+	Trash2,
+} from "lucide-react";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field-label";

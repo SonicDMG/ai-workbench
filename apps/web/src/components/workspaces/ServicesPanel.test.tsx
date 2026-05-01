@@ -248,9 +248,7 @@ describe("ServicesPanel", () => {
 		const user = userEvent.setup();
 		chunkingState.data = [makeChunking({ name: "Recursive default" })];
 		render(<ServicesPanel workspace="ws-1" />);
-		await user.click(
-			screen.getByRole("button", { name: /Chunking services/ }),
-		);
+		await user.click(screen.getByRole("button", { name: /Chunking services/ }));
 		expect(screen.getByText("Recursive default")).toBeInTheDocument();
 		expect(screen.getByText(/langchain_ts \/ recursive/)).toBeInTheDocument();
 	});
@@ -308,7 +306,9 @@ describe("ServicesPanel", () => {
 		await user.click(newButtons[1] as HTMLButtonElement);
 		// Chunking dialog dialog hint about presets vs custom.
 		expect(
-			screen.getByText(/Pick a preset for one-click setup, or build a custom chunker/),
+			screen.getByText(
+				/Pick a preset for one-click setup, or build a custom chunker/,
+			),
 		).toBeInTheDocument();
 	});
 
