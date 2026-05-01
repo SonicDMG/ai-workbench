@@ -137,11 +137,16 @@ export function EmptyMessages({ agentName }: { agentName: string }) {
 export function AgentThinking({ agentName }: { agentName: string }) {
 	return (
 		<li
-			className="flex items-center gap-2 self-start rounded-md bg-slate-100 px-3 py-1.5 text-xs text-slate-600"
+			className="flex items-center gap-2 self-start rounded-md bg-slate-100 px-3 py-1.5 text-xs"
 			data-testid="agent-thinking"
 		>
-			<Sparkles className="h-3 w-3 animate-pulse" aria-hidden="true" />
-			{agentName} is thinking…
+			<Sparkles
+				className="h-3.5 w-3.5 animate-wb-thinking-icon"
+				aria-hidden="true"
+			/>
+			<span className="animate-wb-thinking-text font-medium">
+				{agentName} is thinking…
+			</span>
 		</li>
 	);
 }
