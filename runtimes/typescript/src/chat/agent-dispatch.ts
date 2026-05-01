@@ -239,18 +239,17 @@ export interface AgentStreamSerializer {
  * SSE shape the agents route uses:
  *
  *   - one `user-message` carrying the persisted user row
+ *   - `token` events for every iteration's content delta as it lands
+ *     (live, not buffered) — including any pre-tool-call narration
+ *   - a `token-reset` after each tool-call iteration so the frontend
+ *     clears the live preview before the next iteration's tokens
+ *     stream in
  *   - zero or more `tool-call` / `tool-result` events surfacing the
- *     intermediate tool-call iterations (when the model decides to
- *     use tools)
- *   - a series of `token` events for the FINAL user-visible answer
+ *     intermediate tool-call iterations
  *   - exactly one terminal `done` (or `error`) carrying the persisted
- *     assistant row
- *
- * Tool-call iterations are run synchronously inside the stream — the
- * model emits all tool calls before the dispatcher executes them, so
- * per-iteration token streaming would mostly leak metadata. We surface
- * progress via the `tool-call` / `tool-result` events instead, then
- * stream tokens for the model's final answer.
+ *     assistant row, which always reflects only the FINAL iteration's
+ *     content (the canonical thread is unaffected by what leaked into
+ *     the live preview)
  *
  * The route caller supplies `serializer` because the SSE wire format
  * uses the `*Wire` projections defined per-route.
@@ -315,18 +314,25 @@ export async function dispatchAgentSendStream(
 	};
 
 	for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-		// Buffer tokens locally on each iteration. We only forward them
-		// to the SSE consumer once we know the iteration is the FINAL
-		// one (i.e. produced no tool calls) — otherwise the model's
-		// "narration before calling a tool" would leak into the user-
-		// visible reply.
-		const buffer: string[] = [];
+		// Forward content tokens to the SSE consumer as they land. Pre-
+		// tool-call narration (e.g. "let me look that up...") will leak
+		// into the live preview when an iteration ends with tool calls;
+		// the dispatcher emits `token-reset` after the iteration so the
+		// frontend can clear the buffer before the next iteration's
+		// tokens stream in. The persisted assistant row is still drawn
+		// only from the final iteration's content, so the canonical
+		// thread is unaffected.
 		const final = await consumeStreamIteration(
 			resolved.chatService,
 			turns,
 			tools.map((t) => t.definition),
 			abort.signal,
-			(delta) => buffer.push(delta),
+			async (delta) => {
+				await sse.writeSSE({
+					event: "token",
+					data: JSON.stringify({ delta }),
+				});
+			},
 		);
 		lastTokenCount = final.tokenCount;
 
@@ -345,14 +351,9 @@ export async function dispatchAgentSendStream(
 		}
 
 		if (final.toolCalls.length === 0) {
-			// Final answer. Replay the buffered tokens to the SSE
-			// consumer in order, then persist + emit `done`.
-			for (const delta of buffer) {
-				await sse.writeSSE({
-					event: "token",
-					data: JSON.stringify({ delta }),
-				});
-			}
+			// Final answer. Tokens already streamed live; just persist and
+			// emit `done` so the frontend can swap the live preview for
+			// the canonical persisted row.
 			const assistantRecord = await persistFinalAssistant(persistCtx, prevTs, {
 				content: final.content,
 				tokenCount: final.tokenCount,
@@ -366,9 +367,10 @@ export async function dispatchAgentSendStream(
 			return;
 		}
 
-		// Tool-call iteration. Persist the assistant turn (with
-		// tool_calls) + each tool result, surface progress on the
-		// stream, and loop.
+		// Tool-call iteration. Tell the frontend to clear any pre-tool-call
+		// narration that streamed into the live preview, persist the
+		// assistant tool-call turn, and surface tool progress.
+		await sse.writeSSE({ event: "token-reset", data: "{}" });
 		prevTs = await persistAssistantToolCallTurn(persistCtx, prevTs, {
 			content: final.content,
 			toolCalls: final.toolCalls,
@@ -431,19 +433,18 @@ type IterationResult =
 	  };
 
 /**
- * Consume one iteration of the streaming chat-completion. Tokens are
- * NOT directly forwarded to the SSE consumer — the dispatcher decides
- * after the iteration finishes whether this was the final answer
- * (replay tokens) or an intermediate tool-call iteration (drop them).
- *
- * `onToken` is invoked for every delta so the caller can buffer them.
+ * Consume one iteration of the streaming chat-completion. `onToken`
+ * fires for each content delta as it arrives — callers (the SSE
+ * dispatcher) forward those live so the user sees the model's
+ * response appear token-by-token. Tool-call deltas are accumulated
+ * locally and surfaced on the terminal `done` IterationResult.
  */
 async function consumeStreamIteration(
 	chatService: ChatService,
 	prompt: readonly ChatTurn[],
 	tools: readonly ToolDefinition[] | undefined,
 	signal: AbortSignal,
-	onToken: (delta: string) => void,
+	onToken: (delta: string) => Promise<void> | void,
 ): Promise<IterationResult> {
 	let buffer = "";
 	let finalKind: IterationResult["kind"] | null = null;
@@ -462,7 +463,7 @@ async function consumeStreamIteration(
 		)) {
 			if (event.type === "token") {
 				buffer += event.delta;
-				onToken(event.delta);
+				await onToken(event.delta);
 			} else if (event.type === "done") {
 				finalKind = "done";
 				finishReason =

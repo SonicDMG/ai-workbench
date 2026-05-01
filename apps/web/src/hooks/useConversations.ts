@@ -301,6 +301,12 @@ export function useSendConversationStream(
 						} else if (evt.type === "token") {
 							buffer += evt.delta;
 							setPendingDelta(buffer);
+						} else if (evt.type === "token-reset") {
+							// Server signals "drop any pre-tool-call narration that
+							// leaked into the live preview" — the next iteration's
+							// tokens append to a clean slate.
+							buffer = "";
+							setPendingDelta("");
 						} else if (evt.type === "done" || evt.type === "error") {
 							qc.setQueryData<ChatMessage[]>(
 								keys.conversations.messages(

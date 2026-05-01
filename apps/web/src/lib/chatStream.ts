@@ -20,6 +20,7 @@ import { ChatMessageRecordSchema } from "@/lib/schemas";
 export type ChatStreamUiEvent =
 	| { readonly type: "user-message"; readonly message: ChatMessage }
 	| { readonly type: "token"; readonly delta: string }
+	| { readonly type: "token-reset" }
 	| { readonly type: "done"; readonly assistant: ChatMessage }
 	| { readonly type: "error"; readonly assistant: ChatMessage };
 
@@ -117,6 +118,10 @@ function dispatch(
 		if (typeof parsed.delta === "string" && parsed.delta.length > 0) {
 			onEvent({ type: "token", delta: parsed.delta });
 		}
+		return;
+	}
+	if (raw.event === "token-reset") {
+		onEvent({ type: "token-reset" });
 		return;
 	}
 	if (raw.event === "stream-error") {
