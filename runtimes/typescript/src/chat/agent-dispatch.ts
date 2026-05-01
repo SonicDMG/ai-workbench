@@ -87,7 +87,6 @@ export interface AgentSseWriter {
 }
 
 /** Re-export so the route layer can advertise the same set in its OpenAPI metadata. */
-/** Re-export for routes that need to compose metadata directly. */
 export { buildAgentMetadata, DEFAULT_AGENT_TOOLS };
 
 /* ------------------------------------------------------------------ */

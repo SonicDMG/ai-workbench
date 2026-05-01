@@ -78,6 +78,7 @@ unknown version.
 | `publicOrigin` | URL \| null | `null` | Externally visible browser origin, e.g. `https://workbench.example.com`. Used for OIDC redirect URI construction and secure-cookie decisions. Required for production OIDC browser login. |
 | `trustProxyHeaders` | boolean | `false` | Trust `X-Forwarded-Proto` / `X-Forwarded-Host` when `publicOrigin` is not set. Also extends to the rate limiter (`X-Forwarded-For` / `X-Real-IP`). Enable only behind a trusted proxy that overwrites those headers. |
 | `rateLimit` | object | (defaults below) | In-process per-IP rate limiter. See [§ Rate limiting](#rate-limiting). |
+| `blockPrivateNetworkEndpoints` | boolean | `false` | Layered SSRF defense: when `true`, operator-supplied `endpointBaseUrl` values on chunking / embedding / reranking / LLM services are rejected if they resolve to RFC1918 (`10/8`, `172.16/12`, `192.168/16`), loopback, or IPv6 unique-local hosts. Auto-flipped to `true` when `runtime.environment: production`. Default `false` so the local-Ollama / local-vLLM dev workflow keeps working; production deployments should still pair this with VPC-level egress controls. |
 
 Production deployments should start from
 [`runtimes/typescript/examples/workbench.production.yaml`](../runtimes/typescript/examples/workbench.production.yaml).

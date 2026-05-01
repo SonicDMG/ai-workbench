@@ -5,6 +5,12 @@ export default defineConfig({
 		include: ["tests/**/*.test.ts"],
 		globals: false,
 		environment: "node",
+		// Quiet pino's per-request access log + audit info lines during
+		// tests. The logger reads `LOG_LEVEL` at module-load time, so
+		// it has to be set before any test imports the app module.
+		env: {
+			LOG_LEVEL: "warn",
+		},
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "html", "json-summary"],

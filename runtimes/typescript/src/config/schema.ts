@@ -82,6 +82,14 @@ const RuntimeSchema = z
 		// In-process rate limiter for `/api/v1/*` and `/auth/*`. On by
 		// default; tune capacity/windowMs or disable entirely.
 		rateLimit: RateLimitSchema,
+		// Layered defense against operator-driven SSRF: when true, the
+		// schema validator on user-configured embedding/reranking/llm
+		// `endpointBaseUrl` fields rejects RFC1918, loopback, and IPv6
+		// unique-local hosts in addition to the always-blocked cloud
+		// metadata endpoints. Default `false` preserves the local-Ollama
+		// dev workflow; `runtime.environment === "production"` overrides
+		// to `true` regardless of the configured value.
+		blockPrivateNetworkEndpoints: z.boolean().default(false),
 	})
 	.default({
 		environment: "development",
@@ -93,6 +101,7 @@ const RuntimeSchema = z
 		publicOrigin: null,
 		trustProxyHeaders: false,
 		rateLimit: { enabled: true, capacity: 600, windowMs: 60_000 },
+		blockPrivateNetworkEndpoints: false,
 	});
 
 /**

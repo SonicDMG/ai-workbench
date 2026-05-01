@@ -160,28 +160,37 @@ export class FileJobStore implements JobStore {
 
 	private async readAll(): Promise<JobRecord[]> {
 		const path = join(this.root, JOBS_FILE);
+		let raw: string;
 		try {
-			const raw = await readFile(path, "utf8");
-			const parsed = JSON.parse(raw);
-			if (!Array.isArray(parsed)) {
-				throw new Error(`jobs file '${path}' is not a JSON array`);
-			}
-			// Backfill lease + ingestInput on rows persisted before they
-			// were part of the schema. Old workflow: missing fields →
-			// null. Sweeper picks them up as unclaimed, and skips
-			// resume (no input → fall back to mark-failed).
-			return (parsed as Partial<JobRecord>[]).map(
-				(r): JobRecord => ({
-					...(r as JobRecord),
-					leasedBy: r.leasedBy ?? null,
-					leasedAt: r.leasedAt ?? null,
-					ingestInput: r.ingestInput ?? null,
-				}),
-			);
+			raw = await readFile(path, "utf8");
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
 			throw err;
 		}
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(raw);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "parse error";
+			throw new Error(
+				`failed to parse jobs file '${path}' as JSON: ${message}`,
+			);
+		}
+		if (!Array.isArray(parsed)) {
+			throw new Error(`jobs file '${path}' is not a JSON array`);
+		}
+		// Backfill lease + ingestInput on rows persisted before they
+		// were part of the schema. Old workflow: missing fields →
+		// null. Sweeper picks them up as unclaimed, and skips
+		// resume (no input → fall back to mark-failed).
+		return (parsed as Partial<JobRecord>[]).map(
+			(r): JobRecord => ({
+				...(r as JobRecord),
+				leasedBy: r.leasedBy ?? null,
+				leasedAt: r.leasedAt ?? null,
+				ingestInput: r.ingestInput ?? null,
+			}),
+		);
 	}
 
 	private async writeAll(rows: readonly JobRecord[]): Promise<void> {

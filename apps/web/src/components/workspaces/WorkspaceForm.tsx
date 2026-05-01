@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type FormEvent, useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, type Resolver, useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
@@ -105,8 +105,19 @@ export function WorkspaceForm(
 					credentials: { ...props.workspace.credentials },
 				};
 
-	const schema =
+	// `useForm` is generic over the resolved-form-values type; the Zod
+	// schema is the discriminated union of Create+Update inputs.
+	// `WorkspaceFormValues` is the structural superset both resolved
+	// shapes are assignable to, but `zodResolver`'s overload set is
+	// stricter than what the union expresses (it parameterizes the
+	// input separately from the output). Casting the produced Resolver
+	// — instead of the schema itself — preserves the runtime check
+	// while keeping the types honest at the use site.
+	const rawSchema =
 		props.mode === "create" ? CreateWorkspaceSchema : UpdateWorkspaceSchema;
+	const resolver = zodResolver(
+		rawSchema as Parameters<typeof zodResolver>[0],
+	) as unknown as Resolver<WorkspaceFormValues>;
 
 	const {
 		register,
@@ -114,8 +125,7 @@ export function WorkspaceForm(
 		control,
 		formState: { errors },
 	} = useForm<WorkspaceFormValues>({
-		// biome-ignore lint/suspicious/noExplicitAny: Zod discriminates by mode; resolver generics can't see through
-		resolver: zodResolver(schema as any),
+		resolver,
 		defaultValues,
 		mode: "onBlur",
 	});

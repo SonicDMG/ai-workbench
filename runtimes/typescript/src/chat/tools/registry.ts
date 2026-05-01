@@ -142,6 +142,14 @@ const listDocuments: AgentTool = {
 			return "No knowledge bases exist in this workspace yet.";
 		}
 
+		const settled = await Promise.allSettled(
+			kbIds.map((kbId) =>
+				deps.store.listRagDocuments(deps.workspaceId, kbId).then((list) => ({
+					kbId,
+					list,
+				})),
+			),
+		);
 		const docs: {
 			knowledgeBaseId: string;
 			documentId: string;
@@ -149,23 +157,23 @@ const listDocuments: AgentTool = {
 			fileType: string | null;
 			status: string;
 		}[] = [];
-		for (const kbId of kbIds) {
-			try {
-				const list = await deps.store.listRagDocuments(deps.workspaceId, kbId);
-				for (const d of list) {
-					docs.push({
-						knowledgeBaseId: kbId,
-						documentId: d.documentId,
-						sourceFilename: d.sourceFilename ?? null,
-						fileType: d.fileType ?? null,
-						status: d.status,
-					});
-				}
-			} catch (err) {
+		for (const result of settled) {
+			if (result.status === "rejected") {
 				deps.logger?.warn?.(
-					{ err, workspaceId: deps.workspaceId, knowledgeBaseId: kbId },
+					{ err: result.reason, workspaceId: deps.workspaceId },
 					"list_documents tool failed for one KB; skipping",
 				);
+				continue;
+			}
+			const { kbId, list } = result.value;
+			for (const d of list) {
+				docs.push({
+					knowledgeBaseId: kbId,
+					documentId: d.documentId,
+					sourceFilename: d.sourceFilename ?? null,
+					fileType: d.fileType ?? null,
+					status: d.status,
+				});
 			}
 		}
 
@@ -212,15 +220,25 @@ const countDocuments: AgentTool = {
 			: (await deps.store.listKnowledgeBases(deps.workspaceId)).map(
 					(kb) => kb.knowledgeBaseId,
 				);
-		const counts: { knowledgeBaseId: string; documentCount: number }[] = [];
-		for (const kbId of kbIds) {
-			try {
-				const list = await deps.store.listRagDocuments(deps.workspaceId, kbId);
-				counts.push({ knowledgeBaseId: kbId, documentCount: list.length });
-			} catch {
-				counts.push({ knowledgeBaseId: kbId, documentCount: 0 });
+		const settled = await Promise.allSettled(
+			kbIds.map((kbId) =>
+				deps.store
+					.listRagDocuments(deps.workspaceId, kbId)
+					.then((list) => ({ kbId, count: list.length })),
+			),
+		);
+		const counts = settled.map((result, idx) => {
+			if (result.status === "fulfilled") {
+				return {
+					knowledgeBaseId: result.value.kbId,
+					documentCount: result.value.count,
+				};
 			}
-		}
+			return {
+				knowledgeBaseId: kbIds[idx] as string,
+				documentCount: 0,
+			};
+		});
 		const total = counts.reduce((sum, c) => sum + c.documentCount, 0);
 		return JSON.stringify({ total, perKnowledgeBase: counts });
 	},
@@ -273,20 +291,18 @@ const summarizeKb: AgentTool = {
 			return "No knowledge bases exist in this workspace yet.";
 		}
 
-		const summaries: {
-			knowledgeBaseId: string;
-			name: string;
-			description: string | null;
-			documentCount: number;
-			sampleDocuments: { documentId: string; sourceFilename: string | null }[];
-		}[] = [];
-		for (const kb of kbs) {
-			try {
-				const docs = await deps.store.listRagDocuments(
-					deps.workspaceId,
-					kb.knowledgeBaseId,
-				);
-				summaries.push({
+		const settled = await Promise.allSettled(
+			kbs.map((kb) =>
+				deps.store
+					.listRagDocuments(deps.workspaceId, kb.knowledgeBaseId)
+					.then((docs) => ({ kb, docs })),
+			),
+		);
+		const summaries = settled.map((result, idx) => {
+			const kb = kbs[idx] as KnowledgeBaseRecord;
+			if (result.status === "fulfilled") {
+				const { docs } = result.value;
+				return {
 					knowledgeBaseId: kb.knowledgeBaseId,
 					name: kb.name,
 					description: kb.description ?? null,
@@ -295,21 +311,23 @@ const summarizeKb: AgentTool = {
 						documentId: d.documentId,
 						sourceFilename: d.sourceFilename ?? null,
 					})),
-				});
-			} catch (err) {
-				deps.logger?.warn?.(
-					{ err, kb: kb.knowledgeBaseId },
-					"summarize_kb failed to enumerate documents",
-				);
-				summaries.push({
-					knowledgeBaseId: kb.knowledgeBaseId,
-					name: kb.name,
-					description: kb.description ?? null,
-					documentCount: 0,
-					sampleDocuments: [],
-				});
+				};
 			}
-		}
+			deps.logger?.warn?.(
+				{ err: result.reason, kb: kb.knowledgeBaseId },
+				"summarize_kb failed to enumerate documents",
+			);
+			return {
+				knowledgeBaseId: kb.knowledgeBaseId,
+				name: kb.name,
+				description: kb.description ?? null,
+				documentCount: 0,
+				sampleDocuments: [] as {
+					documentId: string;
+					sourceFilename: string | null;
+				}[],
+			};
+		});
 		return JSON.stringify({ summaries });
 	},
 };
@@ -367,15 +385,15 @@ const searchKb: AgentTool = {
 			return "No knowledge bases exist in this workspace yet.";
 		}
 
-		const hits: {
+		type Hit = {
 			knowledgeBaseId: string;
 			documentId: string | null;
 			chunkId: string;
 			score: number;
 			contentPreview: string;
-		}[] = [];
-		for (const kbId of kbIds) {
-			try {
+		};
+		const settled = await Promise.allSettled(
+			kbIds.map(async (kbId): Promise<Hit[]> => {
 				const ctx = await resolveKb(deps.store, deps.workspaceId, kbId);
 				const driver = deps.drivers.for(ctx.workspace);
 				const raw = await dispatchSearch({
@@ -384,7 +402,7 @@ const searchKb: AgentTool = {
 					embedders: deps.embedders,
 					body: { text: parsed.data.query, topK: limit },
 				});
-				for (const hit of raw) {
+				return raw.map((hit) => {
 					const payload = hit.payload ?? {};
 					// The ingest pipeline stamps chunk text under
 					// `CHUNK_TEXT_KEY` (= "chunkText"); `content` and `text`
@@ -398,7 +416,7 @@ const searchKb: AgentTool = {
 								: typeof payload.text === "string"
 									? payload.text
 									: "";
-					hits.push({
+					return {
 						knowledgeBaseId: kbId,
 						documentId:
 							typeof payload[DOCUMENT_SCOPE_KEY] === "string"
@@ -407,11 +425,18 @@ const searchKb: AgentTool = {
 						chunkId: hit.id,
 						score: hit.score,
 						contentPreview: truncate(content, MAX_CHUNK_PREVIEW_CHARS),
-					});
-				}
-			} catch (err) {
+					};
+				});
+			}),
+		);
+		const hits: Hit[] = [];
+		for (let i = 0; i < settled.length; i++) {
+			const result = settled[i] as PromiseSettledResult<Hit[]>;
+			if (result.status === "fulfilled") {
+				hits.push(...result.value);
+			} else {
 				deps.logger?.warn?.(
-					{ err, kb: kbId },
+					{ err: result.reason, kb: kbIds[i] },
 					"search_kb failed for one KB; skipping",
 				);
 			}

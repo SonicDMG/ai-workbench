@@ -25,8 +25,10 @@ import { runKbIngestJob } from "./jobs/ingest-worker.js";
 import { JobOrphanSweeper } from "./jobs/sweeper.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
 import { generateReplicaId } from "./lib/replica-id.js";
+import { setEndpointEgressPolicy } from "./openapi/schemas.js";
 import { EnvSecretProvider } from "./secrets/env.js";
 import { FileSecretProvider } from "./secrets/file.js";
+import { assertConfigSecretsResolvable } from "./secrets/preflight.js";
 import { SecretResolver } from "./secrets/provider.js";
 import { buildUiAssets, resolveUiDir } from "./ui/assets.js";
 
@@ -74,10 +76,26 @@ async function main(): Promise<void> {
 		"log level set",
 	);
 
+	// Layered SSRF defense. Production environments always block
+	// RFC1918 / loopback / IPv6 unique-local hosts on operator-supplied
+	// service endpoint URLs; development opts in via
+	// `runtime.blockPrivateNetworkEndpoints`.
+	const blockPrivateNetworks =
+		config.runtime.environment === "production" ||
+		config.runtime.blockPrivateNetworkEndpoints;
+	setEndpointEgressPolicy({ blockPrivateNetworks });
+	logger.info({ blockPrivateNetworks }, "endpoint egress policy set");
+
 	const secrets = new SecretResolver({
 		env: new EnvSecretProvider(),
 		file: new FileSecretProvider(),
 	});
+
+	// Fail-fast on missing required secrets (Astra control-plane token,
+	// OIDC session/client secrets, chat token, ...). Catches config
+	// mismatches at boot instead of on the first request that needs the
+	// secret.
+	await assertConfigSecretsResolvable(config, secrets, { logger });
 
 	const { store, astraTables } = await controlPlaneFromConfig(config, secrets);
 	const jobs = await buildJobStore({

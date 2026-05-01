@@ -91,6 +91,7 @@ async function main(): Promise<void> {
 			publicOrigin: null,
 			trustProxyHeaders: false,
 			rateLimit: { enabled: false, capacity: 600, windowMs: 60_000 },
+			blockPrivateNetworkEndpoints: false,
 		},
 		controlPlane: {
 			driver: "astra" as const,

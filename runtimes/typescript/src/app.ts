@@ -38,12 +38,16 @@ import type { EmbedderFactory } from "./embeddings/factory.js";
 import { MemoryJobStore } from "./jobs/memory-store.js";
 import type { JobStore } from "./jobs/store.js";
 import { ApiError, errorEnvelope } from "./lib/errors.js";
-import { MAX_API_JSON_BODY_BYTES } from "./lib/limits.js";
+import {
+	MAX_API_JSON_BODY_BYTES,
+	MAX_INGEST_BODY_BYTES,
+} from "./lib/limits.js";
 import { logger } from "./lib/logger.js";
 import { makeOpenApi } from "./lib/openapi.js";
 import { rateLimit } from "./lib/rate-limit.js";
 import { generateReplicaId } from "./lib/replica-id.js";
 import { requestId } from "./lib/request-id.js";
+import { requestLogger } from "./lib/request-logger.js";
 import { SCALAR_CDN_PINNED, securityHeaders } from "./lib/security-headers.js";
 import type { AppEnv } from "./lib/types.js";
 import { buildDefaultRoutePlugins } from "./plugins/default-plugins.js";
@@ -184,6 +188,11 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const replicaId = opts.replicaId ?? generateReplicaId();
 
 	app.use("*", requestId(opts.requestIdHeader));
+	// Per-request access log. Runs after `requestId` so the log line
+	// includes the assigned request id; runs as the outermost wrapper
+	// so it sees the final status code regardless of which route
+	// handler returns the response.
+	app.use("*", requestLogger(logger));
 	// HSTS is a deployment posture, not a default: only emit it when the
 	// operator has declared this is a production runtime. Plaintext-HTTP
 	// dev servers don't benefit, and stale HSTS pins are painful to
@@ -230,19 +239,58 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		);
 	}
 
+	// Body-size limits are split: ingest routes need to accept full
+	// document payloads (`MAX_INGEST_BODY_BYTES`, ~50 MB by default),
+	// every other workspace route is held to the tighter
+	// `MAX_API_JSON_BODY_BYTES` (~10 MB). Ingest middleware is
+	// registered FIRST so its higher limit wins on the ingest path
+	// before the broader middleware would short-circuit.
+	app.use(
+		"/api/v1/workspaces/*/knowledge-bases/*/ingest",
+		bodyLimit({
+			maxSize: MAX_INGEST_BODY_BYTES,
+			onError: (c) =>
+				c.json(
+					errorEnvelope(
+						c,
+						"payload_too_large",
+						`request body must be <= ${MAX_INGEST_BODY_BYTES} bytes`,
+					),
+					413,
+				),
+		}),
+	);
 	app.use(
 		"/api/v1/workspaces/*",
 		bodyLimit({
 			maxSize: MAX_API_JSON_BODY_BYTES,
-			onError: (c) =>
-				c.json(
+			onError: (c) => {
+				// Skip the tighter cap on ingest — the ingest-specific
+				// middleware above has already let the body through.
+				const path = c.req.path;
+				if (
+					/\/api\/v1\/workspaces\/[^/]+\/knowledge-bases\/[^/]+\/ingest$/.test(
+						path,
+					)
+				) {
+					return c.json(
+						errorEnvelope(
+							c,
+							"payload_too_large",
+							`request body must be <= ${MAX_INGEST_BODY_BYTES} bytes`,
+						),
+						413,
+					);
+				}
+				return c.json(
 					errorEnvelope(
 						c,
 						"payload_too_large",
 						`request body must be <= ${MAX_API_JSON_BODY_BYTES} bytes`,
 					),
 					413,
-				),
+				);
+			},
 		}),
 	);
 
