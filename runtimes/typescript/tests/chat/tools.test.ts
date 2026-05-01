@@ -14,7 +14,10 @@ import {
 	resolveTool,
 } from "../../src/chat/tools/registry.js";
 import { MemoryControlPlaneStore } from "../../src/control-plane/memory/store.js";
-import { MockVectorStoreDriver } from "../../src/drivers/mock/store.js";
+import {
+	MockVectorStoreDriver,
+	mockEmbed,
+} from "../../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../../src/drivers/registry.js";
 import { makeFakeEmbedderFactory } from "../helpers/embedder.js";
 
@@ -317,69 +320,72 @@ describe("get_document", () => {
 	});
 });
 
-describe("list_chunks", () => {
-	/** Seed a KB + document, then upsert N chunks directly via the mock
-	 * driver with the same payload keys the ingest pipeline stamps. The
-	 * tool reads through `driver.listRecords` filtered to the document
-	 * scope, so this mirrors the real ingest output without spinning up
-	 * the full pipeline. */
-	async function seedDocWithChunks(
-		f: Fixture,
-		kbId: string,
-		texts: readonly string[],
-	): Promise<string> {
-		const doc = await f.store.createRagDocument(f.workspaceId, kbId, {
-			sourceFilename: "rows.csv",
-			fileType: "text/csv",
-			fileSize: 100,
-		});
-		const kb = await f.store.getKnowledgeBase(f.workspaceId, kbId);
-		const emb = await f.store.getEmbeddingService(
-			f.workspaceId,
-			kb?.embeddingServiceId ?? "",
-		);
-		const ws = await f.store.getWorkspace(f.workspaceId);
-		if (!kb || !emb || !ws) throw new Error("seed failed");
-		const descriptor = {
-			workspace: ws.uid,
-			uid: kb.knowledgeBaseId,
-			name: kb.name,
-			vectorDimension: emb.embeddingDimension,
-			vectorSimilarity: emb.distanceMetric,
-			embedding: {
-				provider: emb.provider,
-				model: emb.modelName,
-				endpoint: emb.endpointBaseUrl,
-				dimension: emb.embeddingDimension,
-				secretRef: emb.credentialRef,
-			},
-			lexical: kb.lexical,
-			reranking: {
-				enabled: false,
-				provider: null,
-				model: null,
-				endpoint: null,
-				secretRef: null,
-			},
-			createdAt: kb.createdAt,
-			updatedAt: kb.updatedAt,
-		};
-		const driver = f.deps.drivers.for(ws);
-		await driver.createCollection({ workspace: ws, descriptor });
-		const records = texts.map((text, i) => ({
-			id: `${doc.documentId}:${i}`,
-			vector: new Array(emb.embeddingDimension).fill(0),
-			payload: {
-				knowledgeBaseId: kbId,
-				documentId: doc.documentId,
-				chunkIndex: i,
-				chunkText: text,
-			},
-		}));
-		await driver.upsert({ workspace: ws, descriptor }, records);
-		return doc.documentId;
-	}
+/** Seed a KB + document, then upsert N chunks directly via the mock
+ * driver with the same payload keys the ingest pipeline stamps. The
+ * tools that consume chunks (list_chunks, search_kb) read through the
+ * driver's `listRecords` / `search` paths, so this mirrors the real
+ * ingest output without spinning up the full pipeline. */
+async function seedDocWithChunks(
+	f: Fixture,
+	kbId: string,
+	texts: readonly string[],
+): Promise<string> {
+	const doc = await f.store.createRagDocument(f.workspaceId, kbId, {
+		sourceFilename: "rows.csv",
+		fileType: "text/csv",
+		fileSize: 100,
+	});
+	const kb = await f.store.getKnowledgeBase(f.workspaceId, kbId);
+	const emb = await f.store.getEmbeddingService(
+		f.workspaceId,
+		kb?.embeddingServiceId ?? "",
+	);
+	const ws = await f.store.getWorkspace(f.workspaceId);
+	if (!kb || !emb || !ws) throw new Error("seed failed");
+	const descriptor = {
+		workspace: ws.uid,
+		uid: kb.knowledgeBaseId,
+		name: kb.name,
+		vectorDimension: emb.embeddingDimension,
+		vectorSimilarity: emb.distanceMetric,
+		embedding: {
+			provider: emb.provider,
+			model: emb.modelName,
+			endpoint: emb.endpointBaseUrl,
+			dimension: emb.embeddingDimension,
+			secretRef: emb.credentialRef,
+		},
+		lexical: kb.lexical,
+		reranking: {
+			enabled: false,
+			provider: null,
+			model: null,
+			endpoint: null,
+			secretRef: null,
+		},
+		createdAt: kb.createdAt,
+		updatedAt: kb.updatedAt,
+	};
+	const driver = f.deps.drivers.for(ws);
+	await driver.createCollection({ workspace: ws, descriptor });
+	const records = texts.map((text, i) => ({
+		id: `${doc.documentId}:${i}`,
+		// Use `mockEmbed` so vectors match what the fake embedder
+		// produces at search time — guarantees deterministic hits in
+		// tests that exercise the embed → search round-trip.
+		vector: mockEmbed(text, emb.embeddingDimension),
+		payload: {
+			knowledgeBaseId: kbId,
+			documentId: doc.documentId,
+			chunkIndex: i,
+			chunkText: text,
+		},
+	}));
+	await driver.upsert({ workspace: ws, descriptor }, records);
+	return doc.documentId;
+}
 
+describe("list_chunks", () => {
 	test("returns chunks ordered by chunkIndex, with text, default limit 10", async () => {
 		const f = await fixture();
 		const kb = await seedKb(f.store, f.workspaceId, "alpha");
@@ -486,6 +492,36 @@ describe("search_kb", () => {
 			f.deps,
 		);
 		expect(out).toMatch(/^Error:/);
+	});
+
+	test("contentPreview reads the chunkText payload key the ingest pipeline stamps", async () => {
+		// Regression: search_kb used to look at `payload.content` /
+		// `payload.text`, but the ingest pipeline writes chunk text under
+		// `chunkText`. Hits came back with empty contentPreview, so the
+		// agent could quote chunk IDs but couldn't show what they said.
+		const f = await fixture();
+		const kb = await seedKb(f.store, f.workspaceId, "alpha");
+		const docId = await seedDocWithChunks(f, kb, [
+			"Barsto Broached entry one",
+			"second row, no match",
+			"Barsto Broached entry two",
+		]);
+		const out = await resolveTool("search_kb")?.execute(
+			{ query: "Barsto Broached entry one", knowledgeBaseId: kb, limit: 3 },
+			f.deps,
+		);
+		const parsed = JSON.parse(out as string);
+		expect(parsed.results).toBeDefined();
+		expect(parsed.results.length).toBeGreaterThan(0);
+		// Top hit should be the literal Barsto row, with non-empty preview.
+		const top = parsed.results[0];
+		expect(top.contentPreview).toBe("Barsto Broached entry one");
+		expect(top.documentId).toBe(docId);
+		// Every returned hit must carry a non-empty preview — empty
+		// strings here are exactly the symptom of the original bug.
+		for (const hit of parsed.results) {
+			expect(hit.contentPreview).not.toBe("");
+		}
 	});
 });
 

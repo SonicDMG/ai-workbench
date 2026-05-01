@@ -386,17 +386,23 @@ const searchKb: AgentTool = {
 				});
 				for (const hit of raw) {
 					const payload = hit.payload ?? {};
+					// The ingest pipeline stamps chunk text under
+					// `CHUNK_TEXT_KEY` (= "chunkText"); `content` and `text`
+					// are kept as fallbacks for any caller that upserted via
+					// the public records API with their own payload shape.
 					const content =
-						typeof payload.content === "string"
-							? payload.content
-							: typeof payload.text === "string"
-								? payload.text
-								: "";
+						typeof payload[CHUNK_TEXT_KEY] === "string"
+							? (payload[CHUNK_TEXT_KEY] as string)
+							: typeof payload.content === "string"
+								? payload.content
+								: typeof payload.text === "string"
+									? payload.text
+									: "";
 					hits.push({
 						knowledgeBaseId: kbId,
 						documentId:
-							typeof payload.documentId === "string"
-								? payload.documentId
+							typeof payload[DOCUMENT_SCOPE_KEY] === "string"
+								? (payload[DOCUMENT_SCOPE_KEY] as string)
 								: null,
 						chunkId: hit.id,
 						score: hit.score,
