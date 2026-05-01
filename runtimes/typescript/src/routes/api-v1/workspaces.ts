@@ -10,7 +10,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
 	assertPlatformAccess,
-	assertWorkspaceAccess,
 	filterToAccessibleWorkspaces,
 } from "../../auth/authz.js";
 import {
@@ -152,7 +151,6 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getWorkspace(workspaceId);
 			if (!record)
 				throw new ControlPlaneNotFoundError("workspace", workspaceId);
@@ -184,7 +182,6 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateWorkspace(workspaceId, body);
 			return c.json(toWireWorkspace(record), 200);
@@ -206,7 +203,6 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const workspace = await store.getWorkspace(workspaceId);
 			if (!workspace)
 				throw new ControlPlaneNotFoundError("workspace", workspaceId);
@@ -259,7 +255,6 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const ws = await store.getWorkspace(workspaceId);
 			if (!ws) throw new ControlPlaneNotFoundError("workspace", workspaceId);
 

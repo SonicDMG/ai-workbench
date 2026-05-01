@@ -44,8 +44,6 @@ import type {
 	ToolDefinition,
 } from "../chat/types.js";
 import type {
-	AgentRecord,
-	ConversationRecord,
 	LlmServiceRecord,
 	MessageRecord,
 } from "../control-plane/types.js";

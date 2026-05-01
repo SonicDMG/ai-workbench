@@ -37,7 +37,7 @@ const createState = {
 	isPending: false,
 };
 const streamState = {
-	send: vi.fn<(content: string) => Promise<void>>(),
+	send: vi.fn<(content: string) => Promise<string | null>>(),
 	pendingDelta: "",
 	pending: false,
 	error: null as string | null,
@@ -269,7 +269,7 @@ describe("ConversationThread", () => {
 	it("calls stream.send with the trimmed draft when the form submits", async () => {
 		const user = userEvent.setup();
 		conversationState.data = makeConv();
-		streamState.send = vi.fn().mockResolvedValue(undefined);
+		streamState.send = vi.fn().mockResolvedValue(null);
 		renderInRouter(
 			<ConversationThread
 				workspaceId="ws-1"
@@ -284,6 +284,34 @@ describe("ConversationThread", () => {
 		await waitFor(() => {
 			expect(streamState.send).toHaveBeenCalledWith("hello, agent");
 		});
+	});
+
+	it("toasts the send error and restores the draft when stream.send rejects mid-flight", async () => {
+		const { toast } = await import("sonner");
+		const user = userEvent.setup();
+		conversationState.data = makeConv();
+		// Simulate the new `send` contract: returns the error message
+		// directly rather than relying on the `error` state field that
+		// hasn't flushed yet.
+		streamState.send = vi.fn().mockResolvedValue("conversation_not_found");
+		renderInRouter(
+			<ConversationThread
+				workspaceId="ws-1"
+				agent={makeAgent()}
+				conversationId="conv-1"
+				onDeleted={() => {}}
+			/>,
+		);
+		const composer = screen.getByLabelText("Message") as HTMLTextAreaElement;
+		await user.type(composer, "ping");
+		await user.click(screen.getByRole("button", { name: /^Send$/ }));
+		await waitFor(() => {
+			expect(toast.error).toHaveBeenCalledWith("Couldn't send message", {
+				description: "conversation_not_found",
+			});
+		});
+		// Draft should be restored so the user doesn't lose their typing.
+		expect(composer.value).toBe("ping");
 	});
 
 	it("ignores the submit when the draft is whitespace-only", async () => {

@@ -116,8 +116,8 @@ ship one OpenAI `gpt-4o-mini` LLM service for this reason.
 ## HTTP surface
 
 All routes are workspace-scoped, mounted under
-`/api/v1/workspaces/{w}/agents`. Auth is enforced via
-`assertWorkspaceAccess`.
+`/api/v1/workspaces/{w}/agents`. Auth is enforced by the shared
+workspace-route wrapper.
 
 ### Agents
 

@@ -2,16 +2,13 @@
  * `/api/v1/workspaces/{workspaceId}/knowledge-bases` — Knowledge-Base
  * CRUD (issue #98).
  *
- * Replaces `/catalogs/*`. Coexists with the legacy catalog routes
- * during phase 1b; phase 1c removes the catalog surface entirely.
- *
- * This file is the control-plane CRUD only. Documents, ingest, and
- * search continue to flow through the legacy paths until those
- * subsystems are rewired (follow-up phase).
+ * Replaces the retired `/catalogs/*` / `/vector-stores/*` model.
+ * This file owns KB control-plane CRUD plus attach-existing
+ * collection discovery; documents, ingest, records, and search live
+ * in the sibling KB route modules.
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
@@ -66,7 +63,6 @@ export function knowledgeBaseRoutes(
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceId);
 			const rows = await store.listKnowledgeBases(workspaceId);
 			return c.json(paginate(rows, query), 200);
 		},
@@ -108,7 +104,6 @@ export function knowledgeBaseRoutes(
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const attach = body.attach === true;
 
@@ -223,7 +218,6 @@ export function knowledgeBaseRoutes(
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const workspace = await store.getWorkspace(workspaceId);
 			if (!workspace) {
 				throw new ControlPlaneNotFoundError("workspace", workspaceId);
@@ -280,7 +274,6 @@ export function knowledgeBaseRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getKnowledgeBase(workspaceId, knowledgeBaseId);
 			if (!record)
 				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
@@ -322,7 +315,6 @@ export function knowledgeBaseRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateKnowledgeBase(
 				workspaceId,
@@ -340,7 +332,7 @@ export function knowledgeBaseRoutes(
 			tags: ["knowledge-bases"],
 			summary: "Delete a knowledge base",
 			description:
-				"Drops the descriptor row only. The underlying vector collection cleanup lands when the data plane is rewired in a follow-up phase.",
+				"Drops the underlying vector collection first when this runtime owns it, then deletes the KB row and cascades document metadata. Attached KBs (`owned: false`) detach without touching the external collection.",
 			request: {
 				params: z.object({
 					workspaceId: WorkspaceIdParamSchema,
@@ -354,7 +346,6 @@ export function knowledgeBaseRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 
 			// Drop the underlying collection first when the runtime owns
 			// it; if the driver call fails the KB row survives so the

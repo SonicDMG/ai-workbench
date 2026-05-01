@@ -18,7 +18,6 @@
 import { randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { mintToken } from "../../auth/apiKey/token.js";
-import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import { audit } from "../../lib/audit.js";
@@ -63,7 +62,6 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceId);
 			const rows = await store.listApiKeys(workspaceId);
 			const page = paginate(rows, query);
 			return c.json(
@@ -102,7 +100,6 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const keyId = randomUUID();
 			const minted = await mintToken();
@@ -147,7 +144,6 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, keyId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const existing = await store.getApiKey(workspaceId, keyId);
 			if (!existing) {
 				throw new ControlPlaneNotFoundError("api_key", keyId);

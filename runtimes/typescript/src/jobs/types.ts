@@ -2,16 +2,14 @@
  * Job types for the async-ingest pipeline.
  *
  * A `Job` is a server-side record of a long-running operation (today:
- * catalog ingest; future: bulk export, reindex, delete). Clients
+ * KB ingest; future: bulk export, reindex, delete). Clients
  * receive a `jobId` when they kick off the work, then poll
  * `GET /jobs/{jobId}` or subscribe via SSE to learn about progress.
  *
- * This slice ships an **in-memory** job store: entries live for the
- * lifetime of the runtime process and are lost on restart. Persistent
- * backends (file, astra) can follow later using the same
- * {@link ./store.JobStore} seam. Recovering in-flight jobs across
- * restart is a separate problem (requires durability + retry) and is
- * explicitly out of scope here.
+ * Memory, file, and Astra backends share the same
+ * {@link ./store.JobStore} seam. File and Astra persist job records;
+ * Astra also supports cross-replica subscription polling plus
+ * lease/heartbeat metadata for orphan reclaim.
  */
 
 /** Lifecycle state of a job. Terminal states: `succeeded`, `failed`. */
@@ -45,10 +43,10 @@ export function isTerminal(status: JobStatus): boolean {
 }
 
 /**
- * Canonical job record. Workspace-scoped so authorization reuses the
- * existing `assertWorkspaceAccess`; `knowledgeBaseId` + `documentId`
- * are attached for ingest jobs so the UI can link back without an
- * extra fetch.
+ * Canonical job record. Workspace-scoped so the app-level workspace
+ * authz wrapper gates access; `knowledgeBaseId` + `documentId` are
+ * attached for ingest jobs so the UI can link back without an extra
+ * fetch.
  */
 export interface JobRecord {
 	readonly workspace: string;
@@ -79,9 +77,9 @@ export interface JobRecord {
 	 * after a graceful shutdown).
 	 *
 	 * The async-ingest worker stamps this on lease-claim and clears it
-	 * on terminal. Phase 2b's orphan-sweeper (next slice) treats
-	 * `status: "running"` records whose `leasedAt` is older than a
-	 * grace window as abandoned and re-claims them.
+	 * on terminal. The orphan sweeper treats `status: "running"` records
+	 * whose `leasedAt` is older than a grace window as abandoned and
+	 * re-claims them.
 	 */
 	readonly leasedBy: string | null;
 	/**

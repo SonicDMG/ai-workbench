@@ -78,14 +78,14 @@ interface AuthContext {
 ```
 
 Route handlers read it via `c.get("auth")`. Workspace-scoped
-authorization is enforced inside each `/api/v1/workspaces/*`
-handler via `assertWorkspaceAccess(c, workspaceId)` — an
-authenticated subject whose `workspaceScopes` does not include
-the target workspace gets `403 forbidden`. Anonymous and
-unscoped subjects pass through (unchanged behavior); `GET
-/workspaces` additionally filters its response to the subject's
-scopes so scoped callers see only workspaces they can reach.
-Per-route role checks (RBAC) land in a later phase.
+authorization is enforced by an app-level wrapper around
+`/api/v1/workspaces/{workspaceId}/...` routes — an authenticated
+subject whose `workspaceScopes` does not include the target
+workspace gets `403 forbidden`. Anonymous and unscoped subjects
+pass through (unchanged behavior); `GET /workspaces` additionally
+filters its response to the subject's scopes so scoped callers see
+only workspaces they can reach. Per-route role checks (RBAC) land
+in a later phase.
 
 ### Authorization model
 
@@ -236,12 +236,15 @@ OIDC login (Phase 3b) avoids this because the session cookie is
 
 Out of scope for now:
 
-- **Denial-of-service from high-volume anonymous traffic.** The
-  runtime has basic size limits, but IP/user/workspace rate limiting
-  remains a later concern.
-- **Per-operation audit log.** Every auth decision will emit a
-  structured log line in a later phase (RBAC PR); today only
-  request-level logging exists.
+- **Distributed denial-of-service and aggregate quotas.** The runtime
+  ships an in-process per-IP limiter for `/api/v1/*` and `/auth/*`,
+  plus request-size limits, but buckets are per replica. Multi-replica
+  deployments still need a WAF/API gateway for global ceilings and
+  workspace/user quotas.
+- **Complete auth-decision audit coverage.** Sensitive operations and
+  OIDC login/refresh/logout emit structured audit events today, but
+  failed `/api/v1/*` auth decisions and bootstrap-token use are still
+  tracked as audit gaps.
 
 ## Rollout plan
 
@@ -350,10 +353,10 @@ raw jose error is never forwarded to clients.
 
 **Workspace authorization.** The `workspaceScopes` claim — an array
 of workspace IDs, or a space-separated string — drives the same
-`assertWorkspaceAccess` path that API-key subjects use. Tokens
-with the claim set to JSON `null` are treated as unscoped / admin
-and may reach any workspace (matches the "operator tokens" escape
-hatch described above).
+workspace-route wrapper that API-key subjects use. Tokens with the
+claim set to JSON `null` are treated as unscoped / admin and may
+reach any workspace (matches the "operator tokens" escape hatch
+described above).
 
 **Example provisioning (Keycloak).** Add a user attribute
 `wb_workspace_scopes = ["ws-alice-staging", "ws-alice-prod"]`, add

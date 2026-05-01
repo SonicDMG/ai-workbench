@@ -22,6 +22,7 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import { bodyLimit } from "hono/body-limit";
+import { workspaceRouteAuthz } from "./auth/authz.js";
 import { ForbiddenError, UnauthorizedError } from "./auth/errors.js";
 import { authMiddleware } from "./auth/middleware.js";
 import type { CookieSigner } from "./auth/oidc/login/cookie.js";
@@ -278,6 +279,15 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		"/auth/me",
 		authMiddleware({ resolver: opts.auth, cookie: cookieMiddlewareCfg }),
 	);
+
+	// Workspace authorization is centralized here so every current and
+	// future workspace-scoped route inherits the same check. List/create
+	// stay outside this wrapper: list filters by scopes, and create uses
+	// `assertPlatformAccess` in the handler because it has no target
+	// workspace ID yet.
+	const workspaceAuthz = workspaceRouteAuthz();
+	app.use("/api/v1/workspaces/:workspaceId", workspaceAuthz);
+	app.use("/api/v1/workspaces/:workspaceId/*", workspaceAuthz);
 
 	app.route(
 		"/",

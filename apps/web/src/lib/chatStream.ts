@@ -32,9 +32,11 @@ export interface SendConversationStreamOptions {
 /**
  * Open the SSE stream and pump events to the caller. Resolves once
  * the stream closes naturally; rejects on transport errors (network,
- * non-2xx response, malformed SSE). A `done` or `error` event always
- * fires before resolution when the server-side handler completes
- * normally — see `routes/api-v1/agents.ts`.
+ * non-2xx response, malformed SSE), and on a `stream-error` SSE
+ * event emitted by the server (e.g. control-plane 404 surfacing
+ * mid-stream). A `done` or `error` event always fires before
+ * resolution when the server-side handler completes normally — see
+ * `routes/api-v1/agents.ts`.
  */
 export async function sendConversationStream(
 	workspaceId: string,
@@ -116,6 +118,23 @@ function dispatch(
 			onEvent({ type: "token", delta: parsed.delta });
 		}
 		return;
+	}
+	if (raw.event === "stream-error") {
+		// Server-side mid-stream failure (e.g. control-plane 404 inside
+		// the dispatch loop). Convert to a thrown error so the consumer
+		// hook's catch path surfaces it the same way as a transport
+		// failure.
+		let parsed: { code?: unknown; message?: unknown };
+		try {
+			parsed = JSON.parse(raw.data) as { code?: unknown; message?: unknown };
+		} catch {
+			throw new Error("conversation stream failed");
+		}
+		const message =
+			typeof parsed.message === "string" && parsed.message.length > 0
+				? parsed.message
+				: "conversation stream failed";
+		throw new Error(message);
 	}
 	if (
 		raw.event === "user-message" ||

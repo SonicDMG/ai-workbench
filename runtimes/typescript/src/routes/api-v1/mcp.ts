@@ -4,8 +4,9 @@
  *
  * Each request constructs a stateless MCP server scoped to the
  * workspace and delegates to the SDK's Streamable-HTTP transport.
- * Auth is the same as the rest of `/api/v1/workspaces/*`: a scoped
- * API key for workspace A cannot call MCP tools against workspace B.
+ * Auth is the same as the rest of `/api/v1/workspaces/*`: the
+ * app-level workspace authz wrapper keeps a scoped API key for
+ * workspace A from calling MCP tools against workspace B.
  *
  * Off by default — `mcp.enabled: true` in `workbench.yaml` opts in.
  * When disabled the route returns `404 not_found` so the surface
@@ -14,7 +15,6 @@
 
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Context } from "hono";
-import { assertWorkspaceAccess } from "../../auth/authz.js";
 import type { ChatService } from "../../chat/types.js";
 import type { ChatConfig, McpConfig } from "../../config/schema.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
@@ -59,7 +59,6 @@ export function mcpRoutes(deps: McpRouteDeps): OpenAPIHono<AppEnv> {
 		if (!workspaceId) {
 			throw new ApiError("validation_error", "missing workspaceId", 400);
 		}
-		assertWorkspaceAccess(c, workspaceId);
 		const ws = await deps.store.getWorkspace(workspaceId);
 		if (!ws) {
 			throw new ApiError(

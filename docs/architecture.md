@@ -361,11 +361,13 @@ See [`conformance.md`](conformance.md) for details.
 
 - Multi-tenant SaaS concerns (quotas, billing, per-tenant encryption
   keys).
-- Cluster coordination — the runtime is single-process today.
-  Horizontal scale comes from running multiple containers behind a
-  load balancer, with an `astra` (or future `hcd`) control plane as
-  the shared source of truth. The job-store subscriber fan-out is
-  in-process; cross-replica push is on the roadmap, see
+- General cluster coordination — horizontal scale comes from running
+  multiple containers behind a load balancer with an `astra` (or
+  future `hcd`) control plane as the shared source of truth. Async
+  ingest already has Astra-backed cross-replica job polling, leases,
+  heartbeats, and orphan reclaim; broader distributed concerns such as
+  quotas, global rate limits, and external event streams remain
+  deployment-level responsibilities. See
   [`cross-replica-jobs.md`](cross-replica-jobs.md).
 - Direct database migrations — Astra manages its own.
 

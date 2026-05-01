@@ -492,4 +492,57 @@ describe("agent conversation message routes", () => {
 		const body = await json(res);
 		expect(body.error.code).toBe("llm_provider_unsupported");
 	});
+
+	test("POST /messages/stream emits a typed `stream-error` event for in-stream failures", async () => {
+		// Same setup as the sync 422 test above, but hit the streaming
+		// route so the error surfaces inside `streamSSE` after headers
+		// are flushed. The route can no longer return a JSON envelope at
+		// that point, so the regression check is that we emit a
+		// `stream-error` SSE event whose payload mirrors the global
+		// `onError` mapping in app.ts.
+		const app = makeApp({ chatService: makeFakeChatService() });
+		const ws = await createWorkspace(app);
+
+		const svcRes = await app.request(`/api/v1/workspaces/${ws}/llm-services`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "mock-llm",
+				provider: "mock",
+				modelName: "mock-model",
+			}),
+		});
+		expect(svcRes.status, await svcRes.clone().text()).toBe(201);
+		const llmServiceId = (await json(svcRes)).llmServiceId as string;
+
+		const aid = await createAgent(app, ws, {
+			name: "with-mock-llm",
+			llmServiceId,
+		});
+		const cid = await createConversation(app, ws, aid, { title: "stream" });
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/agents/${aid}/conversations/${cid}/messages/stream`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ content: "trigger provider gate" }),
+			},
+		);
+		// Headers were flushed before the failure point, so the response
+		// itself is 200 with text/event-stream — the typed error rides
+		// inside the stream.
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toMatch(/text\/event-stream/);
+		const body = await res.text();
+		expect(body).toContain("event: stream-error");
+		const dataLine = body.split("\n").find((line) => line.startsWith("data: "));
+		expect(dataLine).toBeDefined();
+		const payload = JSON.parse(
+			(dataLine ?? "data: {}").slice("data: ".length),
+		) as { code: string; status: number; message: string };
+		expect(payload.code).toBe("llm_provider_unsupported");
+		expect(payload.status).toBe(422);
+		expect(payload.message).toContain("provider 'mock'");
+	});
 });

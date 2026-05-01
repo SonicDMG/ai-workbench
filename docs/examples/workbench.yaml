@@ -1,9 +1,10 @@
 # Annotated sample workbench.yaml for AI Workbench (TypeScript runtime).
 #
 # The runtime is a single "green box" — one HTTP server exposing
-# /api/v1/*. Workspaces, catalogs, and vector stores are runtime data
-# (mutable via the API), not config. The only thing config decides is
-# WHERE that runtime data is persisted: memory / file / astra.
+# /api/v1/*. Workspaces, knowledge bases, services, API keys, agents,
+# and conversations are runtime data (mutable via the API), not
+# config. The only thing config decides is WHERE that runtime data is
+# persisted: memory / file / astra.
 
 version: 1
 

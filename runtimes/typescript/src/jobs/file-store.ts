@@ -12,9 +12,9 @@
  * Listener pub/sub is the same in-process helper as
  * {@link MemoryJobStore} — the file backend isn't multi-process-safe
  * anyway, so cross-process fan-out is out of scope. Restart-safety is
- * what this backend buys: a job created before a restart is still
- * visible (and still marked `running` / `pending` — resume is a
- * separate concern).
+ * what this backend buys: persisted jobs remain visible, and
+ * deployments that enable `controlPlane.jobsResume` can let the
+ * orphan sweeper reclaim stale ingest leases from the file.
  */
 
 import { randomUUID } from "node:crypto";

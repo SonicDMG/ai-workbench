@@ -942,7 +942,7 @@ export interface paths {
 		post?: never;
 		/**
 		 * Delete a knowledge base
-		 * @description Drops the descriptor row only. The underlying vector collection cleanup lands when the data plane is rewired in a follow-up phase.
+		 * @description Drops the underlying vector collection first when this runtime owns it, then deletes the KB row and cascades document metadata. Attached KBs (`owned: false`) detach without touching the external collection.
 		 */
 		delete: {
 			parameters: {

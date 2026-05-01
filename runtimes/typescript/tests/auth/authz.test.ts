@@ -3,6 +3,7 @@ import {
 	assertPlatformAccess,
 	assertWorkspaceAccess,
 	filterToAccessibleWorkspaces,
+	workspaceRouteAuthz,
 } from "../../src/auth/authz.js";
 import { ForbiddenError } from "../../src/auth/errors.js";
 import type { AuthContext, AuthSubject } from "../../src/auth/types.js";
@@ -16,6 +17,18 @@ function ctx(auth: AuthContext | undefined) {
 			return undefined;
 		},
 		// biome-ignore lint/suspicious/noExplicitAny: minimal test shim
+	} as any;
+}
+
+function routeCtx(auth: AuthContext | undefined, workspaceId: string) {
+	return {
+		...ctx(auth),
+		req: {
+			param(key: string) {
+				return key === "workspaceId" ? workspaceId : "";
+			},
+		},
+		// biome-ignore lint/suspicious/noExplicitAny: minimal middleware test shim
 	} as any;
 }
 
@@ -99,6 +112,28 @@ describe("filterToAccessibleWorkspaces", () => {
 
 	test("scoped subject with empty scopes gets no rows", () => {
 		expect(filterToAccessibleWorkspaces(ctx(authed([])), rows)).toEqual([]);
+	});
+});
+
+describe("workspaceRouteAuthz", () => {
+	test("runs next when the subject can access the route workspace", async () => {
+		const mw = workspaceRouteAuthz();
+		let called = false;
+		await mw(routeCtx(authed([WID_A]), WID_A), async () => {
+			called = true;
+		});
+		expect(called).toBe(true);
+	});
+
+	test("blocks before next when the subject cannot access the route workspace", async () => {
+		const mw = workspaceRouteAuthz();
+		let called = false;
+		await expect(
+			mw(routeCtx(authed([WID_A]), WID_B), async () => {
+				called = true;
+			}),
+		).rejects.toThrow(ForbiddenError);
+		expect(called).toBe(false);
 	});
 });
 

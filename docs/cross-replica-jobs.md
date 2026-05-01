@@ -9,11 +9,10 @@ Status snapshot:
 | Orphan-sweeper that reclaims stale leases | ✅ shipped |
 | Pipeline resume after reclaim (via persisted `ingestInput`) | ✅ shipped |
 
-Captures the design space around two open items from `roadmap.md`
-Phase 2b:
+Captures the design space around two original Phase 2b items from
+`roadmap.md`:
 
-> Cross-replica job pub/sub + in-flight resume after restart (today
-> the record survives restart but the owning worker doesn't).
+> Cross-replica job pub/sub + in-flight resume after restart.
 
 Each piece shipped as a one-mechanic change. Subscription fan-out
 landed via the Astra-table polling backend; the lease + heartbeat +

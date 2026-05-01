@@ -9,13 +9,12 @@
  * reaches a terminal state. The initial record is replayed
  * immediately so clients don't race the first update.
  *
- * Workspace-scoped so authorization reuses `assertWorkspaceAccess` —
- * a scoped token for workspace A cannot read jobs from workspace B.
+ * Workspace-scoped so the app-level workspace authz wrapper blocks a
+ * scoped token for workspace A from reading jobs in workspace B.
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
-import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { JobStore } from "../../jobs/store.js";
 import type { JobRecord } from "../../jobs/types.js";
@@ -59,7 +58,6 @@ export function jobRoutes(deps: JobsRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, jobId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const job = await jobs.get(workspaceId, jobId);
 			if (!job) throw new ControlPlaneNotFoundError("job", jobId);
 			return c.json(toWireJob(job), 200);
@@ -73,7 +71,6 @@ export function jobRoutes(deps: JobsRouteDeps): OpenAPIHono<AppEnv> {
 	app.get("/:workspaceId/jobs/:jobId/events", async (c) => {
 		const workspaceId = c.req.param("workspaceId");
 		const jobId = c.req.param("jobId");
-		assertWorkspaceAccess(c, workspaceId);
 		const initial = await jobs.get(workspaceId, jobId);
 		if (!initial) {
 			return c.json(

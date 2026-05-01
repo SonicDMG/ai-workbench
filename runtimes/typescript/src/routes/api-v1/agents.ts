@@ -11,7 +11,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
-import { assertWorkspaceAccess } from "../../auth/authz.js";
+import { ForbiddenError, UnauthorizedError } from "../../auth/errors.js";
 import {
 	dispatchAgentSend,
 	dispatchAgentSendStream,
@@ -30,6 +30,7 @@ import { ApiError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
+import { safeErrorMessage } from "../../lib/safe-error.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	AgentIdParamSchema,
@@ -49,6 +50,7 @@ import {
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
 import type { SecretResolver } from "../../secrets/provider.js";
+import { mapControlPlaneError } from "./helpers.js";
 import {
 	toWireAgent as toAgentWire,
 	toWireChatMessage as toChatMessageWire,
@@ -96,7 +98,6 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceId);
 			const rows = await store.listAgents(workspaceId);
 			return c.json(paginate(rows.map(toAgentWire), query), 200);
 		},
@@ -127,7 +128,6 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.createAgent(workspaceId, body);
 			return c.json(toAgentWire(record), 201);
@@ -156,7 +156,6 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, agentId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getAgent(workspaceId, agentId);
 			if (!record) {
 				throw new ControlPlaneNotFoundError("agent", agentId);
@@ -192,7 +191,6 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, agentId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateAgent(workspaceId, agentId, body);
 			return c.json(toAgentWire(record), 200);
@@ -218,7 +216,6 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, agentId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const { deleted } = await store.deleteAgent(workspaceId, agentId);
 			if (!deleted) {
 				throw new ControlPlaneNotFoundError("agent", agentId);
@@ -253,7 +250,6 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		async (c) => {
 			const { workspaceId, agentId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceId);
 			const rows = await store.listConversations(workspaceId, agentId);
 			return c.json(paginate(rows.map(toConversationWire), query), 200);
 		},
@@ -287,7 +283,6 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, agentId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.createConversation(workspaceId, agentId, body);
 			return c.json(toConversationWire(record), 201);
@@ -317,7 +312,6 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, agentId, conversationId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getConversation(
 				workspaceId,
 				agentId,
@@ -358,7 +352,6 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, agentId, conversationId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateConversation(
 				workspaceId,
@@ -390,7 +383,6 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, agentId, conversationId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const { deleted } = await store.deleteConversation(
 				workspaceId,
 				agentId,
@@ -465,7 +457,6 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		async (c) => {
 			const { workspaceId, agentId, conversationId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceId);
 			const resolved = await resolveAgentConversation(
 				workspaceId,
 				agentId,
@@ -519,7 +510,6 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, agentId, conversationId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const resolved = await resolveAgentConversation(
 				workspaceId,
 				agentId,
@@ -576,7 +566,6 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 			const workspaceId = c.req.param("workspaceId");
 			const agentId = c.req.param("agentId");
 			const conversationId = c.req.param("conversationId");
-			assertWorkspaceAccess(c, workspaceId);
 			const resolved = await resolveAgentConversation(
 				workspaceId,
 				agentId,
@@ -606,36 +595,97 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 			const userContent = body.content;
 
 			return streamSSE(c, async (stream) => {
-				await dispatchAgentSendStream(
-					{
-						store,
-						drivers,
-						embedders,
-						secrets,
-						logger,
-						chatService,
-						chatConfig,
-					},
-					{
-						workspaceId,
-						agent: resolved.agent,
-						conversation: resolved.conversation,
-					},
-					{ content: userContent },
-					{
-						writeSSE: (event) => stream.writeSSE(event),
-						onAbort: (handler) => stream.onAbort(handler),
-					},
-					{
-						serializeUserMessage: (record) =>
-							JSON.stringify(toChatMessageWire(record)),
-						serializeAssistantMessage: (record) =>
-							JSON.stringify(toChatMessageWire(record)),
-					},
-				);
+				try {
+					await dispatchAgentSendStream(
+						{
+							store,
+							drivers,
+							embedders,
+							secrets,
+							logger,
+							chatService,
+							chatConfig,
+						},
+						{
+							workspaceId,
+							agent: resolved.agent,
+							conversation: resolved.conversation,
+						},
+						{ content: userContent },
+						{
+							writeSSE: (event) => stream.writeSSE(event),
+							onAbort: (handler) => stream.onAbort(handler),
+						},
+						{
+							serializeUserMessage: (record) =>
+								JSON.stringify(toChatMessageWire(record)),
+							serializeAssistantMessage: (record) =>
+								JSON.stringify(toChatMessageWire(record)),
+						},
+					);
+				} catch (err) {
+					// Once `streamSSE` has flushed headers we can't return a
+					// typed JSON envelope, so we emit the same shape inside
+					// a dedicated `stream-error` event. Codes match the
+					// global `onError` mapping in app.ts.
+					const envelope = streamErrorEnvelope(err);
+					logger.error(
+						{
+							err,
+							code: envelope.code,
+							status: envelope.status,
+							requestId: c.get("requestId"),
+							workspaceId,
+							conversationId,
+						},
+						"agent stream failed",
+					);
+					await stream.writeSSE({
+						event: "stream-error",
+						data: JSON.stringify(envelope),
+					});
+				}
 			});
 		},
 	);
 
 	return app;
+}
+
+interface StreamErrorEnvelope {
+	readonly code: string;
+	readonly message: string;
+	readonly status: number;
+}
+
+/**
+ * Mirrors the global `onError` mapping in `app.ts` for errors that
+ * surface inside the SSE stream callback (where we can no longer
+ * return a JSON envelope). The frontend `chatStream.ts` consumer
+ * surfaces these to the user via the same `setError` path that
+ * transport-level fetch failures take.
+ */
+function streamErrorEnvelope(err: unknown): StreamErrorEnvelope {
+	if (err instanceof UnauthorizedError) {
+		return { code: err.code, message: err.message, status: err.status };
+	}
+	if (err instanceof ForbiddenError) {
+		return { code: err.code, message: err.message, status: err.status };
+	}
+	const mapped = mapControlPlaneError(err);
+	if (mapped) {
+		return {
+			code: mapped.code,
+			message: mapped.message,
+			status: mapped.status,
+		};
+	}
+	if (err instanceof ApiError) {
+		return { code: err.code, message: err.message, status: err.status };
+	}
+	return {
+		code: "internal_error",
+		message: safeErrorMessage(err, "internal server error"),
+		status: 500,
+	};
 }

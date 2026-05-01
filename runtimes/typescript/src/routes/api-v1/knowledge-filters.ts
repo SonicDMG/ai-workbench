@@ -4,7 +4,6 @@
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
@@ -52,7 +51,6 @@ export function knowledgeFilterRoutes(
 		async (c) => {
 			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceId);
 			const rows = await store.listKnowledgeFilters(
 				workspaceId,
 				knowledgeBaseId,
@@ -91,7 +89,6 @@ export function knowledgeFilterRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.createKnowledgeFilter(
 				workspaceId,
@@ -128,7 +125,6 @@ export function knowledgeFilterRoutes(
 		async (c) => {
 			const { workspaceId, knowledgeBaseId, knowledgeFilterId } =
 				c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getKnowledgeFilter(
 				workspaceId,
 				knowledgeBaseId,
@@ -175,7 +171,6 @@ export function knowledgeFilterRoutes(
 		async (c) => {
 			const { workspaceId, knowledgeBaseId, knowledgeFilterId } =
 				c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateKnowledgeFilter(
 				workspaceId,
@@ -208,7 +203,6 @@ export function knowledgeFilterRoutes(
 		async (c) => {
 			const { workspaceId, knowledgeBaseId, knowledgeFilterId } =
 				c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const { deleted } = await store.deleteKnowledgeFilter(
 				workspaceId,
 				knowledgeBaseId,

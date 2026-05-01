@@ -3,10 +3,6 @@
  * document metadata CRUD, sync + async ingest, and chunk listing
  * (issue #98).
  *
- * Mirrors the legacy `/catalogs/{c}/documents` surface — the old
- * routes stay alive during phase 1c so the UI can migrate
- * incrementally; phase 1c.4 retires them.
- *
  * Search is handled by `kb-data-plane.ts` (POST .../search).
  * Documents/ingest live here because they touch the
  * RAG-document control-plane tables in addition to the data
@@ -15,7 +11,6 @@
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
@@ -89,7 +84,6 @@ export function kbDocumentRoutes(
 		async (c) => {
 			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceId);
 			const rows = await store.listRagDocuments(workspaceId, knowledgeBaseId);
 			return c.json(paginate(rows, query), 200);
 		},
@@ -125,7 +119,6 @@ export function kbDocumentRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.createRagDocument(
 				workspaceId,
@@ -184,7 +177,6 @@ export function kbDocumentRoutes(
 		async (c) => {
 			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
 			const { async: asyncMode } = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 
 			const resolved = await resolveKb(store, workspaceId, knowledgeBaseId);
@@ -295,7 +287,6 @@ export function kbDocumentRoutes(
 		async (c) => {
 			const { workspaceId, knowledgeBaseId, documentId } = c.req.valid("param");
 			const { limit } = c.req.valid("query");
-			assertWorkspaceAccess(c, workspaceId);
 
 			const doc = await store.getRagDocument(
 				workspaceId,
@@ -374,7 +365,6 @@ export function kbDocumentRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, knowledgeBaseId, documentId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const record = await store.getRagDocument(
 				workspaceId,
 				knowledgeBaseId,
@@ -418,7 +408,6 @@ export function kbDocumentRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, knowledgeBaseId, documentId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const record = await store.updateRagDocument(
 				workspaceId,
@@ -453,7 +442,6 @@ export function kbDocumentRoutes(
 		}),
 		async (c) => {
 			const { workspaceId, knowledgeBaseId, documentId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 
 			const existing = await store.getRagDocument(
 				workspaceId,

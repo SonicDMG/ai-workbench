@@ -23,9 +23,9 @@
  *                              clients don't surface yet)
  *
  * Auth is the same as every other `/api/v1/workspaces/*` route: the
- * route handler runs `assertWorkspaceAccess(c, workspaceId)` before
- * invoking any tool, so a scoped API key for workspace A cannot
- * call MCP tools against workspace B even if they have the URL.
+ * app-level workspace authz wrapper runs before this handler, so a
+ * scoped API key for workspace A cannot call MCP tools against
+ * workspace B even if they have the URL.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";

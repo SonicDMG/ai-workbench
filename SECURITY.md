@@ -63,6 +63,44 @@ AI Workbench stores credentials as `SecretRef` pointers (`env:FOO`,
 logs, persists, or echoes back a **resolved** secret value, treat it
 as a security bug and report it through the channel above.
 
+`file:` refs must be plain absolute paths. The runtime rejects
+`file:` refs that are relative, contain `..` segments, or point into
+`/proc`, `/sys`, or `/dev` — see
+[`runtimes/typescript/src/secrets/file.ts`](./runtimes/typescript/src/secrets/file.ts).
+This is defense-in-depth on top of operator trust; the operator
+still owns `workbench.yaml`.
+
+## SSRF posture for service endpoints
+
+Chunking, embedding, reranking, and LLM services accept an
+`endpointBaseUrl`. The runtime validates that URL and **blocks**:
+
+- Cloud-metadata hosts (`169.254.169.254`, `metadata.google.internal`,
+  `metadata.goog`, `metadata.azure.com`, `fd00:ec2::254`).
+- Link-local IPv4 (`169.254.0.0/16`) and IPv6 (`fe80::/10`) ranges.
+
+The runtime **does not block** RFC1918 private ranges
+(`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) or loopback
+(`127.0.0.0/8`, `::1`). This is intentional: the most common
+self-hosted setup is a local Ollama or vLLM instance reached over a
+private network. Blocking those ranges at the runtime layer would
+break that workflow.
+
+For cloud deployments where the runtime is reachable by untrusted
+operators (multi-tenant hosting, shared dev environments) this means
+a misconfigured `endpointBaseUrl` could reach internal services on
+the same VPC. Operators in that posture should:
+
+- Enforce egress controls at the network layer (NetworkPolicy,
+  security group, NAT gateway with allowlist) so the runtime can
+  only reach the embedding/reranking providers it actually needs.
+- Restrict who can edit service configs to the same trust level as
+  the network policy.
+
+See
+[`runtimes/typescript/src/openapi/schemas.ts`](./runtimes/typescript/src/openapi/schemas.ts)
+(`isAllowedEndpointBaseUrl`) for the exact validator.
+
 ## Browser security headers
 
 The TypeScript runtime applies a single hardening middleware to every

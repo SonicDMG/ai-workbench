@@ -898,9 +898,12 @@ first update.
 Headers: `Content-Type: text/event-stream`, `Cache-Control:
 no-cache`.
 
-Single-replica only at this slice — the `JobStore` pub/sub lives
-in-process. Cross-process job fan-out (Redis etc.) ships alongside
-persistent job backends.
+Same-replica updates fan out immediately through the in-process
+subscription registry. With the Astra job store, subscribers on
+other replicas poll the subscribed job records at
+`controlPlane.jobPollIntervalMs` so an SSE client can see progress
+even when the worker is running on a different pod. The memory and
+file job stores remain single-replica deployment shapes.
 
 ### Job record
 
@@ -916,7 +919,9 @@ persistent job backends.
 | `total` | int or null | Units expected (null if unknown) |
 | `result` | object or null | Kind-specific summary on success (ingest: `{ chunks: N }`) |
 | `errorMessage` | string or null | Populated on `failed` |
+| `leasedBy` | string or null | Replica currently driving the job |
 | `leasedAt` | iso-8601 or null | Last heartbeat from the lease holder |
+| `ingestInput` | object or null | Persisted ingest snapshot used for orphan replay |
 | `createdAt` | iso-8601 | |
 | `updatedAt` | iso-8601 | |
 
@@ -930,14 +935,16 @@ driver:
   restart.
 - `controlPlane.driver: astra` → jobs live in `wb_jobs_by_workspace`,
   reusing the existing Data API connection; durable across restart
-  and across replicas.
+  and across replicas. Subscriptions poll across replicas while local
+  updates still fan out immediately.
 
-In-flight jobs (`pending` / `running` at restart) are NOT resumed —
-the worker that owned them is gone. The record keeps its
-pre-restart status until a human or a follow-up slice with a
-resume-worker promotes it to `failed`. Callers that need
-restart-resume today should treat any `running` job older than a
-heartbeat threshold as failed and resubmit.
+Clustered Astra deployments can set
+`controlPlane.jobsResume.enabled: true`. Running workers then stamp
+`leasedBy` / `leasedAt`; the orphan sweeper claims stale leases and,
+when `ingestInput` is present, replays the ingest pipeline. Chunk IDs
+are deterministic, so replay is idempotent. Older jobs without an
+input snapshot, or future job kinds that cannot replay yet, are
+claimed and marked failed so clients still see a terminal state.
 
 
 ## `/api/v1/workspaces/{workspaceId}/llm-services`
@@ -1161,9 +1168,9 @@ context):
 - `list_chat_messages`
 - `chat_send` *(only when `mcp.exposeChat: true` and `chat:` is configured)*
 
-Auth flows through the regular `/api/v1/*` middleware:
-`assertWorkspaceAccess` runs on every MCP request, so workspace
-scoping is enforced for free.
+Auth flows through the regular `/api/v1/*` middleware plus the
+shared workspace-route authorization wrapper, so workspace scoping is
+enforced before any MCP tool is invoked.
 
 
 ## Planned routes

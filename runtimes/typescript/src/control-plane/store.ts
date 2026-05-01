@@ -437,9 +437,9 @@ export interface ControlPlaneStore {
 	/** Fire-and-forget bump of `lastUsedAt` after a successful verify. */
 	touchApiKey(workspace: string, keyId: string): Promise<void>;
 
-	/* RAG documents (KB-scoped, issue #98). New surface backed by
-	 * `wb_rag_documents_by_knowledge_base`. The legacy catalog-scoped
-	 * Document methods above stay until phase 1c drops `/catalogs`. */
+	/* RAG documents (KB-scoped). The canonical KB surface is backed by
+	 * `wb_rag_documents_by_knowledge_base`; the older document methods
+	 * above are retained for store compatibility and fixture history. */
 	listRagDocuments(
 		workspace: string,
 		knowledgeBase: string,

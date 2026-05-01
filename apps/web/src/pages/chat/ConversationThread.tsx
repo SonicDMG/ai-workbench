@@ -154,9 +154,12 @@ export function ConversationThread({
 		const content = draft.trim();
 		if (!content) return;
 		setDraft("");
-		await stream.send(content);
-		if (stream.error) {
-			toast.error("Couldn't send message", { description: stream.error });
+		// `send` returns the error message (or null on success). Reading
+		// `stream.error` here would see stale state from the previous
+		// render — React hasn't flushed the setError yet.
+		const sendError = await stream.send(content);
+		if (sendError) {
+			toast.error("Couldn't send message", { description: sendError });
 			setDraft(content); // restore so the user doesn't lose their typing
 		}
 	};

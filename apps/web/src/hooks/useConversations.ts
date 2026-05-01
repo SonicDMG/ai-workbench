@@ -238,7 +238,15 @@ export function useConversationMessages(
  * `pendingDelta` is cleared.
  */
 export interface SendConversationStreamHandle {
-	readonly send: (content: string) => Promise<void>;
+	/**
+	 * Open the stream and pump events. Resolves with `null` on success
+	 * or the redacted error message string on failure. The returned
+	 * value is the source of truth for "did this attempt fail" — do
+	 * NOT read `error` from this handle immediately after `await
+	 * send(...)`, because React state updates have not flushed yet
+	 * (stale closure).
+	 */
+	readonly send: (content: string) => Promise<string | null>;
 	readonly pendingDelta: string;
 	readonly pending: boolean;
 	readonly error: string | null;
@@ -261,8 +269,8 @@ export function useSendConversationStream(
 	}, []);
 
 	const send = useCallback(
-		async (content: string) => {
-			if (pending) return;
+		async (content: string): Promise<string | null> => {
+			if (pending) return null;
 			const ctrl = new AbortController();
 			abortRef.current = ctrl;
 			setPending(true);
@@ -299,9 +307,11 @@ export function useSendConversationStream(
 						}
 					},
 				});
+				return null;
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
 				setError(msg);
+				return msg;
 			} finally {
 				setPending(false);
 				abortRef.current = null;

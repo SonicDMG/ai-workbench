@@ -14,16 +14,16 @@
  *                the request is refused with 403 `forbidden`.
  *
  * That's authz, not authn — the middleware already produced the
- * {@link AuthContext}. Route handlers should call
- * {@link assertWorkspaceAccess} at the top of every
- * `/api/v1/workspaces/{workspaceId}/...` route.
+ * {@link AuthContext}. The app mounts {@link workspaceRouteAuthz}
+ * around `/api/v1/workspaces/{workspaceId}/...` so workspace-scoped
+ * resource handlers inherit this check by default.
  *
  * {@link filterToAccessibleWorkspaces} is the corresponding "list"
  * helper: returns the subset of workspaces the subject can see.
  * Anonymous / unscoped callers see everything.
  */
 
-import type { Context } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import type { AppEnv } from "../lib/types.js";
 import { ForbiddenError } from "./errors.js";
 
@@ -43,6 +43,25 @@ export function assertWorkspaceAccess(
 	throw new ForbiddenError(
 		`authenticated subject is not authorized for workspace '${workspaceId}'`,
 	);
+}
+
+/**
+ * Workspace-route authorization wrapper. Mount this after
+ * {@link authMiddleware} on paths that expose a `:workspaceId`
+ * parameter and before the concrete route modules are mounted.
+ *
+ * This keeps the security invariant centralized: resource handlers
+ * still read `workspaceId` from their validated params, but they do
+ * not each have to remember to call {@link assertWorkspaceAccess}.
+ */
+export function workspaceRouteAuthz(): MiddlewareHandler<AppEnv> {
+	return async (c, next) => {
+		const workspaceId = c.req.param("workspaceId");
+		if (workspaceId) {
+			assertWorkspaceAccess(c, workspaceId);
+		}
+		await next();
+	};
 }
 
 export function filterToAccessibleWorkspaces<

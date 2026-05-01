@@ -12,13 +12,12 @@
  * collection name the driver addresses; the bound embedding service
  * supplies the dimension and provider config.
  *
- * Coexists with `/vector-stores/{vs}/...` during phase 1c — the
- * legacy routes get retired once the UI cuts over (phase 1d's
- * follow-up cleanup).
+ * This is the canonical data-plane surface. The older
+ * `/vector-stores/{vs}/...` routes were folded into the KB model so
+ * callers always address the logical knowledge base.
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { assertWorkspaceAccess } from "../../auth/authz.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
@@ -77,7 +76,6 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const { workspace, descriptor } = await resolveKb(
 				store,
@@ -121,7 +119,6 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, knowledgeBaseId, recordId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const { workspace, descriptor } = await resolveKb(
 				store,
 				workspaceId,
@@ -164,7 +161,6 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 		}),
 		async (c) => {
 			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
-			assertWorkspaceAccess(c, workspaceId);
 			const body = c.req.valid("json");
 			const { workspace, descriptor } = await resolveKb(
 				store,

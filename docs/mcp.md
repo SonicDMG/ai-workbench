@@ -50,9 +50,9 @@ mcp:
 
 The MCP route is mounted under `/api/v1/workspaces/{w}/mcp`, which
 means the regular `/api/v1/*` auth middleware applies.
-`assertWorkspaceAccess` is enforced on every request: a scoped API
-key for workspace A cannot call MCP tools against workspace B,
-even with the URL.
+The shared workspace-route authorization wrapper is enforced on every
+request: a scoped API key for workspace A cannot call MCP tools
+against workspace B, even with the URL.
 
 The default `auth.mode: disabled` (single-tenant dev runtime) lets
 anonymous callers in. **For any deployment exposing MCP to external

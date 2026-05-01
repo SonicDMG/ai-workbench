@@ -1400,25 +1400,15 @@ describe("auth bypasses OpenAPI and docs", () => {
 });
 
 describe("authz source invariants", () => {
-	test("workspace route modules keep explicit authorization helpers wired", () => {
-		const routeDir = join(process.cwd(), "src", "routes", "api-v1");
-		const routeModules = [
-			"api-keys.ts",
-			"chunking-services.ts",
-			"embedding-services.ts",
-			"jobs.ts",
-			"kb-data-plane.ts",
-			"kb-documents.ts",
-			"knowledge-bases.ts",
-			"llm-services.ts",
-			"reranking-services.ts",
-			"workspaces.ts",
-		];
-		for (const file of routeModules) {
-			const source = readFileSync(join(routeDir, file), "utf8");
-			expect(source, `${file} should validate workspace access`).toMatch(
-				/assertWorkspaceAccess\(c,\s*workspaceId\)|filterToAccessibleWorkspaces\(c,|assertPlatformAccess\(c\)/,
-			);
-		}
+	test("createApp mounts centralized workspace authz before route plugins", () => {
+		const source = readFileSync(join(process.cwd(), "src", "app.ts"), "utf8");
+		const authzMount = source.indexOf("workspaceRouteAuthz()");
+		const routePluginBuild = source.indexOf(
+			"opts.routePlugins ?? buildDefaultRoutePlugins",
+		);
+		expect(source).toContain("workspaceRouteAuthz()");
+		expect(source).toContain('app.use("/api/v1/workspaces/:workspaceId"');
+		expect(source).toContain('app.use("/api/v1/workspaces/:workspaceId/*"');
+		expect(authzMount).toBeLessThan(routePluginBuild);
 	});
 });

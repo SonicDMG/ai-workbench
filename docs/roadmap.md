@@ -373,8 +373,9 @@ walkthrough.
   (vector / hybrid / rerank), `list_chats`, `list_chat_messages`.
   Plus `chat_send` (opt-in via `mcp.exposeChat: true`) which routes
   through the runtime's global chat service.
-- **Auth.** Reuses `assertWorkspaceAccess`, so a scoped workspace
-  API key for workspace A cannot call MCP tools on workspace B.
+- **Auth.** Reuses the shared workspace-route authz wrapper, so a
+  scoped workspace API key for workspace A cannot call MCP tools on
+  workspace B.
 - **Off by default.** `mcp.enabled: true` opts in.
 
 Tools deliberately don't include write operations

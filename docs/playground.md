@@ -215,7 +215,6 @@ surfacing in KB-scoped search hits immediately.
 - **Streaming results** — not meaningful for vector search (one
   round trip), but the shape could change when reranking /
   generation join the request path.
-- **Cross-replica job pub/sub** — the SSE worker is in-process
-  today. Multi-replica deployments will need a fan-out layer
-  before the playground can subscribe to jobs spawned on a
-  different replica.
+- **Saved playground runs** — useful search configurations could be
+  persisted as shareable workspace artifacts once the product needs a
+  repeatable evaluation workflow rather than a scratchpad only.
