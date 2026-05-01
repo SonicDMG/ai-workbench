@@ -72,4 +72,66 @@ describe("LineChunker — strategy-specific", () => {
 			}
 		}
 	});
+
+	test("CSV with \\r\\n (Windows / Excel) splits at the \\n boundary", () => {
+		const chunker = new LineChunker({
+			maxChars: 30,
+			minChars: 0,
+			overlapChars: 0,
+		});
+		const csv = "id,name,score\r\n1,alice,90\r\n2,bob,87\r\n3,carol,93\r\n";
+		const chunks = chunker.chunk({ text: csv });
+		expect(chunks.length).toBeGreaterThan(1);
+		// Each chunk must end on a complete line terminator (`\r\n` here).
+		for (const chunk of chunks) {
+			expect(chunk.text.endsWith("\r\n")).toBe(true);
+		}
+		// Every non-empty row inside a chunk has the expected column count.
+		for (const chunk of chunks) {
+			for (const row of chunk.text.replace(/\r\n$/, "").split("\r\n")) {
+				if (row.length === 0) continue;
+				expect(row.split(",").length).toBe(3);
+			}
+		}
+	});
+
+	test("CSV with lone \\r (classic Mac) splits at the \\r boundary", () => {
+		const chunker = new LineChunker({
+			maxChars: 30,
+			minChars: 0,
+			overlapChars: 0,
+		});
+		// Old-Mac / some legacy exports use a bare `\r` as the row
+		// terminator. The chunker MUST recognise it, otherwise the whole
+		// file collapses into one mega-line and the chunker hard-splits
+		// mid-row — surprising to users who chose "line-based" exactly to
+		// keep rows intact.
+		const csv = "id,name,score\r1,alice,90\r2,bob,87\r3,carol,93\r";
+		const chunks = chunker.chunk({ text: csv });
+		expect(chunks.length).toBeGreaterThan(1);
+		for (const chunk of chunks) {
+			expect(chunk.text.endsWith("\r")).toBe(true);
+			for (const row of chunk.text.replace(/\r$/, "").split("\r")) {
+				if (row.length === 0) continue;
+				expect(row.split(",").length).toBe(3);
+			}
+		}
+	});
+
+	test("small CSV that fits inside maxChars is intentionally a single chunk", () => {
+		// Documents the expected behaviour: the line chunker bundles
+		// consecutive lines up to maxChars. A tiny CSV under the limit
+		// produces one chunk — that is correct, not a bug. Pin it so a
+		// future change can't quietly turn it into per-row chunks without
+		// updating this test.
+		const chunker = new LineChunker({
+			maxChars: 1000,
+			minChars: 0,
+			overlapChars: 0,
+		});
+		const csv = "id,name,score\n1,alice,90\n2,bob,87\n3,carol,93\n";
+		const chunks = chunker.chunk({ text: csv });
+		expect(chunks).toHaveLength(1);
+		expect(chunks[0]?.text).toBe(csv);
+	});
 });

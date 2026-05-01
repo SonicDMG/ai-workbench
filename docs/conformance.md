@@ -27,7 +27,11 @@ conformance/
 │   ├── workspace-kind-is-immutable.json
 │   ├── workspace-credentials-must-be-secret-ref.json
 │   ├── workspace-test-connection-mock.json
-│   └── workspace-api-key-lifecycle.json
+│   ├── workspace-api-key-lifecycle.json
+│   ├── knowledge-base-crud-basic.json
+│   ├── kb-document-crud-basic.json
+│   ├── kb-search-empty.json
+│   └── agent-crud-basic.json
 ├── mock-astra/
 │   └── server.ts               ← stand-in Astra endpoint (Node)
 ├── normalize.mjs               ← shape-agnostic placeholder scrubber
@@ -67,7 +71,9 @@ runtimes/typescript/
 `$N.field` references the `field` of step N's raw response body (1-indexed).
 Supports dot-paths: `$1.workspaceId`, `$2.workspace.workspaceId`, etc.
 
-Current scenarios:
+Current scenarios (kept in sync with `conformance/scenarios.json` —
+regenerate fixtures via `npm run conformance:regenerate` whenever
+this list changes):
 
 | Slug | Covers |
 |---|---|
@@ -76,14 +82,14 @@ Current scenarios:
 | `workspace-credentials-must-be-secret-ref` | Raw credential values are rejected before reaching the SecretResolver |
 | `workspace-test-connection-mock` | Mock workspace connection probe response shape |
 | `workspace-api-key-lifecycle` | API-key issue, list, revoke, list lifecycle |
+| `knowledge-base-crud-basic` | Knowledge-base POST / GET / PATCH / DELETE with bound services |
+| `kb-document-crud-basic` | Sync document upsert + retrieval shape |
+| `kb-search-empty` | Search response envelope when the KB has no records |
+| `agent-crud-basic` | Agent POST / GET / PATCH / DELETE lifecycle |
 
-The corpus shrank during the catalog → knowledge-base refactor: every
-prior catalog / vector-store fixture was retired, and the
-knowledge-base equivalents have not yet been authored. They will land
-back as the new fixture set bakes in. Until then, the runtime
-exercises every KB / services / ingest / search route through its
-Vitest suite (`tests/knowledge-bases.test.ts`, `tests/ingest/`,
-plus the route-level tests under `tests/`).
+The KB / agent fixtures pin the wire shape; routes that stay
+runtime-only by design (timing- or driver-method-dependent) remain
+covered by the per-runtime test suite.
 
 Routes that stay runtime-only by design (timing- or
 driver-method-dependent):

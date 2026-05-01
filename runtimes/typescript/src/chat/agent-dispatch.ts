@@ -38,7 +38,6 @@ import { assemblePrompt } from "../chat/prompt.js";
 import { DEFAULT_AGENT_TOOLS } from "../chat/tools/registry.js";
 import type {
 	ChatService,
-	ChatStreamEvent,
 	ChatTurn,
 	ToolCall,
 	ToolDefinition,
@@ -461,7 +460,7 @@ async function consumeStreamIteration(
 				tools: tools && tools.length > 0 ? tools : undefined,
 			},
 			{ signal },
-		) as AsyncIterable<ChatStreamEvent>) {
+		)) {
 			if (event.type === "token") {
 				buffer += event.delta;
 				onToken(event.delta);

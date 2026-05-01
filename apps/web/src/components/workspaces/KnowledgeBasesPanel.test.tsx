@@ -26,6 +26,24 @@ vi.mock("@/hooks/useKnowledgeBases", () => ({
 	}),
 }));
 
+vi.mock("@/hooks/useServices", () => ({
+	useChunkingServices: () => ({
+		data: [
+			{ chunkingServiceId: "chk-1", name: "default-chunker" },
+			{ chunkingServiceId: "chk-2", name: "csv-line" },
+		],
+		isLoading: false,
+	}),
+	useEmbeddingServices: () => ({
+		data: [{ embeddingServiceId: "emb-1", name: "openai-3-small" }],
+		isLoading: false,
+	}),
+	useRerankingServices: () => ({
+		data: [{ rerankingServiceId: "rrk-1", name: "cohere-rerank" }],
+		isLoading: false,
+	}),
+}));
+
 // Document fetch only fires when a row is expanded; in these tests
 // we don't expand rows, so a stub is enough.
 vi.mock("@/hooks/useDocuments", () => ({
@@ -40,6 +58,17 @@ vi.mock("@/hooks/useDocuments", () => ({
 vi.mock("./CreateKnowledgeBaseDialog", () => ({
 	CreateKnowledgeBaseDialog: ({ open }: { open: boolean }) =>
 		open ? <div data-testid="create-kb-dialog" /> : null,
+}));
+
+vi.mock("./EditKnowledgeBaseDialog", () => ({
+	EditKnowledgeBaseDialog: ({
+		kb,
+	}: {
+		kb: { knowledgeBaseId: string } | null;
+	}) =>
+		kb ? (
+			<div data-testid="edit-kb-dialog" data-kb-id={kb.knowledgeBaseId} />
+		) : null,
 }));
 
 vi.mock("./IngestQueueDialog", () => ({
@@ -163,13 +192,43 @@ describe("KnowledgeBasesPanel", () => {
 		// KB_BETA has rerankingServiceId set; KB_ALPHA does not — exactly
 		// one reranker chip should render.
 		expect(screen.getAllByText("reranker")).toHaveLength(1);
-		// Each row exposes a delete button labeled with the KB name so
-		// destructive actions stay readable to AT users.
+		// Each row exposes edit and delete buttons labeled with the KB
+		// name so destructive and mutating actions stay readable to AT
+		// users.
+		expect(
+			screen.getByRole("button", { name: "Edit alpha" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Edit beta" }),
+		).toBeInTheDocument();
 		expect(
 			screen.getByRole("button", { name: "Delete alpha" }),
 		).toBeInTheDocument();
 		expect(
 			screen.getByRole("button", { name: "Delete beta" }),
 		).toBeInTheDocument();
+	});
+
+	it("renders chunking and embedding service chips with the resolved service names", () => {
+		listState.data = [KB_ALPHA];
+		renderPanel();
+		// KB_ALPHA binds chk-1 (default-chunker) and emb-1
+		// (openai-3-small); both names should be visible on the row.
+		expect(screen.getByText("default-chunker")).toBeInTheDocument();
+		expect(screen.getByText("openai-3-small")).toBeInTheDocument();
+		// Chip labels render alongside each service name.
+		expect(screen.getByText("chunking")).toBeInTheDocument();
+		expect(screen.getByText("embedding")).toBeInTheDocument();
+	});
+
+	it("opens the EditKnowledgeBaseDialog when the edit icon for a row is clicked", async () => {
+		listState.data = [KB_ALPHA, KB_BETA];
+		const user = userEvent.setup();
+		renderPanel();
+		expect(screen.queryByTestId("edit-kb-dialog")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Edit beta" }));
+		const dialog = screen.getByTestId("edit-kb-dialog");
+		expect(dialog).toBeInTheDocument();
+		expect(dialog).toHaveAttribute("data-kb-id", "kb-beta");
 	});
 });

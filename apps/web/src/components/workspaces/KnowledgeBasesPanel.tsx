@@ -2,13 +2,14 @@ import {
 	ArrowUpRight,
 	Database,
 	Loader2,
+	Pencil,
 	Plus,
 	RefreshCw,
 	Sparkles,
 	Trash2,
 	Upload,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { ErrorState, LoadingState } from "@/components/common/states";
@@ -26,14 +27,26 @@ import {
 	useDeleteKnowledgeBase,
 	useKnowledgeBases,
 } from "@/hooks/useKnowledgeBases";
+import {
+	useChunkingServices,
+	useEmbeddingServices,
+	useRerankingServices,
+} from "@/hooks/useServices";
 import { formatApiError } from "@/lib/api";
 import { formatFileSize } from "@/lib/files";
 import type { KnowledgeBaseRecord, RagDocumentRecord } from "@/lib/schemas";
 import { formatDate } from "@/lib/utils";
 import { CreateKnowledgeBaseDialog } from "./CreateKnowledgeBaseDialog";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
+import { EditKnowledgeBaseDialog } from "./EditKnowledgeBaseDialog";
 import { FileTypeBadge } from "./FileTypeBadge";
 import { IngestQueueDialog } from "./IngestQueueDialog";
+
+interface ServiceLabels {
+	readonly chunking: ReadonlyMap<string, string>;
+	readonly embedding: ReadonlyMap<string, string>;
+	readonly reranking: ReadonlyMap<string, string>;
+}
 
 /**
  * Workspace-scoped KB management + ingest trigger.
@@ -46,10 +59,29 @@ import { IngestQueueDialog } from "./IngestQueueDialog";
 export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 	const list = useKnowledgeBases(workspace);
 	const del = useDeleteKnowledgeBase(workspace);
+	const chunkings = useChunkingServices(workspace);
+	const embeddings = useEmbeddingServices(workspace);
+	const rerankings = useRerankingServices(workspace);
 	const [createOpen, setCreateOpen] = useState(false);
 	const [toDelete, setToDelete] = useState<KnowledgeBaseRecord | null>(null);
+	const [toEdit, setToEdit] = useState<KnowledgeBaseRecord | null>(null);
 	const [ingestFor, setIngestFor] = useState<KnowledgeBaseRecord | null>(null);
 	const [expanded, setExpanded] = useState<string | null>(null);
+
+	const serviceLabels = useMemo<ServiceLabels>(
+		() => ({
+			chunking: new Map(
+				(chunkings.data ?? []).map((s) => [s.chunkingServiceId, s.name]),
+			),
+			embedding: new Map(
+				(embeddings.data ?? []).map((s) => [s.embeddingServiceId, s.name]),
+			),
+			reranking: new Map(
+				(rerankings.data ?? []).map((s) => [s.rerankingServiceId, s.name]),
+			),
+		}),
+		[chunkings.data, embeddings.data, rerankings.data],
+	);
 
 	if (list.isLoading) return <LoadingState label="Loading knowledge bases…" />;
 	if (list.isError) {
@@ -97,6 +129,7 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 							key={kb.knowledgeBaseId}
 							workspace={workspace}
 							kb={kb}
+							services={serviceLabels}
 							expanded={expanded === kb.knowledgeBaseId}
 							onToggle={() =>
 								setExpanded((cur) =>
@@ -104,6 +137,7 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 								)
 							}
 							onIngest={() => setIngestFor(kb)}
+							onEdit={() => setToEdit(kb)}
 							onDelete={() => setToDelete(kb)}
 						/>
 					))}
@@ -114,6 +148,12 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 				workspace={workspace}
 				open={createOpen}
 				onOpenChange={setCreateOpen}
+			/>
+
+			<EditKnowledgeBaseDialog
+				workspace={workspace}
+				kb={toEdit}
+				onOpenChange={(o) => !o && setToEdit(null)}
 			/>
 
 			{ingestFor ? (
@@ -149,22 +189,32 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 function KnowledgeBaseRow({
 	workspace,
 	kb,
+	services,
 	expanded,
 	onToggle,
 	onIngest,
+	onEdit,
 	onDelete,
 }: {
 	workspace: string;
 	kb: KnowledgeBaseRecord;
+	services: ServiceLabels;
 	expanded: boolean;
 	onToggle: () => void;
 	onIngest: () => void;
+	onEdit: () => void;
 	onDelete: () => void;
 }) {
 	const docs = useDocuments(
 		expanded ? workspace : undefined,
 		expanded ? kb.knowledgeBaseId : undefined,
 	);
+
+	const chunkingName = services.chunking.get(kb.chunkingServiceId);
+	const embeddingName = services.embedding.get(kb.embeddingServiceId);
+	const rerankingName = kb.rerankingServiceId
+		? services.reranking.get(kb.rerankingServiceId)
+		: null;
 
 	return (
 		<div className="rounded-lg border border-slate-200 bg-white">
@@ -182,11 +232,6 @@ function KnowledgeBaseRow({
 								{kb.name}
 							</span>
 							<KbStatusBadge status={kb.status} />
-							{kb.rerankingServiceId ? (
-								<span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-700 border border-purple-200">
-									reranker
-								</span>
-							) : null}
 						</div>
 						{kb.description ? (
 							<p className="text-xs text-slate-500 mt-0.5 truncate">
@@ -197,6 +242,25 @@ function KnowledgeBaseRow({
 								{kb.knowledgeBaseId}
 							</p>
 						)}
+						<div className="mt-1.5 flex flex-wrap items-center gap-1">
+							<ServiceChip
+								kind="chunking"
+								name={chunkingName}
+								id={kb.chunkingServiceId}
+							/>
+							<ServiceChip
+								kind="embedding"
+								name={embeddingName}
+								id={kb.embeddingServiceId}
+							/>
+							{kb.rerankingServiceId ? (
+								<ServiceChip
+									kind="reranking"
+									name={rerankingName}
+									id={kb.rerankingServiceId}
+								/>
+							) : null}
+						</div>
 					</div>
 					<span className="text-xs text-slate-500 shrink-0">
 						{formatDate(kb.createdAt)}
@@ -221,6 +285,15 @@ function KnowledgeBaseRow({
 						>
 							Open <ArrowUpRight className="h-3.5 w-3.5" />
 						</Link>
+					</Button>
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={onEdit}
+						aria-label={`Edit ${kb.name}`}
+						title={`Edit ${kb.name}`}
+					>
+						<Pencil className="h-4 w-4 text-slate-600" />
 					</Button>
 					<Button
 						variant="ghost"
@@ -258,6 +331,49 @@ function KnowledgeBaseRow({
 				</div>
 			) : null}
 		</div>
+	);
+}
+
+type ServiceKindKey = "chunking" | "embedding" | "reranking";
+
+const SERVICE_CHIP_STYLES: Record<
+	ServiceKindKey,
+	{ label: string; className: string }
+> = {
+	chunking: {
+		label: "chunking",
+		className: "bg-sky-50 text-sky-700 border-sky-200",
+	},
+	embedding: {
+		label: "embedding",
+		className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+	},
+	reranking: {
+		label: "reranker",
+		className: "bg-purple-50 text-purple-700 border-purple-200",
+	},
+};
+
+function ServiceChip({
+	kind,
+	name,
+	id,
+}: {
+	kind: ServiceKindKey;
+	name: string | null | undefined;
+	id: string;
+}) {
+	const styles = SERVICE_CHIP_STYLES[kind];
+	const display = name ?? id.slice(0, 8);
+	const tooltip = name ? `${styles.label}: ${name}` : `${styles.label}: ${id}`;
+	return (
+		<span
+			className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${styles.className}`}
+			title={tooltip}
+		>
+			<span className="opacity-70">{styles.label}</span>
+			<span className="font-mono normal-case">{display}</span>
+		</span>
 	);
 }
 

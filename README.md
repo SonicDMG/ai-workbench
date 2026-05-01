@@ -85,6 +85,18 @@ See [`docs/architecture.md`](docs/architecture.md) for the full model.
 
 ## Quickstart
 
+### Prerequisites
+
+- **Node.js 22+** (the runtime targets the LTS line; `package.json`
+  pins `engines.node >=22`). Older 21.x will work for the in-memory
+  dev loop because we rely on `process.loadEnvFile`, which landed in
+  21.7 — but CI, the Docker image, and conformance all run on 22.
+- **npm** (ships with Node).
+- **Optional:** Docker, an Astra account + `astra` CLI profile if
+  you want to swap the in-memory control plane for Astra.
+
+### Run it
+
 ```bash
 # Install root devDeps (Biome) + TS runtime deps.
 npm ci && npm run install:ts

@@ -263,6 +263,12 @@ export function useSendConversationStream(
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const abortRef = useRef<AbortController | null>(null);
+	// Mirror of `pending` for the in-flight guard inside `send`. Reading
+	// `pending` (state) directly inside the callback would either close
+	// over a stale value or force `send` to be re-created on every flip,
+	// which churns memoized children. The ref tracks the live in-flight
+	// status; `pending` (state) drives renders.
+	const inFlightRef = useRef(false);
 
 	const cancel = useCallback(() => {
 		abortRef.current?.abort();
@@ -270,7 +276,8 @@ export function useSendConversationStream(
 
 	const send = useCallback(
 		async (content: string): Promise<string | null> => {
-			if (pending) return null;
+			if (inFlightRef.current) return null;
+			inFlightRef.current = true;
 			const ctrl = new AbortController();
 			abortRef.current = ctrl;
 			setPending(true);
@@ -313,11 +320,12 @@ export function useSendConversationStream(
 				setError(msg);
 				return msg;
 			} finally {
+				inFlightRef.current = false;
 				setPending(false);
 				abortRef.current = null;
 			}
 		},
-		[agentId, conversationId, pending, qc, workspaceId],
+		[agentId, conversationId, qc, workspaceId],
 	);
 
 	return { send, pendingDelta, pending, error, cancel };

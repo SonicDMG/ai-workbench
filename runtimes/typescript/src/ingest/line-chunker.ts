@@ -5,10 +5,13 @@
  * snap back to the nearest line boundary.
  *
  * Default preset for newline-delimited content: CSV (1 row per line),
- * JSONL, log files. Splits on `\n` whenever possible. A single line
- * longer than `maxChars` is hard-split mid-line so the per-chunk size
- * bound holds; this keeps the {@link Chunker} contract honest and
- * matches what the recursive char chunker would do.
+ * JSONL, log files. Recognises all three common line-ending styles —
+ * `\n` (Unix / modern), `\r\n` (Windows, Excel), and lone `\r` (classic
+ * Mac, some legacy exports) — so the chunker stays useful regardless
+ * of where the file came from. A single line longer than `maxChars`
+ * is hard-split mid-line so the per-chunk size bound holds; this keeps
+ * the {@link Chunker} contract honest and matches what the recursive
+ * char chunker would do.
  *
  * Hand-rolled rather than wrapped around `@langchain/textsplitters`
  * to keep the {@link Chunker} contract synchronous. Semantic /
@@ -90,8 +93,14 @@ export class LineChunker implements Chunker {
 
 /**
  * Walk the input once and return one span per line. Each span ends
- * just past its trailing `\n` (or at `text.length` for the last line),
- * so concatenating spans reproduces the original text exactly.
+ * just past its trailing line terminator (or at `text.length` for the
+ * last line), so concatenating spans reproduces the original text
+ * exactly.
+ *
+ * A line terminator is `\n`, `\r\n`, or a lone `\r` — the three styles
+ * we see in the wild for CSV / JSONL / log uploads. The trailing
+ * terminator stays inside the line span so chunk text round-trips the
+ * source byte-for-byte.
  *
  * Lines longer than `maxChars` are hard-split into multiple spans of
  * up to `maxChars` each, so downstream grouping never has to emit a
@@ -109,7 +118,15 @@ function enumerateLines(text: string, maxChars: number): readonly Span[] {
 		if (e > cursor) lines.push({ start: cursor, end: e });
 	};
 	for (let i = 0; i < text.length; i++) {
-		if (text[i] === "\n") {
+		const ch = text[i];
+		if (ch === "\n") {
+			pushLine(start, i + 1);
+			start = i + 1;
+		} else if (ch === "\r") {
+			// Treat `\r\n` as a single boundary (the `\n` branch above
+			// will fire on the next iteration); a lone `\r` is its own
+			// boundary.
+			if (text[i + 1] === "\n") continue;
 			pushLine(start, i + 1);
 			start = i + 1;
 		}

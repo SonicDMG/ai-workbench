@@ -27,6 +27,7 @@ import type {
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
 import { ApiError } from "../../lib/errors.js";
+import { MAX_CHAT_MESSAGE_CHARS } from "../../lib/limits.js";
 import { logger } from "../../lib/logger.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
@@ -589,6 +590,13 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 				throw new ApiError(
 					"validation_error",
 					"`content` must be a non-empty string",
+					400,
+				);
+			}
+			if (body.content.length > MAX_CHAT_MESSAGE_CHARS) {
+				throw new ApiError(
+					"validation_error",
+					`\`content\` must be at most ${MAX_CHAT_MESSAGE_CHARS} characters`,
 					400,
 				);
 			}
