@@ -64,6 +64,7 @@ import {
 import {
 	ControlPlaneConflictError,
 	ControlPlaneNotFoundError,
+	IN_USE_CODES,
 } from "../errors.js";
 import {
 	applyPatch,
@@ -1792,6 +1793,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		if (ref) {
 			throw new ControlPlaneConflictError(
 				`service '${serviceId}' is referenced by knowledge base '${ref.knowledge_base_id}' (${field})`,
+				IN_USE_CODES[field],
 			);
 		}
 	}
@@ -1818,6 +1820,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		if (ref) {
 			throw new ControlPlaneConflictError(
 				`service '${serviceId}' is referenced by agent '${ref.agent_id}' (${field})`,
+				IN_USE_CODES[field],
 			);
 		}
 	}

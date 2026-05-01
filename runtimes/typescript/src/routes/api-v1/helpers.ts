@@ -36,7 +36,7 @@ export function mapControlPlaneError(err: unknown): MappedError | null {
 		};
 	}
 	if (err instanceof ControlPlaneConflictError) {
-		return { status: 409, code: "conflict", message: err.message };
+		return { status: 409, code: err.code, message: err.message };
 	}
 	if (err instanceof ControlPlaneUnavailableError) {
 		return {

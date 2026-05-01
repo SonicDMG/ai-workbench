@@ -28,6 +28,7 @@ import {
 import {
 	ControlPlaneConflictError,
 	ControlPlaneNotFoundError,
+	IN_USE_CODES,
 } from "../errors.js";
 import {
 	applyPatch,
@@ -1342,6 +1343,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		if (ref) {
 			throw new ControlPlaneConflictError(
 				`service '${serviceId}' is referenced by knowledge base '${ref.knowledgeBaseId}' (${field})`,
+				IN_USE_CODES[field],
 			);
 		}
 	}
@@ -1357,6 +1359,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		if (ref) {
 			throw new ControlPlaneConflictError(
 				`service '${serviceId}' is referenced by agent '${ref.agentId}' (${field})`,
+				IN_USE_CODES[field],
 			);
 		}
 	}

@@ -202,7 +202,7 @@ describe("chunking-services routes", () => {
 		);
 		expect(del.status).toBe(409);
 		const body = await json(del);
-		expect(body.error.code).toBe("conflict");
+		expect(body.error.code).toBe("chunking_service_in_use");
 		expect(body.error.message).toMatch(/knowledge[_ ]base|in use|referenc/i);
 	});
 
