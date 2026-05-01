@@ -841,6 +841,29 @@ describe("KB document routes", () => {
 		expect(hits.length).toBeGreaterThan(0);
 	});
 
+	test("POST /ingest accepts long-form documents above the legacy 200k char cap", async () => {
+		// Regression: a routine-size markdown CHANGELOG (~275 KB) used
+		// to fail with `validation_error: text: Too big`. The ingest cap
+		// now sits in the millions of chars to cover real-world long-form
+		// docs; this test pins that a comfortably-large doc round-trips.
+		const app = makeApp();
+		const { ws, kbId } = await makeReadyKb(app);
+		const text = "lorem ipsum dolor sit amet ".repeat(20_000); // ~540 KB
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text }),
+			},
+		);
+		expect(res.status, await res.clone().text()).toBe(201);
+		const body = await json(res);
+		expect(body.document.status).toBe("ready");
+		expect(body.chunks).toBeGreaterThan(0);
+	});
+
 	test("POST /ingest?async=true returns 202 with a pending job tagged with the KB", async () => {
 		const app = makeApp();
 		const { ws, kbId } = await makeReadyKb(app);
