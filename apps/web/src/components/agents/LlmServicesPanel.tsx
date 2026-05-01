@@ -97,8 +97,12 @@ export function LlmServicesPanel({ workspace }: LlmServicesPanelProps) {
 									</div>
 									<p className="mt-1 text-xs text-slate-500 truncate">
 										{svc.modelName}
-										{svc.description ? ` · ${svc.description}` : ""}
 									</p>
+									{svc.description ? (
+										<p className="mt-1 line-clamp-2 text-xs text-slate-500">
+											{svc.description}
+										</p>
+									) : null}
 									<p className="mt-1 text-[11px] text-slate-400">
 										Updated {formatDate(svc.updatedAt)}
 									</p>
