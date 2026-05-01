@@ -31,14 +31,13 @@ import { runKbIngestJob } from "../../jobs/ingest-worker.js";
 import type { JobStore } from "../../jobs/store.js";
 import type { IngestInputSnapshot } from "../../jobs/types.js";
 import { ApiError } from "../../lib/errors.js";
-import { makeOpenApi } from "../../lib/openapi.js";
+import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	CreateRagDocumentInputSchema,
 	DocumentChunkSchema,
 	DocumentIdParamSchema,
-	ErrorEnvelopeSchema,
 	KbAsyncIngestResponseSchema,
 	KbIngestRequestSchema,
 	KbIngestResponseSchema,
@@ -84,10 +83,7 @@ export function kbDocumentRoutes(
 					content: { "application/json": { schema: RagDocumentPageSchema } },
 					description: "All documents in the knowledge base",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or knowledge base not found",
-				},
+				...errorResponse(404, "Workspace or knowledge base not found"),
 			},
 		}),
 		async (c) => {
@@ -123,14 +119,8 @@ export function kbDocumentRoutes(
 					},
 					description: "Document created",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or knowledge base not found",
-				},
-				409: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate documentId within the knowledge base",
-				},
+				...errorResponse(404, "Workspace or knowledge base not found"),
+				...errorResponse(409, "Duplicate documentId within the knowledge base"),
 			},
 		}),
 		async (c) => {
@@ -184,14 +174,8 @@ export function kbDocumentRoutes(
 					},
 					description: "Ingest queued; poll the job for progress",
 				},
-				400: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Validation, chunker config, or dimension mismatch",
-				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or knowledge base not found",
-				},
+				...errorResponse(400, "Validation, chunker config, or dimension mismatch"),
+				...errorResponse(404, "Workspace or knowledge base not found"),
 			},
 		}),
 		async (c) => {
@@ -298,14 +282,8 @@ export function kbDocumentRoutes(
 					},
 					description: "Chunks under the document",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, knowledge base, or document not found",
-				},
-				501: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Driver doesn't support listRecords",
-				},
+				...errorResponse(404, "Workspace, knowledge base, or document not found"),
+				...errorResponse(501, "Driver doesn't support listRecords"),
 			},
 		}),
 		async (c) => {
@@ -382,10 +360,7 @@ export function kbDocumentRoutes(
 					},
 					description: "Document",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, knowledge base, or document not found",
-				},
+				...errorResponse(404, "Workspace, knowledge base, or document not found"),
 			},
 		}),
 		async (c) => {
@@ -426,10 +401,7 @@ export function kbDocumentRoutes(
 					},
 					description: "Updated document",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, knowledge base, or document not found",
-				},
+				...errorResponse(404, "Workspace, knowledge base, or document not found"),
 			},
 		}),
 		async (c) => {
@@ -461,10 +433,7 @@ export function kbDocumentRoutes(
 			},
 			responses: {
 				204: { description: "Deleted" },
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, knowledge base, or document not found",
-				},
+				...errorResponse(404, "Workspace, knowledge base, or document not found"),
 			},
 		}),
 		async (c) => {

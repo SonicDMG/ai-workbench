@@ -11,7 +11,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
-import { makeOpenApi } from "../../lib/openapi.js";
+import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
@@ -19,7 +19,6 @@ import {
 	EmbeddingServiceIdParamSchema,
 	EmbeddingServicePageSchema,
 	EmbeddingServiceRecordSchema,
-	ErrorEnvelopeSchema,
 	PaginationQuerySchema,
 	UpdateEmbeddingServiceInputSchema,
 	WorkspaceIdParamSchema,
@@ -48,10 +47,7 @@ export function embeddingServiceRoutes(
 					},
 					description: "All embedding services in the workspace",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
+				...errorResponse(404, "Workspace not found"),
 			},
 		}),
 		async (c) => {
@@ -84,14 +80,8 @@ export function embeddingServiceRoutes(
 					},
 					description: "Created",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
-				409: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate embeddingServiceId",
-				},
+				...errorResponse(404, "Workspace not found"),
+				...errorResponse(409, "Duplicate embeddingServiceId"),
 			},
 		}),
 		async (c) => {
@@ -125,10 +115,7 @@ export function embeddingServiceRoutes(
 					},
 					description: "Embedding service",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or service not found",
-				},
+				...errorResponse(404, "Workspace or service not found"),
 			},
 		}),
 		async (c) => {
@@ -171,10 +158,7 @@ export function embeddingServiceRoutes(
 					},
 					description: "Updated",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or service not found",
-				},
+				...errorResponse(404, "Workspace or service not found"),
 			},
 		}),
 		async (c) => {
@@ -206,14 +190,8 @@ export function embeddingServiceRoutes(
 			},
 			responses: {
 				204: { description: "Deleted" },
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or service not found",
-				},
-				409: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Service is still referenced by a knowledge base",
-				},
+				...errorResponse(404, "Workspace or service not found"),
+				...errorResponse(409, "Service is still referenced by a knowledge base"),
 			},
 		}),
 		async (c) => {

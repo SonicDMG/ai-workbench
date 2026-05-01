@@ -7,12 +7,11 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
-import { makeOpenApi } from "../../lib/openapi.js";
+import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	CreateKnowledgeFilterInputSchema,
-	ErrorEnvelopeSchema,
 	KnowledgeBaseIdParamSchema,
 	KnowledgeFilterIdParamSchema,
 	KnowledgeFilterPageSchema,
@@ -47,10 +46,7 @@ export function knowledgeFilterRoutes(
 					},
 					description: "All saved filters in the knowledge base",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or knowledge base not found",
-				},
+				...errorResponse(404, "Workspace or knowledge base not found"),
 			},
 		}),
 		async (c) => {
@@ -89,14 +85,8 @@ export function knowledgeFilterRoutes(
 					},
 					description: "Knowledge filter created",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or knowledge base not found",
-				},
-				409: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate knowledgeFilterId",
-				},
+				...errorResponse(404, "Workspace or knowledge base not found"),
+				...errorResponse(409, "Duplicate knowledgeFilterId"),
 			},
 		}),
 		async (c) => {
@@ -132,10 +122,7 @@ export function knowledgeFilterRoutes(
 					},
 					description: "Knowledge filter",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, knowledge base, or filter not found",
-				},
+				...errorResponse(404, "Workspace, knowledge base, or filter not found"),
 			},
 		}),
 		async (c) => {
@@ -182,10 +169,7 @@ export function knowledgeFilterRoutes(
 					},
 					description: "Updated knowledge filter",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, knowledge base, or filter not found",
-				},
+				...errorResponse(404, "Workspace, knowledge base, or filter not found"),
 			},
 		}),
 		async (c) => {
@@ -218,10 +202,7 @@ export function knowledgeFilterRoutes(
 			},
 			responses: {
 				204: { description: "Deleted" },
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, knowledge base, or filter not found",
-				},
+				...errorResponse(404, "Workspace, knowledge base, or filter not found"),
 			},
 		}),
 		async (c) => {

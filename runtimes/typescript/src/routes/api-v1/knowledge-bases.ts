@@ -17,13 +17,12 @@ import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import { DimensionMismatchError } from "../../drivers/vector-store.js";
 import { ApiError } from "../../lib/errors.js";
-import { makeOpenApi } from "../../lib/openapi.js";
+import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	AdoptableCollectionListSchema,
 	CreateKnowledgeBaseInputSchema,
-	ErrorEnvelopeSchema,
 	KnowledgeBaseIdParamSchema,
 	KnowledgeBasePageSchema,
 	KnowledgeBaseRecordSchema,
@@ -61,10 +60,7 @@ export function knowledgeBaseRoutes(
 					},
 					description: "All knowledge bases in the workspace",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
+				...errorResponse(404, "Workspace not found"),
 			},
 		}),
 		async (c) => {
@@ -99,20 +95,15 @@ export function knowledgeBaseRoutes(
 					},
 					description: "Knowledge base created",
 				},
-				400: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description:
-						"Attach payload is malformed (missing `vectorCollection`, embedding service mismatch, or vector-dimension mismatch)",
-				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description:
-						"Workspace, embedding service, chunking service, reranking service, or attach-target collection not found",
-				},
-				409: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate knowledgeBaseId",
-				},
+				...errorResponse(
+					400,
+					"Attach payload is malformed (missing `vectorCollection`, embedding service mismatch, or vector-dimension mismatch)",
+				),
+				...errorResponse(
+					404,
+					"Workspace, embedding service, chunking service, reranking service, or attach-target collection not found",
+				),
+				...errorResponse(409, "Duplicate knowledgeBaseId"),
 			},
 		}),
 		async (c) => {
@@ -227,10 +218,7 @@ export function knowledgeBaseRoutes(
 					},
 					description: "Adoptable collections",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
+				...errorResponse(404, "Workspace not found"),
 			},
 		}),
 		async (c) => {
@@ -287,10 +275,7 @@ export function knowledgeBaseRoutes(
 					},
 					description: "Knowledge base",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or knowledge base not found",
-				},
+				...errorResponse(404, "Workspace or knowledge base not found"),
 			},
 		}),
 		async (c) => {
@@ -329,11 +314,10 @@ export function knowledgeBaseRoutes(
 					},
 					description: "Updated knowledge base",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description:
-						"Workspace, knowledge base, or reranking service not found",
-				},
+				...errorResponse(
+					404,
+					"Workspace, knowledge base, or reranking service not found",
+				),
 			},
 		}),
 		async (c) => {
@@ -365,10 +349,7 @@ export function knowledgeBaseRoutes(
 			},
 			responses: {
 				204: { description: "Deleted" },
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or knowledge base not found",
-				},
+				...errorResponse(404, "Workspace or knowledge base not found"),
 			},
 		}),
 		async (c) => {

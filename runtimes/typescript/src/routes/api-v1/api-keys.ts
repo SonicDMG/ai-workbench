@@ -22,7 +22,7 @@ import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import { audit } from "../../lib/audit.js";
-import { makeOpenApi } from "../../lib/openapi.js";
+import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
@@ -30,7 +30,6 @@ import {
 	ApiKeyPageSchema,
 	CreateApiKeyInputSchema,
 	CreatedApiKeyResponseSchema,
-	ErrorEnvelopeSchema,
 	PaginationQuerySchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
@@ -58,10 +57,7 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 					},
 					description: "All API keys in the workspace",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
+				...errorResponse(404, "Workspace not found"),
 			},
 		}),
 		async (c) => {
@@ -101,10 +97,7 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 					description:
 						"Key created. `plaintext` is shown once and never retrievable again.",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
+				...errorResponse(404, "Workspace not found"),
 			},
 		}),
 		async (c) => {
@@ -149,10 +142,7 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 			},
 			responses: {
 				204: { description: "Revoked (or was already revoked)" },
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or key not found",
-				},
+				...errorResponse(404, "Workspace or key not found"),
 			},
 		}),
 		async (c) => {

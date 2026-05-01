@@ -11,7 +11,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { assertWorkspaceAccess } from "../../auth/authz.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
-import { makeOpenApi } from "../../lib/openapi.js";
+import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
@@ -19,7 +19,6 @@ import {
 	ChunkingServicePageSchema,
 	ChunkingServiceRecordSchema,
 	CreateChunkingServiceInputSchema,
-	ErrorEnvelopeSchema,
 	PaginationQuerySchema,
 	UpdateChunkingServiceInputSchema,
 	WorkspaceIdParamSchema,
@@ -47,10 +46,7 @@ export function chunkingServiceRoutes(
 					},
 					description: "All chunking services in the workspace",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
+				...errorResponse(404, "Workspace not found"),
 			},
 		}),
 		async (c) => {
@@ -83,14 +79,8 @@ export function chunkingServiceRoutes(
 					},
 					description: "Created",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
-				409: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate chunkingServiceId",
-				},
+				...errorResponse(404, "Workspace not found"),
+				...errorResponse(409, "Duplicate chunkingServiceId"),
 			},
 		}),
 		async (c) => {
@@ -124,10 +114,7 @@ export function chunkingServiceRoutes(
 					},
 					description: "Chunking service",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or service not found",
-				},
+				...errorResponse(404, "Workspace or service not found"),
 			},
 		}),
 		async (c) => {
@@ -170,10 +157,7 @@ export function chunkingServiceRoutes(
 					},
 					description: "Updated",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or service not found",
-				},
+				...errorResponse(404, "Workspace or service not found"),
 			},
 		}),
 		async (c) => {
@@ -205,14 +189,8 @@ export function chunkingServiceRoutes(
 			},
 			responses: {
 				204: { description: "Deleted" },
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or service not found",
-				},
-				409: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Service is still referenced by a knowledge base",
-				},
+				...errorResponse(404, "Workspace or service not found"),
+				...errorResponse(409, "Service is still referenced by a knowledge base"),
 			},
 		}),
 		async (c) => {

@@ -20,10 +20,9 @@ import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { JobStore } from "../../jobs/store.js";
 import type { JobRecord } from "../../jobs/types.js";
 import { isTerminal } from "../../jobs/types.js";
-import { makeOpenApi } from "../../lib/openapi.js";
+import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
-	ErrorEnvelopeSchema,
 	JobIdParamSchema,
 	JobRecordSchema,
 	WorkspaceIdParamSchema,
@@ -55,10 +54,7 @@ export function jobRoutes(deps: JobsRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: JobRecordSchema } },
 					description: "Job",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Job not found",
-				},
+				...errorResponse(404, "Job not found"),
 			},
 		}),
 		async (c) => {

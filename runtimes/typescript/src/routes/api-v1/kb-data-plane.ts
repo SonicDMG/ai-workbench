@@ -22,11 +22,10 @@ import { assertWorkspaceAccess } from "../../auth/authz.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
-import { makeOpenApi } from "../../lib/openapi.js";
+import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	DeleteRecordResponseSchema,
-	ErrorEnvelopeSchema,
 	KnowledgeBaseIdParamSchema,
 	RecordIdParamSchema,
 	SearchHitSchema,
@@ -69,15 +68,11 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: UpsertResponseSchema } },
 					description: "Upsert complete",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description:
-						"Workspace, knowledge base, or embedding service not found",
-				},
-				400: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Dimension mismatch or malformed request",
-				},
+				...errorResponse(
+					404,
+					"Workspace, knowledge base, or embedding service not found",
+				),
+				...errorResponse(400, "Dimension mismatch or malformed request"),
 			},
 		}),
 		async (c) => {
@@ -121,10 +116,7 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 					description:
 						"Delete attempted; `deleted` indicates whether a record was present",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or knowledge base not found",
-				},
+				...errorResponse(404, "Workspace or knowledge base not found"),
 			},
 		}),
 		async (c) => {
@@ -166,14 +158,8 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 					},
 					description: "Matching hits, highest score first",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or knowledge base not found",
-				},
-				400: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Dimension mismatch or malformed request",
-				},
+				...errorResponse(404, "Workspace or knowledge base not found"),
+				...errorResponse(400, "Dimension mismatch or malformed request"),
 			},
 		}),
 		async (c) => {

@@ -27,13 +27,12 @@ import type {
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import { audit } from "../../lib/audit.js";
 import { logger } from "../../lib/logger.js";
-import { makeOpenApi } from "../../lib/openapi.js";
+import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import { safeErrorMessage } from "../../lib/safe-error.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	CreateWorkspaceInputSchema,
-	ErrorEnvelopeSchema,
 	PaginationQuerySchema,
 	TestConnectionResponseSchema,
 	UpdateWorkspaceInputSchema,
@@ -102,15 +101,11 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: WorkspaceRecordSchema } },
 					description: "Workspace created",
 				},
-				403: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description:
-						"Authenticated subject is scoped to specific workspaces and cannot create new ones",
-				},
-				409: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate workspaceId",
-				},
+				...errorResponse(
+					403,
+					"Authenticated subject is scoped to specific workspaces and cannot create new ones",
+				),
+				...errorResponse(409, "Duplicate workspaceId"),
 			},
 		}),
 		async (c) => {
@@ -148,15 +143,11 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: WorkspaceRecordSchema } },
 					description: "Workspace",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
-				503: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description:
-						"Driver for this workspace kind is not available while dropping vector-store collections",
-				},
+				...errorResponse(404, "Workspace not found"),
+				...errorResponse(
+					503,
+					"Driver for this workspace kind is not available while dropping vector-store collections",
+				),
 			},
 		}),
 		async (c) => {
@@ -188,10 +179,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: WorkspaceRecordSchema } },
 					description: "Updated workspace",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
+				...errorResponse(404, "Workspace not found"),
 			},
 		}),
 		async (c) => {
@@ -213,10 +201,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			request: { params: z.object({ workspaceId: WorkspaceIdParamSchema }) },
 			responses: {
 				204: { description: "Deleted" },
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
+				...errorResponse(404, "Workspace not found"),
 			},
 		}),
 		async (c) => {
@@ -269,10 +254,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 					description:
 						"Connection check result. `ok: true` means the driver completed its live check. `ok: false` means the driver could not reach or authenticate with the backend.",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
+				...errorResponse(404, "Workspace not found"),
 			},
 		}),
 		async (c) => {
