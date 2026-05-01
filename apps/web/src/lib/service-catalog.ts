@@ -238,59 +238,21 @@ export const CHUNKING_PRESETS: readonly ChunkingPreset[] = [
 		},
 	},
 	{
-		id: "line-1000",
-		label: "Line-based (1000 chars, snaps to \\n)",
+		id: "line-rows-1",
+		label: "Line-based (one row per chunk)",
 		description:
-			"Small newline-delimited chunks for compact CSV, JSONL, and logs where rows should stay intact.",
+			"Default for CSV / JSONL / log files: every row becomes its own retrievable chunk. Recognises `\\n`, `\\r\\n`, and lone `\\r` line endings.",
 		input: {
-			name: "line-1000",
+			name: "line-rows-1",
 			description:
-				"Small line-based splitter (1000 chars per chunk, snaps to `\\n` boundaries).",
+				"Line-based splitter — one row per chunk. Snaps to `\\n`, `\\r\\n`, or `\\r` boundaries.",
 			engine: "langchain_ts",
 			strategy: "line",
-			chunkUnit: "characters",
-			maxChunkSize: 1000,
+			chunkUnit: "rows",
+			maxChunkSize: 1,
 			minChunkSize: 0,
 			overlapSize: 0,
-			overlapUnit: "characters",
-			preserveStructure: true,
-		},
-	},
-	{
-		id: "line-2000",
-		label: "Line-based (2000 chars, snaps to \\n)",
-		description:
-			"Default for CSV / JSONL. Snaps to `\\n` boundaries so rows stay intact; hard-splits any line longer than the limit.",
-		input: {
-			name: "line-2000",
-			description:
-				"Line-based splitter (2000 chars per chunk, snaps to `\\n` boundaries).",
-			engine: "langchain_ts",
-			strategy: "line",
-			chunkUnit: "characters",
-			maxChunkSize: 2000,
-			minChunkSize: 0,
-			overlapSize: 0,
-			overlapUnit: "characters",
-			preserveStructure: true,
-		},
-	},
-	{
-		id: "line-5000",
-		label: "Line-based (5000 chars, snaps to \\n)",
-		description:
-			"Large newline-delimited chunks for wider CSV rows, JSONL payloads, and verbose logs.",
-		input: {
-			name: "line-5000",
-			description:
-				"Large line-based splitter (5000 chars per chunk, snaps to `\\n` boundaries).",
-			engine: "langchain_ts",
-			strategy: "line",
-			chunkUnit: "characters",
-			maxChunkSize: 5000,
-			minChunkSize: 0,
-			overlapSize: 0,
-			overlapUnit: "characters",
+			overlapUnit: "rows",
 			preserveStructure: true,
 		},
 	},

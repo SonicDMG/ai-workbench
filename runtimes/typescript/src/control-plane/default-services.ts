@@ -102,51 +102,26 @@ const RECURSIVE_CHAR_XL: CreateChunkingServiceInput = {
 	preserveStructure: true,
 };
 
-/** Line-based chunker — tighter chunks for newline-delimited records. */
-const LINE_BASED_SMALL: CreateChunkingServiceInput = {
-	name: "line-1000",
+/**
+ * Line-based chunker — one row per chunk. The default newline-delimited
+ * preset. Honors `\n`, `\r\n`, and lone `\r` boundaries so CSV, JSONL,
+ * and log files split row-by-row regardless of the source platform.
+ * Supersedes the older `line-1000` / `line-2000` / `line-5000` presets,
+ * which packed multiple rows per chunk and confused users who expected
+ * the line splitter to actually split per line.
+ */
+const LINE_ROWS_ONE: CreateChunkingServiceInput = {
+	name: "line-rows-1",
 	description:
-		"Small line-based splitter (1000 chars per chunk, snaps to `\\n` boundaries). Good for compact CSV, JSONL, and logs where rows must stay intact.",
+		"Line-based splitter — one row per chunk. Snaps to `\\n`, `\\r\\n`, or `\\r` boundaries. Default for CSV, JSONL, and log files where every row should be its own retrievable record.",
 	status: "active",
 	engine: "langchain_ts",
 	strategy: "line",
-	chunkUnit: "characters",
-	maxChunkSize: 1000,
+	chunkUnit: "rows",
+	maxChunkSize: 1,
 	minChunkSize: 0,
 	overlapSize: 0,
-	overlapUnit: "characters",
-	preserveStructure: true,
-};
-
-/** Line-based chunker — default for newline-delimited content (CSV, JSONL, logs). */
-const LINE_BASED_DEFAULT: CreateChunkingServiceInput = {
-	name: "line-2000",
-	description:
-		"Line-based splitter (2000 chars per chunk, snaps to `\\n` boundaries). Default for CSV, JSONL, and other newline-delimited content where rows must stay intact.",
-	status: "active",
-	engine: "langchain_ts",
-	strategy: "line",
-	chunkUnit: "characters",
-	maxChunkSize: 2000,
-	minChunkSize: 0,
-	overlapSize: 0,
-	overlapUnit: "characters",
-	preserveStructure: true,
-};
-
-/** Line-based chunker — larger rows/log events. */
-const LINE_BASED_LARGE: CreateChunkingServiceInput = {
-	name: "line-5000",
-	description:
-		"Large line-based splitter (5000 chars per chunk, snaps to `\\n` boundaries). Good for wider CSV rows, JSONL payloads, and verbose logs.",
-	status: "active",
-	engine: "langchain_ts",
-	strategy: "line",
-	chunkUnit: "characters",
-	maxChunkSize: 5000,
-	minChunkSize: 0,
-	overlapSize: 0,
-	overlapUnit: "characters",
+	overlapUnit: "rows",
 	preserveStructure: true,
 };
 
@@ -244,9 +219,7 @@ export const DEFAULT_SERVICES: DefaultServices = {
 		RECURSIVE_CHAR_SMALL,
 		RECURSIVE_CHAR_LARGE,
 		RECURSIVE_CHAR_XL,
-		LINE_BASED_DEFAULT,
-		LINE_BASED_SMALL,
-		LINE_BASED_LARGE,
+		LINE_ROWS_ONE,
 	],
 	embedding: [
 		OPENAI_SMALL,
@@ -275,7 +248,7 @@ export const DEFAULT_SERVICES: DefaultServices = {
  * preset menu for demo / test environments.
  */
 export const DEFAULT_WORKSPACE_SEED_SERVICES: DefaultServices = {
-	chunking: [RECURSIVE_CHAR_DEFAULT, LINE_BASED_DEFAULT],
+	chunking: [RECURSIVE_CHAR_DEFAULT, LINE_ROWS_ONE],
 	embedding: [OPENAI_SMALL, NVIDIA_NV_EMBEDQA_E5_V5],
 };
 

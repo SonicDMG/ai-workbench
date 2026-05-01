@@ -169,6 +169,21 @@ function buildChunker(
 function chunkerOptionsFromService(
 	service: ChunkingServiceRecord,
 ): ChunkerOptions {
+	// `chunkUnit: "rows"` reinterprets `maxChunkSize` as a line cap
+	// rather than a character cap. Char-based safety knobs (min/overlap)
+	// are intentionally pinned to 0 in this mode — they don't have a
+	// meaningful row-mode analogue, and forcing chunkers to honor both
+	// at once just produces surprising splits. Char-mode keeps the
+	// historical behavior.
+	if (service.chunkUnit === "rows") {
+		return {
+			...(service.maxChunkSize !== null
+				? { maxLines: service.maxChunkSize }
+				: {}),
+			minChars: 0,
+			overlapChars: 0,
+		};
+	}
 	return {
 		...(service.maxChunkSize !== null
 			? { maxChars: service.maxChunkSize }

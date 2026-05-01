@@ -58,6 +58,12 @@ export interface ChunkerOptions {
 	/** Overlap prepended from the previous chunk's tail. 0 disables.
 	 * Default 150. Must be < maxChars. */
 	readonly overlapChars?: number;
+	/** Optional cap on the number of *lines* per chunk. Honored only by
+	 * line-aware chunkers ({@link ../ingest/line-chunker.LineChunker});
+	 * other implementations may ignore it. `null`/`undefined` means
+	 * unbounded — the char limits do all the work. Set to `1` to force
+	 * one logical line per chunk. */
+	readonly maxLines?: number | null;
 }
 
 export interface Chunker {
@@ -80,6 +86,10 @@ export interface ResolvedChunkerOptions {
 	readonly maxChars: number;
 	readonly minChars: number;
 	readonly overlapChars: number;
+	/** Resolved counterpart to {@link ChunkerOptions.maxLines}. `null` =
+	 * unbounded; chunkers that don't support a line cap simply ignore
+	 * it. */
+	readonly maxLines: number | null;
 }
 
 export function resolveChunkerOptions(
@@ -115,7 +125,15 @@ export function resolveChunkerOptions(
 			`minChars (${minChars}) must be < maxChars (${maxChars})`,
 		);
 	}
-	return { maxChars, minChars, overlapChars };
+	const rawMaxLines = opts?.maxLines;
+	const maxLines: number | null =
+		rawMaxLines === undefined || rawMaxLines === null ? null : rawMaxLines;
+	if (maxLines !== null && maxLines <= 0) {
+		throw new ChunkerConfigError(
+			`maxLines must be > 0 when set (got ${maxLines})`,
+		);
+	}
+	return { maxChars, minChars, overlapChars, maxLines };
 }
 
 /** Thrown by chunker constructors when {@link ChunkerOptions} are

@@ -27,9 +27,7 @@ describe("service catalog", () => {
 			"openai-text-embedding-3-small",
 		]);
 		expect(CHUNKING_PRESETS.map((p) => p.id).sort()).toEqual([
-			"line-1000",
-			"line-2000",
-			"line-5000",
+			"line-rows-1",
 			"recursive-char-1000",
 			"recursive-char-2000",
 			"recursive-char-4000",

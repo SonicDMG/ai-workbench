@@ -134,4 +134,71 @@ describe("LineChunker — strategy-specific", () => {
 		expect(chunks).toHaveLength(1);
 		expect(chunks[0]?.text).toBe(csv);
 	});
+
+	test("maxLines=1 produces exactly one chunk per logical line", () => {
+		// This is the line-rows-1 preset's load-bearing invariant. A small
+		// CSV with N rows must produce N chunks regardless of whether the
+		// whole file fits inside maxChars — every row is its own
+		// retrievable record.
+		const chunker = new LineChunker({
+			maxChars: 1000,
+			minChars: 0,
+			overlapChars: 0,
+			maxLines: 1,
+		});
+		const csv = "id,name,score\n1,alice,90\n2,bob,87\n3,carol,93\n";
+		const chunks = chunker.chunk({ text: csv });
+		expect(chunks).toHaveLength(4);
+		expect(chunks.map((c) => c.text)).toEqual([
+			"id,name,score\n",
+			"1,alice,90\n",
+			"2,bob,87\n",
+			"3,carol,93\n",
+		]);
+	});
+
+	test("maxLines=1 also splits CRLF and lone-CR endings one row per chunk", () => {
+		const chunker = new LineChunker({
+			maxChars: 1000,
+			minChars: 0,
+			overlapChars: 0,
+			maxLines: 1,
+		});
+		const crlf = "a\r\nb\r\nc\r\n";
+		const cr = "a\rb\rc\r";
+		expect(chunker.chunk({ text: crlf }).map((c) => c.text)).toEqual([
+			"a\r\n",
+			"b\r\n",
+			"c\r\n",
+		]);
+		expect(chunker.chunk({ text: cr }).map((c) => c.text)).toEqual([
+			"a\r",
+			"b\r",
+			"c\r",
+		]);
+	});
+
+	test("maxLines>1 packs that many rows per chunk (still capped by maxChars)", () => {
+		const chunker = new LineChunker({
+			maxChars: 1000,
+			minChars: 0,
+			overlapChars: 0,
+			maxLines: 2,
+		});
+		const csv = "a\nb\nc\nd\ne\n";
+		const chunks = chunker.chunk({ text: csv });
+		expect(chunks.map((c) => c.text)).toEqual(["a\nb\n", "c\nd\n", "e\n"]);
+	});
+
+	test("maxLines is rejected when <= 0", () => {
+		expect(
+			() =>
+				new LineChunker({
+					maxChars: 100,
+					minChars: 0,
+					overlapChars: 0,
+					maxLines: 0,
+				}),
+		).toThrow(/maxLines/);
+	});
 });

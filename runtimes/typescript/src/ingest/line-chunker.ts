@@ -1,8 +1,8 @@
 /**
  * Line-based {@link Chunker} — groups consecutive lines until adding
- * the next line would exceed `maxChars`, then emits a chunk and
- * (optionally) overlaps the next chunk by trailing N characters that
- * snap back to the nearest line boundary.
+ * the next line would exceed `maxChars` (or, optionally, `maxLines`),
+ * then emits a chunk and (optionally) overlaps the next chunk by
+ * trailing N characters that snap back to the nearest line boundary.
  *
  * Default preset for newline-delimited content: CSV (1 row per line),
  * JSONL, log files. Recognises all three common line-ending styles —
@@ -12,6 +12,12 @@
  * is hard-split mid-line so the per-chunk size bound holds; this keeps
  * the {@link Chunker} contract honest and matches what the recursive
  * char chunker would do.
+ *
+ * Setting `maxLines: 1` produces exactly one chunk per logical line —
+ * the seeded `line-rows-1` preset uses this for "one row = one
+ * retrievable record" CSV / JSONL ingest. Larger `maxLines` values
+ * pack N rows per chunk while still honoring the `maxChars` safety
+ * cap.
  *
  * Hand-rolled rather than wrapped around `@langchain/textsplitters`
  * to keep the {@link Chunker} contract synchronous. Semantic /
@@ -51,7 +57,7 @@ export class LineChunker implements Chunker {
 	}
 
 	private groupLinesIntoSpans(lines: readonly Span[]): readonly Span[] {
-		const { maxChars, overlapChars } = this.opts;
+		const { maxChars, maxLines, overlapChars } = this.opts;
 		const spans: Span[] = [];
 		let i = 0;
 		while (i < lines.length) {
@@ -59,12 +65,15 @@ export class LineChunker implements Chunker {
 			if (!first) break;
 			let end = first.end;
 			let j = i + 1;
+			let lineCount = 1;
 			while (j < lines.length) {
+				if (maxLines !== null && lineCount >= maxLines) break;
 				const next = lines[j];
 				if (!next) break;
 				if (next.end - first.start > maxChars) break;
 				end = next.end;
 				j++;
+				lineCount++;
 			}
 			spans.push({ start: first.start, end });
 			if (j === lines.length) break;
