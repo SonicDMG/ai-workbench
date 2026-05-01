@@ -66,6 +66,7 @@ import {
 	ControlPlaneNotFoundError,
 } from "../errors.js";
 import {
+	applyPatch,
 	buildAgentRecord,
 	byAgentCreatedAtAsc,
 	byConversationCreatedAtDesc,
@@ -886,11 +887,9 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		});
 		if (!existing) throw new ControlPlaneNotFoundError("chunking service", uid);
 		const base = chunkingServiceFromRow(existing);
-		const next: ChunkingServiceRecord = {
-			...base,
-			...mergeDefinedKeys(patch),
+		const next: ChunkingServiceRecord = applyPatch(base, patch, {
 			updatedAt: nowIso(),
-		};
+		});
 		const nextRow = chunkingServiceToRow(next);
 		const { workspace_id: _w, chunking_service_id: _id, ...fields } = nextRow;
 		await this.tables.chunkingServices.updateOne(
@@ -1005,9 +1004,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			supportedContent: _content,
 			...scalarPatch
 		} = patch;
-		const merged: EmbeddingServiceRecord = {
-			...base,
-			...mergeDefinedKeys(scalarPatch),
+		const merged: EmbeddingServiceRecord = applyPatch(base, scalarPatch, {
 			...(patch.supportedLanguages !== undefined && {
 				supportedLanguages: freezeStringSet(patch.supportedLanguages),
 			}),
@@ -1015,7 +1012,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 				supportedContent: freezeStringSet(patch.supportedContent),
 			}),
 			updatedAt: nowIso(),
-		};
+		});
 		const nextRow = embeddingServiceToRow(merged);
 		const { workspace_id: _w, embedding_service_id: _id, ...fields } = nextRow;
 		await this.tables.embeddingServices.updateOne(
@@ -1133,9 +1130,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			supportedContent: _content,
 			...scalarPatch
 		} = patch;
-		const merged: RerankingServiceRecord = {
-			...base,
-			...mergeDefinedKeys(scalarPatch),
+		const merged: RerankingServiceRecord = applyPatch(base, scalarPatch, {
 			...(patch.supportedLanguages !== undefined && {
 				supportedLanguages: freezeStringSet(patch.supportedLanguages),
 			}),
@@ -1143,7 +1138,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 				supportedContent: freezeStringSet(patch.supportedContent),
 			}),
 			updatedAt: nowIso(),
-		};
+		});
 		const nextRow = rerankingServiceToRow(merged);
 		const { workspace_id: _w, reranking_service_id: _id, ...fields } = nextRow;
 		await this.tables.rerankingServices.updateOne(
@@ -1265,9 +1260,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			supportedContent: _content,
 			...scalarPatch
 		} = patch;
-		const merged: LlmServiceRecord = {
-			...base,
-			...mergeDefinedKeys(scalarPatch),
+		const merged: LlmServiceRecord = applyPatch(base, scalarPatch, {
 			...(patch.supportedLanguages !== undefined && {
 				supportedLanguages: freezeStringSet(patch.supportedLanguages),
 			}),
@@ -1275,7 +1268,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 				supportedContent: freezeStringSet(patch.supportedContent),
 			}),
 			updatedAt: nowIso(),
-		};
+		});
 		const nextRow = llmServiceToRow(merged);
 		const { workspace_id: _w, llm_service_id: _id, ...fields } = nextRow;
 		await this.tables.llmServices.updateOne(
@@ -1828,21 +1821,4 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			);
 		}
 	}
-}
-
-/**
- * Spread a `Partial<...>` patch onto an existing record, ignoring
- * `undefined` values. Mirrors what we do for vector-store updates but
- * generalised so it works across the KB-schema service updaters.
- *
- * Set-typed columns aren't handled here because their input shape
- * (`readonly string[] | ReadonlySet<string>`) doesn't match the record
- * shape (`ReadonlySet<string>`); call sites override them after.
- */
-function mergeDefinedKeys<T extends object>(patch: T): Partial<T> {
-	const out: Record<string, unknown> = {};
-	for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
-		if (v !== undefined) out[k] = v;
-	}
-	return out as Partial<T>;
 }

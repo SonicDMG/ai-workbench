@@ -18,6 +18,7 @@
  */
 
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { ErrorEnvelopeSchema } from "../openapi/schemas.js";
 import { errorEnvelope } from "./errors.js";
 import type { AppEnv } from "./types.js";
 
@@ -35,4 +36,50 @@ export function makeOpenApi(): OpenAPIHono<AppEnv> {
 			return c.json(errorEnvelope(c, "validation_error", message), 400);
 		},
 	});
+}
+
+/**
+ * Build a standard `responses[<status>]` block that wraps the canonical
+ * {@link ErrorEnvelopeSchema}. Every route in `api-v1/*` maps 404 / 409
+ * / etc. to the same envelope; only the human description varies.
+ *
+ * Use at route definition sites:
+ * ```ts
+ * responses: {
+ *   200: { ... },
+ *   ...errorResponse(404, "Workspace not found"),
+ *   ...errorResponse(409, "Conflict on agent name"),
+ * }
+ * ```
+ */
+export function errorResponse<S extends number>(
+	status: S,
+	description: string,
+): Record<
+	S,
+	{
+		readonly content: {
+			readonly "application/json": {
+				readonly schema: typeof ErrorEnvelopeSchema;
+			};
+		};
+		readonly description: string;
+	}
+> {
+	return {
+		[status]: {
+			content: { "application/json": { schema: ErrorEnvelopeSchema } },
+			description,
+		},
+	} as Record<
+		S,
+		{
+			readonly content: {
+				readonly "application/json": {
+					readonly schema: typeof ErrorEnvelopeSchema;
+				};
+			};
+			readonly description: string;
+		}
+	>;
 }

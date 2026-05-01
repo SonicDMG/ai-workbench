@@ -125,6 +125,29 @@ export function buildAgentRecord(
 }
 
 /**
+ * Apply a partial patch to an existing record, copying defined values
+ * (skipping `undefined`) onto a clone of `existing`, then layering
+ * caller-supplied `overrides` on top. Backend-agnostic — used by every
+ * service updater plus the workspace, KB, and agent updaters.
+ *
+ * Set-typed columns are not handled here because their input form
+ * (`readonly string[] | ReadonlySet<string>`) doesn't match the record
+ * form (`ReadonlySet<string>`); the call site overrides them after via
+ * the `overrides` argument.
+ */
+export function applyPatch<TRecord extends object, TPatch extends object>(
+	existing: TRecord,
+	patch: TPatch,
+	overrides: Partial<TRecord> = {},
+): TRecord {
+	const next = { ...existing } as Record<string, unknown>;
+	for (const [k, v] of Object.entries(patch)) {
+		if (v !== undefined) next[k] = v;
+	}
+	return { ...(next as TRecord), ...overrides };
+}
+
+/**
  * Merge a metadata patch into an existing metadata map. Patch values
  * of `undefined` drop the corresponding key (mirroring the
  * `UpdateChatMessageInput` contract).

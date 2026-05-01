@@ -41,6 +41,7 @@ import {
 	ControlPlaneNotFoundError,
 } from "../errors.js";
 import {
+	applyPatch,
 	buildAgentRecord,
 	byAgentCreatedAtAsc,
 	byConversationCreatedAtDesc,
@@ -1877,28 +1878,6 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			);
 		}
 	}
-}
-
-/**
- * Mechanical "spread defined patch fields onto existing record" helper.
- * Used by the chunking / embedding / reranking service updaters where
- * the patch shape is `Partial<Omit<Create*Input, "uid">>` — every
- * defined property is a valid record field and goes through verbatim.
- *
- * Set-typed columns are not handled here because their input form
- * (`readonly string[] | ReadonlySet<string>`) doesn't match the record
- * form (`ReadonlySet<string>`); the call site overrides them after.
- */
-function applyPatch<TRecord extends object, TPatch extends object>(
-	existing: TRecord,
-	patch: TPatch,
-	overrides: Partial<TRecord>,
-): TRecord {
-	const next = { ...existing } as Record<string, unknown>;
-	for (const [k, v] of Object.entries(patch)) {
-		if (v !== undefined) next[k] = v;
-	}
-	return { ...(next as TRecord), ...overrides };
 }
 
 type TableRow<K extends Table> = K extends "workspaces"

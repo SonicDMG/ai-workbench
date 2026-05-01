@@ -28,7 +28,7 @@ import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
 import { ApiError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
-import { makeOpenApi } from "../../lib/openapi.js";
+import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
@@ -41,7 +41,6 @@ import {
 	ConversationRecordSchema,
 	CreateAgentInputSchema,
 	CreateConversationInputSchema,
-	ErrorEnvelopeSchema,
 	PaginationQuerySchema,
 	SendChatMessageInputSchema,
 	SendChatMessageResponseSchema,
@@ -91,10 +90,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: AgentPageSchema } },
 					description: "All agents in the workspace, oldest-first",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
+				...errorResponse(404, "Workspace not found"),
 			},
 		}),
 		async (c) => {
@@ -125,14 +121,8 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: AgentRecordSchema } },
 					description: "Agent created",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
-				409: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate agentId",
-				},
+				...errorResponse(404, "Workspace not found"),
+				...errorResponse(409, "Duplicate agentId"),
 			},
 		}),
 		async (c) => {
@@ -161,10 +151,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: AgentRecordSchema } },
 					description: "Agent",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or agent not found",
-				},
+				...errorResponse(404, "Workspace or agent not found"),
 			},
 		}),
 		async (c) => {
@@ -200,10 +187,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: AgentRecordSchema } },
 					description: "Updated agent",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or agent not found",
-				},
+				...errorResponse(404, "Workspace or agent not found"),
 			},
 		}),
 		async (c) => {
@@ -229,10 +213,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 			},
 			responses: {
 				204: { description: "Deleted" },
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or agent not found",
-				},
+				...errorResponse(404, "Workspace or agent not found"),
 			},
 		}),
 		async (c) => {
@@ -266,10 +247,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: ConversationPageSchema } },
 					description: "Conversations, newest-first",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace not found",
-				},
+				...errorResponse(404, "Workspace not found"),
 			},
 		}),
 		async (c) => {
@@ -303,14 +281,8 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: ConversationRecordSchema } },
 					description: "Conversation created",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace or agent not found",
-				},
-				409: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Duplicate conversationId",
-				},
+				...errorResponse(404, "Workspace or agent not found"),
+				...errorResponse(409, "Duplicate conversationId"),
 			},
 		}),
 		async (c) => {
@@ -340,10 +312,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: ConversationRecordSchema } },
 					description: "Conversation",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, agent, or conversation not found",
-				},
+				...errorResponse(404, "Workspace, agent, or conversation not found"),
 			},
 		}),
 		async (c) => {
@@ -384,10 +353,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: ConversationRecordSchema } },
 					description: "Updated conversation",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, agent, or conversation not found",
-				},
+				...errorResponse(404, "Workspace, agent, or conversation not found"),
 			},
 		}),
 		async (c) => {
@@ -419,10 +385,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 			},
 			responses: {
 				204: { description: "Deleted" },
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, agent, or conversation not found",
-				},
+				...errorResponse(404, "Workspace, agent, or conversation not found"),
 			},
 		}),
 		async (c) => {
@@ -496,10 +459,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 					content: { "application/json": { schema: ChatMessagePageSchema } },
 					description: "Messages, oldest-first",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, agent, or conversation not found",
-				},
+				...errorResponse(404, "Workspace, agent, or conversation not found"),
 			},
 		}),
 		async (c) => {
@@ -546,20 +506,15 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 					},
 					description: "User and assistant messages persisted",
 				},
-				404: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description: "Workspace, agent, or conversation not found",
-				},
-				422: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description:
-						"Agent's llm service is misconfigured (e.g. unsupported provider)",
-				},
-				503: {
-					content: { "application/json": { schema: ErrorEnvelopeSchema } },
-					description:
-						"Runtime has no chat service configured AND the agent has no llmServiceId.",
-				},
+				...errorResponse(404, "Workspace, agent, or conversation not found"),
+				...errorResponse(
+					422,
+					"Agent's llm service is misconfigured (e.g. unsupported provider)",
+				),
+				...errorResponse(
+					503,
+					"Runtime has no chat service configured AND the agent has no llmServiceId.",
+				),
 			},
 		}),
 		async (c) => {

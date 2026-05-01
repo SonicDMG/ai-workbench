@@ -30,6 +30,7 @@ import {
 	ControlPlaneNotFoundError,
 } from "../errors.js";
 import {
+	applyPatch,
 	buildAgentRecord,
 	byAgentCreatedAtAsc,
 	byConversationCreatedAtDesc,
@@ -648,63 +649,9 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		if (!existing) {
 			throw new ControlPlaneNotFoundError("chunking service", uid);
 		}
-		const next: ChunkingServiceRecord = {
-			...existing,
-			...(patch.name !== undefined && { name: patch.name }),
-			...(patch.description !== undefined && {
-				description: patch.description,
-			}),
-			...(patch.status !== undefined && { status: patch.status }),
-			...(patch.engine !== undefined && { engine: patch.engine }),
-			...(patch.engineVersion !== undefined && {
-				engineVersion: patch.engineVersion,
-			}),
-			...(patch.strategy !== undefined && { strategy: patch.strategy }),
-			...(patch.maxChunkSize !== undefined && {
-				maxChunkSize: patch.maxChunkSize,
-			}),
-			...(patch.minChunkSize !== undefined && {
-				minChunkSize: patch.minChunkSize,
-			}),
-			...(patch.chunkUnit !== undefined && { chunkUnit: patch.chunkUnit }),
-			...(patch.overlapSize !== undefined && {
-				overlapSize: patch.overlapSize,
-			}),
-			...(patch.overlapUnit !== undefined && {
-				overlapUnit: patch.overlapUnit,
-			}),
-			...(patch.preserveStructure !== undefined && {
-				preserveStructure: patch.preserveStructure,
-			}),
-			...(patch.language !== undefined && { language: patch.language }),
-			...(patch.endpointBaseUrl !== undefined && {
-				endpointBaseUrl: patch.endpointBaseUrl,
-			}),
-			...(patch.endpointPath !== undefined && {
-				endpointPath: patch.endpointPath,
-			}),
-			...(patch.requestTimeoutMs !== undefined && {
-				requestTimeoutMs: patch.requestTimeoutMs,
-			}),
-			...(patch.authType !== undefined && { authType: patch.authType }),
-			...(patch.credentialRef !== undefined && {
-				credentialRef: patch.credentialRef,
-			}),
-			...(patch.maxPayloadSizeKb !== undefined && {
-				maxPayloadSizeKb: patch.maxPayloadSizeKb,
-			}),
-			...(patch.enableOcr !== undefined && { enableOcr: patch.enableOcr }),
-			...(patch.extractTables !== undefined && {
-				extractTables: patch.extractTables,
-			}),
-			...(patch.extractFigures !== undefined && {
-				extractFigures: patch.extractFigures,
-			}),
-			...(patch.readingOrder !== undefined && {
-				readingOrder: patch.readingOrder,
-			}),
+		const next: ChunkingServiceRecord = applyPatch(existing, patch, {
 			updatedAt: nowIso(),
-		};
+		});
 		this.chunkingServices.get(workspace)?.set(uid, next);
 		return next;
 	}
@@ -787,40 +734,12 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		if (!existing) {
 			throw new ControlPlaneNotFoundError("embedding service", uid);
 		}
-		const next: EmbeddingServiceRecord = {
-			...existing,
-			...(patch.name !== undefined && { name: patch.name }),
-			...(patch.description !== undefined && {
-				description: patch.description,
-			}),
-			...(patch.status !== undefined && { status: patch.status }),
-			...(patch.provider !== undefined && { provider: patch.provider }),
-			...(patch.modelName !== undefined && { modelName: patch.modelName }),
-			...(patch.embeddingDimension !== undefined && {
-				embeddingDimension: patch.embeddingDimension,
-			}),
-			...(patch.distanceMetric !== undefined && {
-				distanceMetric: patch.distanceMetric,
-			}),
-			...(patch.endpointBaseUrl !== undefined && {
-				endpointBaseUrl: patch.endpointBaseUrl,
-			}),
-			...(patch.endpointPath !== undefined && {
-				endpointPath: patch.endpointPath,
-			}),
-			...(patch.requestTimeoutMs !== undefined && {
-				requestTimeoutMs: patch.requestTimeoutMs,
-			}),
-			...(patch.maxBatchSize !== undefined && {
-				maxBatchSize: patch.maxBatchSize,
-			}),
-			...(patch.maxInputTokens !== undefined && {
-				maxInputTokens: patch.maxInputTokens,
-			}),
-			...(patch.authType !== undefined && { authType: patch.authType }),
-			...(patch.credentialRef !== undefined && {
-				credentialRef: patch.credentialRef,
-			}),
+		const {
+			supportedLanguages: _langs,
+			supportedContent: _content,
+			...scalarPatch
+		} = patch;
+		const next: EmbeddingServiceRecord = applyPatch(existing, scalarPatch, {
 			...(patch.supportedLanguages !== undefined && {
 				supportedLanguages: freezeStringSet(patch.supportedLanguages),
 			}),
@@ -828,7 +747,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 				supportedContent: freezeStringSet(patch.supportedContent),
 			}),
 			updatedAt: nowIso(),
-		};
+		});
 		this.embeddingServices.get(workspace)?.set(uid, next);
 		return next;
 	}
@@ -914,47 +833,12 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		if (!existing) {
 			throw new ControlPlaneNotFoundError("reranking service", uid);
 		}
-		const next: RerankingServiceRecord = {
-			...existing,
-			...(patch.name !== undefined && { name: patch.name }),
-			...(patch.description !== undefined && {
-				description: patch.description,
-			}),
-			...(patch.status !== undefined && { status: patch.status }),
-			...(patch.provider !== undefined && { provider: patch.provider }),
-			...(patch.engine !== undefined && { engine: patch.engine }),
-			...(patch.modelName !== undefined && { modelName: patch.modelName }),
-			...(patch.modelVersion !== undefined && {
-				modelVersion: patch.modelVersion,
-			}),
-			...(patch.maxCandidates !== undefined && {
-				maxCandidates: patch.maxCandidates,
-			}),
-			...(patch.scoringStrategy !== undefined && {
-				scoringStrategy: patch.scoringStrategy,
-			}),
-			...(patch.scoreNormalized !== undefined && {
-				scoreNormalized: patch.scoreNormalized,
-			}),
-			...(patch.returnScores !== undefined && {
-				returnScores: patch.returnScores,
-			}),
-			...(patch.endpointBaseUrl !== undefined && {
-				endpointBaseUrl: patch.endpointBaseUrl,
-			}),
-			...(patch.endpointPath !== undefined && {
-				endpointPath: patch.endpointPath,
-			}),
-			...(patch.requestTimeoutMs !== undefined && {
-				requestTimeoutMs: patch.requestTimeoutMs,
-			}),
-			...(patch.maxBatchSize !== undefined && {
-				maxBatchSize: patch.maxBatchSize,
-			}),
-			...(patch.authType !== undefined && { authType: patch.authType }),
-			...(patch.credentialRef !== undefined && {
-				credentialRef: patch.credentialRef,
-			}),
+		const {
+			supportedLanguages: _langs,
+			supportedContent: _content,
+			...scalarPatch
+		} = patch;
+		const next: RerankingServiceRecord = applyPatch(existing, scalarPatch, {
 			...(patch.supportedLanguages !== undefined && {
 				supportedLanguages: freezeStringSet(patch.supportedLanguages),
 			}),
@@ -962,7 +846,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 				supportedContent: freezeStringSet(patch.supportedContent),
 			}),
 			updatedAt: nowIso(),
-		};
+		});
 		this.rerankingServices.get(workspace)?.set(uid, next);
 		return next;
 	}
@@ -1051,53 +935,12 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		if (!existing) {
 			throw new ControlPlaneNotFoundError("llm service", uid);
 		}
-		const next: LlmServiceRecord = {
-			...existing,
-			...(patch.name !== undefined && { name: patch.name }),
-			...(patch.description !== undefined && {
-				description: patch.description,
-			}),
-			...(patch.status !== undefined && { status: patch.status }),
-			...(patch.provider !== undefined && { provider: patch.provider }),
-			...(patch.engine !== undefined && { engine: patch.engine }),
-			...(patch.modelName !== undefined && { modelName: patch.modelName }),
-			...(patch.modelVersion !== undefined && {
-				modelVersion: patch.modelVersion,
-			}),
-			...(patch.contextWindowTokens !== undefined && {
-				contextWindowTokens: patch.contextWindowTokens,
-			}),
-			...(patch.maxOutputTokens !== undefined && {
-				maxOutputTokens: patch.maxOutputTokens,
-			}),
-			...(patch.temperatureMin !== undefined && {
-				temperatureMin: patch.temperatureMin,
-			}),
-			...(patch.temperatureMax !== undefined && {
-				temperatureMax: patch.temperatureMax,
-			}),
-			...(patch.supportsStreaming !== undefined && {
-				supportsStreaming: patch.supportsStreaming,
-			}),
-			...(patch.supportsTools !== undefined && {
-				supportsTools: patch.supportsTools,
-			}),
-			...(patch.endpointBaseUrl !== undefined && {
-				endpointBaseUrl: patch.endpointBaseUrl,
-			}),
-			...(patch.endpointPath !== undefined && {
-				endpointPath: patch.endpointPath,
-			}),
-			...(patch.requestTimeoutMs !== undefined && {
-				requestTimeoutMs: patch.requestTimeoutMs,
-			}),
-			...(patch.maxBatchSize !== undefined && {
-				maxBatchSize: patch.maxBatchSize,
-			}),
-			...(patch.authType !== undefined && { authType: patch.authType }),
-			...(patch.credentialRef !== undefined && {
-				credentialRef: patch.credentialRef,
-			}),
+		const {
+			supportedLanguages: _langs,
+			supportedContent: _content,
+			...scalarPatch
+		} = patch;
+		const next: LlmServiceRecord = applyPatch(existing, scalarPatch, {
 			...(patch.supportedLanguages !== undefined && {
 				supportedLanguages: freezeStringSet(patch.supportedLanguages),
 			}),
@@ -1105,7 +948,7 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 				supportedContent: freezeStringSet(patch.supportedContent),
 			}),
 			updatedAt: nowIso(),
-		};
+		});
 		this.llmServices.get(workspace)?.set(uid, next);
 		return next;
 	}

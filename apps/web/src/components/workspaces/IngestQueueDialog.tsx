@@ -1,12 +1,4 @@
-import {
-	AlertTriangle,
-	CheckCircle2,
-	FolderOpen,
-	Loader2,
-	Plus,
-	Upload,
-	X,
-} from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,15 +12,10 @@ import {
 } from "@/components/ui/dialog";
 import { useAsyncIngest, useJobPoller } from "@/hooks/useIngest";
 import { formatApiError } from "@/lib/api";
-import {
-	extOf,
-	formatFileSize,
-	isReadableTextFile,
-	READABLE_TEXT_EXTENSIONS,
-} from "@/lib/files";
+import { extOf, isReadableTextFile } from "@/lib/files";
 import type { JobRecord, KnowledgeBaseRecord } from "@/lib/schemas";
-import { cn } from "@/lib/utils";
-import { FileTypeBadge } from "./FileTypeBadge";
+import { IngestDropZone } from "./IngestDropZone";
+import { type QueueItem, QueueRow } from "./IngestQueueRow";
 
 /**
  * Multi-file / folder ingest queue.
@@ -44,24 +31,11 @@ import { FileTypeBadge } from "./FileTypeBadge";
  *
  * Text-ish extensions only, 5 MB per file. Binaries get rejected inline
  * rather than silently dropped from the queue so the user can fix the
- * source set.
+ * source set. The drop zone lives in {@link IngestDropZone}; the
+ * per-file row + progress bar live in {@link QueueRow}.
  */
 
 const MAX_BYTES = 5 * 1024 * 1024;
-
-type QueueStatus = "queued" | "running" | "succeeded" | "failed";
-
-interface QueueItem {
-	readonly id: string;
-	readonly file: File;
-	readonly relativePath: string;
-	status: QueueStatus;
-	jobId: string | null;
-	processed: number;
-	total: number | null;
-	errorMessage: string | null;
-	chunkCount: number | null;
-}
 
 export function IngestQueueDialog({
 	workspace,
@@ -77,9 +51,6 @@ export function IngestQueueDialog({
 	const [items, setItems] = useState<QueueItem[]>([]);
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const [draining, setDraining] = useState(false);
-	const [dragActive, setDragActive] = useState(false);
-	const fileInputRef = useRef<HTMLInputElement | null>(null);
-	const folderInputRef = useRef<HTMLInputElement | null>(null);
 
 	const ingest = useAsyncIngest(workspace, knowledgeBase.knowledgeBaseId);
 	// Drives only the *active* row's poller. Each row shows a live
@@ -114,7 +85,6 @@ export function IngestQueueDialog({
 		setItems([]);
 		setActiveId(null);
 		setDraining(false);
-		setDragActive(false);
 		onOpenChange(false);
 	}
 
@@ -338,89 +308,11 @@ export function IngestQueueDialog({
 					</DialogDescription>
 				</DialogHeader>
 
-				{/* biome-ignore lint/a11y/noStaticElementInteractions: drop zone
-				    is a pointer affordance; keyboard users get the in-zone
-				    "browse" + "folder" buttons. */}
-				<div
-					onDragOver={(e) => {
-						if (draining) return;
-						e.preventDefault();
-						setDragActive(true);
-					}}
-					onDragLeave={() => setDragActive(false)}
-					onDrop={(e) => {
-						if (draining) return;
-						e.preventDefault();
-						setDragActive(false);
-						if (e.dataTransfer.files.length > 0) {
-							enqueue(e.dataTransfer.files);
-						}
-					}}
-					className={cn(
-						"flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-5 text-sm transition-colors",
-						dragActive
-							? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)]"
-							: "border-slate-300 bg-slate-50",
-						draining && "opacity-60",
-					)}
-				>
-					<input
-						ref={fileInputRef}
-						type="file"
-						multiple
-						accept={READABLE_TEXT_EXTENSIONS.join(",")}
-						className="hidden"
-						onChange={(e) => {
-							if (e.target.files) enqueue(e.target.files);
-							e.target.value = "";
-						}}
-					/>
-					<input
-						ref={folderInputRef}
-						type="file"
-						multiple
-						className="hidden"
-						// webkitdirectory is the cross-browser folder picker.
-						// Not in stock React HTMLAttributes; cast escape hatch.
-						{...({ webkitdirectory: "", directory: "" } as Record<
-							string,
-							string
-						>)}
-						onChange={(e) => {
-							if (e.target.files) enqueue(e.target.files);
-							e.target.value = "";
-						}}
-					/>
-
-					<Upload className="h-5 w-5 text-slate-400" aria-hidden />
-					<p className="text-slate-700">
-						Drop files or a folder, or use a button below.
-					</p>
-					<div className="flex flex-wrap items-center gap-2">
-						<Button
-							type="button"
-							variant="secondary"
-							size="sm"
-							onClick={() => fileInputRef.current?.click()}
-							disabled={draining}
-						>
-							<Plus className="h-4 w-4" /> Files…
-						</Button>
-						<Button
-							type="button"
-							variant="secondary"
-							size="sm"
-							onClick={() => folderInputRef.current?.click()}
-							disabled={draining}
-						>
-							<FolderOpen className="h-4 w-4" /> Folder…
-						</Button>
-					</div>
-					<p className="text-xs text-slate-500">
-						Text, Markdown, YAML, JSON, CSV, config, and source files up to{" "}
-						{MAX_BYTES / 1024 / 1024} MB each.
-					</p>
-				</div>
+				<IngestDropZone
+					maxBytes={MAX_BYTES}
+					disabled={draining}
+					onFiles={enqueue}
+				/>
 
 				{items.length > 0 ? (
 					<div className="flex flex-col gap-2">
@@ -485,82 +377,4 @@ export function IngestQueueDialog({
 			</DialogContent>
 		</Dialog>
 	);
-}
-
-function QueueRow({
-	item,
-	draining,
-	onRemove,
-}: {
-	item: QueueItem;
-	draining: boolean;
-	onRemove: () => void;
-}) {
-	const percent =
-		item.total && item.total > 0
-			? Math.min(100, Math.round((item.processed / item.total) * 100))
-			: null;
-	return (
-		<li className="flex items-start gap-3 px-3 py-2 text-sm">
-			<StatusGlyph status={item.status} />
-			<div className="min-w-0 flex-1">
-				<div className="flex items-center gap-2">
-					<FileTypeBadge sourceFilename={item.relativePath} />
-					<span className="truncate font-medium text-slate-900">
-						{item.relativePath}
-					</span>
-				</div>
-				<div className="mt-0.5 flex items-center gap-3 text-xs text-slate-500">
-					<span>{formatFileSize(item.file.size)}</span>
-					{item.status === "running" ? (
-						<span className="tabular-nums">
-							{item.processed}/{item.total ?? "?"} chunks
-						</span>
-					) : null}
-					{item.status === "succeeded" && item.chunkCount !== null ? (
-						<span>
-							{item.chunkCount} chunk{item.chunkCount === 1 ? "" : "s"}
-						</span>
-					) : null}
-					{item.status === "failed" && item.errorMessage ? (
-						<span className="text-red-700 truncate">{item.errorMessage}</span>
-					) : null}
-				</div>
-				{percent !== null && item.status === "running" ? (
-					<div className="mt-1.5 h-1 rounded-full bg-slate-200 overflow-hidden">
-						<div
-							className="h-full bg-[var(--color-brand-500)] transition-[width] duration-200"
-							style={{ width: `${percent}%` }}
-						/>
-					</div>
-				) : null}
-			</div>
-			{!draining && item.status === "queued" ? (
-				<button
-					type="button"
-					onClick={onRemove}
-					className="text-slate-400 hover:text-slate-700"
-					aria-label={`Remove ${item.relativePath}`}
-				>
-					<X className="h-4 w-4" />
-				</button>
-			) : null}
-		</li>
-	);
-}
-
-function StatusGlyph({ status }: { status: QueueStatus }) {
-	const cls = "h-4 w-4 mt-0.5 shrink-0";
-	switch (status) {
-		case "queued":
-			return (
-				<div className={cn(cls, "rounded-full border border-slate-300")} />
-			);
-		case "running":
-			return <Loader2 className={cn(cls, "animate-spin text-slate-500")} />;
-		case "succeeded":
-			return <CheckCircle2 className={cn(cls, "text-emerald-600")} />;
-		case "failed":
-			return <AlertTriangle className={cn(cls, "text-red-600")} />;
-	}
 }
