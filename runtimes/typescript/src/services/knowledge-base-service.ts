@@ -12,7 +12,12 @@
 
 import type { z } from "@hono/zod-openapi";
 import { ControlPlaneNotFoundError } from "../control-plane/errors.js";
-import type { ControlPlaneStore } from "../control-plane/store.js";
+import type {
+	EmbeddingServiceRepo,
+	KnowledgeBaseRepo,
+	RerankingServiceRepo,
+	WorkspaceRepo,
+} from "../control-plane/store.js";
 import type { KnowledgeBaseRecord } from "../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import { DimensionMismatchError } from "../drivers/vector-store.js";
@@ -42,8 +47,20 @@ export interface AdoptableCollection {
 	readonly attached: boolean;
 }
 
+/**
+ * Repo intersection KnowledgeBaseService needs. The monolithic
+ * `ControlPlaneStore` satisfies it, so callers pass that today; this
+ * narrower shape documents the actual surface area and keeps
+ * Python/Java green-box ports honest about which aggregates the
+ * service touches.
+ */
+export type KnowledgeBaseServiceStore = WorkspaceRepo &
+	KnowledgeBaseRepo &
+	EmbeddingServiceRepo &
+	Pick<RerankingServiceRepo, "getRerankingService">;
+
 export interface KnowledgeBaseServiceDeps {
-	readonly store: ControlPlaneStore;
+	readonly store: KnowledgeBaseServiceStore;
 	readonly drivers: VectorStoreDriverRegistry;
 }
 

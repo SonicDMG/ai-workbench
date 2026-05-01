@@ -16,7 +16,12 @@
  */
 
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
-import type { ControlPlaneStore } from "../../control-plane/store.js";
+import type {
+	EmbeddingServiceRepo,
+	KnowledgeBaseRepo,
+	RerankingServiceRepo,
+	WorkspaceRepo,
+} from "../../control-plane/store.js";
 import type {
 	KnowledgeBaseRecord,
 	VectorStoreRecord,
@@ -30,13 +35,23 @@ export interface KbResolution {
 }
 
 /**
+ * Repo intersection `resolveKb` needs to do its job. Anything that
+ * implements all four repos (the monolithic `ControlPlaneStore`, or a
+ * future composed test fake) can be passed in.
+ */
+export type KbResolutionStore = Pick<WorkspaceRepo, "getWorkspace"> &
+	Pick<KnowledgeBaseRepo, "getKnowledgeBase"> &
+	Pick<EmbeddingServiceRepo, "getEmbeddingService"> &
+	Pick<RerankingServiceRepo, "getRerankingService">;
+
+/**
  * Look up a workspace + KB and synthesise the legacy descriptor shape.
  * Throws `ControlPlaneNotFoundError` for any missing parent — the
  * route layer's error mapper turns those into the canonical 404
  * envelope.
  */
 export async function resolveKb(
-	store: ControlPlaneStore,
+	store: KbResolutionStore,
 	workspaceId: string,
 	knowledgeBaseId: string,
 ): Promise<KbResolution> {
