@@ -149,9 +149,7 @@ describe("dispatchAgentSendStream live token forwarding", () => {
 		// Both tokens should arrive before the chat service is allowed to
 		// emit `done`. If the dispatcher were buffering, neither token
 		// would have been written yet — the wait would time out.
-		await waitFor(
-			() => writes.filter((w) => w.event === "token").length === 2,
-		);
+		await waitFor(() => writes.filter((w) => w.event === "token").length === 2);
 		expect(writes.find((w) => w.event === "done")).toBeUndefined();
 
 		// Release the chat service so it can emit the terminal event.
