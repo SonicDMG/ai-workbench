@@ -12,7 +12,12 @@
  * inline in the route handler.
  */
 
-export { toWireAgent, toWireChatMessage, toWireConversation } from "./agent.js";
+export {
+	isUserVisibleMessage,
+	toWireAgent,
+	toWireChatMessage,
+	toWireConversation,
+} from "./agent.js";
 export { toWireApiKey } from "./api-key.js";
 export { toWireJob } from "./job.js";
 export {

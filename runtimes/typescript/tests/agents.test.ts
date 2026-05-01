@@ -32,6 +32,18 @@ interface MakeAppOptions {
 }
 
 function makeApp(opts: MakeAppOptions = {}): ReturnType<typeof createApp> {
+	return makeAppAndStore(opts).app;
+}
+
+/**
+ * Variant that also returns the underlying store so tests can seed
+ * scaffolding turns directly (tool-result rows, pre-tool-call
+ * placeholders) without driving the full dispatch loop.
+ */
+function makeAppAndStore(opts: MakeAppOptions = {}): {
+	app: ReturnType<typeof createApp>;
+	store: MemoryControlPlaneStore;
+} {
 	const store = new MemoryControlPlaneStore();
 	const driver = new MockVectorStoreDriver();
 	const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
@@ -43,7 +55,7 @@ function makeApp(opts: MakeAppOptions = {}): ReturnType<typeof createApp> {
 	});
 	const embedders = makeFakeEmbedderFactory();
 	const chatService = opts.chatService === undefined ? null : opts.chatService;
-	return createApp({
+	const app = createApp({
 		store,
 		drivers,
 		secrets,
@@ -52,6 +64,7 @@ function makeApp(opts: MakeAppOptions = {}): ReturnType<typeof createApp> {
 		chatService,
 		chatConfig: chatService ? TEST_CHAT_CONFIG : null,
 	});
+	return { app, store };
 }
 
 type AppHandle = ReturnType<typeof makeApp>;
@@ -404,6 +417,77 @@ describe("agent conversation message routes", () => {
 		expect(res.status).toBe(200);
 		const body = await json(res);
 		expect(body.items).toEqual([]);
+	});
+
+	test("GET messages hides tool-result rows and pre-tool-call placeholders from the wire", async () => {
+		// Regression: when an agent uses tools, the dispatcher persists
+		// (1) an `agent` turn with empty content + finish_reason
+		// "tool_calls" (the model's pre-tool-call placeholder), then
+		// (2) one or more `tool` rows with the result payload, then
+		// (3) the final `agent` turn with the actual answer. Surfacing
+		// (1) and (2) to the UI shows up as blank "agent" speech bubbles
+		// when the user reloads the conversation.
+		const { app, store } = makeAppAndStore({
+			chatService: makeFakeChatService(),
+		});
+		const ws = await createWorkspace(app);
+		const aid = await createAgent(app, ws);
+		const cid = await createConversation(app, ws, aid, { title: "trace" });
+
+		// Seed a realistic tool-using exchange directly into the store.
+		await store.appendChatMessage(ws, cid, {
+			role: "user",
+			content: "show me 4 rows",
+			messageTs: "2026-05-01T00:00:00.001Z",
+		});
+		await store.appendChatMessage(ws, cid, {
+			role: "agent",
+			authorId: aid,
+			content: "",
+			tokenCount: 100,
+			messageTs: "2026-05-01T00:00:00.002Z",
+			toolCallPayload: { toolCalls: [{ id: "c1", name: "list_chunks" }] },
+			metadata: { model: "fake", finish_reason: "tool_calls" },
+		});
+		await store.appendChatMessage(ws, cid, {
+			role: "tool",
+			toolId: "list_chunks",
+			messageTs: "2026-05-01T00:00:00.003Z",
+			toolResponse: { content: "{...}", toolCallId: "c1" },
+		});
+		await store.appendChatMessage(ws, cid, {
+			role: "agent",
+			authorId: aid,
+			content: "Here are the 4 rows…",
+			tokenCount: 250,
+			messageTs: "2026-05-01T00:00:00.004Z",
+			metadata: { model: "fake", finish_reason: "stop" },
+		});
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/agents/${aid}/conversations/${cid}/messages`,
+		);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		// Only the user turn + the final agent answer should reach the
+		// wire. Two scaffolding rows (placeholder + tool result) hidden.
+		expect(body.items).toHaveLength(2);
+		expect(body.items[0]).toMatchObject({
+			role: "user",
+			content: "show me 4 rows",
+		});
+		expect(body.items[1]).toMatchObject({
+			role: "agent",
+			content: "Here are the 4 rows…",
+		});
+		// Defensive: nothing in the visible page should be a blank bubble.
+		for (const item of body.items as Array<{
+			role: string;
+			content: string | null;
+		}>) {
+			expect(item.content).not.toBe("");
+			expect(item.content).not.toBeNull();
+		}
 	});
 
 	test("POST /messages 503s when no chat service AND agent has no llmServiceId", async () => {

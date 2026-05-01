@@ -53,6 +53,7 @@ import {
 import type { SecretResolver } from "../../secrets/provider.js";
 import { mapControlPlaneError } from "./helpers.js";
 import {
+	isUserVisibleMessage,
 	toWireAgent as toAgentWire,
 	toWireChatMessage as toChatMessageWire,
 	toWireConversation as toConversationWire,
@@ -467,7 +468,13 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 				throw new ControlPlaneNotFoundError("conversation", conversationId);
 			}
 			const rows = await store.listChatMessages(workspaceId, conversationId);
-			return c.json(paginate(rows.map(toChatMessageWire), query), 200);
+			// Hide internal scaffolding turns (tool results + the model's
+			// pre-tool-call placeholders) from the user-facing transcript.
+			// They stay in storage so `assemblePrompt` can still replay
+			// the full tool-call loop on subsequent turns; this filter only
+			// affects the public listing.
+			const visible = rows.filter(isUserVisibleMessage).map(toChatMessageWire);
+			return c.json(paginate(visible, query), 200);
 		},
 	);
 

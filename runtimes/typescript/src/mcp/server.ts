@@ -42,6 +42,7 @@ import type { EmbedderFactory } from "../embeddings/factory.js";
 import { logger } from "../lib/logger.js";
 import { resolveKb } from "../routes/api-v1/kb-descriptor.js";
 import { dispatchSearch } from "../routes/api-v1/search-dispatch.js";
+import { isUserVisibleMessage } from "../routes/api-v1/serdes/index.js";
 import { VERSION } from "../version.js";
 
 export interface McpServerDeps {
@@ -298,7 +299,10 @@ export function buildMcpServer(
 		},
 		async ({ chatId }) => {
 			const rows = await deps.store.listChatMessages(workspaceId, chatId);
-			const summary = rows.map((m) => ({
+			// Hide internal scaffolding turns (tool results + the model's
+			// pre-tool-call placeholders) — same filter as the public
+			// `/messages` HTTP route.
+			const summary = rows.filter(isUserVisibleMessage).map((m) => ({
 				messageId: m.messageId,
 				role: m.role,
 				content: m.content,

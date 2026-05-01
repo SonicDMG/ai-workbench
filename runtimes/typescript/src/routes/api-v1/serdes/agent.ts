@@ -89,9 +89,18 @@ export function toWireConversation(
 
 /**
  * Project a {@link MessageRecord} onto the `ChatMessage` wire shape.
- * Internal `tool` rows are not yet surfaced over the agent message
- * routes (no tools wired); they collapse to `agent` for
- * forward-compat.
+ *
+ * Callers that fetch a single record (e.g. the SSE emitter for
+ * `user-message` / `done` events) get the literal projection. Callers
+ * that page through history should run rows through
+ * {@link isUserVisibleMessage} first — the dispatcher persists
+ * scaffolding turns (tool results, pre-tool-call placeholders) that
+ * are needed for the model's prompt history but should never appear
+ * in a user-facing chat transcript.
+ *
+ * `tool` rows still collapse to `role: "agent"` here as a defensive
+ * fallback so a stray tool record can't crash a wire schema with an
+ * unrecognised role.
  */
 export function toWireChatMessage(record: MessageRecord): ChatMessageWire {
 	const role: "user" | "agent" | "system" =
@@ -106,4 +115,34 @@ export function toWireChatMessage(record: MessageRecord): ChatMessageWire {
 		tokenCount: record.tokenCount,
 		metadata: { ...record.metadata },
 	};
+}
+
+/**
+ * True when a persisted message belongs in a user-facing chat
+ * transcript. Hides:
+ *
+ *  - `tool` rows: the tool's input + output payloads live in
+ *    `toolCallPayload` / `toolResponse`, never in `content`. Surfacing
+ *    them as `role: "agent"` with `content: null` produces blank
+ *    bubbles in the UI.
+ *  - `agent` rows the model emitted alongside a tool call but with no
+ *    user-visible text (`content === ""` and
+ *    `finish_reason === "tool_calls"`). These are the placeholder
+ *    "I'm calling a tool" turn — the actual answer lands later in a
+ *    `finish_reason: "stop"` turn.
+ *
+ * Both kinds are still persisted so `assemblePrompt` can replay the
+ * full tool-call loop on subsequent turns; this predicate just filters
+ * the public listing.
+ */
+export function isUserVisibleMessage(record: MessageRecord): boolean {
+	if (record.role === "tool") return false;
+	if (
+		record.role === "agent" &&
+		(record.content ?? "") === "" &&
+		record.metadata.finish_reason === "tool_calls"
+	) {
+		return false;
+	}
+	return true;
 }
