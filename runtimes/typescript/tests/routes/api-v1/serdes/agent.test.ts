@@ -68,6 +68,23 @@ describe("isUserVisibleMessage", () => {
 		).toBe(false);
 	});
 
+	test("agent turn with narration content + tool_calls finish reason is hidden", () => {
+		// Live-streaming dispatch persists whatever pre-tool-call narration
+		// the model emitted into the scaffolding row's content. That row is
+		// still a scaffolding turn — the user-visible answer is the later
+		// `finish_reason: "stop"` turn — so the narration must not surface
+		// in the public list as if it were the final reply.
+		expect(
+			isUserVisibleMessage(
+				record({
+					role: "agent",
+					content: "Let me check your knowledge bases…",
+					metadata: { model: "gpt-4o-mini", finish_reason: "tool_calls" },
+				}),
+			),
+		).toBe(false);
+	});
+
 	test("agent turn with empty content but finish_reason: stop stays visible", () => {
 		// A model that legitimately returned no text on a `stop` turn is
 		// rare but possible (and arguably a model error worth surfacing) —

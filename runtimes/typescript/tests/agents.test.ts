@@ -419,14 +419,16 @@ describe("agent conversation message routes", () => {
 		expect(body.items).toEqual([]);
 	});
 
-	test("GET messages hides tool-result rows and pre-tool-call placeholders from the wire", async () => {
+	test("GET messages hides tool-result rows and pre-tool-call scaffolding from the wire", async () => {
 		// Regression: when an agent uses tools, the dispatcher persists
-		// (1) an `agent` turn with empty content + finish_reason
-		// "tool_calls" (the model's pre-tool-call placeholder), then
-		// (2) one or more `tool` rows with the result payload, then
-		// (3) the final `agent` turn with the actual answer. Surfacing
-		// (1) and (2) to the UI shows up as blank "agent" speech bubbles
-		// when the user reloads the conversation.
+		// (1) an `agent` turn with finish_reason "tool_calls" — the
+		// pre-tool-call scaffolding. Live streaming may have placed the
+		// model's pre-tool-call narration ("let me check that…") into
+		// this row's `content`. Then (2) one or more `tool` rows with
+		// the result payload, then (3) the final `agent` turn with the
+		// actual answer. Surfacing (1) and (2) to the UI either shows
+		// blank speech bubbles (empty-content scaffolding) or worse —
+		// the narration as if it were the final reply.
 		const { app, store } = makeAppAndStore({
 			chatService: makeFakeChatService(),
 		});
@@ -443,7 +445,10 @@ describe("agent conversation message routes", () => {
 		await store.appendChatMessage(ws, cid, {
 			role: "agent",
 			authorId: aid,
-			content: "",
+			// Narration the model streamed before deciding to call a tool.
+			// Live streaming dispatch persists this; the public list must
+			// still hide it (scaffolding, not the final answer).
+			content: "Let me check your knowledge bases…",
 			tokenCount: 100,
 			messageTs: "2026-05-01T00:00:00.002Z",
 			toolCallPayload: { toolCalls: [{ id: "c1", name: "list_chunks" }] },

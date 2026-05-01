@@ -125,11 +125,15 @@ export function toWireChatMessage(record: MessageRecord): ChatMessageWire {
  *    `toolCallPayload` / `toolResponse`, never in `content`. Surfacing
  *    them as `role: "agent"` with `content: null` produces blank
  *    bubbles in the UI.
- *  - `agent` rows the model emitted alongside a tool call but with no
- *    user-visible text (`content === ""` and
- *    `finish_reason === "tool_calls"`). These are the placeholder
- *    "I'm calling a tool" turn — the actual answer lands later in a
- *    `finish_reason: "stop"` turn.
+ *  - `agent` rows the model emitted alongside a tool call (any row
+ *    with `finish_reason === "tool_calls"`). These are scaffolding
+ *    turns; the user-visible answer is always the later
+ *    `finish_reason: "stop"` turn. The persisted `content` may be
+ *    empty (the placeholder "I'm calling a tool" case) OR carry the
+ *    pre-tool-call narration the model streamed while it was deciding
+ *    to call a tool ("let me look that up..."). Both shapes are
+ *    scaffolding and both must stay out of the public list — otherwise
+ *    the narration renders as if it were the final reply.
  *
  * Both kinds are still persisted so `assemblePrompt` can replay the
  * full tool-call loop on subsequent turns; this predicate just filters
@@ -139,7 +143,6 @@ export function isUserVisibleMessage(record: MessageRecord): boolean {
 	if (record.role === "tool") return false;
 	if (
 		record.role === "agent" &&
-		(record.content ?? "") === "" &&
 		record.metadata.finish_reason === "tool_calls"
 	) {
 		return false;
