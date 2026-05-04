@@ -149,6 +149,32 @@ describe("<MarkdownContent />", () => {
 		expect(code.tagName).toBe("CODE");
 	});
 
+	test("fenced code blocks WITHOUT a language tag still render as a scrollable block", () => {
+		// Regression: when the model emits ```\n…\n``` (no language hint)
+		// the wrapping <pre> used to pass through unstyled and the inner
+		// <code> got inline-pill styling — preserved-whitespace content
+		// then bled past the chat bubble. Block styling now lives on the
+		// `<pre>` so both fenced shapes render the same way.
+		const wide =
+			"| `stargate.jsonapi.operations.lwt.retries` | `int` | `3` | The amount";
+		renderInRouter(
+			<MarkdownContent content={`\`\`\`\n${wide}\n\`\`\``} workspaceId={ws} />,
+		);
+		const pre = screen.getByText(wide).closest("pre");
+		expect(pre).not.toBeNull();
+		expect(pre?.className).toMatch(/overflow-x-auto/);
+		// Block styling (slate-900 background) lives on the pre so
+		// fenced blocks with AND without a language tag look the same.
+		expect(pre?.className).toMatch(/bg-slate-900/);
+		// The pre carries a descendant selector that resets the inner
+		// `<code>`'s inline-pill styling at render time — verify the
+		// rule is on the pre's classList rather than reading the
+		// computed style (jsdom doesn't evaluate `[&_code]:` selectors).
+		expect(pre?.className).toMatch(/\[&_code\]:bg-transparent/);
+		const innerCode = pre?.querySelector("code");
+		expect(innerCode).not.toBeNull();
+	});
+
 	test("renders [chunkId] as a react-router citation link", () => {
 		const chunkMap = new Map<string, ChunkRef>([
 			[

@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { FileText, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { AstraQueryCodeButton } from "@/components/chat/AstraQueryCodeButton";
 import {
@@ -43,7 +43,10 @@ export function MessageBubble({
 			</span>
 			<div
 				className={cn(
-					"max-w-[80%] rounded-lg px-3 py-2 text-sm",
+					// `break-words` (overflow-wrap: anywhere) lets unbreakable
+					// runs like dotted package names / URLs wrap inside the
+					// bubble instead of bleeding past the `max-w-[80%]` cap.
+					"max-w-[80%] break-words rounded-lg px-3 py-2 text-sm",
 					// User content stays plain (whitespace preserved); the model's
 					// reply is rendered as sanitized markdown so lists, code, and
 					// citations land formatted.
@@ -66,7 +69,10 @@ export function MessageBubble({
 				)}
 			</div>
 			{!isUser ? (
-				<div className="flex items-center gap-2">
+				// `items-start` keeps both chips top-aligned with each other
+				// regardless of whether SourcesDisclosure is open (its
+				// expanded body grows downward).
+				<div className="flex items-start gap-1.5">
 					{chunkMap.size > 0 ? (
 						<SourcesDisclosure workspaceId={workspaceId} chunks={chunkMap} />
 					) : null}
@@ -86,9 +92,26 @@ export function SourcesDisclosure({
 }) {
 	const entries = [...chunks.values()];
 	return (
-		<details className="self-start text-xs text-slate-500">
-			<summary className="cursor-pointer hover:text-slate-700">
-				{entries.length} source{entries.length === 1 ? "" : "s"}
+		<details className="text-xs text-slate-500">
+			{/*
+			 * `<summary>` styled as a chip to match `AstraQueryCodeButton` —
+			 * same icon size (3x3), same padding (px-1.5 py-0.5), same text
+			 * size (11px), same hover color. The `[&::-webkit-details-marker]`
+			 * + `list-none` rules suppress the browser's default disclosure
+			 * triangle so the chip's `FileText` icon is the only marker.
+			 */}
+			<summary
+				className={cn(
+					"inline-flex cursor-pointer list-none items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium",
+					"text-slate-400 transition-colors hover:bg-slate-100 hover:text-[var(--color-brand-700)]",
+					"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]",
+					"[&::-webkit-details-marker]:hidden",
+				)}
+			>
+				<FileText className="h-3 w-3" aria-hidden="true" />
+				<span>
+					{entries.length} source{entries.length === 1 ? "" : "s"}
+				</span>
 			</summary>
 			<ul className="mt-1 flex flex-col gap-0.5 pl-2">
 				{entries.map((ref) => (

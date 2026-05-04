@@ -124,25 +124,12 @@ const MARKDOWN_COMPONENTS: Components = {
 			</a>
 		);
 	},
-	code({ className, children, ...rest }) {
-		// react-markdown renders inline code (`x`) and fenced blocks
-		// through the same `code` component. Distinguish by the
-		// language hint that gets attached to fenced blocks.
-		const isBlock =
-			typeof className === "string" && /language-/.test(className);
-		if (isBlock) {
-			return (
-				<code
-					className={cn(
-						"block overflow-x-auto rounded-md bg-slate-900 p-3 font-mono text-xs text-slate-100",
-						className,
-					)}
-					{...rest}
-				>
-					{children}
-				</code>
-			);
-		}
+	code({ children, ...rest }) {
+		// Inline-code styling. Fenced code blocks come through as
+		// `<pre><code>` — the wrapping `<pre>` (below) restyles them as
+		// a dark block + horizontal scroll, and a descendant selector
+		// there resets the inline pill so the inner code blends into
+		// the block rather than rendering as a pill on dark.
 		return (
 			<code
 				className="rounded bg-slate-200 px-1 py-0.5 font-mono text-[12px] text-slate-900"
@@ -153,9 +140,28 @@ const MARKDOWN_COMPONENTS: Components = {
 		);
 	},
 	pre({ children, ...rest }) {
-		// `code` already styles fenced blocks; let `pre` pass through
-		// transparently so we don't double-pad.
-		return <pre {...rest}>{children}</pre>;
+		// Fenced code block. Pre's `white-space: pre` preserves
+		// indentation, so we need `overflow-x-auto` to scroll wide
+		// content (e.g. wide table fragments the model emits) instead
+		// of bleeding past the chat bubble. Without a `language-` hint
+		// react-markdown still renders `<pre><code>`, so styling lives
+		// on the `pre` rather than the `code` — that way fenced blocks
+		// with AND without a language tag look the same.
+		//
+		// `[&_code]:…` resets the inline pill styling on the inner
+		// `<code>` so it inherits the dark theme rather than rendering
+		// as a light pill on top of the dark block.
+		return (
+			<pre
+				className={cn(
+					"overflow-x-auto rounded-md bg-slate-900 p-3 font-mono text-xs text-slate-100",
+					"[&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit",
+				)}
+				{...rest}
+			>
+				{children}
+			</pre>
+		);
 	},
 	ul({ children }) {
 		return <ul className="list-disc space-y-0.5 pl-5">{children}</ul>;
