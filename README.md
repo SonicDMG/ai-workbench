@@ -104,20 +104,34 @@ See [`docs/architecture.md`](docs/architecture.md) for the full model.
 ### Run it
 
 ```bash
-# Install root devDeps (Biome) + TS runtime deps.
-npm ci && npm run install:ts
+# First-run install (root devDeps + TS runtime + web UI).
+npm run setup                          # or: make setup
 
-# Boot with the default in-memory control plane.
-npm run dev                            # http://localhost:8080
+# Build the latest UI and boot the runtime that serves it.
+npm start                              # or: make start
+                                       # → http://localhost:8080
 
 # Hit it.
 curl http://localhost:8080/healthz     # {"status":"ok"}
 curl http://localhost:8080/docs        # Scalar-rendered API reference
 ```
 
+`npm start` runs `npm run build:web && npm run dev` — Vite produces
+`apps/web/dist/`, the runtime auto-detects it, and the same port
+serves the UI at `/`, the JSON API at `/api/v1/*`, and the reference
+UI at `/docs`. One process, one URL.
+
 The `npm run *` scripts at root delegate into
 [`runtimes/typescript/`](runtimes/typescript/). You can also `cd`
 into that directory and work there directly.
+
+Other useful scripts:
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | API only, watch mode. Use when you don't need the UI. |
+| `npm run dev:web` | Vite dev server on `:5173` with `/api/*` proxied to `:8080`. Pair with `npm run dev` in another terminal for live UI reload. |
+| `npm run check` | Lint + typecheck + tests + build (the same gate CI runs). |
 
 Switching to an Astra-backed control plane is a YAML change —
 see [`docs/configuration.md`](docs/configuration.md). If you have

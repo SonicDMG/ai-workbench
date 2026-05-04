@@ -68,14 +68,18 @@ continue with the quickstart below.
 ## Quickstart
 
 ```bash
-npm ci && npm run install:ts
-npm run dev
+npm run setup    # one-time install (root + runtime + web)
+npm start        # build the UI and boot the runtime that serves it
 ```
 
 Then open the bundled UI at `http://localhost:8080`, create a workspace,
 register at least one chunking + embedding service, create a knowledge
 base that binds them, ingest content from the workspace detail page,
 and use the playground to inspect the results.
+
+`npm start` is a thin wrapper around `npm run build:web && npm run dev`
+— the runtime auto-detects `apps/web/dist/` and serves the SPA at `/`
+alongside the JSON API at `/api/v1/*`. One process, one URL.
 
 The generated API reference is available from the running runtime at
 `http://localhost:8080/docs`, and the machine-readable contract is

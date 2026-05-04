@@ -9,6 +9,8 @@
 		"node": ">=22.0.0"
 	},
 	"scripts": {
+		"setup": "npm ci && npm run install:ts && npm run install:web",
+		"start": "npm run build:web && npm --prefix runtimes/typescript run dev",
 		"lint": "biome check . && npm run lint:guard",
 		"lint:guard": "node scripts/check-api-error-helper.mjs",
 		"lint:fix": "biome check --write .",

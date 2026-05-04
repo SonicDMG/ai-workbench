@@ -22,7 +22,25 @@ selection here keeps the next step from stalling on
 
 ## Quickstart
 
-In two terminals:
+The fastest path — UI + API on a single port, served by the runtime
+out of `apps/web/dist/`:
+
+```bash
+# From the repo root.
+npm run setup    # one-time, installs root + runtime + web deps
+npm start        # builds the UI and boots the runtime
+# → http://localhost:8080
+```
+
+This is the right command when you just want to **use** the app or
+demo it. The runtime auto-detects `apps/web/dist/` and serves the
+SPA at `/`, the JSON API at `/api/v1/*`, and Scalar at `/docs` —
+all from `:8080`.
+
+### Active UI development (live reload)
+
+When you're iterating on the UI itself and want Vite's HMR, run the
+two servers separately:
 
 ```bash
 # Terminal 1 — start the runtime (from repo root)
@@ -30,7 +48,6 @@ npm run dev
 # http://localhost:8080
 
 # Terminal 2 — start the UI (from repo root)
-npm run install:web
 npm run dev:web
 # http://localhost:5173
 ```
