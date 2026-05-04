@@ -383,10 +383,7 @@ export interface AgentRecord {
 	 * service record. When null, the global runtime `chat:` block is
 	 * used (transitional). Mutable. */
 	readonly llmServiceId: string | null;
-	readonly ragEnabled: boolean;
 	readonly knowledgeBaseIds: readonly string[];
-	readonly ragMaxResults: number | null;
-	readonly ragMinScore: number | null;
 	readonly rerankEnabled: boolean;
 	/** Agent-level reranking override. When set, takes precedence over
 	 * the KB-level `rerankingServiceId` (gap #3 resolution). */

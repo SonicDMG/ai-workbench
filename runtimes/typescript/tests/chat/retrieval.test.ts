@@ -2,10 +2,9 @@
  * Regression coverage for the chat retrieval layer's payload-key
  * handling. The ingest pipeline stamps chunk text under the
  * reserved `CHUNK_TEXT_KEY` (= "chunkText"); retrieval must read
- * that key first or every ragEnabled agent gets an empty context
- * block. The `payload.content` / `payload.text` fallbacks remain
- * for older data and for drivers that don't round-trip the
- * reserved key.
+ * that key first or MCP `chat_send` builds an empty context block.
+ * The `payload.content` / `payload.text` fallbacks remain for older
+ * data and for drivers that don't round-trip the reserved key.
  */
 
 import { describe, expect, test, vi } from "vitest";

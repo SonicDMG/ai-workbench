@@ -250,9 +250,7 @@ describe("dispatchAgentSend tool-call loop", () => {
 		// `search_kb` mid-loop, the dispatcher's per-turn accumulator
 		// captures the matched chunks and writes them to the FINAL
 		// assistant row's `metadata.context_chunks`. The SPA's Sources
-		// disclosure reads from there. Pre-PR, this was populated only
-		// via the implicit `retrieveContextIfEnabled` branch, which
-		// `ragEnabled: false` agents (Bobby/Heidi) never hit.
+		// disclosure reads from there.
 		const chat = scripted([
 			{
 				content: "",

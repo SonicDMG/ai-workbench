@@ -220,7 +220,7 @@ function AgentRow({
 					</p>
 				) : null}
 				<p className="mt-1 text-[11px] text-slate-500">
-					{llmLabel} · {kbLabel} · {agent.ragEnabled ? "RAG on" : "RAG off"}
+					{llmLabel} · {kbLabel}
 					{agent.rerankEnabled ? " · reranking on" : ""} · updated{" "}
 					{formatDate(agent.updatedAt)}
 				</p>

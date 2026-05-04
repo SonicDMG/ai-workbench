@@ -26,12 +26,6 @@ import type {
  * Form schema. Pickers / text inputs land here; the submit handler
  * builds the API payload — converting empty pickers to `null` for
  * nullable foreign keys, parsing numbers from strings.
- *
- * `ragEnabled` / `ragMaxResults` / `ragMinScore` were the implicit-
- * retrieval knobs; they're no longer surfaced because every agent
- * runs through the `search_kb` tool now (see PR #165). Stored values
- * still round-trip through the API for backward compat but they
- * don't render in the editor.
  */
 const FormSchema = z.object({
 	name: z.string().min(1, "Name is required"),

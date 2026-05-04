@@ -1427,12 +1427,6 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				...(patch.knowledgeBaseIds !== undefined && {
 					knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
 				}),
-				...(patch.ragMaxResults !== undefined && {
-					ragMaxResults: patch.ragMaxResults,
-				}),
-				...(patch.ragMinScore !== undefined && {
-					ragMinScore: patch.ragMinScore,
-				}),
 				...(patch.rerankEnabled !== undefined && {
 					rerankEnabled: patch.rerankEnabled,
 				}),

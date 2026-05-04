@@ -20,8 +20,8 @@ import { cn } from "@/lib/utils";
  * Subtle "view client code" affordance on assistant message bubbles
  * whose retrieval hit Astra. Renders nothing when the persisted
  * `metadata.astra_queries` is missing / malformed / empty (non-Astra
- * workspaces, ragEnabled-false agents, etc.) so the chat surface
- * stays clean for turns that don't have anything to show.
+ * workspaces or turns where the model didn't call `search_kb`) so the
+ * chat surface stays clean for turns that don't have anything to show.
  *
  * Click → modal with four tabs (TS / Python / Java / cURL); each
  * tab has a "Copy" button. The query text and topK come from the

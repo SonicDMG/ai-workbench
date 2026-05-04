@@ -906,9 +906,6 @@ export function runContract(name: string, factory: ContractFactory): void {
 				});
 				expect(a.name).toBe("Researcher");
 				expect(a.description).toBe("desc");
-				// `ragEnabled` is no longer settable from input (deprecated);
-				// every newly created agent reads back as `false`.
-				expect(a.ragEnabled).toBe(false);
 				expect([...a.knowledgeBaseIds]).toEqual(["kb-1", "kb-2"]);
 
 				const got = await store.getAgent(ws.uid, a.agentId);

@@ -1,11 +1,11 @@
 /**
  * Per-turn effective-config resolution for the agent dispatcher.
  *
- * Computes the chat service, system prompt, retrieval K, KB scope, and
- * tool surface a single agent turn should use. Pulled out of
- * `agent-dispatch.ts` so the orchestration layer there is just the
- * iteration loop + persistence calls — the resolution rules below are
- * the only place each agent-vs-conversation-vs-runtime override lives.
+ * Computes the chat service, system prompt, KB scope, and tool surface
+ * a single agent turn should use. Pulled out of `agent-dispatch.ts` so
+ * the orchestration layer there is just the iteration loop +
+ * persistence calls — the resolution rules below are the only place
+ * each agent-vs-conversation-vs-runtime override lives.
  *
  * Resolution order (mirrors `dispatchAgentSend`'s contract):
  *   - **System prompt**: `agent.systemPrompt` ?? `chatConfig.systemPrompt`
@@ -13,18 +13,13 @@
  *   - **KB scope**: `conversation.knowledgeBaseIds` if non-empty, else
  *     `agent.knowledgeBaseIds` if non-empty, else `[]` (the retrieval
  *     layer interprets `[]` as "all KBs in the workspace").
- *   - **Retrieval K**: `agent.ragMaxResults` ?? `chatConfig.retrievalK`
- *     ?? `DEFAULT_RETRIEVAL_K`.
  *   - **Chat service**: when `agent.llmServiceId` is set, build a fresh
  *     adapter from the workspace's `LlmServiceRecord`. Otherwise fall
  *     back to `deps.chatService` (the global runtime chat service).
  */
 
 import type { ChatConfig } from "../config/schema.js";
-import {
-	DEFAULT_AGENT_SYSTEM_PROMPT,
-	DEFAULT_AGENT_TOOL_GUIDANCE,
-} from "../control-plane/defaults.js";
+import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../control-plane/defaults.js";
 import { ControlPlaneNotFoundError } from "../control-plane/errors.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type {
@@ -48,7 +43,6 @@ import {
 } from "./tools/registry.js";
 import type { ChatService } from "./types.js";
 
-export const DEFAULT_RETRIEVAL_K = 6;
 export const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
 
 export interface AgentResolutionDeps {
@@ -59,7 +53,7 @@ export interface AgentResolutionDeps {
 	readonly logger: Pick<Logger, "warn" | "debug">;
 	/** Global runtime chat service; used when the agent has no `llmServiceId`. */
 	readonly chatService: ChatService | null;
-	/** Mirrors the runtime config; controls retrieval / persona defaults. */
+	/** Mirrors the runtime config; carries the agent persona default. */
 	readonly chatConfig: ChatConfig | null;
 }
 
@@ -72,7 +66,6 @@ export interface AgentResolutionContext {
 export interface ResolvedAgentChat {
 	readonly chatService: ChatService;
 	readonly systemPrompt: string;
-	readonly retrievalK: number;
 	readonly knowledgeBaseIds: readonly string[];
 	/**
 	 * Tools advertised to the model on every iteration of the
@@ -103,25 +96,10 @@ export async function resolveAgentChat(
 
 	// System-prompt resolution: agent override > runtime config override
 	// > generic default.
-	const baseSystemPrompt =
+	const systemPrompt =
 		agent.systemPrompt ??
 		chatConfig?.systemPrompt ??
 		DEFAULT_AGENT_SYSTEM_PROMPT;
-	// Legacy bridge for agents created before `ragEnabled` was
-	// deprecated. Pre-PR #165 these agents got top-K chunks injected
-	// implicitly on every turn; PR #165 removed that path so the model
-	// must call `search_kb` itself. If the agent's prompt doesn't
-	// already mention the tool, prepend the canonical guidance block
-	// so it actually does. Idempotent — agents whose prompts already
-	// reference `search_kb` (e.g. Bobby/Heidi) are left alone. Goes
-	// away when the `ragEnabled` column is dropped in the next release.
-	const systemPrompt =
-		agent.ragEnabled && !baseSystemPrompt.includes("search_kb")
-			? `${DEFAULT_AGENT_TOOL_GUIDANCE}\n\n${baseSystemPrompt}`
-			: baseSystemPrompt;
-
-	const retrievalK =
-		agent.ragMaxResults ?? chatConfig?.retrievalK ?? DEFAULT_RETRIEVAL_K;
 
 	// KB-scope resolution: per-conversation > per-agent > workspace-wide
 	// (the empty list is what tools see when they default to "all KBs").
@@ -153,7 +131,6 @@ export async function resolveAgentChat(
 	return {
 		chatService: chat,
 		systemPrompt,
-		retrievalK,
 		knowledgeBaseIds,
 		tools,
 		toolDeps,

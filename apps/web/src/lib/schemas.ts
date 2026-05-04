@@ -525,9 +525,6 @@ export const AgentRecordSchema = z.object({
 	userPrompt: z.string().nullish(),
 	llmServiceId: z.string().uuid().nullish(),
 	knowledgeBaseIds: z.array(z.string().uuid()).default([]),
-	ragEnabled: z.boolean(),
-	ragMaxResults: z.number().int().nullish(),
-	ragMinScore: z.number().nullish(),
 	rerankEnabled: z.boolean(),
 	rerankingServiceId: z.string().uuid().nullish(),
 	rerankMaxResults: z.number().int().nullish(),
@@ -545,8 +542,6 @@ export const CreateAgentInputSchema = z.object({
 	userPrompt: z.string().nullable().optional(),
 	llmServiceId: z.string().uuid().nullable().optional(),
 	knowledgeBaseIds: z.array(z.string().uuid()).optional(),
-	ragMaxResults: z.number().int().positive().nullable().optional(),
-	ragMinScore: z.number().nullable().optional(),
 	rerankEnabled: z.boolean().optional(),
 	rerankingServiceId: z.string().uuid().nullable().optional(),
 	rerankMaxResults: z.number().int().positive().nullable().optional(),
@@ -561,8 +556,6 @@ export const UpdateAgentInputSchema = z
 		userPrompt: z.string().nullable().optional(),
 		llmServiceId: z.string().uuid().nullable().optional(),
 		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
-		ragMaxResults: z.number().int().positive().nullable().optional(),
-		ragMinScore: z.number().nullable().optional(),
 		rerankEnabled: z.boolean().optional(),
 		rerankingServiceId: z.string().uuid().nullable().optional(),
 		rerankMaxResults: z.number().int().positive().nullable().optional(),
@@ -628,8 +621,7 @@ export const ChatMessagePageSchema = paginatedSchema(ChatMessageRecordSchema);
  * (a JSON-encoded array). Tokens and raw vectors are NEVER part of
  * the envelope — only what the user needs to read or run the same
  * Astra Data API query themselves. Empty / absent for non-Astra
- * workspaces, ragEnabled-false agents, or turns where retrieval ran
- * but produced no chunks.
+ * workspaces or turns where the model didn't call `search_kb`.
  */
 export const AstraQuerySnapshotSchema = z.object({
 	knowledgeBaseId: z.string(),

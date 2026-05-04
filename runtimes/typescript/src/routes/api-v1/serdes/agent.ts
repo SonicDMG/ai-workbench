@@ -20,9 +20,6 @@ export interface AgentWire {
 	userPrompt: string | null;
 	llmServiceId: string | null;
 	knowledgeBaseIds: string[];
-	ragEnabled: boolean;
-	ragMaxResults: number | null;
-	ragMinScore: number | null;
 	rerankEnabled: boolean;
 	rerankingServiceId: string | null;
 	rerankMaxResults: number | null;
@@ -63,9 +60,6 @@ export function toWireAgent(record: AgentRecord): AgentWire {
 		// drops, breaking nullable-but-required client schemas).
 		llmServiceId: record.llmServiceId ?? null,
 		knowledgeBaseIds: [...record.knowledgeBaseIds],
-		ragEnabled: record.ragEnabled,
-		ragMaxResults: record.ragMaxResults,
-		ragMinScore: record.ragMinScore,
 		rerankEnabled: record.rerankEnabled,
 		rerankingServiceId: record.rerankingServiceId,
 		rerankMaxResults: record.rerankMaxResults,

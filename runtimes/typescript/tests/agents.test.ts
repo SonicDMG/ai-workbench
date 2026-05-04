@@ -148,18 +148,13 @@ describe("agent routes", () => {
 				name: "Researcher",
 				description: "Reads papers",
 				systemPrompt: "You are a careful researcher.",
-				// `ragEnabled` is accepted on the wire for tolerance but
-				// ignored — see the deprecation note on
-				// `CreateAgentInputSchema`. The created record always reads
-				// back as `false` regardless of input.
-				ragEnabled: true,
 				knowledgeBaseIds: ["11111111-2222-4333-8444-555555555555"],
 			}),
 		});
 		expect(create.status).toBe(201);
 		const created = await json(create);
 		expect(created.name).toBe("Researcher");
-		expect(created.ragEnabled).toBe(false);
+		expect(created.ragEnabled).toBeUndefined();
 		expect(created.knowledgeBaseIds).toEqual([
 			"11111111-2222-4333-8444-555555555555",
 		]);
@@ -215,16 +210,13 @@ describe("agent routes", () => {
 			body: JSON.stringify({
 				name: "X-renamed",
 				description: null,
-				// Tolerated for legacy clients but a no-op on the stored row;
-				// the field already reads back as `false` from the create.
-				ragEnabled: true,
 			}),
 		});
 		expect(res.status).toBe(200);
 		const updated = await json(res);
 		expect(updated.name).toBe("X-renamed");
 		expect(updated.description).toBeNull();
-		expect(updated.ragEnabled).toBe(false);
+		expect(updated.ragEnabled).toBeUndefined();
 	});
 
 	test("DELETE 204; cascades the agent's conversations + messages", async () => {

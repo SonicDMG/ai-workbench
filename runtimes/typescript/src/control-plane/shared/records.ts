@@ -112,16 +112,7 @@ export function buildAgentRecord(
 		userPrompt: input.userPrompt ?? null,
 		toolIds: freezeStringSet([]),
 		llmServiceId: input.llmServiceId ?? null,
-		// `ragEnabled` was the implicit-retrieval flag. PR #165 removed
-		// the runtime path; agents always operate via the `search_kb`
-		// tool now, and the field is no longer settable through the
-		// public input surface. Stored rows still carry it for one
-		// release so existing data round-trips cleanly — drop the
-		// column in a follow-up.
-		ragEnabled: false,
 		knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
-		ragMaxResults: input.ragMaxResults ?? null,
-		ragMinScore: input.ragMinScore ?? null,
 		rerankEnabled: input.rerankEnabled ?? false,
 		rerankingServiceId: input.rerankingServiceId ?? null,
 		rerankMaxResults: input.rerankMaxResults ?? null,

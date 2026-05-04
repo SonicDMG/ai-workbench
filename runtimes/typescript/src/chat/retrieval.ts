@@ -186,7 +186,7 @@ function toChunk(hit: SearchHitLike, knowledgeBaseId: string): RetrievedChunk {
 	// Ingest stamps text under the reserved `CHUNK_TEXT_KEY`. The
 	// `content` / `text` fallbacks survive for older data and for
 	// drivers that don't round-trip the reserved key — without them,
-	// every ragEnabled agent gets an empty context block.
+	// MCP `chat_send` would build an empty context block.
 	const reservedText = payload[CHUNK_TEXT_KEY];
 	const content =
 		typeof reservedText === "string"

@@ -34,10 +34,10 @@ export interface PersistTurnContext {
 	readonly chunks: readonly RetrievedChunk[];
 	/**
 	 * Per-search-call envelopes captured during chat retrieval. Empty
-	 * for non-Astra workspaces, agents with `ragEnabled: false`, or
-	 * turns where retrieval ran but produced no chunks. The web UI
-	 * surfaces these as a "view client code" affordance on the
-	 * assistant bubble. See `chat/retrieval.ts:AstraQuerySnapshot`.
+	 * for non-Astra workspaces or turns where the model didn't call
+	 * `search_kb`. The web UI surfaces these as a "view client code"
+	 * affordance on the assistant bubble. See
+	 * `chat/retrieval.ts:AstraQuerySnapshot`.
 	 */
 	readonly astraQueries: readonly import("./retrieval.js").AstraQuerySnapshot[];
 }

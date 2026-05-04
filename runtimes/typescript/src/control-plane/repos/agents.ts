@@ -24,8 +24,6 @@ export interface CreateAgentInput {
 	readonly userPrompt?: string | null;
 	readonly knowledgeBaseIds?: readonly string[];
 	readonly llmServiceId?: string | null;
-	readonly ragMaxResults?: number | null;
-	readonly ragMinScore?: number | null;
 	readonly rerankEnabled?: boolean;
 	readonly rerankingServiceId?: string | null;
 	readonly rerankMaxResults?: number | null;

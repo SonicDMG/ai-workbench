@@ -261,10 +261,7 @@ export interface AgentRow {
 	user_prompt: string | null;
 	tool_ids: Set<Uuid>;
 	llm_service_id: Uuid | null;
-	rag_enabled: boolean;
 	knowledge_base_ids: Set<Uuid>;
-	rag_max_results: number | null;
-	rag_min_score: number | null;
 	rerank_enabled: boolean;
 	reranking_service_id: Uuid | null;
 	rerank_max_results: number | null;

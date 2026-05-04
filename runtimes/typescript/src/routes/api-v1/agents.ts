@@ -132,12 +132,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
 			const body = c.req.valid("json");
-			// `ragEnabled` is accepted on the wire for tolerance (legacy
-			// clients) but ignored — agents always operate via search_kb
-			// post-PR #165. Strip it here so the deprecated field never
-			// reaches the storage layer.
-			const { ragEnabled: _deprecated, ...input } = body;
-			const record = await store.createAgent(workspaceId, input);
+			const record = await store.createAgent(workspaceId, body);
 			audit(c, {
 				action: "agent.create",
 				outcome: "success",
@@ -206,9 +201,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		async (c) => {
 			const { workspaceId, agentId } = c.req.valid("param");
 			const body = c.req.valid("json");
-			// Same tolerance-strip as createAgent above.
-			const { ragEnabled: _deprecated, ...input } = body;
-			const record = await store.updateAgent(workspaceId, agentId, input);
+			const record = await store.updateAgent(workspaceId, agentId, body);
 			return c.json(toAgentWire(record), 200);
 		},
 	);

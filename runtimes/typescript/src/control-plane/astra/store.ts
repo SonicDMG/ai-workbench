@@ -1380,12 +1380,6 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			...(patch.knowledgeBaseIds !== undefined && {
 				knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
 			}),
-			...(patch.ragMaxResults !== undefined && {
-				ragMaxResults: patch.ragMaxResults,
-			}),
-			...(patch.ragMinScore !== undefined && {
-				ragMinScore: patch.ragMinScore,
-			}),
 			...(patch.rerankEnabled !== undefined && {
 				rerankEnabled: patch.rerankEnabled,
 			}),
@@ -1408,9 +1402,6 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 					user_prompt: nextRow.user_prompt,
 					llm_service_id: nextRow.llm_service_id,
 					knowledge_base_ids: nextRow.knowledge_base_ids,
-					rag_enabled: nextRow.rag_enabled,
-					rag_max_results: nextRow.rag_max_results,
-					rag_min_score: nextRow.rag_min_score,
 					rerank_enabled: nextRow.rerank_enabled,
 					reranking_service_id: nextRow.reranking_service_id,
 					rerank_max_results: nextRow.rerank_max_results,
