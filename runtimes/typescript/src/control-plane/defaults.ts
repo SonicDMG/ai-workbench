@@ -87,7 +87,7 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT =
  * model infers the right tool from descriptions alone — especially
  * for `gpt-4o-mini`, which under-uses tools without explicit nudging.
  */
-const DEFAULT_AGENT_TOOL_GUIDANCE =
+export const DEFAULT_AGENT_TOOL_GUIDANCE =
 	"When a question requires looking at the workspace's data, call " +
 	"the right tool rather than guessing. Quick rules of thumb: \n" +
 	"  - 'what's in my data?' / 'what knowledge bases do I have?' / " +

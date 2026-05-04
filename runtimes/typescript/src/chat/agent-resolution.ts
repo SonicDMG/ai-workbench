@@ -21,7 +21,10 @@
  */
 
 import type { ChatConfig } from "../config/schema.js";
-import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../control-plane/defaults.js";
+import {
+	DEFAULT_AGENT_SYSTEM_PROMPT,
+	DEFAULT_AGENT_TOOL_GUIDANCE,
+} from "../control-plane/defaults.js";
 import { ControlPlaneNotFoundError } from "../control-plane/errors.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type {
@@ -100,10 +103,22 @@ export async function resolveAgentChat(
 
 	// System-prompt resolution: agent override > runtime config override
 	// > generic default.
-	const systemPrompt =
+	const baseSystemPrompt =
 		agent.systemPrompt ??
 		chatConfig?.systemPrompt ??
 		DEFAULT_AGENT_SYSTEM_PROMPT;
+	// Legacy bridge for agents created before `ragEnabled` was
+	// deprecated. Pre-PR #165 these agents got top-K chunks injected
+	// implicitly on every turn; PR #165 removed that path so the model
+	// must call `search_kb` itself. If the agent's prompt doesn't
+	// already mention the tool, prepend the canonical guidance block
+	// so it actually does. Idempotent — agents whose prompts already
+	// reference `search_kb` (e.g. Bobby/Heidi) are left alone. Goes
+	// away when the `ragEnabled` column is dropped in the next release.
+	const systemPrompt =
+		agent.ragEnabled && !baseSystemPrompt.includes("search_kb")
+			? `${DEFAULT_AGENT_TOOL_GUIDANCE}\n\n${baseSystemPrompt}`
+			: baseSystemPrompt;
 
 	const retrievalK =
 		agent.ragMaxResults ?? chatConfig?.retrievalK ?? DEFAULT_RETRIEVAL_K;

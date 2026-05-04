@@ -1380,7 +1380,6 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			...(patch.knowledgeBaseIds !== undefined && {
 				knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
 			}),
-			...(patch.ragEnabled !== undefined && { ragEnabled: patch.ragEnabled }),
 			...(patch.ragMaxResults !== undefined && {
 				ragMaxResults: patch.ragMaxResults,
 			}),

@@ -79,10 +79,7 @@ interface Fixture {
 	ctx: Parameters<typeof dispatchAgentSend>[1];
 }
 
-async function fixture(
-	chatService: ChatService,
-	{ ragEnabled = false }: { ragEnabled?: boolean } = {},
-): Promise<Fixture> {
+async function fixture(chatService: ChatService): Promise<Fixture> {
 	const store = new MemoryControlPlaneStore();
 	const drivers = new VectorStoreDriverRegistry(
 		new Map([["mock", new MockVectorStoreDriver()]]),
@@ -93,7 +90,6 @@ async function fixture(
 	const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
 	const agent = await store.createAgent(ws.uid, {
 		name: "tool-tester",
-		ragEnabled,
 	});
 	const conversation = await store.createConversation(ws.uid, agent.agentId, {
 		title: "t",

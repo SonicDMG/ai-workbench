@@ -26,6 +26,12 @@ import type {
  * Form schema. Pickers / text inputs land here; the submit handler
  * builds the API payload — converting empty pickers to `null` for
  * nullable foreign keys, parsing numbers from strings.
+ *
+ * `ragEnabled` / `ragMaxResults` / `ragMinScore` were the implicit-
+ * retrieval knobs; they're no longer surfaced because every agent
+ * runs through the `search_kb` tool now (see PR #165). Stored values
+ * still round-trip through the API for backward compat but they
+ * don't render in the editor.
  */
 const FormSchema = z.object({
 	name: z.string().min(1, "Name is required"),
@@ -33,9 +39,6 @@ const FormSchema = z.object({
 	systemPrompt: z.string(),
 	llmServiceId: z.string(),
 	knowledgeBaseIds: z.array(z.string().uuid()),
-	ragEnabled: z.boolean(),
-	ragMaxResults: z.string(),
-	ragMinScore: z.string(),
 	rerankEnabled: z.boolean(),
 	rerankingServiceId: z.string(),
 	rerankMaxResults: z.string(),
@@ -51,9 +54,6 @@ function toFormDefaults(agent: AgentRecord | null): FormInput {
 		systemPrompt: agent?.systemPrompt ?? "",
 		llmServiceId: agent?.llmServiceId ?? "",
 		knowledgeBaseIds: agent?.knowledgeBaseIds ?? [],
-		ragEnabled: agent?.ragEnabled ?? true,
-		ragMaxResults: agent?.ragMaxResults?.toString() ?? "",
-		ragMinScore: agent?.ragMinScore?.toString() ?? "",
 		rerankEnabled: agent?.rerankEnabled ?? false,
 		rerankingServiceId: agent?.rerankingServiceId ?? "",
 		rerankMaxResults: agent?.rerankMaxResults?.toString() ?? "",
@@ -66,12 +66,6 @@ function parseOptionalInt(value: string): number | null {
 	return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function parseOptionalFloat(value: string): number | null {
-	if (value.trim() === "") return null;
-	const n = Number.parseFloat(value);
-	return Number.isFinite(n) ? n : null;
-}
-
 function buildPayload(values: FormInput): CreateAgentInput {
 	return {
 		name: values.name.trim(),
@@ -79,9 +73,6 @@ function buildPayload(values: FormInput): CreateAgentInput {
 		systemPrompt: values.systemPrompt.trim() || null,
 		llmServiceId: values.llmServiceId || null,
 		knowledgeBaseIds: values.knowledgeBaseIds,
-		ragEnabled: values.ragEnabled,
-		ragMaxResults: parseOptionalInt(values.ragMaxResults),
-		ragMinScore: parseOptionalFloat(values.ragMinScore),
 		rerankEnabled: values.rerankEnabled,
 		rerankingServiceId: values.rerankingServiceId || null,
 		rerankMaxResults: parseOptionalInt(values.rerankMaxResults),
@@ -116,7 +107,6 @@ export function AgentForm({
 		defaultValues: toFormDefaults(agent ?? null),
 	});
 
-	const ragEnabled = form.watch("ragEnabled");
 	const rerankEnabled = form.watch("rerankEnabled");
 	const selectedKbIds = form.watch("knowledgeBaseIds");
 	const errors = form.formState.errors;
@@ -254,51 +244,6 @@ export function AgentForm({
 					</div>
 				)}
 			</div>
-
-			<fieldset className="flex flex-col gap-3 rounded-md border border-slate-200 bg-slate-50/50 p-4">
-				<label className="flex items-center gap-2 text-sm font-medium">
-					<input
-						type="checkbox"
-						{...form.register("ragEnabled")}
-						className="h-4 w-4 rounded border-slate-300 text-[var(--color-brand-500)] focus:ring-[var(--color-brand-500)]"
-					/>
-					Enable retrieval-augmented generation
-				</label>
-				{ragEnabled ? (
-					<div className="grid grid-cols-2 gap-3 pl-6">
-						<div className="flex flex-col gap-1.5">
-							<FieldLabel
-								htmlFor="agent-rag-max"
-								help="Optional. Max results per turn — defaults to runtime config."
-							>
-								Max results per turn
-							</FieldLabel>
-							<Input
-								id="agent-rag-max"
-								type="number"
-								min={1}
-								placeholder="e.g. 6"
-								{...form.register("ragMaxResults")}
-							/>
-						</div>
-						<div className="flex flex-col gap-1.5">
-							<FieldLabel
-								htmlFor="agent-rag-min-score"
-								help="Optional. Drop hits below this similarity score."
-							>
-								Min score
-							</FieldLabel>
-							<Input
-								id="agent-rag-min-score"
-								type="number"
-								step="0.01"
-								placeholder="e.g. 0.5"
-								{...form.register("ragMinScore")}
-							/>
-						</div>
-					</div>
-				) : null}
-			</fieldset>
 
 			<fieldset className="flex flex-col gap-3 rounded-md border border-slate-200 bg-slate-50/50 p-4">
 				<label className="flex items-center gap-2 text-sm font-medium">

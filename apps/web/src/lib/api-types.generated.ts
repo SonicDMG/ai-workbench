@@ -3888,6 +3888,10 @@ export interface components {
 			/** Format: uuid */
 			llmServiceId?: string | null;
 			knowledgeBaseIds?: string[];
+			/**
+			 * @deprecated
+			 * @description Deprecated. Ignored on writes — agents always operate via the `search_kb` tool. Reads still surface the legacy stored value for one release.
+			 */
 			ragEnabled?: boolean;
 			ragMaxResults?: number | null;
 			ragMinScore?: number | null;
@@ -3904,6 +3908,10 @@ export interface components {
 			/** Format: uuid */
 			llmServiceId?: string | null;
 			knowledgeBaseIds?: string[];
+			/**
+			 * @deprecated
+			 * @description Deprecated. Ignored on writes — agents always operate via the `search_kb` tool. Reads still surface the legacy stored value for one release.
+			 */
 			ragEnabled?: boolean;
 			ragMaxResults?: number | null;
 			ragMinScore?: number | null;

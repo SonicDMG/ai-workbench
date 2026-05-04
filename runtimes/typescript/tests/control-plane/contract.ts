@@ -902,12 +902,13 @@ export function runContract(name: string, factory: ContractFactory): void {
 					name: "Researcher",
 					description: "desc",
 					systemPrompt: "be careful",
-					ragEnabled: true,
 					knowledgeBaseIds: ["kb-1", "kb-2"],
 				});
 				expect(a.name).toBe("Researcher");
 				expect(a.description).toBe("desc");
-				expect(a.ragEnabled).toBe(true);
+				// `ragEnabled` is no longer settable from input (deprecated);
+				// every newly created agent reads back as `false`.
+				expect(a.ragEnabled).toBe(false);
 				expect([...a.knowledgeBaseIds]).toEqual(["kb-1", "kb-2"]);
 
 				const got = await store.getAgent(ws.uid, a.agentId);
@@ -928,7 +929,6 @@ export function runContract(name: string, factory: ContractFactory): void {
 				const a = await store.createAgent(ws.uid, {
 					name: "Old",
 					description: "d",
-					ragEnabled: false,
 				});
 				// Sleep a millisecond so updatedAt is strictly later than
 				// createdAt — file/astra timestamps have ms resolution.
@@ -936,11 +936,9 @@ export function runContract(name: string, factory: ContractFactory): void {
 				const u = await store.updateAgent(ws.uid, a.agentId, {
 					name: "New",
 					description: null,
-					ragEnabled: true,
 				});
 				expect(u.name).toBe("New");
 				expect(u.description).toBeNull();
-				expect(u.ragEnabled).toBe(true);
 				expect(Date.parse(u.updatedAt)).toBeGreaterThanOrEqual(
 					Date.parse(a.updatedAt),
 				);
