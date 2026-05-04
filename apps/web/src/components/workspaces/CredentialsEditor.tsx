@@ -90,7 +90,11 @@ export function CredentialsEditor({
 							disabled={disabled}
 							onChange={(e) => updateRow(i, row.key, e.target.value)}
 							aria-invalid={
-								row.val.length > 0 && !/^[a-z][a-z0-9]*:.+/i.test(row.val)
+								// Mirror SecretRefSchema in lib/schemas.ts: provider
+								// portion is RFC 3986 URI-scheme syntax, so refs like
+								// `astra-cli:<profile>:...:token` from the picker
+								// don't get flagged.
+								row.val.length > 0 && !/^[a-z][a-z0-9+.-]*:.+/i.test(row.val)
 							}
 						/>
 						<Button

@@ -621,6 +621,28 @@ describe("workspace routes", () => {
 		expect(body.workspaceId).toMatch(/^[0-9a-f-]{36}$/);
 	});
 
+	test("POST accepts astra-cli: credential refs end-to-end", async () => {
+		// Regression: the runtime API SecretRef regex was rejecting the
+		// `astra-cli:<profile>:<dbId>:token` shape that the workspace
+		// picker emits — provider had a hyphen, the path had additional
+		// colons. This pins the API contract end-to-end so the SPA
+		// picker's prefill survives a request round trip.
+		const { app } = makeApp();
+		const res = await app.request("/api/v1/workspaces", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "from-picker",
+				kind: "astra",
+				url: "astra-cli:default:c933e7fc-4996-4dcd-bb87-4f282fe1e7ef:endpoint",
+				credentials: {
+					token: "astra-cli:default:c933e7fc-4996-4dcd-bb87-4f282fe1e7ef:token",
+				},
+			}),
+		});
+		expect(res.status).toBe(201);
+	});
+
 	test("GET returns all workspaces", async () => {
 		const { app, store } = makeApp();
 		await store.createWorkspace(BASE_WORKSPACE);
@@ -1077,11 +1099,15 @@ describe("openapi", () => {
 	});
 
 	test("openapi doc uses a JSON Schema-compatible SecretRef pattern", async () => {
+		// Provider portion accepts RFC 3986 URI-scheme characters
+		// (lowercase letters, digits, `+`, `-`, `.`) so refs like
+		// `astra-cli:<profile>:<dbId>:token` from the workspace picker
+		// pass. The resolver still splits on the FIRST colon.
 		const { app } = makeApp();
 		const res = await app.request("/api/v1/openapi.json");
 		const body = await json(res);
 		expect(body.components.schemas.SecretRef.pattern).toBe(
-			"^[a-z][a-z0-9]*:.+$",
+			"^[a-z][a-z0-9+.-]*:.+$",
 		);
 	});
 
