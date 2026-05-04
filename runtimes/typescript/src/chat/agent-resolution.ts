@@ -162,8 +162,11 @@ export async function retrieveContextIfEnabled(
 		readonly query: string;
 		readonly retrievalK: number;
 	},
-): Promise<readonly RetrievedChunk[]> {
-	if (!agent.ragEnabled) return [];
+): Promise<{
+	readonly chunks: readonly RetrievedChunk[];
+	readonly astraQueries: readonly import("./retrieval.js").AstraQuerySnapshot[];
+}> {
+	if (!agent.ragEnabled) return { chunks: [], astraQueries: [] };
 	return retrieveContext(
 		{
 			store: deps.store,

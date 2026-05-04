@@ -15,10 +15,18 @@ import type { SearchHit } from "../../src/drivers/vector-store.js";
 import type { EmbedderFactory } from "../../src/embeddings/factory.js";
 import { CHUNK_TEXT_KEY } from "../../src/ingest/payload-keys.js";
 
+// `resolveKb` is overridden per-test to control the workspace kind +
+// descriptor name (we want different shapes for the Astra / mock
+// branches of `astraQueries` capture).
+let resolveKbReturn: () => unknown = () => ({
+	workspace: { uid: "ws-1", kind: "mock" },
+	knowledgeBase: { name: "kb-mock" },
+	descriptor: { name: "wb_vectors_mock" },
+});
 vi.mock("../../src/routes/api-v1/kb-descriptor.js", () => ({
-	resolveKb: vi.fn(async (_store: unknown, _ws: string, _kbId: string) => ({
-		workspace: { uid: "ws-1", kind: "mock" },
-	})),
+	resolveKb: vi.fn(async (_store: unknown, _ws: string, _kbId: string) =>
+		resolveKbReturn(),
+	),
 }));
 
 let nextHits: readonly SearchHit[] = [];
@@ -62,8 +70,8 @@ describe("retrieveContext payload-key handling", () => {
 			},
 		];
 		const result = await retrieveContext(deps(), request());
-		expect(result).toHaveLength(1);
-		expect(result[0]).toMatchObject({
+		expect(result.chunks).toHaveLength(1);
+		expect(result.chunks[0]).toMatchObject({
 			chunkId: "chunk-a",
 			content: "the canonical chunk body",
 			documentId: "doc-1",
@@ -79,7 +87,7 @@ describe("retrieveContext payload-key handling", () => {
 			},
 		];
 		const result = await retrieveContext(deps(), request());
-		expect(result[0]?.content).toBe("legacy content key");
+		expect(result.chunks[0]?.content).toBe("legacy content key");
 	});
 
 	test("falls back to payload.text when chunkText and content are absent", async () => {
@@ -91,7 +99,7 @@ describe("retrieveContext payload-key handling", () => {
 			},
 		];
 		const result = await retrieveContext(deps(), request());
-		expect(result[0]?.content).toBe("legacy text key");
+		expect(result.chunks[0]?.content).toBe("legacy text key");
 	});
 
 	test("prefers CHUNK_TEXT_KEY over content/text when multiple keys are present", async () => {
@@ -107,12 +115,68 @@ describe("retrieveContext payload-key handling", () => {
 			},
 		];
 		const result = await retrieveContext(deps(), request());
-		expect(result[0]?.content).toBe("winner");
+		expect(result.chunks[0]?.content).toBe("winner");
 	});
 
 	test("returns empty content (not crash) when no text-bearing key exists", async () => {
 		nextHits = [{ id: "chunk-e", score: 0.5, payload: { documentId: "d" } }];
 		const result = await retrieveContext(deps(), request());
-		expect(result[0]?.content).toBe("");
+		expect(result.chunks[0]?.content).toBe("");
+	});
+});
+
+describe("retrieveContext astraQueries capture", () => {
+	test("captures a query envelope per Astra-kind workspace KB (no token, no vector)", async () => {
+		resolveKbReturn = () => ({
+			workspace: {
+				uid: "ws-1",
+				kind: "astra",
+				keyspace: "default_keyspace",
+			},
+			knowledgeBase: { name: "Engineering Docs" },
+			descriptor: { name: "wb_vectors_kb_eng" },
+		});
+		nextHits = [
+			{ id: "chunk-1", score: 0.9, payload: { [CHUNK_TEXT_KEY]: "hi" } },
+		];
+		const result = await retrieveContext(deps(), request());
+		expect(result.astraQueries).toHaveLength(1);
+		expect(result.astraQueries[0]).toEqual({
+			knowledgeBaseId: "kb-1",
+			kbName: "Engineering Docs",
+			collection: "wb_vectors_kb_eng",
+			keyspace: "default_keyspace",
+			query: { text: "hello", topK: 3 },
+		});
+		// Tokens / raw vectors are NOT in the envelope by construction.
+		// (Note: the collection name itself can contain "vector" — e.g.
+		// `wb_vectors_kb_eng` — so we check for the field shape, not the
+		// substring.)
+		const serialized = JSON.stringify(result.astraQueries);
+		expect(serialized).not.toContain("AstraCS");
+		expect(serialized).not.toContain('"token"');
+		expect(serialized).not.toContain('"$vector"');
+	});
+
+	test("emits NO astraQueries for non-Astra-kind workspaces (mock/file)", async () => {
+		resolveKbReturn = () => ({
+			workspace: { uid: "ws-1", kind: "mock", keyspace: null },
+			knowledgeBase: { name: "kb-mock" },
+			descriptor: { name: "wb_vectors_mock" },
+		});
+		nextHits = [
+			{ id: "chunk-1", score: 0.9, payload: { [CHUNK_TEXT_KEY]: "hi" } },
+		];
+		const result = await retrieveContext(deps(), request());
+		expect(result.astraQueries).toEqual([]);
+	});
+
+	test("a per-KB retrieval failure suppresses BOTH chunks and snapshot for that KB", async () => {
+		resolveKbReturn = () => {
+			throw new Error("kb gone");
+		};
+		const result = await retrieveContext(deps(), request());
+		expect(result.chunks).toEqual([]);
+		expect(result.astraQueries).toEqual([]);
 	});
 });

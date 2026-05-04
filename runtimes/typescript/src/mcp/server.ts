@@ -410,7 +410,7 @@ function registerChatTool(
 				chatId,
 				{ role: "user", content },
 			);
-			const chunks = await retrieveContext(
+			const { chunks } = await retrieveContext(
 				{
 					store: deps.store,
 					drivers: deps.drivers,

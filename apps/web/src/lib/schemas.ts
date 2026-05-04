@@ -605,6 +605,26 @@ export const ChatMessageRecordSchema = z.object({
 export type ChatMessage = z.infer<typeof ChatMessageRecordSchema>;
 export const ChatMessagePageSchema = paginatedSchema(ChatMessageRecordSchema);
 
+/**
+ * Per-search-call envelope persisted under `metadata.astra_queries`
+ * (a JSON-encoded array). Tokens and raw vectors are NEVER part of
+ * the envelope — only what the user needs to read or run the same
+ * Astra Data API query themselves. Empty / absent for non-Astra
+ * workspaces, ragEnabled-false agents, or turns where retrieval ran
+ * but produced no chunks.
+ */
+export const AstraQuerySnapshotSchema = z.object({
+	knowledgeBaseId: z.string(),
+	kbName: z.string(),
+	collection: z.string(),
+	keyspace: z.string().nullable(),
+	query: z.object({
+		text: z.string(),
+		topK: z.number().int().positive(),
+	}),
+});
+export type AstraQuerySnapshot = z.infer<typeof AstraQuerySnapshotSchema>;
+
 export const SendChatMessageSchema = z.object({
 	content: z.string().min(1, "Type a message"),
 });

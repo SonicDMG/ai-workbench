@@ -1,5 +1,6 @@
 import { Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
+import { AstraQueryCodeButton } from "@/components/chat/AstraQueryCodeButton";
 import {
 	type ChunkRef,
 	MarkdownContent,
@@ -64,8 +65,13 @@ export function MessageBubble({
 					/>
 				)}
 			</div>
-			{!isUser && chunkMap.size > 0 ? (
-				<SourcesDisclosure workspaceId={workspaceId} chunks={chunkMap} />
+			{!isUser ? (
+				<div className="flex items-center gap-2">
+					{chunkMap.size > 0 ? (
+						<SourcesDisclosure workspaceId={workspaceId} chunks={chunkMap} />
+					) : null}
+					<AstraQueryCodeButton message={message} />
+				</div>
 			) : null}
 		</li>
 	);

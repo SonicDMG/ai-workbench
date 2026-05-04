@@ -47,6 +47,34 @@ describe("agent-dispatch.buildAgentMetadata", () => {
 		expect(md.error_message).toBe("rate limit");
 	});
 
+	test("with astraQueries: writes astra_queries as a JSON array", () => {
+		const md = buildAgentMetadata([], "fake-model", okStop, [
+			{
+				knowledgeBaseId: "kb-a",
+				kbName: "Eng Docs",
+				collection: "wb_vectors_eng",
+				keyspace: "default_keyspace",
+				query: { text: "what is rag", topK: 5 },
+			},
+		]);
+		expect(md.astra_queries).toBeDefined();
+		const parsed = JSON.parse(md.astra_queries ?? "[]");
+		expect(parsed).toEqual([
+			{
+				knowledgeBaseId: "kb-a",
+				kbName: "Eng Docs",
+				collection: "wb_vectors_eng",
+				keyspace: "default_keyspace",
+				query: { text: "what is rag", topK: 5 },
+			},
+		]);
+	});
+
+	test("with empty astraQueries (default): astra_queries is omitted", () => {
+		const md = buildAgentMetadata([], "fake-model", okStop);
+		expect(md.astra_queries).toBeUndefined();
+	});
+
 	test("preserves chunk order in context_chunks (matches sorted retrieval order)", () => {
 		// `retrieveContext` sorts by score DESC and slices to a cap; the
 		// metadata must preserve that order so the UI's "Sources" list

@@ -32,6 +32,14 @@ export interface PersistTurnContext {
 	readonly agent: AgentRecord;
 	readonly chatService: ChatService;
 	readonly chunks: readonly RetrievedChunk[];
+	/**
+	 * Per-search-call envelopes captured during chat retrieval. Empty
+	 * for non-Astra workspaces, agents with `ragEnabled: false`, or
+	 * turns where retrieval ran but produced no chunks. The web UI
+	 * surfaces these as a "view client code" affordance on the
+	 * assistant bubble. See `chat/retrieval.ts:AstraQuerySnapshot`.
+	 */
+	readonly astraQueries: readonly import("./retrieval.js").AstraQuerySnapshot[];
 }
 
 export interface AssistantToolCallTurn {
@@ -46,6 +54,13 @@ export interface AssistantToolCallTurn {
  * `context_chunks` shape — a JSON-encoded array of
  * `[chunkId, knowledgeBaseId, documentId]` tuples — and the
  * `context_document_ids` comma-joined fallback for older clients.
+ *
+ * `astraQueries` is the per-search-call envelope captured during
+ * retrieval; serialized as a JSON array under `astra_queries` for
+ * the SPA's "show client code" affordance. Tokens never enter the
+ * envelope — the helper that builds it lives in `chat/retrieval.ts`
+ * and only captures the collection name, keyspace, query text, and
+ * topK.
  */
 export function buildAgentMetadata(
 	chunks: readonly {
@@ -58,6 +73,7 @@ export function buildAgentMetadata(
 		readonly finishReason: "stop" | "length" | "error" | "tool_calls";
 		readonly errorMessage: string | null;
 	},
+	astraQueries: readonly import("./retrieval.js").AstraQuerySnapshot[] = [],
 ): Record<string, string> {
 	const metadata: Record<string, string> = {
 		model,
@@ -68,6 +84,9 @@ export function buildAgentMetadata(
 		metadata.context_chunks = JSON.stringify(
 			chunks.map((c) => [c.chunkId, c.knowledgeBaseId, c.documentId]),
 		);
+	}
+	if (astraQueries.length > 0) {
+		metadata.astra_queries = JSON.stringify(astraQueries);
 	}
 	if (completion.errorMessage) {
 		metadata.error_message = completion.errorMessage;
@@ -132,10 +151,15 @@ export async function persistFinalAssistant(
 			messageTs: ts,
 			content: args.content,
 			tokenCount: args.tokenCount,
-			metadata: buildAgentMetadata(ctx.chunks, ctx.chatService.modelId, {
-				finishReason: args.finishReason,
-				errorMessage: args.errorMessage ?? null,
-			}),
+			metadata: buildAgentMetadata(
+				ctx.chunks,
+				ctx.chatService.modelId,
+				{
+					finishReason: args.finishReason,
+					errorMessage: args.errorMessage ?? null,
+				},
+				ctx.astraQueries,
+			),
 		},
 	);
 }

@@ -22,6 +22,31 @@ import { resolveKb } from "../routes/api-v1/kb-descriptor.js";
 import { dispatchSearch } from "../routes/api-v1/search-dispatch.js";
 import type { RetrievedChunk } from "./prompt.js";
 
+/**
+ * Per-search-call envelope captured during chat retrieval, suitable
+ * for persistence on the assistant message and rendering as runnable
+ * client code snippets in the SPA. Tokens and vectors are NOT
+ * captured — only what the user needs to read or run the same query
+ * themselves. Emitted only for Astra-kind workspaces; mock/file
+ * workspaces don't carry a meaningful Data API call to render.
+ */
+export interface AstraQuerySnapshot {
+	readonly knowledgeBaseId: string;
+	readonly kbName: string;
+	/** Astra Data API collection name (the actual table). */
+	readonly collection: string;
+	readonly keyspace: string | null;
+	readonly query: {
+		readonly text: string;
+		readonly topK: number;
+	};
+}
+
+export interface RetrieveContextResult {
+	readonly chunks: readonly RetrievedChunk[];
+	readonly astraQueries: readonly AstraQuerySnapshot[];
+}
+
 export interface RetrieveContextDeps {
 	readonly store: ControlPlaneStore;
 	readonly drivers: VectorStoreDriverRegistry;
@@ -57,11 +82,13 @@ function totalContextCap(retrievalK: number, numKbs: number): number {
 export async function retrieveContext(
 	deps: RetrieveContextDeps,
 	request: RetrieveContextRequest,
-): Promise<readonly RetrievedChunk[]> {
+): Promise<RetrieveContextResult> {
 	const knowledgeBaseIds = await effectiveKbSet(deps.store, request);
-	if (knowledgeBaseIds.length === 0) return [];
+	if (knowledgeBaseIds.length === 0) {
+		return { chunks: [], astraQueries: [] };
+	}
 
-	const perKbHits = await Promise.all(
+	const perKb = await Promise.all(
 		knowledgeBaseIds.map(async (kbId) => {
 			try {
 				const ctx = await resolveKb(deps.store, request.workspaceId, kbId);
@@ -72,7 +99,21 @@ export async function retrieveContext(
 					embedders: deps.embedders,
 					body: { text: request.query, topK: request.retrievalK },
 				});
-				return hits.map((hit) => toChunk(hit, kbId));
+				const snapshot =
+					ctx.workspace.kind === "astra" || ctx.workspace.kind === "hcd"
+						? buildAstraSnapshot({
+								knowledgeBaseId: kbId,
+								kbName: ctx.knowledgeBase.name,
+								collection: ctx.descriptor.name,
+								keyspace: ctx.workspace.keyspace,
+								text: request.query,
+								topK: request.retrievalK,
+							})
+						: null;
+				return {
+					chunks: hits.map((hit) => toChunk(hit, kbId)),
+					snapshot,
+				};
 			} catch (err) {
 				deps.logger?.warn?.(
 					{
@@ -82,16 +123,37 @@ export async function retrieveContext(
 					},
 					"chat retrieval failed for knowledge base; skipping",
 				);
-				return [] as RetrievedChunk[];
+				return { chunks: [] as RetrievedChunk[], snapshot: null };
 			}
 		}),
 	);
 
 	const cap = totalContextCap(request.retrievalK, knowledgeBaseIds.length);
-	return perKbHits
-		.flat()
+	const chunks = perKb
+		.flatMap((r) => r.chunks)
 		.sort((a, b) => b.score - a.score)
 		.slice(0, cap);
+	const astraQueries = perKb
+		.map((r) => r.snapshot)
+		.filter((s): s is AstraQuerySnapshot => s !== null);
+	return { chunks, astraQueries };
+}
+
+function buildAstraSnapshot(args: {
+	readonly knowledgeBaseId: string;
+	readonly kbName: string;
+	readonly collection: string;
+	readonly keyspace: string | null;
+	readonly text: string;
+	readonly topK: number;
+}): AstraQuerySnapshot {
+	return {
+		knowledgeBaseId: args.knowledgeBaseId,
+		kbName: args.kbName,
+		collection: args.collection,
+		keyspace: args.keyspace,
+		query: { text: args.text, topK: args.topK },
+	};
 }
 
 /**

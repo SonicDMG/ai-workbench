@@ -126,7 +126,7 @@ export async function dispatchAgentSend(
 		{ role: "user", content: body.content },
 	);
 
-	const chunks = await retrieveContextIfEnabled(deps, agent, {
+	const { chunks, astraQueries } = await retrieveContextIfEnabled(deps, agent, {
 		workspaceId,
 		knowledgeBaseIds: resolved.knowledgeBaseIds,
 		query: body.content,
@@ -158,6 +158,7 @@ export async function dispatchAgentSend(
 		agent,
 		chatService: resolved.chatService,
 		chunks,
+		astraQueries,
 	};
 
 	for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
@@ -271,7 +272,7 @@ export async function dispatchAgentSendStream(
 		{ role: "user", content: body.content },
 	);
 
-	const chunks = await retrieveContextIfEnabled(deps, agent, {
+	const { chunks, astraQueries } = await retrieveContextIfEnabled(deps, agent, {
 		workspaceId,
 		knowledgeBaseIds: resolved.knowledgeBaseIds,
 		query: body.content,
@@ -311,6 +312,7 @@ export async function dispatchAgentSendStream(
 		agent,
 		chatService: resolved.chatService,
 		chunks,
+		astraQueries,
 	};
 
 	// The iteration body persists rows + writes SSE events one-at-a-time;
