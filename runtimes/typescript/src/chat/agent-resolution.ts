@@ -38,8 +38,6 @@ import {
 	type HuggingFaceChatServiceOptions,
 } from "./huggingface.js";
 import { OpenAIChatService, type OpenAIChatServiceOptions } from "./openai.js";
-import type { RetrievedChunk } from "./prompt.js";
-import { retrieveContext } from "./retrieval.js";
 import {
 	type AgentTool,
 	type AgentToolDeps,
@@ -111,7 +109,7 @@ export async function resolveAgentChat(
 		agent.ragMaxResults ?? chatConfig?.retrievalK ?? DEFAULT_RETRIEVAL_K;
 
 	// KB-scope resolution: per-conversation > per-agent > workspace-wide
-	// (the empty list signals "all KBs" to retrieveContext).
+	// (the empty list is what tools see when they default to "all KBs").
 	const knowledgeBaseIds =
 		conversation.knowledgeBaseIds.length > 0
 			? conversation.knowledgeBaseIds
@@ -145,37 +143,6 @@ export async function resolveAgentChat(
 		tools,
 		toolDeps,
 	};
-}
-
-/**
- * Conditionally pull RAG context up front. Tool-using agents
- * (`ragEnabled === false`) skip the implicit retrieval and let the
- * model decide when to call `search_kb`; classic RAG agents keep the
- * existing top-K-into-system-prompt behavior.
- */
-export async function retrieveContextIfEnabled(
-	deps: Pick<AgentResolutionDeps, "store" | "drivers" | "embedders" | "logger">,
-	agent: AgentRecord,
-	request: {
-		readonly workspaceId: string;
-		readonly knowledgeBaseIds: readonly string[];
-		readonly query: string;
-		readonly retrievalK: number;
-	},
-): Promise<{
-	readonly chunks: readonly RetrievedChunk[];
-	readonly astraQueries: readonly import("./retrieval.js").AstraQuerySnapshot[];
-}> {
-	if (!agent.ragEnabled) return { chunks: [], astraQueries: [] };
-	return retrieveContext(
-		{
-			store: deps.store,
-			drivers: deps.drivers,
-			embedders: deps.embedders,
-			logger: deps.logger,
-		},
-		request,
-	);
 }
 
 interface ChatServiceResolutionOptions {

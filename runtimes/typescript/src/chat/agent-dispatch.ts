@@ -31,11 +31,15 @@ import {
 	type AgentResolutionContext,
 	type AgentResolutionDeps,
 	resolveAgentChat,
-	retrieveContextIfEnabled,
 } from "../chat/agent-resolution.js";
 import type { RetrievedChunk } from "../chat/prompt.js";
 import { assemblePrompt } from "../chat/prompt.js";
-import { DEFAULT_AGENT_TOOLS } from "../chat/tools/registry.js";
+import type { AstraQuerySnapshot } from "../chat/retrieval.js";
+import {
+	type AgentToolDeps,
+	DEFAULT_AGENT_TOOLS,
+	type ToolEffectsSink,
+} from "../chat/tools/registry.js";
 import type {
 	ChatService,
 	ChatTurn,
@@ -89,6 +93,45 @@ export interface AgentSseWriter {
 /** Re-export so the route layer can advertise the same set in its OpenAPI metadata. */
 export { buildAgentMetadata, DEFAULT_AGENT_TOOLS };
 
+/**
+ * Per-turn collector for the side-channel a tool can use to surface
+ * retrieved chunks and Astra query envelopes. The dispatcher creates
+ * one of these at the top of each user turn, hands its sink to every
+ * tool execution via `AgentToolDeps.effects`, and reads the
+ * accumulated arrays just before persisting the final assistant row —
+ * `metadata.context_chunks` and `metadata.astra_queries` then carry
+ * the union of every `search_kb` invocation in the turn's tool loop.
+ */
+interface TurnEffectAccumulator {
+	readonly chunks: RetrievedChunk[];
+	readonly astraQueries: AstraQuerySnapshot[];
+	readonly sink: ToolEffectsSink;
+}
+
+function createTurnAccumulator(): TurnEffectAccumulator {
+	const chunks: RetrievedChunk[] = [];
+	const astraQueries: AstraQuerySnapshot[] = [];
+	return {
+		chunks,
+		astraQueries,
+		sink: {
+			pushChunks: (cs) => {
+				chunks.push(...cs);
+			},
+			pushAstraQuery: (q) => {
+				astraQueries.push(q);
+			},
+		},
+	};
+}
+
+function withSink(
+	toolDeps: AgentToolDeps,
+	sink: ToolEffectsSink,
+): AgentToolDeps {
+	return { ...toolDeps, effects: sink };
+}
+
 /* ------------------------------------------------------------------ */
 /* Sync send                                                          */
 /* ------------------------------------------------------------------ */
@@ -126,13 +169,6 @@ export async function dispatchAgentSend(
 		{ role: "user", content: body.content },
 	);
 
-	const { chunks, astraQueries } = await retrieveContextIfEnabled(deps, agent, {
-		workspaceId,
-		knowledgeBaseIds: resolved.knowledgeBaseIds,
-		query: body.content,
-		retrievalK: resolved.retrievalK,
-	});
-
 	const history = await deps.store.listChatMessages(
 		workspaceId,
 		conversationId,
@@ -140,13 +176,17 @@ export async function dispatchAgentSend(
 	const priorHistory = history.filter(
 		(m) => m.messageId !== userRecord.messageId,
 	);
+	// Tool-using agents always start with no pre-injected chunks; the
+	// `search_kb` tool surfaces them through `accumulator.sink` as the
+	// loop iterates.
 	const initialPrompt = assemblePrompt({
 		systemPrompt: resolved.systemPrompt,
-		chunks,
+		chunks: [],
 		history: priorHistory,
 		userTurn: body.content,
 	});
 
+	const accumulator = createTurnAccumulator();
 	const tools = resolved.tools;
 	const turns: ChatTurn[] = [...initialPrompt];
 	let lastTokenCount: number | null = null;
@@ -157,8 +197,11 @@ export async function dispatchAgentSend(
 		conversationId,
 		agent,
 		chatService: resolved.chatService,
-		chunks,
-		astraQueries,
+		chunks: accumulator.chunks,
+		astraQueries: accumulator.astraQueries,
+	};
+	const toolResolved = {
+		toolDeps: withSink(resolved.toolDeps, accumulator.sink),
 	};
 
 	for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
@@ -205,7 +248,7 @@ export async function dispatchAgentSend(
 
 		const toolStep = await executeToolCalls(
 			persistCtx,
-			resolved,
+			toolResolved,
 			completion.toolCalls,
 			prevTs,
 		);
@@ -272,13 +315,6 @@ export async function dispatchAgentSendStream(
 		{ role: "user", content: body.content },
 	);
 
-	const { chunks, astraQueries } = await retrieveContextIfEnabled(deps, agent, {
-		workspaceId,
-		knowledgeBaseIds: resolved.knowledgeBaseIds,
-		query: body.content,
-		retrievalK: resolved.retrievalK,
-	});
-
 	const history = await deps.store.listChatMessages(
 		workspaceId,
 		conversationId,
@@ -286,9 +322,12 @@ export async function dispatchAgentSendStream(
 	const priorHistory = history.filter(
 		(m) => m.messageId !== userRecord.messageId,
 	);
+	// Tool-using agents always start with no pre-injected chunks; the
+	// `search_kb` tool surfaces them through `accumulator.sink` as the
+	// loop iterates.
 	const initialPrompt = assemblePrompt({
 		systemPrompt: resolved.systemPrompt,
-		chunks,
+		chunks: [],
 		history: priorHistory,
 		userTurn: body.content,
 	});
@@ -301,6 +340,7 @@ export async function dispatchAgentSendStream(
 		data: serializer.serializeUserMessage(userRecord),
 	});
 
+	const accumulator = createTurnAccumulator();
 	const turns: ChatTurn[] = [...initialPrompt];
 	const tools = resolved.tools;
 	let prevTs = userRecord.messageTs;
@@ -311,8 +351,11 @@ export async function dispatchAgentSendStream(
 		conversationId,
 		agent,
 		chatService: resolved.chatService,
-		chunks,
-		astraQueries,
+		chunks: accumulator.chunks,
+		astraQueries: accumulator.astraQueries,
+	};
+	const toolResolved = {
+		toolDeps: withSink(resolved.toolDeps, accumulator.sink),
 	};
 
 	// The iteration body persists rows + writes SSE events one-at-a-time;
@@ -399,7 +442,7 @@ export async function dispatchAgentSendStream(
 
 			const toolStep = await executeToolCalls(
 				persistCtx,
-				resolved,
+				toolResolved,
 				final.toolCalls,
 				prevTs,
 				async (call, resultText) => {

@@ -21,7 +21,10 @@ import type {
 	ChatStreamEvent,
 } from "../../src/chat/types.js";
 import { MemoryControlPlaneStore } from "../../src/control-plane/memory/store.js";
-import { MockVectorStoreDriver } from "../../src/drivers/mock/store.js";
+import {
+	MockVectorStoreDriver,
+	mockEmbed,
+} from "../../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../../src/drivers/registry.js";
 import { logger } from "../../src/lib/logger.js";
 import { EnvSecretProvider } from "../../src/secrets/env.js";
@@ -244,5 +247,125 @@ describe("dispatchAgentSend tool-call loop", () => {
 			"search_kb",
 			"summarize_kb",
 		]);
+	});
+
+	test("search_kb tool calls populate metadata.context_chunks on the final assistant row", async () => {
+		// Pin the new sink contract end-to-end: when the model calls
+		// `search_kb` mid-loop, the dispatcher's per-turn accumulator
+		// captures the matched chunks and writes them to the FINAL
+		// assistant row's `metadata.context_chunks`. The SPA's Sources
+		// disclosure reads from there. Pre-PR, this was populated only
+		// via the implicit `retrieveContextIfEnabled` branch, which
+		// `ragEnabled: false` agents (Bobby/Heidi) never hit.
+		const chat = scripted([
+			{
+				content: "",
+				finishReason: "tool_calls",
+				tokenCount: 1,
+				errorMessage: null,
+				toolCalls: [
+					{
+						id: "call_1",
+						name: "search_kb",
+						arguments: JSON.stringify({ query: "alpha", limit: 3 }),
+					},
+				],
+			},
+			{
+				content: "Here's what I found.",
+				finishReason: "stop",
+				tokenCount: 5,
+				errorMessage: null,
+				toolCalls: [],
+			},
+		]);
+		const f = await fixture(chat);
+
+		// Seed a KB + document + chunks. Mirrors the helper in
+		// `tests/chat/tools.test.ts` — kept inline so this fixture stays
+		// self-contained and the dispatch loop test can exercise the
+		// real search path without leaning on test-internal exports.
+		const chunkSvc = await f.store.createChunkingService(f.workspaceId, {
+			name: "chunk",
+			engine: "langchain_ts",
+		});
+		const embSvc = await f.store.createEmbeddingService(f.workspaceId, {
+			name: "emb",
+			provider: "fake",
+			modelName: "fake",
+			embeddingDimension: 8,
+		});
+		const kb = await f.store.createKnowledgeBase(f.workspaceId, {
+			name: "kb",
+			chunkingServiceId: chunkSvc.chunkingServiceId,
+			embeddingServiceId: embSvc.embeddingServiceId,
+		});
+		const ws = await f.store.getWorkspace(f.workspaceId);
+		if (!ws) throw new Error("workspace seed failed");
+		const doc = await f.store.createRagDocument(
+			f.workspaceId,
+			kb.knowledgeBaseId,
+			{ sourceFilename: "rows.csv", fileType: "text/csv" },
+		);
+		const descriptor = {
+			workspace: ws.uid,
+			uid: kb.knowledgeBaseId,
+			name: kb.name,
+			vectorDimension: 8,
+			vectorSimilarity: embSvc.distanceMetric,
+			embedding: {
+				provider: embSvc.provider,
+				model: embSvc.modelName,
+				endpoint: embSvc.endpointBaseUrl,
+				dimension: 8,
+				secretRef: embSvc.credentialRef,
+			},
+			lexical: kb.lexical,
+			reranking: {
+				enabled: false,
+				provider: null,
+				model: null,
+				endpoint: null,
+				secretRef: null,
+			},
+			createdAt: kb.createdAt,
+			updatedAt: kb.updatedAt,
+		};
+		const driver = f.deps.drivers.for(ws);
+		await driver.createCollection({ workspace: ws, descriptor });
+		await driver.upsert({ workspace: ws, descriptor }, [
+			{
+				id: `${doc.documentId}:0`,
+				vector: mockEmbed("alpha row", 8),
+				payload: {
+					knowledgeBaseId: kb.knowledgeBaseId,
+					documentId: doc.documentId,
+					chunkIndex: 0,
+					chunkText: "alpha row",
+				},
+			},
+		]);
+
+		const out = await dispatchAgentSend(f.deps, f.ctx, {
+			content: "find alpha",
+		});
+
+		expect(out.assistant.content).toBe("Here's what I found.");
+		// `context_chunks` is the JSON-encoded tuple array the SPA's
+		// citation parser consumes. The chunk we just seeded should be
+		// in there.
+		const ctxChunks = out.assistant.metadata.context_chunks;
+		expect(ctxChunks).toBeDefined();
+		const parsed = JSON.parse(ctxChunks ?? "[]") as readonly [
+			string,
+			string,
+			string | null,
+		][];
+		expect(parsed.length).toBeGreaterThan(0);
+		expect(parsed[0]?.[1]).toBe(kb.knowledgeBaseId);
+		expect(parsed[0]?.[2]).toBe(doc.documentId);
+		// `mock`-kind workspace, so no astra_queries (only astra/hcd
+		// produce snapshots — unit-tested in tool-effects.test.ts).
+		expect(out.assistant.metadata.astra_queries).toBeUndefined();
 	});
 });

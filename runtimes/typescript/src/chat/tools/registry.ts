@@ -36,7 +36,24 @@ import {
 import type { Logger } from "../../lib/logger.js";
 import { resolveKb } from "../../routes/api-v1/kb-descriptor.js";
 import { dispatchSearch } from "../../routes/api-v1/search-dispatch.js";
+import type { RetrievedChunk } from "../prompt.js";
+import type { AstraQuerySnapshot } from "../retrieval.js";
 import type { ToolDefinition } from "../types.js";
+
+/**
+ * Side-channel a tool can use to surface artifacts the agent dispatcher
+ * needs to persist alongside the final assistant turn — chunks for the
+ * `context_chunks` metadata that powers the Sources disclosure, and
+ * Astra query envelopes for the "view client code" affordance. Only
+ * `search_kb` populates these today; the dispatcher provides the sink
+ * per turn and accumulates across all tool-call iterations. Tools
+ * invoked through MCP (or any caller without an `effects` field)
+ * simply produce text; the sink is purely additive.
+ */
+export interface ToolEffectsSink {
+	pushChunks?(chunks: readonly RetrievedChunk[]): void;
+	pushAstraQuery?(snapshot: AstraQuerySnapshot): void;
+}
 
 export interface AgentToolDeps {
 	readonly workspaceId: string;
@@ -44,6 +61,7 @@ export interface AgentToolDeps {
 	readonly drivers: VectorStoreDriverRegistry;
 	readonly embedders: EmbedderFactory;
 	readonly logger?: Pick<Logger, "warn" | "debug">;
+	readonly effects?: ToolEffectsSink;
 }
 
 export interface AgentTool {
@@ -392,8 +410,17 @@ const searchKb: AgentTool = {
 			score: number;
 			contentPreview: string;
 		};
+		// Each KB returns its hits plus an optional Astra envelope. The
+		// envelope is captured only for `astra` / `hcd` workspaces — the
+		// sink ignores `null` snapshots, so mock/file workspaces produce
+		// no entries and the SPA's "view client code" chip stays hidden
+		// for those turns.
+		type KbResult = {
+			readonly hits: Hit[];
+			readonly snapshot: AstraQuerySnapshot | null;
+		};
 		const settled = await Promise.allSettled(
-			kbIds.map(async (kbId): Promise<Hit[]> => {
+			kbIds.map(async (kbId): Promise<KbResult> => {
 				const ctx = await resolveKb(deps.store, deps.workspaceId, kbId);
 				const driver = deps.drivers.for(ctx.workspace);
 				const raw = await dispatchSearch({
@@ -402,7 +429,7 @@ const searchKb: AgentTool = {
 					embedders: deps.embedders,
 					body: { text: parsed.data.query, topK: limit },
 				});
-				return raw.map((hit) => {
+				const hits: Hit[] = raw.map((hit) => {
 					const payload = hit.payload ?? {};
 					// The ingest pipeline stamps chunk text under
 					// `CHUNK_TEXT_KEY` (= "chunkText"); `content` and `text`
@@ -427,13 +454,27 @@ const searchKb: AgentTool = {
 						contentPreview: truncate(content, MAX_CHUNK_PREVIEW_CHARS),
 					};
 				});
+				const snapshot: AstraQuerySnapshot | null =
+					ctx.workspace.kind === "astra" || ctx.workspace.kind === "hcd"
+						? {
+								knowledgeBaseId: kbId,
+								kbName: ctx.knowledgeBase.name,
+								collection: ctx.descriptor.name,
+								keyspace: ctx.workspace.keyspace,
+								query: { text: parsed.data.query, topK: limit },
+							}
+						: null;
+				return { hits, snapshot };
 			}),
 		);
 		const hits: Hit[] = [];
 		for (let i = 0; i < settled.length; i++) {
-			const result = settled[i] as PromiseSettledResult<Hit[]>;
+			const result = settled[i] as PromiseSettledResult<KbResult>;
 			if (result.status === "fulfilled") {
-				hits.push(...result.value);
+				hits.push(...result.value.hits);
+				if (result.value.snapshot) {
+					deps.effects?.pushAstraQuery?.(result.value.snapshot);
+				}
 			} else {
 				deps.logger?.warn?.(
 					{ err: result.reason, kb: kbIds[i] },
@@ -446,7 +487,23 @@ const searchKb: AgentTool = {
 			return "No matching content found in any knowledge base.";
 		}
 		hits.sort((a, b) => b.score - a.score);
-		return JSON.stringify({ results: hits.slice(0, limit) });
+		const top = hits.slice(0, limit);
+		// Surface the chunks the dispatcher will persist as
+		// `metadata.context_chunks` on the final assistant row. Empty
+		// `documentId` survives the pipe — the SPA's citation parser
+		// already tolerates a null doc.
+		deps.effects?.pushChunks?.(
+			top.map(
+				(h): RetrievedChunk => ({
+					chunkId: h.chunkId,
+					knowledgeBaseId: h.knowledgeBaseId,
+					documentId: h.documentId,
+					content: h.contentPreview,
+					score: h.score,
+				}),
+			),
+		);
+		return JSON.stringify({ results: top });
 	},
 };
 
