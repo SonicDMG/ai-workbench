@@ -159,6 +159,27 @@ describe("ConfigSchema", () => {
 		).toThrow();
 	});
 
+	test("accepts astra-cli secret refs in tokenRef", () => {
+		// `astra-cli:<profile>:<dbId>:token` — the provider portion has a
+		// hyphen and the path itself contains further colons. The schema
+		// must allow URI-scheme-style providers and only split on the
+		// first colon.
+		const cfg = ConfigSchema.parse({
+			version: 1,
+			controlPlane: {
+				driver: "astra",
+				endpoint: "https://x.apps.astra.datastax.com",
+				tokenRef:
+					"astra-cli:default:c933e7fc-4996-4dcd-bb87-4f282fe1e7ef:token",
+			},
+		});
+		if (cfg.controlPlane.driver === "astra") {
+			expect(cfg.controlPlane.tokenRef).toBe(
+				"astra-cli:default:c933e7fc-4996-4dcd-bb87-4f282fe1e7ef:token",
+			);
+		}
+	});
+
 	test("rejects bootstrap token refs when auth is disabled", () => {
 		expect(() =>
 			ConfigSchema.parse({

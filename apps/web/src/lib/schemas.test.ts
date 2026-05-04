@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { components } from "./api-types.generated";
 import {
+	SecretRefSchema,
 	WorkspaceKindSchema,
 	WorkspacePageSchema,
 	WorkspaceRecordSchema,
@@ -86,5 +87,51 @@ describe("schema/openapi drift detection", () => {
 		expect([...enumValues].sort()).toEqual(
 			["astra", "hcd", "mock", "openrag"].sort(),
 		);
+	});
+});
+
+describe("SecretRefSchema", () => {
+	test.each([
+		["env:ASTRA_TOKEN", "env"],
+		["file:/etc/secrets/token", "file"],
+		// astra-cli refs from the workspace picker have hyphens in the
+		// provider portion AND colons inside the path (profile names
+		// can include spaces, db ids contain hyphens). The schema must
+		// only split on the first colon.
+		[
+			"astra-cli:Eric Hare:c933e7fc-4996-4dcd-bb87-4f282fe1e7ef:token",
+			"astra-cli",
+		],
+		[
+			"astra-cli:default:c933e7fc-4996-4dcd-bb87-4f282fe1e7ef:endpoint",
+			"astra-cli",
+		],
+		// RFC 3986 scheme syntax — scheme can include digits, +, -, .
+		["aws.secrets+v1:my/secret", "aws.secrets+v1"],
+	])("accepts %s (provider %s)", (ref) => {
+		const parsed = SecretRefSchema.safeParse(ref);
+		expect(parsed.success).toBe(true);
+	});
+
+	test.each([
+		// no provider
+		["plain-token"],
+		[":missing-provider"],
+		// provider must start with a lowercase letter
+		["1env:foo"],
+		["-env:foo"],
+		// provider must be lowercase
+		["Env:foo"],
+		// missing path
+		["env:"],
+		[""],
+	])("rejects %s", (ref) => {
+		const parsed = SecretRefSchema.safeParse(ref);
+		expect(parsed.success).toBe(false);
+		if (!parsed.success) {
+			expect(parsed.error.issues[0]?.message).toBe(
+				"Expected '<provider>:<path>', e.g. 'env:FOO'",
+			);
+		}
 	});
 });

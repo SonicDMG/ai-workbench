@@ -31,9 +31,17 @@ export const WorkspaceKindSchema = z.enum([
 	"mock",
 ]) satisfies z.ZodType<WorkspaceKind>;
 
+// Provider portion follows RFC 3986 URI-scheme syntax — lowercase letter
+// followed by lowercase letters, digits, `+`, `-`, or `.`. The path is
+// everything after the FIRST colon, so providers like
+// `astra-cli:<profile>:<dbId>:token` are accepted (`-` in the provider,
+// further colons inside the path).
 export const SecretRefSchema = z
 	.string()
-	.regex(/^[a-z][a-z0-9]*:.+$/, "Expected '<provider>:<path>', e.g. 'env:FOO'");
+	.regex(
+		/^[a-z][a-z0-9+.-]*:.+$/,
+		"Expected '<provider>:<path>', e.g. 'env:FOO'",
+	);
 
 const EndpointInputSchema = z
 	.union([z.string().url(), SecretRefSchema, z.literal("")])

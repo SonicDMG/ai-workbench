@@ -23,10 +23,15 @@ const Id = z
 	.string()
 	.regex(/^[a-z][a-z0-9-]{0,63}$/, "must match /^[a-z][a-z0-9-]{0,63}$/");
 
+// Provider portion follows RFC 3986 URI-scheme syntax — lowercase letter
+// followed by lowercase letters, digits, `+`, `-`, or `.`. The path is
+// everything after the FIRST colon, so providers like
+// `astra-cli:<profile>:<dbId>:token` are accepted (`-` in the provider,
+// further colons inside the path).
 const SecretRef = z
 	.string()
 	.regex(
-		/^[a-z][a-z0-9]*:[^\s]+$/,
+		/^[a-z][a-z0-9+.-]*:[^\s]+$/,
 		"expected '<provider>:<path>', e.g. 'env:FOO'",
 	);
 
