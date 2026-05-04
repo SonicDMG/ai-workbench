@@ -139,14 +139,51 @@ describe("<MarkdownContent />", () => {
 		expect(listItems.map((li) => li.textContent)).toEqual(["one", "two"]);
 	});
 
-	test("renders fenced code blocks", () => {
-		renderInRouter(
+	test("renders fenced code blocks with hljs syntax highlighting", () => {
+		const { container } = renderInRouter(
 			<MarkdownContent content={"```ts\nconst x = 1;\n```"} workspaceId={ws} />,
 		);
-		// Both inline and block code use <code>; the block has a
-		// language- class, which is what our custom renderer keys on.
-		const code = screen.getByText("const x = 1;");
-		expect(code.tagName).toBe("CODE");
+		// `rehype-highlight` annotates the inner <code> with the hljs
+		// root class and emits per-token <span class="hljs-…"> children.
+		const code = container.querySelector("pre code");
+		expect(code).not.toBeNull();
+		expect(code?.className).toMatch(/\bhljs\b/);
+		// Cumulative text content survives tokenization.
+		expect(code?.textContent).toContain("const x = 1;");
+		// At least one hljs-* token span lands in the tree (proves the
+		// sanitize allowlist is letting them through).
+		expect(code?.querySelector("span[class*='hljs-']")).not.toBeNull();
+	});
+
+	test("fenced code blocks WITHOUT a language tag still render as a scrollable block", () => {
+		// Regression: when the model emits ```\n…\n``` (no language hint)
+		// the wrapping <pre> used to pass through unstyled and the inner
+		// <code> got inline-pill styling — preserved-whitespace content
+		// then bled past the chat bubble. Block styling now lives on the
+		// `<pre>` so both fenced shapes render the same way.
+		const wide =
+			"| `stargate.jsonapi.operations.lwt.retries` | `int` | `3` | The amount";
+		const { container } = renderInRouter(
+			<MarkdownContent content={`\`\`\`\n${wide}\n\`\`\``} workspaceId={ws} />,
+		);
+		const pre = container.querySelector("pre");
+		expect(pre).not.toBeNull();
+		expect(pre?.className).toMatch(/overflow-x-auto/);
+		// Block styling (slate-900 background) lives on the pre so
+		// fenced blocks with AND without a language tag look the same.
+		expect(pre?.className).toMatch(/bg-slate-900/);
+		// The pre carries a descendant selector that resets the inner
+		// `<code>`'s inline-pill styling at render time — verify the
+		// rule is on the pre's classList rather than reading the
+		// computed style (jsdom doesn't evaluate `[&_code]:` selectors).
+		expect(pre?.className).toMatch(/\[&_code\]:bg-transparent/);
+		const innerCode = pre?.querySelector("code");
+		expect(innerCode).not.toBeNull();
+		// The literal characters survive tokenization even when the
+		// highlighter splits them across token spans.
+		expect(innerCode?.textContent).toContain(
+			"stargate.jsonapi.operations.lwt.retries",
+		);
 	});
 
 	test("fenced code blocks WITHOUT a language tag still render as a scrollable block", () => {

@@ -232,3 +232,85 @@ samp,
 		transform: none;
 	}
 }
+
+/**
+ * highlight.js theme — palette tuned to the slate-900 background that
+ * the fenced-code `<pre>` block uses (see `MarkdownContent.tsx`) and
+ * the same dialog block in `AstraQueryCodeButton.tsx`. Hex values
+ * mirror the Tailwind `slate` / `violet` / `green` / `yellow` /
+ * `rose` / `orange` families so the highlighter blends with the rest
+ * of the app rather than fighting it.
+ *
+ * Only declares the hljs classes lowlight actually emits with the
+ * languages bundled by `rehype-highlight` v7 — keeps the file small
+ * and avoids dead rules.
+ */
+.hljs {
+	color: #e2e8f0; /* slate-200 — body text */
+	background: transparent;
+}
+.hljs-comment,
+.hljs-quote {
+	color: #94a3b8; /* slate-400 */
+	font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-meta .hljs-keyword {
+	color: #c084fc; /* violet-400 */
+}
+.hljs-string,
+.hljs-attr,
+.hljs-doctag,
+.hljs-template-tag,
+.hljs-template-variable {
+	color: #86efac; /* green-300 */
+}
+.hljs-number,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+	color: #fde047; /* yellow-300 */
+}
+/* Single-class selectors first; the compound `.hljs-class .hljs-title`
+ * rule below re-targets `.hljs-title` only inside class definitions
+ * with a higher specificity, so its color overrides for those cases. */
+.hljs-section,
+.hljs-title {
+	color: #fcd34d; /* amber-300 */
+	font-weight: 600;
+}
+.hljs-built_in,
+.hljs-class .hljs-title,
+.hljs-title.class_,
+.hljs-title.function_,
+.hljs-function .hljs-title {
+	color: #93c5fd; /* sky-300 */
+}
+.hljs-variable,
+.hljs-name,
+.hljs-tag,
+.hljs-attribute {
+	color: #fda4af; /* rose-300 */
+}
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link,
+.hljs-meta,
+.hljs-regexp {
+	color: #fdba74; /* orange-300 */
+}
+.hljs-deletion {
+	background: rgba(127, 29, 29, 0.25); /* red-900 @ 25% */
+	color: #fca5a5; /* red-300 */
+}
+.hljs-addition {
+	background: rgba(20, 83, 45, 0.25); /* green-900 @ 25% */
+	color: #86efac; /* green-300 */
+}
+.hljs-emphasis {
+	font-style: italic;
+}
+.hljs-strong {
+	font-weight: 600;
+}

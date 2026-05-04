@@ -101,4 +101,29 @@ describe("AstraQueryCodeButton", () => {
 		const block = await screen.findByTestId("astra-query-code-block");
 		expect(block.textContent ?? "").not.toContain("AstraCS:");
 	});
+
+	it("syntax-highlights the rendered code via hljs token spans", async () => {
+		const user = userEvent.setup();
+		render(
+			<AstraQueryCodeButton
+				message={{
+					...baseMessage,
+					metadata: { astra_queries: oneQueryJson },
+				}}
+			/>,
+		);
+		await user.click(screen.getByTestId("astra-query-code-button"));
+		const block = await screen.findByTestId("astra-query-code-block");
+		const innerCode = block.querySelector("code");
+		expect(innerCode).not.toBeNull();
+		// The hljs root class anchors the theme; per-token spans
+		// (`hljs-keyword`, `hljs-string`, etc.) prove the highlighter
+		// actually ran and the rendered tree carries lowlight's token
+		// metadata rather than just plain text.
+		expect(innerCode?.className).toMatch(/\bhljs\b/);
+		expect(innerCode?.querySelector("span[class*='hljs-']")).not.toBeNull();
+		// Tokenization preserves the literal source verbatim — round-
+		// trip through the renderer.
+		expect(innerCode?.textContent).toContain("DataAPIClient");
+	});
 });

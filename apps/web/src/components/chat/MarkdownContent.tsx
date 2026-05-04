@@ -1,8 +1,32 @@
 import ReactMarkdown, { type Components } from "react-markdown";
 import { Link } from "react-router-dom";
-import rehypeSanitize from "rehype-sanitize";
+import rehypeHighlight from "rehype-highlight";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
+
+/**
+ * Sanitization schema extended to allow the `hljs-*` class names that
+ * `rehype-highlight` writes onto `<span>` and `<code>` for syntax
+ * highlighting. The default GitHub schema already allows
+ * `className=language-…` on `code`; we widen that single rule to also
+ * permit `hljs` and `hljs-…`. `<span>` gets a fresh rule allowing
+ * `hljs-…` only. Anything else still gets stripped.
+ *
+ * Important: hast-util-sanitize takes ONE rule per attribute, with
+ * multiple allowed values OR'd together inside it. Adding a SECOND
+ * rule for the same attribute (e.g. another entry on `code`) is a
+ * no-op — the first rule wins. So the language and hljs patterns
+ * have to live on the same tuple.
+ */
+const SANITIZE_SCHEMA = {
+	...defaultSchema,
+	attributes: {
+		...defaultSchema.attributes,
+		code: [["className", /^language-./, /^hljs(-|$)/]],
+		span: [["className", /^hljs(-|$)/]],
+	},
+};
 
 /**
  * One chunk the agent cited in this turn. Built from
@@ -88,7 +112,12 @@ export function MarkdownContent({
 		<div className={cn("markdown-content space-y-2", className)}>
 			<ReactMarkdown
 				remarkPlugins={[remarkGfm]}
-				rehypePlugins={[rehypeSanitize]}
+				// Order matters: `rehypeHighlight` annotates fenced code
+				// with `hljs-*` spans first; the sanitizer then runs with
+				// our extended schema that whitelists those classes (see
+				// `SANITIZE_SCHEMA`). Reversing the order would strip the
+				// classes before highlight could emit them.
+				rehypePlugins={[rehypeHighlight, [rehypeSanitize, SANITIZE_SCHEMA]]}
 				components={MARKDOWN_COMPONENTS}
 			>
 				{source}
