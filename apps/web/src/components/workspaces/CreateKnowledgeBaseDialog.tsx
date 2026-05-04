@@ -38,10 +38,22 @@ import type {
 
 type Mode = "create" | "attach";
 
+// Mirrors the server-side KB-name rule (Astra collection-name regex):
+// starts with a letter, then letters/digits/underscores, max 48 chars.
+// In create mode this *is* the underlying collection name, so the
+// constraint is enforced both client- and server-side.
+const KB_NAME_REGEX = /^[A-Za-z][A-Za-z0-9_]{0,47}$/;
+
 const FormSchema = z
 	.object({
 		mode: z.enum(["create", "attach"]),
-		name: z.string().min(1, "Name is required"),
+		name: z
+			.string()
+			.min(1, "Name is required")
+			.regex(
+				KB_NAME_REGEX,
+				"Use letters, digits, and underscores only (start with a letter, max 48 chars)",
+			),
 		description: z.string().optional(),
 		embeddingServiceId: z.string().uuid("Pick an embedding service"),
 		chunkingServiceId: z.string().uuid("Pick a chunking service"),
@@ -274,13 +286,17 @@ export function CreateKnowledgeBaseDialog({
 					<div className="flex flex-col gap-1.5">
 						<FieldLabel
 							htmlFor="kb-name"
-							help="The collection-facing name for this knowledge base, for example support-docs or product-catalog. Pick something stable and easy to recognize."
+							help={
+								mode === "attach"
+									? "Display name for this knowledge base. Letters, digits, and underscores only — start with a letter, max 48 chars."
+									: "Doubles as the underlying Astra collection name, so it cannot be changed later. Letters, digits, and underscores only — start with a letter, max 48 chars."
+							}
 						>
 							Name
 						</FieldLabel>
 						<Input
 							id="kb-name"
-							placeholder="support-docs"
+							placeholder="support_docs"
 							aria-invalid={errors.name ? true : undefined}
 							{...form.register("name")}
 						/>

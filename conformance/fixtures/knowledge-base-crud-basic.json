@@ -189,7 +189,7 @@
 					"rerankingServiceId": null,
 					"status": "active",
 					"updatedAt": "{{TS}}",
-					"vectorCollection": "{{VEC_COLL_1}}",
+					"vectorCollection": "research",
 					"workspaceId": "{{UUID_1}}"
 				},
 				"status": 201
@@ -220,7 +220,7 @@
 					"rerankingServiceId": null,
 					"status": "active",
 					"updatedAt": "{{TS}}",
-					"vectorCollection": "{{VEC_COLL_1}}",
+					"vectorCollection": "research",
 					"workspaceId": "{{UUID_1}}"
 				},
 				"status": 200
@@ -253,7 +253,7 @@
 							"rerankingServiceId": null,
 							"status": "active",
 							"updatedAt": "{{TS}}",
-							"vectorCollection": "{{VEC_COLL_1}}",
+							"vectorCollection": "research",
 							"workspaceId": "{{UUID_1}}"
 						}
 					],
@@ -289,7 +289,7 @@
 					"rerankingServiceId": null,
 					"status": "active",
 					"updatedAt": "{{TS}}",
-					"vectorCollection": "{{VEC_COLL_1}}",
+					"vectorCollection": "research",
 					"workspaceId": "{{UUID_1}}"
 				},
 				"status": 200

@@ -273,7 +273,9 @@ describe("knowledge-base routes", () => {
 		expect(kb.embeddingServiceId).toBe(embId);
 		expect(kb.chunkingServiceId).toBe(chunkId);
 		expect(kb.rerankingServiceId).toBe(rerankId);
-		expect(kb.vectorCollection).toMatch(/^wb_vectors_[0-9a-f]+$/);
+		// Owned KBs derive the underlying collection name from the KB name
+		// so the user can recognize / address it directly in the data plane.
+		expect(kb.vectorCollection).toBe("products");
 		expect(kb.lexical.enabled).toBe(false);
 
 		const get = await app.request(
@@ -481,7 +483,7 @@ describe("knowledge-base routes", () => {
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({
-					name: `kb-${i}`,
+					name: `kb_${i}`,
 					embeddingServiceId: embId,
 					chunkingServiceId: chunkId,
 				}),
@@ -593,7 +595,7 @@ describe("knowledge-base routes", () => {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
-				name: "no-target",
+				name: "no_target",
 				embeddingServiceId: embId,
 				chunkingServiceId: chunkId,
 				attach: true,

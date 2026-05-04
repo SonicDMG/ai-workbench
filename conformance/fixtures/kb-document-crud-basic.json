@@ -188,7 +188,7 @@
 					"rerankingServiceId": null,
 					"status": "active",
 					"updatedAt": "{{TS}}",
-					"vectorCollection": "{{VEC_COLL_1}}",
+					"vectorCollection": "kb",
 					"workspaceId": "{{UUID_1}}"
 				},
 				"status": 201

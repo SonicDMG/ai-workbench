@@ -389,7 +389,6 @@ export const api = {
 		patch: UpdateKnowledgeBaseInput,
 	): Promise<KnowledgeBaseRecord> => {
 		const body: Record<string, unknown> = {};
-		if (patch.name !== undefined) body.name = patch.name;
 		if (patch.description !== undefined)
 			body.description = patch.description ? patch.description : null;
 		if (patch.status !== undefined) body.status = patch.status;

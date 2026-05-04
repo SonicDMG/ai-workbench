@@ -27,7 +27,6 @@ import { formatApiError } from "@/lib/api";
 import type { KnowledgeBaseRecord } from "@/lib/schemas";
 
 const FormSchema = z.object({
-	name: z.string().min(1, "Name is required"),
 	description: z.string().optional(),
 	language: z.string().optional(),
 	status: z.enum(["active", "draft", "deprecated"]),
@@ -39,10 +38,11 @@ const NO_RERANKER = "_none_";
 
 /**
  * Edit a knowledge base's metadata. Only fields that the API allows
- * to mutate are exposed: name, description, language, status, and an
- * optional reranker swap. Chunking and embedding bindings are
- * intentionally NOT editable — they define the underlying collection's
- * vector geometry and are immutable for the lifetime of the KB.
+ * to mutate are exposed: description, language, status, and an
+ * optional reranker swap. The KB name doubles as the underlying
+ * Astra collection name and is immutable; chunking and embedding
+ * bindings define the collection's vector geometry and are also
+ * immutable for the lifetime of the KB.
  */
 export function EditKnowledgeBaseDialog({
 	workspace,
@@ -61,7 +61,6 @@ export function EditKnowledgeBaseDialog({
 	const form = useForm<FormInput>({
 		resolver: zodResolver(FormSchema),
 		defaultValues: {
-			name: "",
 			description: "",
 			language: "",
 			status: "active",
@@ -75,7 +74,6 @@ export function EditKnowledgeBaseDialog({
 	useEffect(() => {
 		if (kb) {
 			form.reset({
-				name: kb.name,
 				description: kb.description ?? "",
 				language: kb.language ?? "",
 				status: kb.status,
@@ -96,7 +94,6 @@ export function EditKnowledgeBaseDialog({
 		if (!kb) return;
 		try {
 			const next = await update.mutateAsync({
-				name: values.name,
 				description: values.description?.trim() || null,
 				language: values.language?.trim() || null,
 				status: values.status,
@@ -114,17 +111,16 @@ export function EditKnowledgeBaseDialog({
 		}
 	}
 
-	const errors = form.formState.errors;
-
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogContent className="max-w-lg">
 				<DialogHeader>
 					<DialogTitle>Edit knowledge base</DialogTitle>
 					<DialogDescription>
-						Update the name, description, language, status, or reranker. The
-						chunking and embedding services that own this collection's vector
-						geometry are immutable.
+						Update the description, language, status, or reranker. The KB name
+						doubles as the underlying Astra collection name and is immutable;
+						the chunking and embedding services that own the collection's vector
+						geometry are immutable too.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -133,15 +129,17 @@ export function EditKnowledgeBaseDialog({
 					className="flex flex-col gap-4"
 				>
 					<div className="flex flex-col gap-1.5">
-						<FieldLabel htmlFor="kb-edit-name">Name</FieldLabel>
+						<FieldLabel htmlFor="kb-edit-name-readonly">Name</FieldLabel>
 						<Input
-							id="kb-edit-name"
-							aria-invalid={errors.name ? true : undefined}
-							{...form.register("name")}
+							id="kb-edit-name-readonly"
+							value={kb?.name ?? ""}
+							disabled
+							readOnly
 						/>
-						{errors.name ? (
-							<p className="text-xs text-red-600">{errors.name.message}</p>
-						) : null}
+						<p className="text-xs text-slate-500">
+							Names are bound to the underlying collection and cannot be changed
+							after creation.
+						</p>
 					</div>
 
 					<div className="flex flex-col gap-1.5">

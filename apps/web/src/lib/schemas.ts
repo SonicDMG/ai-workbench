@@ -199,8 +199,18 @@ export const KnowledgeBasePageSchema = paginatedSchema(
 	KnowledgeBaseRecordSchema,
 );
 
+// Mirrors the server-side KB-name rule (Astra collection-name regex).
+// Owned KBs use the name as the underlying collection identifier.
+const KB_NAME_REGEX = /^[A-Za-z][A-Za-z0-9_]{0,47}$/;
+
 export const CreateKnowledgeBaseInputSchema = z.object({
-	name: z.string().min(1, "Name is required"),
+	name: z
+		.string()
+		.min(1, "Name is required")
+		.regex(
+			KB_NAME_REGEX,
+			"Use letters, digits, and underscores only (start with a letter, max 48 chars)",
+		),
 	description: z.string().or(z.literal("")).nullable().optional(),
 	embeddingServiceId: z.string().uuid("Pick an embedding service"),
 	chunkingServiceId: z.string().uuid("Pick a chunking service"),
@@ -229,8 +239,10 @@ export const AdoptableCollectionListSchema = z.object({
 	items: z.array(AdoptableCollectionSchema),
 });
 
+// `name` is intentionally absent — it doubles as the underlying
+// collection identifier on owned KBs and Astra collections cannot be
+// renamed.
 export const UpdateKnowledgeBaseInputSchema = z.object({
-	name: z.string().min(1).optional(),
 	description: z.string().or(z.literal("")).nullable().optional(),
 	status: KnowledgeBaseStatusSchema.optional(),
 	rerankingServiceId: z.string().uuid().nullable().optional(),

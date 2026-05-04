@@ -481,7 +481,6 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				const existing = rows[idx] as KnowledgeBaseRecord;
 				const next: KnowledgeBaseRecord = {
 					...existing,
-					...(patch.name !== undefined && { name: patch.name }),
 					...(patch.description !== undefined && {
 						description: patch.description,
 					}),

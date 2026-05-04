@@ -31,13 +31,14 @@ export interface CreateKnowledgeBaseInput {
 }
 
 /**
- * Patch a Knowledge Base. `embeddingServiceId` and `chunkingServiceId`
- * are intentionally absent — they're immutable after creation because
- * existing vectors / chunks on disk are bound to the model that
+ * Patch a Knowledge Base. `name`, `embeddingServiceId`, and
+ * `chunkingServiceId` are intentionally absent. `name` doubles as the
+ * underlying collection identifier on owned KBs and Astra collections
+ * cannot be renamed; the embedding / chunking services are immutable
+ * because vectors and chunks on disk are bound to the model that
  * produced them. Re-embedding is a separate operation.
  */
 export interface UpdateKnowledgeBaseInput {
-	readonly name?: string;
 	readonly description?: string | null;
 	readonly status?: KnowledgeBaseStatus;
 	readonly rerankingServiceId?: string | null;

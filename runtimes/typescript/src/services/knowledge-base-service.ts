@@ -167,9 +167,56 @@ export function createKnowledgeBaseService(
 				}
 			}
 
+			// Owned mode: KB.name doubles as the underlying collection
+			// name, so it must not collide with an already-attached KB or
+			// any pre-existing data-plane collection. Reject up-front with
+			// a recognizable error code instead of letting Astra surface a
+			// generic 409 mid-create. Attach mode is handled above and
+			// uses the user-supplied vectorCollection as-is.
+			let resolvedVectorCollection: string | null | undefined =
+				input.vectorCollection;
+			if (!attach) {
+				if (input.vectorCollection != null && input.vectorCollection !== "") {
+					throw new ApiError(
+						"vector_collection_not_allowed",
+						"`vectorCollection` is only allowed when `attach` is true — owned KBs derive the collection name from `name`",
+						400,
+					);
+				}
+				const existingKbs = await store.listKnowledgeBases(workspaceId);
+				const collisionWithKb = existingKbs.find(
+					(kb) => kb.vectorCollection === input.name,
+				);
+				if (collisionWithKb) {
+					throw new ApiError(
+						"kb_name_taken",
+						`a knowledge base named '${input.name}' already exists in this workspace`,
+						409,
+					);
+				}
+				const workspace = await store.getWorkspace(workspaceId);
+				if (!workspace) {
+					throw new ControlPlaneNotFoundError("workspace", workspaceId);
+				}
+				const driver = drivers.for(workspace);
+				const adoptable = (await driver.listAdoptable?.(workspace)) ?? [];
+				const collisionWithCollection = adoptable.find(
+					(col) => col.name === input.name,
+				);
+				if (collisionWithCollection) {
+					throw new ApiError(
+						"collection_name_taken",
+						`a collection named '${input.name}' already exists in this workspace's data plane — pick another name or use Attach to bind to it`,
+						409,
+					);
+				}
+				resolvedVectorCollection = input.name;
+			}
+
 			const record = await store.createKnowledgeBase(workspaceId, {
 				...input,
 				uid: input.knowledgeBaseId,
+				vectorCollection: resolvedVectorCollection,
 				owned: !attach,
 			});
 

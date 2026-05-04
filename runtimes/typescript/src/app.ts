@@ -475,6 +475,16 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		logger.error(
 			{
 				errName: err instanceof Error ? err.name : typeof err,
+				errMessage: err instanceof Error ? err.message : String(err),
+				errStack: err instanceof Error ? err.stack : undefined,
+				errCause:
+					err instanceof Error && err.cause !== undefined
+						? err.cause instanceof Error
+							? { name: err.cause.name, message: err.cause.message }
+							: String(err.cause)
+						: undefined,
+				method: c.req.method,
+				path: c.req.path,
 				requestId: c.get("requestId"),
 			},
 			"unhandled request error",

@@ -393,7 +393,6 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		const base = knowledgeBaseFromRow(existing);
 		const next: KnowledgeBaseRecord = {
 			...base,
-			...(patch.name !== undefined && { name: patch.name }),
 			...(patch.description !== undefined && {
 				description: patch.description,
 			}),
