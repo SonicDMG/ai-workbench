@@ -8,6 +8,7 @@ import type { McpConfig } from "../config/schema.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import { errorEnvelope } from "../lib/errors.js";
 import { makeOpenApi } from "../lib/openapi.js";
+import type { RuntimeMetrics } from "../lib/runtime-metrics.js";
 import type { AppEnv } from "../lib/types.js";
 import {
 	AstraCliInfoSchema,
@@ -44,6 +45,10 @@ export function operationalRoutes(
 	// stats so an LB can see "running but saturated" at a glance. When
 	// absent, the stats field is omitted from the response.
 	ingestSemaphore?: import("../jobs/ingest-semaphore.js").IngestSemaphore,
+	// Optional metrics registry — when present, exposes a Prometheus
+	// `/metrics` endpoint. Absent in tests that don't care about the
+	// metrics surface, so the registry stays out of pin-style snapshots.
+	metrics?: RuntimeMetrics,
 ): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
 
@@ -174,6 +179,30 @@ export function operationalRoutes(
 			return c.json(inventory, 200);
 		},
 	);
+
+	// `GET /metrics` — Prometheus text exposition. The route is
+	// mounted unconditionally for OpenAPI shape stability, but emits a
+	// single-line "metrics not enabled" body when no registry was
+	// supplied. Production deploys always wire one through.
+	app.get("/metrics", (c) => {
+		if (!metrics) {
+			return c.text(
+				"# metrics endpoint is mounted but no registry is wired into operationalRoutes — pass `metrics` from createApp to enable\n",
+				200,
+				{ "content-type": "text/plain; version=0.0.4; charset=utf-8" },
+			);
+		}
+		// Pull the live ingest stats into their gauges before rendering
+		// so a scrape sees the current state, not the most-recent push.
+		if (ingestSemaphore) {
+			const stats = ingestSemaphore.stats();
+			metrics.ingestActive.set({}, stats.active);
+			metrics.ingestQueued.set({}, stats.queued);
+		}
+		return c.text(metrics.registry.render(), 200, {
+			"content-type": "text/plain; version=0.0.4; charset=utf-8",
+		});
+	});
 
 	app.openapi(
 		createRoute({

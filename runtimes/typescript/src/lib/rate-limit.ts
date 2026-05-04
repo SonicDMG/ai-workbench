@@ -39,6 +39,12 @@ export interface RateLimitOptions {
 	readonly keyOf?: (c: Context<AppEnv>) => string;
 	/** Injectable clock (tests). Defaults to `Date.now`. */
 	readonly now?: () => number;
+	/**
+	 * Optional callback fired on every rejected request. Used to wire
+	 * the rate-limit-rejections counter from `runtime-metrics.ts`
+	 * without coupling the limiter to the metrics module.
+	 */
+	readonly onReject?: (info: { keyType: string }) => void;
 }
 
 interface Bucket {
@@ -196,6 +202,10 @@ export function rateLimit(opts: RateLimitOptions): MiddlewareHandler<AppEnv> {
 		c.header("X-RateLimit-Reset", String(resetSeconds));
 		if (!decision.allowed) {
 			c.header("Retry-After", String(resetSeconds));
+			if (opts.onReject) {
+				const keyType = key.split(":", 1)[0] ?? "unknown";
+				opts.onReject({ keyType });
+			}
 			return c.json(
 				errorEnvelope(
 					c,

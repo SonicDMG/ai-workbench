@@ -193,6 +193,51 @@ describe("operational routes", () => {
 		expect(JSON.stringify(body)).not.toContain("AstraCS:");
 	});
 
+	test("GET /metrics emits Prometheus text exposition with HTTP counters", async () => {
+		const { app } = makeApp();
+		// Drive a couple of requests so the counters have something
+		// to show.
+		await app.request("/healthz");
+		await app.request("/version");
+		const res = await app.request("/metrics");
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toContain("text/plain");
+		const body = await res.text();
+		// Schema-stable lines.
+		expect(body).toContain("# HELP workbench_http_requests_total");
+		expect(body).toContain("# TYPE workbench_http_requests_total counter");
+		expect(body).toContain(
+			"# TYPE workbench_http_request_duration_seconds histogram",
+		);
+		// One counter row per (method, route, status). Both /healthz
+		// and /version saw 2xx replies.
+		expect(body).toMatch(
+			/workbench_http_requests_total\{[^}]*route="\/healthz"[^}]*\} \d+/,
+		);
+		expect(body).toMatch(
+			/workbench_http_requests_total\{[^}]*route="\/version"[^}]*\} \d+/,
+		);
+	});
+
+	test("GET /metrics rolls workspace IDs into the route pattern (low-cardinality)", async () => {
+		const { app, store } = makeApp();
+		const ws = await store.createWorkspace(BASE_WORKSPACE);
+		// Two distinct workspace UUIDs should NOT produce two distinct
+		// metric rows — the route label is the matched pattern, not the
+		// literal path.
+		await app.request(`/api/v1/workspaces/${ws.uid}`);
+		await app.request(
+			"/api/v1/workspaces/00000000-0000-4000-8000-000000000099",
+		);
+		const res = await app.request("/metrics");
+		const body = await res.text();
+		// Exactly one route label rendered for the workspace-detail
+		// endpoint — implementations differ on the pattern shape but
+		// neither literal UUID should appear in the metrics output.
+		expect(body).not.toContain(ws.uid);
+		expect(body).not.toContain("00000000-0000-4000-8000-000000000099");
+	});
+
 	test("GET /astra-cli/profiles passes the available:false envelope through", async () => {
 		const { app } = makeApp({
 			astraCliInventoryFn: () => ({

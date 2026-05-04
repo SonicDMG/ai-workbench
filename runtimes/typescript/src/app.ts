@@ -49,6 +49,7 @@ import { rateLimit } from "./lib/rate-limit.js";
 import { generateReplicaId } from "./lib/replica-id.js";
 import { requestId } from "./lib/request-id.js";
 import { requestLogger } from "./lib/request-logger.js";
+import { buildRuntimeMetrics, requestMetrics } from "./lib/runtime-metrics.js";
 import { SCALAR_CDN_PINNED, securityHeaders } from "./lib/security-headers.js";
 import type { AppEnv } from "./lib/types.js";
 import { buildDefaultRoutePlugins } from "./plugins/default-plugins.js";
@@ -199,6 +200,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
 	const jobsStore: JobStore = opts.jobs ?? new MemoryJobStore();
 	const ingestSemaphore = opts.ingestSemaphore ?? new IngestSemaphore(4);
+	const metrics = buildRuntimeMetrics();
 	const replicaId = opts.replicaId ?? generateReplicaId();
 
 	app.use("*", requestId(opts.requestIdHeader));
@@ -207,6 +209,10 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	// so it sees the final status code regardless of which route
 	// handler returns the response.
 	app.use("*", requestLogger(logger));
+	// Per-request metrics. Same outer-wrapper position as the access
+	// log — sees the final status code, attributes by matched route
+	// pattern (so workspace UUIDs don't blow up the label space).
+	app.use("*", requestMetrics(metrics));
 	// HSTS is a deployment posture, not a default: only emit it when the
 	// operator has declared this is a production runtime. Plaintext-HTTP
 	// dev servers don't benefit, and stale HSTS pins are painful to
@@ -230,6 +236,9 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		const apiWindowMs =
 			rateLimitCfg?.windowMs ?? DEFAULT_API_RATE_LIMIT.windowMs;
 		const trustProxyHeaders = rateLimitCfg?.trustProxyHeaders ?? false;
+		const onReject = (info: { keyType: string }): void => {
+			metrics.rateLimitRejections.inc({ key_type: info.keyType });
+		};
 		// API surface: generous default (600/min) keeps normal clients
 		// nowhere near the limit while still throttling runaway loops
 		// and brute-force scans.
@@ -239,6 +248,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 				capacity: apiCapacity,
 				windowMs: apiWindowMs,
 				trustProxyHeaders,
+				onReject,
 			}),
 		);
 		// Auth flows get a tighter limit — login attempts, callback
@@ -249,6 +259,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 				capacity: DEFAULT_AUTH_RATE_LIMIT_CAPACITY,
 				windowMs: apiWindowMs,
 				trustProxyHeaders,
+				onReject,
 			}),
 		);
 	}
@@ -360,6 +371,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			opts.mcpConfig ?? null,
 			opts.astraCliInventoryFn,
 			ingestSemaphore,
+			metrics,
 		),
 	);
 

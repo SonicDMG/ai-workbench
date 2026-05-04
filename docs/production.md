@@ -54,12 +54,22 @@ runtime beyond a trusted loopback or private admin network.
   credentials by updating the secret source and restarting the runtime
   so in-process driver caches reconnect with fresh credentials.
 - **Forward audit events to a durable sink.** The runtime emits
-  structured audit events for API-key issuance/revocation, workspace
-  create/delete, and OIDC login/refresh/logout (see
-  [`docs/audit.md`](./audit.md) for the catalog and envelope shape).
-  Events are pino lines at `info` with `audit: true`; route them to a
-  SIEM/file via your container log pipeline. RBAC enforcement remains
-  on the roadmap.
+  structured audit events for API-key issuance/revocation, workspace +
+  KB + agent + document create/delete, MCP tool invocations, job claim,
+  and OIDC login/refresh/logout (see [`docs/audit.md`](./audit.md) for
+  the full catalog and envelope shape). Events are pino lines at
+  `info` with `audit: true`; route them to a SIEM/file via your
+  container log pipeline. RBAC enforcement remains on the roadmap.
+- **Scrape metrics + propagate trace context.** The runtime exposes a
+  Prometheus exposition at `GET /metrics` (text format, no auth — same
+  precedent as `/healthz` / `/readyz`). HTTP request counter +
+  duration histogram are labeled by method, matched route pattern,
+  and status family (`2xx`/`4xx`/`5xx`) to keep cardinality bounded.
+  Rate-limit rejections are counted by key type, and the ingest
+  semaphore exposes `workbench_ingest_workers_{active,queued}` gauges.
+  Inbound `traceparent` headers are honored when valid (the trace id
+  becomes the request id) and a fresh W3C `traceparent` is emitted on
+  every response so service meshes can correlate.
 - **Apply rate limiting in front of the runtime.** The in-process
   limiter defaults to 600 req/min/IP for `/api/v1/*` and 30 req/min/IP
   for `/auth/*`; tune via `runtime.rateLimit` or set
