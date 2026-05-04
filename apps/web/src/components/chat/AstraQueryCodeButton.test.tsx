@@ -126,4 +126,62 @@ describe("AstraQueryCodeButton", () => {
 		// trip through the renderer.
 		expect(innerCode?.textContent).toContain("DataAPIClient");
 	});
+
+	it("renders the chip for a `list_chunks` snapshot and emits positional-read code", async () => {
+		const listChunksJson = JSON.stringify([
+			{
+				kind: "list_chunks",
+				knowledgeBaseId: "kb-1",
+				kbName: "Engineering Docs",
+				collection: "wb_vectors_kb_eng",
+				keyspace: "default_keyspace",
+				query: {
+					documentId: "11111111-1111-4111-8111-111111111111",
+					limit: 5,
+					offset: 0,
+				},
+			},
+		]);
+		const user = userEvent.setup();
+		render(
+			<AstraQueryCodeButton
+				message={{
+					...baseMessage,
+					metadata: { astra_queries: listChunksJson },
+				}}
+			/>,
+		);
+		await user.click(screen.getByTestId("astra-query-code-button"));
+		const block = await screen.findByTestId("astra-query-code-block");
+		// `list_chunks` is a positional read: filter by documentId,
+		// sort by chunkIndex. Must NOT contain $vectorize, which is the
+		// vector_search marker.
+		expect(block.textContent ?? "").toContain("documentId");
+		expect(block.textContent ?? "").toContain("chunkIndex");
+		expect(block.textContent ?? "").not.toContain("$vectorize");
+	});
+
+	it("decodes legacy snapshots (no `kind` field) as vector_search", () => {
+		// Pre-discriminator persisted shape — no `kind`, plain
+		// query.text + topK. The chip should still render and the
+		// dialog should treat the row as vector_search.
+		const legacyJson = JSON.stringify([
+			{
+				knowledgeBaseId: "kb-1",
+				kbName: "Engineering Docs",
+				collection: "wb_vectors_kb_eng",
+				keyspace: "default_keyspace",
+				query: { text: "old reply", topK: 5 },
+			},
+		]);
+		render(
+			<AstraQueryCodeButton
+				message={{
+					...baseMessage,
+					metadata: { astra_queries: legacyJson },
+				}}
+			/>,
+		);
+		expect(screen.getByTestId("astra-query-code-button")).toBeInTheDocument();
+	});
 });

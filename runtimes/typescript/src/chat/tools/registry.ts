@@ -457,6 +457,7 @@ const searchKb: AgentTool = {
 				const snapshot: AstraQuerySnapshot | null =
 					ctx.workspace.kind === "astra" || ctx.workspace.kind === "hcd"
 						? {
+								kind: "vector_search",
 								knowledgeBaseId: kbId,
 								kbName: ctx.knowledgeBase.name,
 								collection: ctx.descriptor.name,
@@ -571,6 +572,28 @@ const listChunks: AgentTool = {
 		const driver = deps.drivers.for(ctx.workspace);
 		if (typeof driver.listRecords !== "function") {
 			return `Error: driver for workspace kind '${ctx.workspace.kind}' doesn't support listRecords; can't enumerate chunks.`;
+		}
+
+		// Surface the Astra Data API equivalent — `find` filtered by
+		// documentId, sorted by chunkIndex, with limit/skip — so the
+		// chat UI can offer the "view client code" affordance for
+		// positional reads (the runnable code samples mirror the same
+		// shape but use idiomatic sort+skip rather than the
+		// pull-then-sort the runtime does internally). Only Astra-kind
+		// workspaces get a snapshot; mock/file return runnable nothing.
+		if (ctx.workspace.kind === "astra" || ctx.workspace.kind === "hcd") {
+			deps.effects?.pushAstraQuery?.({
+				kind: "list_chunks",
+				knowledgeBaseId: parsed.data.knowledgeBaseId,
+				kbName: ctx.knowledgeBase.name,
+				collection: ctx.descriptor.name,
+				keyspace: ctx.workspace.keyspace,
+				query: {
+					documentId: parsed.data.documentId,
+					limit,
+					offset,
+				},
+			});
 		}
 
 		// Pull a window large enough to honor offset + limit, then trim.

@@ -50,6 +50,7 @@ describe("agent-dispatch.buildAgentMetadata", () => {
 	test("with astraQueries: writes astra_queries as a JSON array", () => {
 		const md = buildAgentMetadata([], "fake-model", okStop, [
 			{
+				kind: "vector_search",
 				knowledgeBaseId: "kb-a",
 				kbName: "Eng Docs",
 				collection: "wb_vectors_eng",
@@ -61,6 +62,7 @@ describe("agent-dispatch.buildAgentMetadata", () => {
 		const parsed = JSON.parse(md.astra_queries ?? "[]");
 		expect(parsed).toEqual([
 			{
+				kind: "vector_search",
 				knowledgeBaseId: "kb-a",
 				kbName: "Eng Docs",
 				collection: "wb_vectors_eng",

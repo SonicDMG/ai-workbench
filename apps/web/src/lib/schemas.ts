@@ -617,13 +617,26 @@ export type ChatMessage = z.infer<typeof ChatMessageRecordSchema>;
 export const ChatMessagePageSchema = paginatedSchema(ChatMessageRecordSchema);
 
 /**
- * Per-search-call envelope persisted under `metadata.astra_queries`
+ * Per-tool-call envelope persisted under `metadata.astra_queries`
  * (a JSON-encoded array). Tokens and raw vectors are NEVER part of
  * the envelope — only what the user needs to read or run the same
  * Astra Data API query themselves. Empty / absent for non-Astra
- * workspaces or turns where the model didn't call `search_kb`.
+ * workspaces or turns where the model didn't hit a KB.
+ *
+ * Two kinds, discriminated on `kind`:
+ *
+ *   - `vector_search` — `search_kb` calls (find with `$vectorize`,
+ *     top-K limit). Server-side embedding via Astra's vectorize.
+ *   - `list_chunks`   — `list_chunks` calls (find by `documentId`,
+ *     sort by `chunkIndex`, limit + skip).
+ *
+ * Legacy persisted rows (pre-discriminator) lacked `kind` and matched
+ * the `vector_search` shape exactly. The parser in
+ * `AstraQueryCodeButton.tsx` defaults missing `kind` to
+ * `"vector_search"` so old conversations keep rendering.
  */
-export const AstraQuerySnapshotSchema = z.object({
+const AstraVectorSearchSnapshotSchema = z.object({
+	kind: z.literal("vector_search"),
 	knowledgeBaseId: z.string(),
 	kbName: z.string(),
 	collection: z.string(),
@@ -633,7 +646,31 @@ export const AstraQuerySnapshotSchema = z.object({
 		topK: z.number().int().positive(),
 	}),
 });
+
+const AstraListChunksSnapshotSchema = z.object({
+	kind: z.literal("list_chunks"),
+	knowledgeBaseId: z.string(),
+	kbName: z.string(),
+	collection: z.string(),
+	keyspace: z.string().nullable(),
+	query: z.object({
+		documentId: z.string(),
+		limit: z.number().int().positive(),
+		offset: z.number().int().nonnegative(),
+	}),
+});
+
+export const AstraQuerySnapshotSchema = z.discriminatedUnion("kind", [
+	AstraVectorSearchSnapshotSchema,
+	AstraListChunksSnapshotSchema,
+]);
 export type AstraQuerySnapshot = z.infer<typeof AstraQuerySnapshotSchema>;
+export type AstraVectorSearchSnapshot = z.infer<
+	typeof AstraVectorSearchSnapshotSchema
+>;
+export type AstraListChunksSnapshot = z.infer<
+	typeof AstraListChunksSnapshotSchema
+>;
 
 export const SendChatMessageSchema = z.object({
 	content: z.string().min(1, "Type a message"),

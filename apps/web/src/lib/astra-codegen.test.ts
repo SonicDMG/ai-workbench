@@ -11,6 +11,7 @@ import { generateCode } from "./astra-codegen";
 import type { AstraQuerySnapshot } from "./schemas";
 
 const sampleSnapshot: AstraQuerySnapshot = {
+	kind: "vector_search",
 	knowledgeBaseId: "kb-1",
 	kbName: "Engineering Docs",
 	collection: "wb_vectors_kb_eng",
@@ -63,6 +64,7 @@ describe("astra-codegen", () => {
 	test("escapes a query with quotes and backslashes safely in every language", () => {
 		const tricky: AstraQuerySnapshot = {
 			...sampleSnapshot,
+			kind: "vector_search",
 			query: { text: 'has "quotes" and \\ backslash', topK: 3 },
 		};
 		const ts = generateCode("typescript", tricky);
@@ -89,5 +91,75 @@ describe("astra-codegen", () => {
 		// Double slash in URL would be wrong; keyspace segment stripped.
 		expect(curl).not.toContain("/v1//");
 		expect(curl).toContain("/v1/wb_vectors_kb_eng");
+	});
+});
+
+describe("astra-codegen — list_chunks variant", () => {
+	const listChunksSnapshot: AstraQuerySnapshot = {
+		kind: "list_chunks",
+		knowledgeBaseId: "kb-1",
+		kbName: "Engineering Docs",
+		collection: "wb_vectors_kb_eng",
+		keyspace: "default_keyspace",
+		query: {
+			documentId: "11111111-1111-4111-8111-111111111111",
+			limit: 10,
+			offset: 0,
+		},
+	};
+
+	test("typescript snippet filters by documentId, sorts by chunkIndex, no skip on offset 0", () => {
+		const code = generateCode("typescript", listChunksSnapshot);
+		expect(code).toContain(
+			'documentId: "11111111-1111-4111-8111-111111111111"',
+		);
+		expect(code).toContain("sort: { chunkIndex: 1 }");
+		expect(code).toContain("limit: 10");
+		// No `skip: 0` clutter when offset is the default.
+		expect(code).not.toContain("skip:");
+		// `$vectorize` must NOT appear — this is a positional read.
+		expect(code).not.toContain("$vectorize");
+	});
+
+	test("python snippet uses chunkIndex sort + limit", () => {
+		const code = generateCode("python", listChunksSnapshot);
+		expect(code).toContain(
+			'"documentId": "11111111-1111-4111-8111-111111111111"',
+		);
+		expect(code).toContain('"chunkIndex": 1');
+		expect(code).toContain("limit=10");
+		expect(code).not.toContain("$vectorize");
+	});
+
+	test("java snippet uses Filters.eq + Sort.ascending", () => {
+		const code = generateCode("java", listChunksSnapshot);
+		expect(code).toContain(
+			'Filters.eq("documentId", "11111111-1111-4111-8111-111111111111")',
+		);
+		expect(code).toContain('Sort.ascending("chunkIndex")');
+		expect(code).toContain(".limit(10)");
+		expect(code).not.toContain("$vectorize");
+	});
+
+	test("curl encodes filter + sort in the find body", () => {
+		const code = generateCode("curl", listChunksSnapshot);
+		expect(code).toContain(
+			'"documentId": "11111111-1111-4111-8111-111111111111"',
+		);
+		expect(code).toContain('"chunkIndex": 1');
+		expect(code).toContain('"limit": 10');
+		expect(code).not.toContain('"$vectorize"');
+	});
+
+	test("offset > 0 surfaces as skip in every language", () => {
+		const withOffset: AstraQuerySnapshot = {
+			...listChunksSnapshot,
+			kind: "list_chunks",
+			query: { ...listChunksSnapshot.query, offset: 25 },
+		};
+		expect(generateCode("typescript", withOffset)).toContain("skip: 25");
+		expect(generateCode("python", withOffset)).toContain("skip=25");
+		expect(generateCode("java", withOffset)).toContain(".skip(25)");
+		expect(generateCode("curl", withOffset)).toContain('"skip": 25');
 	});
 });

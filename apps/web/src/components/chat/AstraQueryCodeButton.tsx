@@ -263,6 +263,10 @@ function CodeBlock({
  * Parse the persisted `metadata.astra_queries` JSON. Tolerant of
  * absence + malformed shapes — returns `[]` rather than throwing so a
  * single bad row never breaks the chat render.
+ *
+ * Back-compat: rows persisted before the discriminator existed have
+ * no `kind` field and a `query: { text, topK }` shape. They decode as
+ * `kind: "vector_search"`.
  */
 function parseAstraQueries(raw: string | undefined): AstraQuerySnapshot[] {
 	if (!raw) return [];
@@ -271,28 +275,57 @@ function parseAstraQueries(raw: string | undefined): AstraQuerySnapshot[] {
 		if (!Array.isArray(parsed)) return [];
 		const out: AstraQuerySnapshot[] = [];
 		for (const item of parsed) {
-			if (
-				typeof item === "object" &&
-				item !== null &&
-				typeof item.knowledgeBaseId === "string" &&
-				typeof item.kbName === "string" &&
-				typeof item.collection === "string" &&
-				typeof item.query === "object" &&
-				item.query !== null &&
-				typeof item.query.text === "string" &&
-				typeof item.query.topK === "number"
-			) {
-				out.push({
-					knowledgeBaseId: item.knowledgeBaseId,
-					kbName: item.kbName,
-					collection: item.collection,
-					keyspace: typeof item.keyspace === "string" ? item.keyspace : null,
-					query: { text: item.query.text, topK: item.query.topK },
-				});
-			}
+			const snapshot = parseOneSnapshot(item);
+			if (snapshot) out.push(snapshot);
 		}
 		return out;
 	} catch {
 		return [];
 	}
+}
+
+function parseOneSnapshot(item: unknown): AstraQuerySnapshot | null {
+	if (typeof item !== "object" || item === null) return null;
+	const r = item as Record<string, unknown>;
+	if (
+		typeof r.knowledgeBaseId !== "string" ||
+		typeof r.kbName !== "string" ||
+		typeof r.collection !== "string" ||
+		typeof r.query !== "object" ||
+		r.query === null
+	) {
+		return null;
+	}
+	const keyspace = typeof r.keyspace === "string" ? r.keyspace : null;
+	const q = r.query as Record<string, unknown>;
+	const kind = typeof r.kind === "string" ? r.kind : "vector_search";
+	if (kind === "vector_search") {
+		if (typeof q.text !== "string" || typeof q.topK !== "number") return null;
+		return {
+			kind: "vector_search",
+			knowledgeBaseId: r.knowledgeBaseId,
+			kbName: r.kbName,
+			collection: r.collection,
+			keyspace,
+			query: { text: q.text, topK: q.topK },
+		};
+	}
+	if (kind === "list_chunks") {
+		if (
+			typeof q.documentId !== "string" ||
+			typeof q.limit !== "number" ||
+			typeof q.offset !== "number"
+		) {
+			return null;
+		}
+		return {
+			kind: "list_chunks",
+			knowledgeBaseId: r.knowledgeBaseId,
+			kbName: r.kbName,
+			collection: r.collection,
+			keyspace,
+			query: { documentId: q.documentId, limit: q.limit, offset: q.offset },
+		};
+	}
+	return null;
 }

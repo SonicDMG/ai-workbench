@@ -141,6 +141,7 @@ describe("retrieveContext astraQueries capture", () => {
 		const result = await retrieveContext(deps(), request());
 		expect(result.astraQueries).toHaveLength(1);
 		expect(result.astraQueries[0]).toEqual({
+			kind: "vector_search",
 			knowledgeBaseId: "kb-1",
 			kbName: "Engineering Docs",
 			collection: "wb_vectors_kb_eng",

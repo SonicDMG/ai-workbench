@@ -124,6 +124,7 @@ describe("search_kb tool effects sink", () => {
 		]);
 		expect(collector.snapshots).toEqual([
 			{
+				kind: "vector_search",
 				knowledgeBaseId: "kb-1",
 				kbName: "Engineering Docs",
 				collection: "wb_vectors_kb_eng",
@@ -211,6 +212,109 @@ describe("search_kb tool effects sink", () => {
 				drivers: fakeDrivers,
 				embedders: fakeEmbedders,
 			},
+		);
+		expect(out).toMatch(/^\{/);
+	});
+});
+
+describe("list_chunks tool effects sink", () => {
+	const docId = "11111111-1111-4111-8111-111111111111";
+	const kbId = "22222222-2222-4222-8222-222222222222";
+
+	function depsForListChunks(sink: ToolEffectsSink): AgentToolDeps {
+		const store = {
+			getRagDocument: vi.fn(async () => ({
+				documentId: docId,
+				knowledgeBaseId: kbId,
+				chunkTotal: 3,
+			})),
+		} as unknown as AgentToolDeps["store"];
+		const drivers = {
+			for: vi.fn(() => ({
+				// Minimal driver shim — list_chunks just needs `listRecords`
+				// to exist and return a (possibly empty) array. The
+				// snapshot push fires before the call returns, so the
+				// returned shape doesn't matter for the assertion below.
+				listRecords: vi.fn(async () => []),
+			})),
+		} as unknown as VectorStoreDriverRegistry;
+		return {
+			workspaceId: "ws-1",
+			store,
+			drivers,
+			embedders: fakeEmbedders,
+			effects: sink,
+		};
+	}
+
+	test("pushes a list_chunks snapshot for an astra workspace", async () => {
+		resolveKbReturn = () => ({
+			workspace: {
+				uid: "ws-1",
+				kind: "astra",
+				keyspace: "default_keyspace",
+			},
+			knowledgeBase: { name: "Engineering Docs" },
+			descriptor: { name: "wb_vectors_kb_eng" },
+		});
+
+		const collector = makeCollector();
+		const out = await resolveTool("list_chunks")?.execute(
+			{ knowledgeBaseId: kbId, documentId: docId, limit: 2, offset: 4 },
+			depsForListChunks(collector.sink),
+		);
+
+		expect(out).toMatch(/^\{/);
+		expect(collector.snapshots).toEqual([
+			{
+				kind: "list_chunks",
+				knowledgeBaseId: kbId,
+				kbName: "Engineering Docs",
+				collection: "wb_vectors_kb_eng",
+				keyspace: "default_keyspace",
+				query: { documentId: docId, limit: 2, offset: 4 },
+			},
+		]);
+		// `list_chunks` doesn't use the chunk-push channel — the
+		// `chunks` accumulator (which feeds `metadata.context_chunks`
+		// and the Sources disclosure) is only populated by `search_kb`.
+		// Positional reads aren't "sources" in the citation sense.
+		expect(collector.chunks).toEqual([]);
+	});
+
+	test("pushes nothing for non-astra workspaces", async () => {
+		resolveKbReturn = () => ({
+			workspace: { uid: "ws-1", kind: "mock", keyspace: null },
+			knowledgeBase: { name: "kb-mock" },
+			descriptor: { name: "wb_vectors_mock" },
+		});
+
+		const collector = makeCollector();
+		await resolveTool("list_chunks")?.execute(
+			{ knowledgeBaseId: kbId, documentId: docId, limit: 2 },
+			depsForListChunks(collector.sink),
+		);
+		expect(collector.snapshots).toEqual([]);
+	});
+
+	test("absent sink (e.g. MCP caller) is a no-op — tool still returns text", async () => {
+		resolveKbReturn = () => ({
+			workspace: {
+				uid: "ws-1",
+				kind: "astra",
+				keyspace: "default_keyspace",
+			},
+			knowledgeBase: { name: "kb" },
+			descriptor: { name: "wb_vectors_kb" },
+		});
+
+		const out = await resolveTool("list_chunks")?.execute(
+			{ knowledgeBaseId: kbId, documentId: docId },
+			(() => {
+				const deps = depsForListChunks({});
+				const { effects: _drop, ...rest } = deps;
+				return rest;
+			})(),
 		);
 		expect(out).toMatch(/^\{/);
 	});
