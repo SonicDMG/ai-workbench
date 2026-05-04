@@ -27,7 +27,6 @@ import type {
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
 import { ApiError } from "../../lib/errors.js";
-import { MAX_CHAT_MESSAGE_CHARS } from "../../lib/limits.js";
 import { logger } from "../../lib/logger.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
@@ -43,6 +42,7 @@ import {
 	ConversationRecordSchema,
 	CreateAgentInputSchema,
 	CreateConversationInputSchema,
+	MessageStreamEventSchema,
 	PaginationQuerySchema,
 	SendChatMessageInputSchema,
 	SendChatMessageResponseSchema,
@@ -568,12 +568,54 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 	// persisted user turn first, then a `token` event per delta, then
 	// a single terminal `done` (or `error`) carrying the persisted
 	// assistant row.
-	app.post(
-		"/:workspaceId/agents/:agentId/conversations/:conversationId/messages/stream",
+	//
+	// Registered through `app.openapi` so the wire shape (request body
+	// + the SSE event union) appears in the generated spec and the
+	// conformance/CI drift checks cover it. The transport stays SSE —
+	// the OpenAPI machinery only validates the request and surfaces
+	// the response *type*; the actual body is streamed via `streamSSE`.
+	app.openapi(
+		createRoute({
+			method: "post",
+			path: "/{workspaceId}/agents/{agentId}/conversations/{conversationId}/messages/stream",
+			tags: ["agents"],
+			summary:
+				"Stream the agent's reply over Server-Sent Events (token-level).",
+			description:
+				"Same semantics as `POST /messages` but emits `user-message`, `token`, optional `tool-call`/`tool-result`/`token-reset`, and a terminal `done` (or `error` / `stream-error`) event. Each line on the wire is `event: <name>` plus `data: <json>` matching `MessageStreamEvent`. The persisted rows are identical to the sync variant.",
+			request: {
+				params: z.object({
+					workspaceId: WorkspaceIdParamSchema,
+					agentId: AgentIdParamSchema,
+					conversationId: ConversationIdParamSchema,
+				}),
+				body: {
+					content: {
+						"application/json": { schema: SendChatMessageInputSchema },
+					},
+				},
+			},
+			responses: {
+				200: {
+					description:
+						"SSE stream of MessageStreamEvent values. Closes after one terminal `done` / `error` / `stream-error`.",
+					content: {
+						"text/event-stream": { schema: MessageStreamEventSchema },
+					},
+				},
+				...errorResponse(404, "Workspace, agent, or conversation not found"),
+				...errorResponse(
+					422,
+					"Agent's llm service is misconfigured (e.g. unsupported provider)",
+				),
+				...errorResponse(
+					503,
+					"Runtime has no chat service configured AND the agent has no llmServiceId.",
+				),
+			},
+		}),
 		async (c) => {
-			const workspaceId = c.req.param("workspaceId");
-			const agentId = c.req.param("agentId");
-			const conversationId = c.req.param("conversationId");
+			const { workspaceId, agentId, conversationId } = c.req.valid("param");
 			const resolved = await resolveAgentConversation(
 				workspaceId,
 				agentId,
@@ -589,24 +631,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 					503,
 				);
 			}
-			const body = await c.req.json<{ content?: unknown }>();
-			if (
-				typeof body?.content !== "string" ||
-				body.content.trim().length === 0
-			) {
-				throw new ApiError(
-					"validation_error",
-					"`content` must be a non-empty string",
-					400,
-				);
-			}
-			if (body.content.length > MAX_CHAT_MESSAGE_CHARS) {
-				throw new ApiError(
-					"validation_error",
-					`\`content\` must be at most ${MAX_CHAT_MESSAGE_CHARS} characters`,
-					400,
-				);
-			}
+			const body = c.req.valid("json");
 			const userContent = body.content;
 
 			return streamSSE(c, async (stream) => {

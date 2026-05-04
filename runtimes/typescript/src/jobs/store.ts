@@ -75,4 +75,14 @@ export interface JobStore {
 		expectedHolder: string | null,
 		newHolder: string,
 	): Promise<JobRecord | null>;
+
+	/**
+	 * Optional shutdown hook. Backends with cross-replica machinery
+	 * (e.g. the Astra poller) implement this to stop their timers so
+	 * the process can exit cleanly; in-memory and file backends omit
+	 * it. The runtime's SIGINT/SIGTERM handler calls
+	 * `await store.stop?.()` — implementations MUST be safe to call
+	 * multiple times and tolerate being called before any subscribe.
+	 */
+	stop?(): void | Promise<void>;
 }

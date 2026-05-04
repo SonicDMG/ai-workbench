@@ -29,6 +29,13 @@ describe("EndpointBaseUrlSchema", () => {
 		["http://169.254.1.1", false],
 		// Link-local IPv6
 		["http://[fe80::1]/", false],
+		// IPv6-mapped IPv4 IMDS — both hex and dotted forms.
+		// Node normalizes the URL hostname so the literal-string and
+		// v4-prefix checks miss these without explicit decoding.
+		["http://[::ffff:169.254.169.254]/latest/meta-data/", false],
+		["http://[::ffff:a9fe:a9fe]/latest/meta-data/", false],
+		// IPv6-mapped link-local v4 generally
+		["http://[::ffff:169.254.1.1]/", false],
 		// Disallowed protocols
 		["file:///etc/passwd", false],
 		["javascript:alert(1)", false],
@@ -46,6 +53,12 @@ describe("EndpointBaseUrlSchema", () => {
 		expect(
 			EndpointBaseUrlSchema.safeParse("http://Metadata.Google.Internal/")
 				.success,
+		).toBe(false);
+	});
+
+	test("blocks IPv6-mapped IPv4 IMDS regardless of hex case", () => {
+		expect(
+			EndpointBaseUrlSchema.safeParse("http://[::FFFF:A9FE:A9FE]/").success,
 		).toBe(false);
 	});
 });

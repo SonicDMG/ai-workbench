@@ -134,7 +134,7 @@ async function main(): Promise<void> {
 		logger.info({ model: chatService.modelId }, "chat service initialized");
 	} else {
 		logger.info(
-			"chat service not configured — POST /chats/{id}/messages will return 503 chat_disabled until a `chat` block is added to workbench.yaml",
+			"chat service not configured — POST /agents/{a}/conversations/{c}/messages will return 503 chat_disabled until a `chat` block is added to workbench.yaml or an LLM service is attached to the agent",
 		);
 	}
 
@@ -261,14 +261,12 @@ async function main(): Promise<void> {
 				);
 			}
 			// Stop the cross-replica job-subscriber poller (a no-op for
-			// memory/file backends that don't have one). Duck-typed —
-			// `stop()` is optional on JobStore so backends opt in when
-			// they have something to clean up.
+			// memory/file backends that don't implement `stop`). The
+			// method is now declared optional on `JobStore` itself —
+			// backends with timers (Astra) opt in by implementing it,
+			// the simpler backends omit it.
 			try {
-				const maybeStop = (jobs as { stop?: () => void }).stop;
-				if (typeof maybeStop === "function") {
-					maybeStop.call(jobs);
-				}
+				await jobs.stop?.();
 			} catch (stopErr) {
 				logger.error(
 					{ err: stopErr instanceof Error ? stopErr.message : "unknown" },

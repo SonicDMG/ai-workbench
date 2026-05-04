@@ -19,6 +19,7 @@ import { CohereEmbeddings } from "@langchain/cohere";
 import type { Embeddings } from "@langchain/core/embeddings";
 import { OpenAIEmbeddings } from "@langchain/openai";
 import type { EmbeddingConfig } from "../control-plane/types.js";
+import { safeFetch } from "../lib/safe-fetch.js";
 import { type Embedder, EmbedderUnavailableError } from "./types.js";
 
 export interface LangchainEmbedderDeps {
@@ -54,11 +55,19 @@ function buildEmbeddings(deps: LangchainEmbedderDeps): Embeddings {
 			// OpenAI's `text-embedding-3-*` family supports a `dimensions`
 			// param to truncate the native vector — pass it so the
 			// runtime's declared dimension is honored end-to-end.
+			//
+			// `configuration.fetch` injects `safeFetch` so a redirect from
+			// the operator-configured `endpoint` cannot chase a Location
+			// header into IMDS — defense in depth on top of the URL
+			// validator.
 			return new OpenAIEmbeddings({
 				apiKey: deps.apiKey,
 				model,
 				dimensions: dimension,
-				...(endpoint ? { configuration: { baseURL: endpoint } } : {}),
+				configuration: {
+					fetch: safeFetch,
+					...(endpoint ? { baseURL: endpoint } : {}),
+				},
 			});
 		}
 		case "cohere": {

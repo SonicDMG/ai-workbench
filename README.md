@@ -1,5 +1,11 @@
 # AI Workbench
 
+[![CI](https://github.com/datastax/ai-workbench/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/datastax/ai-workbench/actions/workflows/ci.yml)
+[![Runtimes](https://github.com/datastax/ai-workbench/actions/workflows/runtimes.yml/badge.svg?branch=main)](https://github.com/datastax/ai-workbench/actions/workflows/runtimes.yml)
+[![Secret scan](https://github.com/datastax/ai-workbench/actions/workflows/secret-scan.yml/badge.svg?branch=main)](https://github.com/datastax/ai-workbench/actions/workflows/secret-scan.yml)
+[![Node 22+](https://img.shields.io/badge/node-%3E=22-blue)](./.nvmrc)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+
 AI Workbench is a self-hosted product surface for building, inspecting,
 and operating retrieval-backed AI applications on **DataStax Astra**.
 It gives teams one place to manage workspaces, knowledge bases,
@@ -204,6 +210,7 @@ phases.
 | [`docs/cross-replica-jobs.md`](docs/cross-replica-jobs.md) | Design note for cross-replica job pub/sub + in-flight resume (proposed) |
 | [`docs/route-plugins.md`](docs/route-plugins.md) | Design note for the in-runtime route-plugin registry (scaffold shipped) |
 | [`docs/roadmap.md`](docs/roadmap.md) | Phased delivery plan and open questions |
+| [`docs/adr/`](docs/adr/) | Architecture Decision Records — the *why* behind structural choices |
 | [`docs/examples/workbench.yaml`](docs/examples/workbench.yaml) | Annotated sample config |
 | [`apps/web/README.md`](apps/web/README.md) | Web UI quickstart, bundle layout, test commands |
 | [`runtimes/README.md`](runtimes/README.md) | Index of language-native runtimes |

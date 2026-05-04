@@ -15,6 +15,7 @@
  */
 
 import { safeErrorMessage } from "../lib/safe-error.js";
+import { safeFetch } from "../lib/safe-fetch.js";
 import type {
 	ChatCompletion,
 	ChatCompletionRequest,
@@ -100,7 +101,7 @@ export class OpenAIChatService implements ChatService {
 		this.apiKey = opts.apiKey;
 		this.maxOutputTokens = opts.maxOutputTokens;
 		this.baseUrl = opts.baseUrl ?? DEFAULT_BASE_URL;
-		this.fetchImpl = opts.fetchImpl ?? fetch;
+		this.fetchImpl = opts.fetchImpl ?? safeFetch;
 	}
 
 	async complete(request: ChatCompletionRequest): Promise<ChatCompletion> {

@@ -159,8 +159,8 @@ workspace-route wrapper.
   block configured **and** the agent has no `llmServiceId` — there
   is no executor available.
 
-The streaming wire format is identical to what the now-retired
-`/chats/.../messages/stream` route emitted. Browser clients use
+The streaming wire format mirrors the now-retired
+`/chats/.../messages/stream` route. Browser clients use
 `fetch` with `Accept: text/event-stream` and parse the response
 body manually (`EventSource` only supports `GET`). The runtime helper
 the web UI uses lives at
