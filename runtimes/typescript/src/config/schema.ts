@@ -90,6 +90,13 @@ const RuntimeSchema = z
 		// dev workflow; `runtime.environment === "production"` overrides
 		// to `true` regardless of the configured value.
 		blockPrivateNetworkEndpoints: z.boolean().default(false),
+		// Hard cap on in-flight ingest jobs per replica. Beyond this,
+		// queued jobs wait in-process for a slot rather than slamming
+		// the embedding provider's quota. Persisted job state is
+		// unaffected; the bound just throttles the worker. Default 4 is
+		// reasonable for shared embedding endpoints; set higher for
+		// dedicated provisioned-throughput deployments.
+		maxConcurrentIngestJobs: z.number().int().positive().default(4),
 	})
 	.default({
 		environment: "development",
@@ -102,6 +109,7 @@ const RuntimeSchema = z
 		trustProxyHeaders: false,
 		rateLimit: { enabled: true, capacity: 600, windowMs: 60_000 },
 		blockPrivateNetworkEndpoints: false,
+		maxConcurrentIngestJobs: 4,
 	});
 
 /**

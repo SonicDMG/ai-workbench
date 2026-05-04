@@ -23,6 +23,7 @@ import type { ChatConfig, McpConfig } from "../config/schema.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
+import type { IngestSemaphore } from "../jobs/ingest-semaphore.js";
 import type { JobStore } from "../jobs/store.js";
 import type { AppEnv } from "../lib/types.js";
 import type { SecretResolver } from "../secrets/provider.js";
@@ -44,6 +45,7 @@ export interface RoutePluginContext {
 	readonly embedders: EmbedderFactory;
 	readonly secrets: SecretResolver;
 	readonly jobs: JobStore;
+	readonly ingestSemaphore: IngestSemaphore;
 	readonly chatService: ChatService | null;
 	readonly chatConfig: ChatConfig | null;
 	readonly mcpConfig: McpConfig;

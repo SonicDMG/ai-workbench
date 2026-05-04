@@ -35,6 +35,7 @@ import type { AuthConfig, ChatConfig, McpConfig } from "./config/schema.js";
 import type { ControlPlaneStore } from "./control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "./drivers/registry.js";
 import type { EmbedderFactory } from "./embeddings/factory.js";
+import { IngestSemaphore } from "./jobs/ingest-semaphore.js";
 import { MemoryJobStore } from "./jobs/memory-store.js";
 import type { JobStore } from "./jobs/store.js";
 import { ApiError, errorEnvelope } from "./lib/errors.js";
@@ -99,6 +100,12 @@ export interface AppOptions {
 	readonly environment?: "development" | "production";
 	/** Optional — a {@link MemoryJobStore} is constructed if absent. */
 	readonly jobs?: JobStore;
+	/**
+	 * Per-replica cap on concurrent in-flight ingest workers. Optional;
+	 * a default {@link IngestSemaphore} with capacity 4 is constructed
+	 * when omitted (matches the schema default).
+	 */
+	readonly ingestSemaphore?: IngestSemaphore;
 	readonly ui?: UiAssets | null;
 	readonly login?: AppLoginOptions | null;
 	readonly readiness?: ReadinessSignal;
@@ -191,6 +198,7 @@ const COMMON_API_ERROR_RESPONSES = {
 export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
 	const jobsStore: JobStore = opts.jobs ?? new MemoryJobStore();
+	const ingestSemaphore = opts.ingestSemaphore ?? new IngestSemaphore(4);
 	const replicaId = opts.replicaId ?? generateReplicaId();
 
 	app.use("*", requestId(opts.requestIdHeader));
@@ -351,6 +359,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			opts.astraCli ?? null,
 			opts.mcpConfig ?? null,
 			opts.astraCliInventoryFn,
+			ingestSemaphore,
 		),
 	);
 
@@ -380,6 +389,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		embedders: opts.embedders,
 		secrets: opts.secrets,
 		jobs: jobsStore,
+		ingestSemaphore,
 		chatService: opts.chatService ?? null,
 		chatConfig: opts.chatConfig ?? null,
 		mcpConfig: opts.mcpConfig ?? { enabled: false, exposeChat: false },

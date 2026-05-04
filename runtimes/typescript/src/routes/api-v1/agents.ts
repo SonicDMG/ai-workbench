@@ -26,6 +26,7 @@ import type {
 } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
+import { audit } from "../../lib/audit.js";
 import { ApiError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
@@ -132,6 +133,12 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 			const { workspaceId } = c.req.valid("param");
 			const body = c.req.valid("json");
 			const record = await store.createAgent(workspaceId, body);
+			audit(c, {
+				action: "agent.create",
+				outcome: "success",
+				workspaceId,
+				details: { agentId: record.agentId, label: record.name },
+			});
 			return c.json(toAgentWire(record), 201);
 		},
 	);
@@ -222,6 +229,12 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 			if (!deleted) {
 				throw new ControlPlaneNotFoundError("agent", agentId);
 			}
+			audit(c, {
+				action: "agent.delete",
+				outcome: "success",
+				workspaceId,
+				details: { agentId },
+			});
 			return c.body(null, 204);
 		},
 	);

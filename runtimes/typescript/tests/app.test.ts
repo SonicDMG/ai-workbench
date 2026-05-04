@@ -78,14 +78,18 @@ describe("operational routes", () => {
 		expect(await res.json()).toEqual({ status: "ok" });
 	});
 
-	test("GET /readyz returns ready with a workspace count", async () => {
+	test("GET /readyz returns ready with a workspace count + ingest stats", async () => {
 		const { app, store } = makeApp();
 		await store.createWorkspace(BASE_WORKSPACE);
 		await store.createWorkspace({ name: "w2", kind: "mock" });
 		const res = await app.request("/readyz");
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		expect(body).toEqual({ status: "ready", workspaces: 2 });
+		expect(body).toEqual({
+			status: "ready",
+			workspaces: 2,
+			ingest: { active: 0, capacity: 4, queued: 0 },
+		});
 	});
 
 	test("GET /version returns build metadata", async () => {

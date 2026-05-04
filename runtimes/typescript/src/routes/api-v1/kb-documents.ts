@@ -22,6 +22,7 @@ import {
 	KB_SCOPE_KEY,
 } from "../../ingest/payload-keys.js";
 import type { JobStore } from "../../jobs/store.js";
+import { audit } from "../../lib/audit.js";
 import { ApiError } from "../../lib/errors.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
@@ -50,6 +51,7 @@ export interface KbDocumentRouteDeps {
 	readonly embedders: EmbedderFactory;
 	readonly jobs: JobStore;
 	readonly replicaId: string;
+	readonly ingestSemaphore: import("../../jobs/ingest-semaphore.js").IngestSemaphore;
 }
 
 export function kbDocumentRoutes(
@@ -437,6 +439,12 @@ export function kbDocumentRoutes(
 			if (!deleted) {
 				throw new ControlPlaneNotFoundError("document", documentId);
 			}
+			audit(c, {
+				action: "document.delete",
+				outcome: "success",
+				workspaceId,
+				details: { knowledgeBaseId, documentId },
+			});
 			return c.body(null, 204);
 		},
 	);

@@ -148,4 +148,78 @@ describe("rateLimit middleware", () => {
 		key = "client-b";
 		expect((await app.request("/api/v1/ping")).status).toBe(200);
 	});
+
+	test("Bearer-token requests get per-token buckets, not shared with each other or with IP traffic", async () => {
+		const app = new Hono<AppEnv>();
+		app.use("*", requestId());
+		app.use(
+			"/api/v1/*",
+			rateLimit({ capacity: 1, windowMs: 60_000, now: () => 0 }),
+		);
+		app.get("/api/v1/ping", (c) => c.json({ ok: true }));
+
+		// Token A: first call OK, second 429.
+		expect(
+			(
+				await app.request("/api/v1/ping", {
+					headers: { authorization: "Bearer wb_live_aaa" },
+				})
+			).status,
+		).toBe(200);
+		expect(
+			(
+				await app.request("/api/v1/ping", {
+					headers: { authorization: "Bearer wb_live_aaa" },
+				})
+			).status,
+		).toBe(429);
+
+		// Token B: independent bucket — first call must still succeed.
+		expect(
+			(
+				await app.request("/api/v1/ping", {
+					headers: { authorization: "Bearer wb_live_bbb" },
+				})
+			).status,
+		).toBe(200);
+
+		// Anonymous (no header): falls through to IP bucket — independent
+		// of every Bearer bucket above.
+		expect((await app.request("/api/v1/ping")).status).toBe(200);
+	});
+
+	test("OIDC session cookie keys per session", async () => {
+		const app = new Hono<AppEnv>();
+		app.use("*", requestId());
+		app.use(
+			"/api/v1/*",
+			rateLimit({ capacity: 1, windowMs: 60_000, now: () => 0 }),
+		);
+		app.get("/api/v1/ping", (c) => c.json({ ok: true }));
+
+		// Session A: 200 then 429.
+		expect(
+			(
+				await app.request("/api/v1/ping", {
+					headers: { cookie: "wb_session=session-aaa" },
+				})
+			).status,
+		).toBe(200);
+		expect(
+			(
+				await app.request("/api/v1/ping", {
+					headers: { cookie: "wb_session=session-aaa" },
+				})
+			).status,
+		).toBe(429);
+
+		// Session B with the secure-cookie variant — still independent.
+		expect(
+			(
+				await app.request("/api/v1/ping", {
+					headers: { cookie: "__Host-wb_session=session-bbb" },
+				})
+			).status,
+		).toBe(200);
+	});
 });

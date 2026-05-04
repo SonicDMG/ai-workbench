@@ -138,6 +138,7 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					embedders: ctx.embedders,
 					jobs: ctx.jobs,
 					replicaId: ctx.replicaId,
+					ingestSemaphore: ctx.ingestSemaphore,
 				}),
 		},
 		{

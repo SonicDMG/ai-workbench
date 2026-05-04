@@ -21,6 +21,7 @@ import { controlPlaneFromConfig } from "./control-plane/factory.js";
 import { buildVectorStoreDriverRegistry } from "./drivers/factory.js";
 import { makeEmbedderFactory } from "./embeddings/factory.js";
 import { buildJobStore } from "./jobs/factory.js";
+import { IngestSemaphore, runBounded } from "./jobs/ingest-semaphore.js";
 import { runKbIngestJob } from "./jobs/ingest-worker.js";
 import { JobOrphanSweeper } from "./jobs/sweeper.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
@@ -132,6 +133,18 @@ async function main(): Promise<void> {
 	const readiness = { draining: false };
 	const replicaId = config.runtime.replicaId ?? generateReplicaId();
 
+	// In-process bound on concurrent ingest workers. Shared between the
+	// route handler (POST .../ingest?async=true) and the orphan-sweeper
+	// resume path so a single replica enforces a coherent cap. Default
+	// 4; lift via `runtime.maxConcurrentIngestJobs`.
+	const ingestSemaphore = new IngestSemaphore(
+		config.runtime.maxConcurrentIngestJobs,
+	);
+	logger.info(
+		{ capacity: config.runtime.maxConcurrentIngestJobs },
+		"ingest concurrency cap configured",
+	);
+
 	const chatService = await buildChatService({
 		config: config.chat ?? null,
 		secrets,
@@ -152,6 +165,7 @@ async function main(): Promise<void> {
 		embedders,
 		environment: config.runtime.environment,
 		jobs,
+		ingestSemaphore,
 		ui,
 		login,
 		readiness,
@@ -184,13 +198,15 @@ async function main(): Promise<void> {
 					graceMs: sweeperCfg.graceMs,
 					intervalMs: sweeperCfg.intervalMs,
 					resume: ({ workspaceId, jobId, replicaId: rid, input }) => {
-						void runKbIngestJob({
-							deps: { store, drivers, embedders, jobs },
-							workspaceId,
-							jobId,
-							replicaId: rid,
-							input,
-						});
+						void runBounded(ingestSemaphore, () =>
+							runKbIngestJob({
+								deps: { store, drivers, embedders, jobs },
+								workspaceId,
+								jobId,
+								replicaId: rid,
+								input,
+							}),
+						);
 					},
 				})
 			: null;

@@ -53,6 +53,20 @@ export interface McpServerDeps {
 	readonly chatService: ChatService | null;
 	readonly chatConfig: ChatConfig | null;
 	readonly exposeChat: boolean;
+	/**
+	 * Optional hook fired around every tool invocation. Used by the
+	 * route layer to emit `mcp.invoke` audit events without coupling
+	 * the MCP server to the audit module — argument payloads are not
+	 * passed in (the audit envelope deliberately omits them so secret
+	 * material can never end up in the audit log).
+	 */
+	readonly onToolInvoke?: (info: McpToolInvocation) => void;
+}
+
+export interface McpToolInvocation {
+	readonly toolName: string;
+	readonly outcome: "success" | "failure";
+	readonly reason?: string;
 }
 
 export interface McpHandleRequestArgs {
@@ -153,6 +167,31 @@ export function buildMcpServer(
 		{ name: `ai-workbench:${workspaceId}`, version: VERSION },
 		{ capabilities: { tools: {}, resources: {} } },
 	);
+
+	// Audit-wrap registerTool once so every handler below fires the
+	// optional `onToolInvoke` hook on success/failure without each
+	// call site having to remember.
+	const onInvoke = deps.onToolInvoke;
+	if (onInvoke) {
+		const original = server.registerTool.bind(server);
+		// biome-ignore lint/suspicious/noExplicitAny: variadic SDK signature
+		server.registerTool = ((name: string, config: any, handler: any) => {
+			// biome-ignore lint/suspicious/noExplicitAny: SDK passes through
+			const wrapped = async (...args: any[]) => {
+				try {
+					const result = await handler(...args);
+					onInvoke({ toolName: name, outcome: "success" });
+					return result;
+				} catch (err) {
+					const reason = err instanceof Error ? err.message : String(err);
+					onInvoke({ toolName: name, outcome: "failure", reason });
+					throw err;
+				}
+			};
+			return original(name, config, wrapped);
+			// biome-ignore lint/suspicious/noExplicitAny: type-erased wrapper
+		}) as any;
+	}
 
 	server.registerTool(
 		"list_knowledge_bases",

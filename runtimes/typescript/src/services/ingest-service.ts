@@ -15,6 +15,7 @@ import type { RagDocumentRecord } from "../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
 import { runKbIngest } from "../ingest/pipeline.js";
+import { type IngestSemaphore, runBounded } from "../jobs/ingest-semaphore.js";
 import { runKbIngestJob } from "../jobs/ingest-worker.js";
 import type { JobStore } from "../jobs/store.js";
 import type { IngestInputSnapshot, JobRecord } from "../jobs/types.js";
@@ -46,6 +47,14 @@ export interface IngestServiceDeps {
 	readonly embedders: EmbedderFactory;
 	readonly jobs: JobStore;
 	readonly replicaId: string;
+	/**
+	 * Bounds in-flight async ingest workers. The async path always
+	 * persists the job + ingest-input snapshot first, then queues the
+	 * worker; if the cap is exhausted the caller's `void
+	 * runKbIngestJob(...)` resolves a slot from the semaphore before
+	 * starting work. Synchronous ingest is unaffected.
+	 */
+	readonly ingestSemaphore: IngestSemaphore;
 }
 
 export interface IngestService {
@@ -58,7 +67,7 @@ export interface IngestService {
 }
 
 export function createIngestService(deps: IngestServiceDeps): IngestService {
-	const { store, drivers, embedders, jobs, replicaId } = deps;
+	const { store, drivers, embedders, jobs, replicaId, ingestSemaphore } = deps;
 
 	return {
 		async ingest(workspaceId, knowledgeBaseId, input, opts) {
@@ -94,13 +103,15 @@ export function createIngestService(deps: IngestServiceDeps): IngestService {
 					documentId: document.documentId,
 					ingestInput: ingestSnapshot,
 				});
-				void runKbIngestJob({
-					deps: { store, drivers, embedders, jobs },
-					workspaceId,
-					jobId: job.jobId,
-					replicaId,
-					input,
-				});
+				void runBounded(ingestSemaphore, () =>
+					runKbIngestJob({
+						deps: { store, drivers, embedders, jobs },
+						workspaceId,
+						jobId: job.jobId,
+						replicaId,
+						input,
+					}),
+				);
 				return { kind: "queued", document, job };
 			}
 

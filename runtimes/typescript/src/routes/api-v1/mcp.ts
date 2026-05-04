@@ -20,6 +20,7 @@ import type { ChatConfig, McpConfig } from "../../config/schema.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
+import { audit } from "../../lib/audit.js";
 import { ApiError } from "../../lib/errors.js";
 import type { AppEnv } from "../../lib/types.js";
 import { handleMcpRequest } from "../../mcp/server.js";
@@ -77,6 +78,17 @@ export function mcpRoutes(deps: McpRouteDeps): OpenAPIHono<AppEnv> {
 				chatService: deps.chatService,
 				chatConfig: deps.chatConfig,
 				exposeChat: deps.mcpConfig.exposeChat,
+				onToolInvoke: (info) => {
+					audit(c, {
+						action: "mcp.invoke",
+						outcome: info.outcome,
+						workspaceId,
+						details: {
+							toolName: info.toolName,
+							...(info.reason ? { reason: info.reason } : {}),
+						},
+					});
+				},
 			},
 		});
 	};

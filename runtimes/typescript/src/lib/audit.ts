@@ -45,6 +45,13 @@ export type AuditAction =
 	| "api_key.revoke"
 	| "workspace.create"
 	| "workspace.delete"
+	| "kb.create"
+	| "kb.delete"
+	| "document.delete"
+	| "agent.create"
+	| "agent.delete"
+	| "job.claim"
+	| "mcp.invoke"
 	| "auth.login"
 	| "auth.logout"
 	| "auth.refresh";
@@ -61,6 +68,16 @@ export interface AuditDetails {
 	readonly keyId?: string;
 	/** Knowledge base id. */
 	readonly knowledgeBaseId?: string;
+	/** Document id (kb-scoped). */
+	readonly documentId?: string;
+	/** Agent id (workspace-scoped). */
+	readonly agentId?: string;
+	/** Job id (workspace-scoped). */
+	readonly jobId?: string;
+	/** Job kind, e.g. "ingest". */
+	readonly jobKind?: string;
+	/** MCP tool name, e.g. "search_kb". */
+	readonly toolName?: string;
 	/** OIDC issuer or apiKey scheme on auth events. */
 	readonly scheme?: string;
 	/** Free-form reason for `failure` / `denied` outcomes. */
@@ -89,7 +106,7 @@ interface AuditEnvelope {
 }
 
 interface AuditSubjectEnvelope {
-	readonly type: AuthSubject["type"] | "anonymous";
+	readonly type: AuthSubject["type"] | "anonymous" | "system";
 	readonly id: string | null;
 	readonly label: string | null;
 }
@@ -119,6 +136,35 @@ export function audit(c: Context<AppEnv>, event: AuditEventInput): void {
 	} catch {
 		// Audit logging is best-effort; never break the request path.
 	}
+}
+
+/**
+ * Emit an audit event from a non-request context — background workers
+ * (orphan sweeper, scheduled jobs) that don't have a Hono request to
+ * read `requestId` / `auth` from. The subject is synthesized from the
+ * caller-supplied replica id so deployments can correlate the event
+ * back to the replica that emitted it.
+ */
+export function auditSystem(event: AuditSystemEventInput): void {
+	try {
+		const envelope: AuditEnvelope = {
+			audit: true,
+			action: event.action,
+			outcome: event.outcome,
+			requestId: null,
+			subject: { type: "system", id: event.replicaId, label: null },
+			workspaceId: event.workspaceId ?? null,
+			details: event.details ?? null,
+		};
+		logger.info(envelope, `audit ${event.action} ${event.outcome}`);
+	} catch {
+		// Audit logging is best-effort; never break the worker.
+	}
+}
+
+export interface AuditSystemEventInput extends AuditEventInput {
+	/** Replica id of the worker emitting the event. */
+	readonly replicaId: string;
 }
 
 function toSubjectEnvelope(auth: AuthContext): AuditSubjectEnvelope {

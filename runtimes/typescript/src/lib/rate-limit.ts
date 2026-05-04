@@ -128,16 +128,34 @@ export class FixedWindowLimiter {
 
 /**
  * Build the per-request key. Order of preference:
- *   1. The first IP in `X-Forwarded-For` (when proxy headers are
- *      trusted) — this is the originating client when behind one or
- *      more reverse proxies.
- *   2. `X-Real-IP` (also proxy-trusted) for setups that prefer it.
- *   3. The remote socket address from `@hono/node-server`'s
+ *   1. **Bearer token / session cookie** — peeked from request
+ *      headers BEFORE auth runs, so each token gets its own bucket
+ *      regardless of the underlying IP. A noisy tenant on a shared
+ *      outbound NAT can't starve other tenants. The token never
+ *      leaves the in-memory bucket map; invalid tokens still get
+ *      401'd downstream by the auth middleware — the limiter just
+ *      ensures the upstream burst doesn't cascade.
+ *   2. The first IP in `X-Forwarded-For` (when proxy headers are
+ *      trusted) — the originating client when behind reverse proxies.
+ *   3. `X-Real-IP` (also proxy-trusted) for setups that prefer it.
+ *   4. The remote socket address from `@hono/node-server`'s
  *      `c.env.incoming.socket`.
- *   4. The literal `"unknown"` — same bucket for every keyless call,
+ *   5. The literal `"unknown"` — same bucket for every keyless call,
  *      which is fine: the limit then applies to that aggregate.
  */
 function defaultKeyOf(c: Context<AppEnv>, trustProxyHeaders: boolean): string {
+	const authHeader = c.req.header("authorization");
+	if (authHeader) {
+		const match = authHeader.match(/^Bearer\s+(\S+)/i);
+		if (match?.[1]) return `bearer:${match[1]}`;
+	}
+	const cookie = c.req.header("cookie");
+	if (cookie) {
+		const sessionMatch = cookie.match(
+			/(?:^|;\s*)(?:wb_session|__Host-wb_session|__Secure-wb_session)=([^;]+)/,
+		);
+		if (sessionMatch?.[1]) return `session:${sessionMatch[1]}`;
+	}
 	if (trustProxyHeaders) {
 		const xff = c.req.header("x-forwarded-for");
 		if (xff) {

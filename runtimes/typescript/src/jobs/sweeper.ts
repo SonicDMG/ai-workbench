@@ -28,6 +28,7 @@
  * someone consciously turns it on.
  */
 
+import { auditSystem } from "../lib/audit.js";
 import { logger } from "../lib/logger.js";
 import type { JobStore } from "./store.js";
 import type { IngestInputSnapshot, JobRecord } from "./types.js";
@@ -162,6 +163,14 @@ export class JobOrphanSweeper {
 			// the winner will drive the job to terminal.
 			return;
 		}
+
+		auditSystem({
+			action: "job.claim",
+			outcome: "success",
+			replicaId: this.replicaId,
+			workspaceId: workspace,
+			details: { jobId, jobKind: orphan.kind },
+		});
 
 		// We own the lease.
 		// (1) Resume path: the orphan carries an ingest input snapshot

@@ -33,6 +33,13 @@ by filter.
 | `api_key.revoke` | `DELETE /api/v1/workspaces/{w}/api-keys/{keyId}` | Soft revoke; emitted on the first revoke only. |
 | `workspace.create` | `POST /api/v1/workspaces` | Includes the workspace `label` (the human-friendly `name`). |
 | `workspace.delete` | `DELETE /api/v1/workspaces/{w}` | Emitted **after** the cascade completes. |
+| `kb.create` | `POST /api/v1/workspaces/{w}/knowledge-bases` | Provisions an Astra collection — destructive on rollback. Includes `knowledgeBaseId` + `label`. |
+| `kb.delete` | `DELETE /api/v1/workspaces/{w}/knowledge-bases/{kb}` | Cascades the underlying collection drop and all rag-document rows. Emitted **after** the cascade. |
+| `document.delete` | `DELETE /api/v1/workspaces/{w}/knowledge-bases/{kb}/documents/{d}` | Cascades chunk wipe before the row drop. Includes `knowledgeBaseId` + `documentId`. |
+| `agent.create` | `POST /api/v1/workspaces/{w}/agents` | Includes `agentId` + `label`. |
+| `agent.delete` | `DELETE /api/v1/workspaces/{w}/agents/{a}` | Cascades conversations + chat messages owned by the agent. Emitted **after** the cascade. |
+| `job.claim` | Cross-replica orphan reclaim in `jobs/sweeper.ts` | Emitted when a replica successfully CAS-claims an orphaned job. Includes `jobId` + `jobKind`. Subject is the replica id (synthetic), not a user. |
+| `mcp.invoke` | Any tool call into `/api/v1/workspaces/{w}/mcp` | Includes the `toolName`. Argument payloads are not logged. |
 | `auth.login` | OIDC `/auth/callback` | `outcome: "success"` once the access token passes the runtime's own verifier; `outcome: "failure"` with `reason` on token-validation errors. |
 | `auth.refresh` | OIDC `/auth/refresh` | `outcome: "success"` on a clean rotate. `outcome: "failure"` with `reason` ∈ `{ "no_refresh_token", "idp_rejected", "token_validation_failed" }` covers the three failure paths (missing cookie, IdP refused the refresh_token, freshly-issued access token failed self-verification). |
 | `auth.logout` | OIDC `/auth/logout` | Emitted on every cookie clear, even when no session was present. |

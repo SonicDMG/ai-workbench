@@ -13,6 +13,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
+import { audit } from "../../lib/audit.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
@@ -106,6 +107,15 @@ export function knowledgeBaseRoutes(
 			const { workspaceId } = c.req.valid("param");
 			const body = c.req.valid("json");
 			const record = await service.create(workspaceId, body);
+			audit(c, {
+				action: "kb.create",
+				outcome: "success",
+				workspaceId,
+				details: {
+					knowledgeBaseId: record.knowledgeBaseId,
+					label: record.name,
+				},
+			});
 			return c.json(record, 201);
 		},
 	);
@@ -235,6 +245,12 @@ export function knowledgeBaseRoutes(
 		async (c) => {
 			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
 			await service.delete(workspaceId, knowledgeBaseId);
+			audit(c, {
+				action: "kb.delete",
+				outcome: "success",
+				workspaceId,
+				details: { knowledgeBaseId },
+			});
 			return c.body(null, 204);
 		},
 	);

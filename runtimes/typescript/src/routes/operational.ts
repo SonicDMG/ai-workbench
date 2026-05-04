@@ -40,6 +40,10 @@ export function operationalRoutes(
 	// Test seam — defaults to the real CLI shellout. Tests inject a fake
 	// to avoid depending on whether `astra` is on the runner's PATH.
 	inventoryFn: () => AstraCliInventory = discoverAstraCliInventory,
+	// Optional ingest semaphore — when present, /readyz surfaces its
+	// stats so an LB can see "running but saturated" at a glance. When
+	// absent, the stats field is omitted from the response.
+	ingestSemaphore?: import("../jobs/ingest-semaphore.js").IngestSemaphore,
 ): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
 
@@ -114,8 +118,13 @@ export function operationalRoutes(
 				);
 			}
 			const workspaces = await store.listWorkspaces();
+			const ingest = ingestSemaphore?.stats();
 			return c.json(
-				{ status: "ready" as const, workspaces: workspaces.length },
+				{
+					status: "ready" as const,
+					workspaces: workspaces.length,
+					...(ingest ? { ingest } : {}),
+				},
 				200,
 			);
 		},
