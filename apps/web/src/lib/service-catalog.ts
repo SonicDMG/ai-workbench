@@ -42,13 +42,23 @@ export interface RerankingPreset {
 	readonly input: CreateRerankingServiceInput;
 }
 
-/** Provider names recognised by the runtime's embedding factory. */
+/** Provider names recognised by the runtime's embedding factory.
+ *
+ * NVIDIA is exposed alongside OpenAI because the runtime auto-seeds an
+ * `nvidia/nv-embedqa-e5-v5` service (see
+ * `runtimes/typescript/src/control-plane/default-services.ts`) — the
+ * picker should let an operator recreate or extend that without
+ * dropping into raw API calls. Cohere is intentionally absent here:
+ * the runtime still seeds a Cohere preset, but it requires
+ * `env:COHERE_API_KEY`, which most local installs don't have, while
+ * NVIDIA's bundled NIM auth is handled by Astra's KMS so it works out
+ * of the box. */
 export const EMBEDDING_PROVIDERS: readonly {
 	readonly value: string;
 	readonly label: string;
 }[] = [
 	{ value: "openai", label: "OpenAI" },
-	{ value: "cohere", label: "Cohere" },
+	{ value: "nvidia", label: "NVIDIA" },
 ];
 
 /** Model catalog per embedding provider — used to scope the model
@@ -65,10 +75,11 @@ export const EMBEDDING_MODELS: Readonly<
 		{ value: "text-embedding-3-large", dimension: 3072 },
 		{ value: "text-embedding-ada-002", dimension: 1536 },
 	],
-	cohere: [
-		{ value: "embed-v4.0", dimension: 1024 },
-		{ value: "embed-multilingual-v3.0", dimension: 1024 },
-		{ value: "embed-english-v3.0", dimension: 1024 },
+	nvidia: [
+		// Astra-bundled NIM. 1024-dim, multilingual, retrieval-tuned.
+		// Auth is handled by Astra's KMS so no client-side API key is
+		// needed when the workspace runs against an Astra collection.
+		{ value: "nvidia/nv-embedqa-e5-v5", dimension: 1024 },
 	],
 };
 
@@ -142,19 +153,20 @@ export const EMBEDDING_PRESETS: readonly EmbeddingPreset[] = [
 		},
 	},
 	{
-		id: "cohere-embed-v4-multilingual",
-		label: "Cohere embed-v4 (multilingual)",
+		id: "nvidia-nv-embedqa-e5-v5",
+		label: "NVIDIA nv-embedqa-e5-v5 (multilingual)",
 		description:
-			"Multilingual preset. 1024 dimensions, cosine. Astra `$vectorize`-eligible.",
+			"Astra-bundled NIM. 1024 dimensions, cosine. Multilingual, retrieval-tuned. Auth is handled by Astra's KMS so no client-side API key is needed.",
 		input: {
-			name: "cohere-embed-v4-multilingual",
-			description: "Cohere embed-v4.0 (1024-dim, cosine).",
-			provider: "cohere",
-			modelName: "embed-v4.0",
+			name: "nvidia-nv-embedqa-e5-v5",
+			description:
+				"NVIDIA nvidia/nv-embedqa-e5-v5 (1024-dim, cosine). Multilingual, retrieval-tuned.",
+			provider: "nvidia",
+			modelName: "nvidia/nv-embedqa-e5-v5",
 			embeddingDimension: 1024,
 			distanceMetric: "cosine",
-			authType: "api_key",
-			credentialRef: "env:COHERE_API_KEY",
+			authType: "none",
+			credentialRef: null,
 		},
 	},
 ];

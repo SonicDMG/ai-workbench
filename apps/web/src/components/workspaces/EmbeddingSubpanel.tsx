@@ -200,7 +200,7 @@ export function EmbeddingSubpanel({ workspace }: { workspace: string }) {
 						/>
 						<SelectWithCustom
 							label="Provider"
-							help="The embedding provider the runtime will call, such as OpenAI or Cohere. The provider controls which model names and credentials are valid."
+							help="The embedding provider the runtime will call, such as OpenAI or NVIDIA. The provider controls which model names and credentials are valid."
 							id="emb-provider"
 							value={draft.provider}
 							custom={providerCustom}

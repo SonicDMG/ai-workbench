@@ -22,7 +22,7 @@ describe("service catalog", () => {
 		// The UI doesn't import from the runtime workspace — keep the
 		// names pinned here so a drift on either side fails CI.
 		expect(EMBEDDING_PRESETS.map((p) => p.id).sort()).toEqual([
-			"cohere-embed-v4-multilingual",
+			"nvidia-nv-embedqa-e5-v5",
 			"openai-text-embedding-3-large",
 			"openai-text-embedding-3-small",
 		]);
