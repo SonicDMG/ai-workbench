@@ -47,13 +47,10 @@ const KB_NAME_REGEX = /^[A-Za-z][A-Za-z0-9_]{0,47}$/;
 const FormSchema = z
 	.object({
 		mode: z.enum(["create", "attach"]),
-		name: z
-			.string()
-			.min(1, "Name is required")
-			.regex(
-				KB_NAME_REGEX,
-				"Use letters, digits, and underscores only (start with a letter, max 48 chars)",
-			),
+		// Required in create mode (typed by the user, doubles as the
+		// collection name). In attach mode it's auto-populated from the
+		// chosen collection on submit and the field isn't shown.
+		name: z.string().optional(),
 		description: z.string().optional(),
 		embeddingServiceId: z.string().uuid("Pick an embedding service"),
 		chunkingServiceId: z.string().uuid("Pick a chunking service"),
@@ -62,12 +59,29 @@ const FormSchema = z
 		vectorCollection: z.string().optional(),
 	})
 	.superRefine((v, ctx) => {
-		if (v.mode === "attach" && !v.vectorCollection) {
-			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
-				path: ["vectorCollection"],
-				message: "Pick an existing collection to attach",
-			});
+		if (v.mode === "attach") {
+			if (!v.vectorCollection) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: ["vectorCollection"],
+					message: "Pick an existing collection to attach",
+				});
+			}
+		} else {
+			if (!v.name || v.name.length === 0) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: ["name"],
+					message: "Name is required",
+				});
+			} else if (!KB_NAME_REGEX.test(v.name)) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: ["name"],
+					message:
+						"Use letters, digits, and underscores only (start with a letter, max 48 chars)",
+				});
+			}
 		}
 	});
 type FormInput = z.infer<typeof FormSchema>;
@@ -179,8 +193,14 @@ export function CreateKnowledgeBaseDialog({
 
 	async function onSubmit(values: FormInput): Promise<void> {
 		try {
+			// In attach mode the KB takes the existing collection's name —
+			// there's no separate display name to disambiguate them.
+			const resolvedName =
+				values.mode === "attach"
+					? (values.vectorCollection ?? "")
+					: (values.name ?? "");
 			const record = await create.mutateAsync({
-				name: values.name,
+				name: resolvedName,
 				description: values.description?.trim() || null,
 				embeddingServiceId: values.embeddingServiceId,
 				chunkingServiceId: values.chunkingServiceId,
@@ -283,47 +303,11 @@ export function CreateKnowledgeBaseDialog({
 						</button>
 					</div>
 
-					<div className="flex flex-col gap-1.5">
-						<FieldLabel
-							htmlFor="kb-name"
-							help={
-								mode === "attach"
-									? "Display name for this knowledge base. Letters, digits, and underscores only — start with a letter, max 48 chars."
-									: "Doubles as the underlying Astra collection name, so it cannot be changed later. Letters, digits, and underscores only — start with a letter, max 48 chars."
-							}
-						>
-							Name
-						</FieldLabel>
-						<Input
-							id="kb-name"
-							placeholder="support_docs"
-							aria-invalid={errors.name ? true : undefined}
-							{...form.register("name")}
-						/>
-						{errors.name ? (
-							<p className="text-xs text-red-600">{errors.name.message}</p>
-						) : null}
-					</div>
-
-					<div className="flex flex-col gap-1.5">
-						<FieldLabel
-							htmlFor="kb-description"
-							help="Optional context for teammates. It does not affect ingestion or retrieval."
-						>
-							Description (optional)
-						</FieldLabel>
-						<Input
-							id="kb-description"
-							placeholder="Customer support knowledge base"
-							{...form.register("description")}
-						/>
-					</div>
-
 					{mode === "attach" ? (
 						<div className="flex flex-col gap-1.5">
 							<FieldLabel
 								htmlFor="kb-collection"
-								help="Pick a collection that already exists in this workspace's Astra database. The KB will read and write into that collection without provisioning a new one."
+								help="Pick a collection that already exists in this workspace's Astra database. The KB will read and write into that collection without provisioning a new one — its name doubles as the KB name."
 							>
 								Existing collection
 							</FieldLabel>
@@ -373,7 +357,39 @@ export function CreateKnowledgeBaseDialog({
 								</p>
 							) : null}
 						</div>
-					) : null}
+					) : (
+						<div className="flex flex-col gap-1.5">
+							<FieldLabel
+								htmlFor="kb-name"
+								help="Doubles as the underlying Astra collection name, so it cannot be changed later. Letters, digits, and underscores only — start with a letter, max 48 chars."
+							>
+								Name
+							</FieldLabel>
+							<Input
+								id="kb-name"
+								placeholder="support_docs"
+								aria-invalid={errors.name ? true : undefined}
+								{...form.register("name")}
+							/>
+							{errors.name ? (
+								<p className="text-xs text-red-600">{errors.name.message}</p>
+							) : null}
+						</div>
+					)}
+
+					<div className="flex flex-col gap-1.5">
+						<FieldLabel
+							htmlFor="kb-description"
+							help="Optional context for teammates. It does not affect ingestion or retrieval."
+						>
+							Description (optional)
+						</FieldLabel>
+						<Input
+							id="kb-description"
+							placeholder="Customer support knowledge base"
+							{...form.register("description")}
+						/>
+					</div>
 
 					<div className="flex flex-col gap-1.5">
 						<FieldLabel

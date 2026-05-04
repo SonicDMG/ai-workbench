@@ -551,7 +551,9 @@ describe("knowledge-base routes", () => {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
-				name: "attached",
+				// In attach mode KB.name doubles as the collection name —
+				// callers must pass the existing collection's name verbatim.
+				name: "preexisting",
 				embeddingServiceId: embId,
 				chunkingServiceId: chunkId,
 				attach: true,
@@ -622,15 +624,53 @@ describe("knowledge-base routes", () => {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
-				name: "nope",
+				name: "does_not_exist",
 				embeddingServiceId: embId,
 				chunkingServiceId: chunkId,
 				attach: true,
-				vectorCollection: "does-not-exist",
+				vectorCollection: "does_not_exist",
 			}),
 		});
 		expect(res.status).toBe(404);
 		expect((await json(res)).error.code).toBe("collection_not_found");
+	});
+
+	test("attach 400s when name and vectorCollection diverge", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const embId = await createService(app, ws, "embedding-services", {
+			name: "e",
+			provider: "mock",
+			modelName: "mock-embedder",
+			embeddingDimension: 4,
+		});
+		const chunkId = await createService(app, ws, "chunking-services", {
+			name: "c",
+			engine: "docling",
+		});
+		app._driver.seedAdoptable(ws, {
+			name: "external",
+			vectorDimension: 4,
+			vectorSimilarity: "cosine",
+			embedding: null,
+			lexicalEnabled: false,
+			rerankEnabled: false,
+			rerankProvider: null,
+			rerankModel: null,
+		});
+		const res = await app.request(`/api/v1/workspaces/${ws}/knowledge-bases`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "different_label",
+				embeddingServiceId: embId,
+				chunkingServiceId: chunkId,
+				attach: true,
+				vectorCollection: "external",
+			}),
+		});
+		expect(res.status).toBe(400);
+		expect((await json(res)).error.code).toBe("kb_name_must_match_collection");
 	});
 
 	test("attach 400s when collection dimension does not match embedding service", async () => {
@@ -660,7 +700,7 @@ describe("knowledge-base routes", () => {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
-				name: "mismatch",
+				name: "small_dim",
 				embeddingServiceId: embId,
 				chunkingServiceId: chunkId,
 				attach: true,

@@ -122,6 +122,17 @@ export function createKnowledgeBaseService(
 						400,
 					);
 				}
+				// KB.name doubles as the underlying collection name (owned
+				// or attached) so the two must agree. We accept name as
+				// part of the input for schema symmetry but reject any
+				// caller that tries to set them apart.
+				if (input.name !== input.vectorCollection) {
+					throw new ApiError(
+						"kb_name_must_match_collection",
+						`when \`attach\` is true, \`name\` must equal \`vectorCollection\` (got name='${input.name}', vectorCollection='${input.vectorCollection}')`,
+						400,
+					);
+				}
 				const workspace = await store.getWorkspace(workspaceId);
 				if (!workspace) {
 					throw new ControlPlaneNotFoundError("workspace", workspaceId);
