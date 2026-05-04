@@ -50,6 +50,7 @@ import {
 	freezeStringSet,
 	mergeMetadata as mergeMessageMetadata,
 } from "../shared/records.js";
+import { assertNoWorkspaceConflict } from "../shared/workspaces.js";
 import type {
 	AppendChatMessageInput,
 	ControlPlaneStore,
@@ -177,6 +178,11 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 					`workspace with id '${uid}' already exists`,
 				);
 			}
+			assertNoWorkspaceConflict(rows, {
+				name: input.name,
+				url: input.url ?? null,
+				keyspace: input.keyspace ?? null,
+			});
 			const now = nowIso();
 			const record: WorkspaceRecord = {
 				uid,
@@ -212,6 +218,11 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 				...(patch.keyspace !== undefined && { keyspace: patch.keyspace }),
 				updatedAt: nowIso(),
 			};
+			assertNoWorkspaceConflict(
+				rows,
+				{ name: next.name, url: next.url, keyspace: next.keyspace },
+				uid,
+			);
 			const nextRows = [...rows];
 			nextRows[idx] = next;
 			return { rows: nextRows, result: next };

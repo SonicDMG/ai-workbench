@@ -104,7 +104,10 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 					403,
 					"Authenticated subject is scoped to specific workspaces and cannot create new ones",
 				),
-				...errorResponse(409, "Duplicate workspaceId"),
+				...errorResponse(
+					409,
+					"Conflict — `code` is one of `conflict` (duplicate workspaceId), `workspace_name_conflict` (a workspace with this name already exists), or `workspace_database_conflict` (another workspace is already bound to this `(url, keyspace)`)",
+				),
 			},
 		}),
 		async (c) => {
@@ -178,6 +181,10 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 					description: "Updated workspace",
 				},
 				...errorResponse(404, "Workspace not found"),
+				...errorResponse(
+					409,
+					"Conflict — `code` is `workspace_name_conflict` (the patched name collides with another workspace) or `workspace_database_conflict` (the patched `(url, keyspace)` collides with another workspace's binding)",
+				),
 			},
 		}),
 		async (c) => {

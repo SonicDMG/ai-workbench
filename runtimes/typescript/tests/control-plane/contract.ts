@@ -106,6 +106,160 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
+		test("createWorkspace rejects duplicate name with workspace_name_conflict", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				await store.createWorkspace({ name: "Engineering Docs", kind: "mock" });
+				try {
+					await store.createWorkspace({
+						name: "Engineering Docs",
+						kind: "mock",
+					});
+					expect.fail("expected ControlPlaneConflictError");
+				} catch (err) {
+					expect(err).toBeInstanceOf(ControlPlaneConflictError);
+					expect((err as ControlPlaneConflictError).code).toBe(
+						"workspace_name_conflict",
+					);
+				}
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("createWorkspace rejects duplicate (url, keyspace) with workspace_database_conflict", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				await store.createWorkspace({
+					name: "alpha",
+					kind: "mock",
+					url: "https://db-X.apps.astra.datastax.com",
+					keyspace: "default_keyspace",
+				});
+				try {
+					await store.createWorkspace({
+						name: "beta",
+						kind: "mock",
+						url: "https://db-X.apps.astra.datastax.com",
+						keyspace: "default_keyspace",
+					});
+					expect.fail("expected ControlPlaneConflictError");
+				} catch (err) {
+					expect(err).toBeInstanceOf(ControlPlaneConflictError);
+					expect((err as ControlPlaneConflictError).code).toBe(
+						"workspace_database_conflict",
+					);
+				}
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("createWorkspace allows same url with a different keyspace", async () => {
+			// (url, keyspace) is the binding key — different keyspaces on
+			// the same DB endpoint are distinct namespaces and should
+			// coexist.
+			const { store, cleanup } = await factory();
+			try {
+				await store.createWorkspace({
+					name: "alpha",
+					kind: "mock",
+					url: "https://db-X.apps.astra.datastax.com",
+					keyspace: "ks_one",
+				});
+				const beta = await store.createWorkspace({
+					name: "beta",
+					kind: "mock",
+					url: "https://db-X.apps.astra.datastax.com",
+					keyspace: "ks_two",
+				});
+				expect(beta.name).toBe("beta");
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("createWorkspace allows multiple url-less workspaces (mock kind)", async () => {
+			// Workspaces without a DB binding (typical for `mock` kind)
+			// shouldn't trip the binding check on each other.
+			const { store, cleanup } = await factory();
+			try {
+				await store.createWorkspace({ name: "alpha", kind: "mock" });
+				const beta = await store.createWorkspace({
+					name: "beta",
+					kind: "mock",
+				});
+				expect(beta.name).toBe("beta");
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("updateWorkspace renaming to its own current name is fine (selfUid exclusion)", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "alpha", kind: "mock" });
+				// Patch with the same name — shouldn't conflict with itself.
+				const patched = await store.updateWorkspace(ws.uid, { name: "alpha" });
+				expect(patched.name).toBe("alpha");
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("updateWorkspace rejects renaming to another workspace's name", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				await store.createWorkspace({ name: "alpha", kind: "mock" });
+				const beta = await store.createWorkspace({
+					name: "beta",
+					kind: "mock",
+				});
+				try {
+					await store.updateWorkspace(beta.uid, { name: "alpha" });
+					expect.fail("expected ControlPlaneConflictError");
+				} catch (err) {
+					expect(err).toBeInstanceOf(ControlPlaneConflictError);
+					expect((err as ControlPlaneConflictError).code).toBe(
+						"workspace_name_conflict",
+					);
+				}
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("updateWorkspace rejects re-pointing to another workspace's (url, keyspace)", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				await store.createWorkspace({
+					name: "alpha",
+					kind: "mock",
+					url: "https://db-X.apps.astra.datastax.com",
+					keyspace: "default_keyspace",
+				});
+				const beta = await store.createWorkspace({
+					name: "beta",
+					kind: "mock",
+					url: "https://db-Y.apps.astra.datastax.com",
+					keyspace: "default_keyspace",
+				});
+				try {
+					await store.updateWorkspace(beta.uid, {
+						url: "https://db-X.apps.astra.datastax.com",
+					});
+					expect.fail("expected ControlPlaneConflictError");
+				} catch (err) {
+					expect(err).toBeInstanceOf(ControlPlaneConflictError);
+					expect((err as ControlPlaneConflictError).code).toBe(
+						"workspace_database_conflict",
+					);
+				}
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("updateWorkspace applies the patch and bumps updatedAt", async () => {
 			const { store, cleanup } = await factory();
 			try {

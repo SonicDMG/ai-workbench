@@ -75,6 +75,7 @@ import {
 	freezeStringSet,
 	mergeMetadata as mergeMessageMetadata,
 } from "../shared/records.js";
+import { assertNoWorkspaceConflict } from "../shared/workspaces.js";
 import type {
 	AppendChatMessageInput,
 	ControlPlaneStore,
@@ -143,6 +144,18 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 				`workspace with id '${uid}' already exists`,
 			);
 		}
+		// List-then-check is racy under concurrent createWorkspace, but
+		// workspace creation is admin-driven and rare; the cost of a
+		// CQL UNIQUE on a non-PK column would be far higher than the
+		// occasional race we'd settle by retrying on the duplicate row.
+		const existing = (await this.tables.workspaces.find({}).toArray()).map(
+			workspaceFromRow,
+		);
+		assertNoWorkspaceConflict(existing, {
+			name: input.name,
+			url: input.url ?? null,
+			keyspace: input.keyspace ?? null,
+		});
 		const now = nowIso();
 		const record: WorkspaceRecord = {
 			uid,
@@ -175,6 +188,14 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			...(patch.keyspace !== undefined && { keyspace: patch.keyspace }),
 			updatedAt: nowIso(),
 		};
+		const allRows = (await this.tables.workspaces.find({}).toArray()).map(
+			workspaceFromRow,
+		);
+		assertNoWorkspaceConflict(
+			allRows,
+			{ name: next.name, url: next.url, keyspace: next.keyspace },
+			uid,
+		);
 		const nextRow = workspaceToRow(next);
 		const { uid: _pk, ...fields } = nextRow;
 		await this.tables.workspaces.updateOne({ uid }, { $set: fields });

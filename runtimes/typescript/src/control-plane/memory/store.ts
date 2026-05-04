@@ -42,6 +42,7 @@ import {
 	freezeStringSet,
 	mergeMetadata,
 } from "../shared/records.js";
+import { assertNoWorkspaceConflict } from "../shared/workspaces.js";
 import type {
 	AppendChatMessageInput,
 	ControlPlaneStore,
@@ -155,6 +156,11 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 				`workspace with id '${uid}' already exists`,
 			);
 		}
+		assertNoWorkspaceConflict([...this.workspaces.values()], {
+			name: input.name,
+			url: input.url ?? null,
+			keyspace: input.keyspace ?? null,
+		});
 		const now = nowIso();
 		const record: WorkspaceRecord = {
 			uid,
@@ -188,6 +194,11 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 			...(patch.keyspace !== undefined && { keyspace: patch.keyspace }),
 			updatedAt: nowIso(),
 		};
+		assertNoWorkspaceConflict(
+			[...this.workspaces.values()],
+			{ name: next.name, url: next.url, keyspace: next.keyspace },
+			uid,
+		);
 		this.workspaces.set(uid, next);
 		return next;
 	}
