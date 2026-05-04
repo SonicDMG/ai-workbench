@@ -30,6 +30,7 @@ type OpenApiTestOperation = {
 function makeApp(authOpts?: {
 	mode?: AuthMode;
 	anonymousPolicy?: AnonymousPolicy;
+	astraCliInventoryFn?: Parameters<typeof createApp>[0]["astraCliInventoryFn"];
 }): {
 	app: ReturnType<typeof createApp>;
 	store: ControlPlaneStore;
@@ -46,7 +47,14 @@ function makeApp(authOpts?: {
 		verifiers: mode === "apiKey" ? [new ApiKeyVerifier({ store })] : [],
 	});
 	const embedders = makeFakeEmbedderFactory();
-	const app = createApp({ store, drivers, secrets, auth, embedders });
+	const app = createApp({
+		store,
+		drivers,
+		secrets,
+		auth,
+		embedders,
+		astraCliInventoryFn: authOpts?.astraCliInventoryFn,
+	});
 	return { app, store, driver };
 }
 
@@ -142,6 +150,56 @@ describe("operational routes", () => {
 		});
 		expect(JSON.stringify(body)).not.toContain("AstraCS:");
 		expect(JSON.stringify(body)).not.toContain("token");
+	});
+
+	test("GET /astra-cli/profiles surfaces the inventory the runtime was given", async () => {
+		const { app } = makeApp({
+			astraCliInventoryFn: () => ({
+				available: true,
+				profiles: [
+					{
+						name: "alpha",
+						env: "PROD",
+						isUsedAsDefault: true,
+						databases: [
+							{
+								id: "11111111-1111-1111-1111-111111111111",
+								name: "alpha-db",
+								region: "us-east-2",
+								endpoint:
+									"https://11111111-1111-1111-1111-111111111111-us-east-2.apps.astra.datastax.com",
+								keyspace: "default_keyspace",
+							},
+						],
+					},
+				],
+			}),
+		});
+		const res = await app.request("/astra-cli/profiles");
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.available).toBe(true);
+		expect(body.profiles).toHaveLength(1);
+		expect(body.profiles[0]).toMatchObject({
+			name: "alpha",
+			isUsedAsDefault: true,
+		});
+		// Token-redacted by construction.
+		expect(JSON.stringify(body)).not.toContain("token");
+		expect(JSON.stringify(body)).not.toContain("AstraCS:");
+	});
+
+	test("GET /astra-cli/profiles passes the available:false envelope through", async () => {
+		const { app } = makeApp({
+			astraCliInventoryFn: () => ({
+				available: false,
+				reason: "binary-not-found",
+			}),
+		});
+		const res = await app.request("/astra-cli/profiles");
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body).toEqual({ available: false, reason: "binary-not-found" });
 	});
 
 	test("GET /features defaults mcp.enabled to false (and baseUrl null) when no mcpConfig is passed", async () => {

@@ -76,7 +76,7 @@ The runtime applies each rule in order; first match wins.
 | `ASTRA_DB_API_ENDPOINT` | Same precedence as the token. |
 | `ASTRA_PROFILE` | Skip the profile prompt by selecting an `astra-cli` profile by name. Same variable astra-cli itself respects. |
 | `ASTRA_DB` | Skip the database prompt by selecting a database by name or id. |
-| `WORKBENCH_DISABLE_ASTRA_CLI` | `1`/`true` → never consult the CLI. |
+| `WORKBENCH_DISABLE_ASTRA_CLI` | `1`/`true` → never consult the CLI. Disables both boot-time auto-detection and the per-workspace `astra-cli:` secret resolver. |
 
 ## What gets shown
 
@@ -108,23 +108,33 @@ keyspace.
 
 ### Onboarding page
 
-The web UI exposes the same detection on the workspace onboarding
-page. After picking the **Astra** (or **HCD**) backend, the user
-sees a green confirmation card showing the resolved profile,
-database, region, endpoint, and keyspace. The workspace `name` and
-`keyspace` fields below it are pre-filled from the detected
-database, so the happy path is one click — `Create workspace`. The
-existing `env:ASTRA_DB_APPLICATION_TOKEN` and
-`env:ASTRA_DB_API_ENDPOINT` references already point at the
-auto-injected values, so no copy-paste is required.
+The web UI exposes the inventory on the workspace onboarding page.
+After picking the **Astra** (or **HCD**) backend, the user sees a
+green picker showing every available profile and the databases each
+can see. The first selection auto-populates from the default profile
++ its first database; the user can switch either one at any time.
 
-If `astra-cli` wasn't consulted (rules 1–4 above), the card is
-hidden and the form falls back to its previous unprefilled state.
+When the picker is showing, the form's `credentialsRef.token` and
+`url` are filled with `astra-cli:<profile>:<dbId>:<token|endpoint>`
+refs that the runtime resolves on demand at use-time — see the
+[`astra-cli` secret resolver](#per-workspace-astra-cli-secret-refs)
+section below.
 
-### Discovery endpoint
+If the inventory endpoint can't be reached (older runtime, network
+blip), the page falls back to the read-only confirmation card built
+on `GET /astra-cli` — the boot-time pick — and the form keeps its
+legacy `env:ASTRA_DB_APPLICATION_TOKEN` / `env:ASTRA_DB_API_ENDPOINT`
+defaults.
 
-The runtime exposes the resolved info (token-redacted) on
-`GET /astra-cli`. This is what the onboarding card reads. Schema:
+### Discovery endpoints
+
+Two operational endpoints surface astra-cli state, both auth-free
+(same precedent as `/healthz` / `/version`) and both token-redacted:
+
+#### `GET /astra-cli` — boot-time pick
+
+The single profile + database the runtime auto-selected at startup.
+Schema:
 
 ```json
 {
@@ -146,9 +156,75 @@ When detection didn't run or skipped, the response is:
 { "detected": false, "reason": "binary-not-found" }
 ```
 
-The endpoint is open (no auth) — same as `/healthz` / `/version` —
-so the onboarding page can read it before the user has any
-workspaces or auth set up. Tokens are never part of the response.
+#### `GET /astra-cli/profiles` — full inventory
+
+Every configured profile and the databases each can see. Drives the
+onboarding picker. Schema:
+
+```json
+{
+  "available": true,
+  "profiles": [
+    {
+      "name": "workbench-dev",
+      "env": "PROD",
+      "isUsedAsDefault": true,
+      "databases": [
+        {
+          "id": "00000000-0000-0000-0000-000000000000",
+          "name": "mydb",
+          "region": "us-east-2",
+          "endpoint": "https://00000000-0000-0000-0000-000000000000-us-east-2.apps.astra.datastax.com",
+          "keyspace": "default_keyspace"
+        }
+      ]
+    }
+  ]
+}
+```
+
+When the CLI isn't installed, disabled, or returns an error:
+
+```json
+{ "available": false, "reason": "binary-not-found" }
+```
+
+A failing per-profile listing surfaces as that profile with an empty
+`databases` array — the rest of the inventory still renders so the
+user can pick a working profile.
+
+## Per-workspace `astra-cli` secret refs
+
+Workspace `credentialsRef` values can carry the `astra-cli:` prefix
+to source a token + endpoint from a specific CLI profile + database
+on demand:
+
+```
+astra-cli:<profile>:<dbId>:token
+astra-cli:<profile>:<dbId>:endpoint
+```
+
+- `profile` — name of an `astra config list` entry
+- `dbId` — UUID-shaped database id from `astra db list` (names
+  are mutable; ids aren't, so workspace records bind to the
+  immutable identifier)
+- `token` resolves to the profile's API token; `endpoint` resolves
+  to `https://<dbId>-<region>.apps.astra.datastax.com`
+
+The resolver caches profile + database listings for the process
+lifetime, so a workspace creating ten knowledge bases doesn't
+re-shell out ten times. Errors aren't cached — a transient CLI
+failure recovers on the next attempt.
+
+When the picker is open in the onboarding UI, this is the ref scheme
+it generates. Operators editing `workbench.yaml` directly can also
+write these refs by hand for `seedWorkspaces`. The same paths work
+for any field that takes a `SecretRef`.
+
+When the `astra` binary isn't on `PATH`, every `astra-cli:` resolve
+fails with an actionable error pointing the operator at
+[https://github.com/datastax/astra-cli](https://github.com/datastax/astra-cli)
+or suggesting they replace the ref with a literal `env:` token.
 
 ## Troubleshooting
 

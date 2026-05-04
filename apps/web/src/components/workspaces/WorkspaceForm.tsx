@@ -46,12 +46,19 @@ const DEFAULT_ENDPOINT: Record<WorkspaceKind, string> = {
 /**
  * Optional defaults the parent can push into create-mode fields. The
  * onboarding wizard uses this to prefill `name` + `keyspace` from the
- * `astra-cli` auto-detection result; pass a stable `key` on the form
- * to force a clean remount when these values change.
+ * `astra-cli` auto-detection result, and `credentials` + `url` when
+ * the user picks a profile + database in `AstraCliPicker` (which
+ * emits `astra-cli:<profile>:<dbId>:<token|endpoint>` refs that
+ * resolve on demand at use-time).
+ *
+ * Pass a stable `key` on the form to force a clean remount when these
+ * values change.
  */
 export interface WorkspaceFormPrefill {
 	readonly name?: string;
 	readonly keyspace?: string;
+	readonly url?: string;
+	readonly credentials?: Record<string, string>;
 }
 
 /**
@@ -94,9 +101,11 @@ export function WorkspaceForm(
 			? {
 					name: props.prefill?.name ?? "",
 					kind,
-					url: DEFAULT_ENDPOINT[kind],
+					url: props.prefill?.url ?? DEFAULT_ENDPOINT[kind],
 					keyspace: props.prefill?.keyspace ?? "",
-					credentials: { ...DEFAULT_CREDENTIALS[kind] },
+					credentials: props.prefill?.credentials
+						? { ...props.prefill.credentials }
+						: { ...DEFAULT_CREDENTIALS[kind] },
 				}
 			: {
 					name: props.workspace.name,

@@ -1,5 +1,9 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
-import type { AstraCliInfo } from "../config/astra-cli.js";
+import {
+	type AstraCliInfo,
+	type AstraCliInventory,
+	discoverAstraCliInventory,
+} from "../config/astra-cli.js";
 import type { McpConfig } from "../config/schema.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import { errorEnvelope } from "../lib/errors.js";
@@ -7,6 +11,7 @@ import { makeOpenApi } from "../lib/openapi.js";
 import type { AppEnv } from "../lib/types.js";
 import {
 	AstraCliInfoSchema,
+	AstraCliInventorySchema,
 	BannerSchema,
 	ErrorEnvelopeSchema,
 	FeaturesSchema,
@@ -32,6 +37,9 @@ export function operationalRoutes(
 	readiness?: ReadinessSignal,
 	astraCli: AstraCliInfo | null = null,
 	mcpConfig: McpConfig | null = null,
+	// Test seam — defaults to the real CLI shellout. Tests inject a fake
+	// to avoid depending on whether `astra` is on the runner's PATH.
+	inventoryFn: () => AstraCliInventory = discoverAstraCliInventory,
 ): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
 
@@ -134,6 +142,27 @@ export function operationalRoutes(
 				reason: "binary-not-found",
 			};
 			return c.json(body, 200);
+		},
+	);
+
+	app.openapi(
+		createRoute({
+			method: "get",
+			path: "/astra-cli/profiles",
+			tags: ["operational"],
+			summary: "astra-cli inventory (profiles + their databases)",
+			description:
+				"Lists every configured `astra` CLI profile along with the databases each can see. Tokens are never exposed. The web UI uses this to drive a profile + database picker in workspace onboarding so the user can choose a target without restarting the runtime with `ASTRA_PROFILE=…`. Workspaces created from the picker get a `credentialsRef` of the form `astra-cli:<profile>:<dbId>:<token|endpoint>` which resolves on demand at use-time.",
+			responses: {
+				200: {
+					content: { "application/json": { schema: AstraCliInventorySchema } },
+					description: "astra-cli inventory or a degraded-state envelope",
+				},
+			},
+		}),
+		(c) => {
+			const inventory: AstraCliInventory = inventoryFn();
+			return c.json(inventory, 200);
 		},
 	);
 

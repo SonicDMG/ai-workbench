@@ -12,9 +12,17 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { AstraCliDetectionCard } from "@/components/workspaces/AstraCliDetectionCard";
+import {
+	AstraCliPicker,
+	type AstraCliSelection,
+} from "@/components/workspaces/AstraCliPicker";
 import { KindPicker } from "@/components/workspaces/KindPicker";
-import { WorkspaceForm } from "@/components/workspaces/WorkspaceForm";
+import {
+	WorkspaceForm,
+	type WorkspaceFormPrefill,
+} from "@/components/workspaces/WorkspaceForm";
 import { useAstraCliInfo } from "@/hooks/useAstraCliInfo";
+import { useAstraCliInventory } from "@/hooks/useAstraCliInventory";
 import { useCreateWorkspace, useWorkspaces } from "@/hooks/useWorkspaces";
 import { api, formatApiError } from "@/lib/api";
 import type { WorkspaceKind } from "@/lib/schemas";
@@ -26,16 +34,54 @@ export function OnboardingPage() {
 	const navigate = useNavigate();
 	const { data: workspaces } = useWorkspaces();
 	const { data: astraCli } = useAstraCliInfo();
+	const { data: astraCliInventory } = useAstraCliInventory();
 	const create = useCreateWorkspace();
 	const [step, setStep] = useState<Step>("kind");
 	const [kind, setKind] = useState<WorkspaceKind | null>(null);
+	const [astraCliSelection, setAstraCliSelection] =
+		useState<AstraCliSelection | null>(null);
 	const [checkingConnection, setCheckingConnection] = useState(false);
 
 	const isFirstRun = !workspaces || workspaces.length === 0;
+	const astraLike = kind === "astra" || kind === "hcd";
+
+	// Prefer the live picker (multiple profiles available) over the
+	// boot-time detection card whenever the inventory endpoint reports
+	// `available: true`. Otherwise fall back to the read-only banner.
+	const inventoryAvailable = astraLike && astraCliInventory?.available === true;
 	const astraCliDetected =
-		astraCli?.detected === true && (kind === "astra" || kind === "hcd")
+		!inventoryAvailable && astraCli?.detected === true && astraLike
 			? astraCli
 			: null;
+
+	// Translate the picker selection into a WorkspaceForm prefill carrying
+	// `astra-cli:<profile>:<dbId>:<token|endpoint>` refs. The form's
+	// `key` is derived from the selection so a different pick remounts
+	// the form with fresh defaults.
+	const prefillFromPicker: WorkspaceFormPrefill | undefined =
+		inventoryAvailable && astraCliSelection
+			? {
+					name: astraCliSelection.database.name,
+					keyspace: astraCliSelection.database.keyspace ?? undefined,
+					url: `astra-cli:${astraCliSelection.profile}:${astraCliSelection.database.id}:endpoint`,
+					credentials: {
+						token: `astra-cli:${astraCliSelection.profile}:${astraCliSelection.database.id}:token`,
+					},
+				}
+			: undefined;
+	const prefillFromDetection: WorkspaceFormPrefill | undefined =
+		astraCliDetected
+			? {
+					name: astraCliDetected.database.name,
+					keyspace: astraCliDetected.database.keyspace ?? undefined,
+				}
+			: undefined;
+	const formPrefill = prefillFromPicker ?? prefillFromDetection;
+	const formKey = prefillFromPicker
+		? `picker-${astraCliSelection?.profile}-${astraCliSelection?.database.id}`
+		: astraCliDetected
+			? `prefill-${astraCliDetected.database.id}`
+			: "no-prefill";
 
 	return (
 		<div className="mx-auto max-w-2xl">
@@ -124,7 +170,13 @@ export function OnboardingPage() {
 
 			{step === "details" && kind ? (
 				<>
-					{astraCliDetected ? (
+					{inventoryAvailable && astraCliInventory ? (
+						<AstraCliPicker
+							inventory={astraCliInventory}
+							value={astraCliSelection}
+							onChange={setAstraCliSelection}
+						/>
+					) : astraCliDetected ? (
 						<AstraCliDetectionCard info={astraCliDetected} />
 					) : null}
 					<Card>
@@ -133,7 +185,14 @@ export function OnboardingPage() {
 							<CardDescription>
 								{kind === "mock" ? (
 									"Mock workspaces run entirely in memory — no credentials needed."
-								) : kind === "astra" || kind === "hcd" ? (
+								) : astraLike && prefillFromPicker ? (
+									<>
+										Credentials use the{" "}
+										<code className="font-mono">astra-cli:</code> resolver —
+										they're fetched on demand from the profile + database you
+										picked above. No restart, no env vars to copy.
+									</>
+								) : astraLike ? (
 									<>
 										Credentials are stored as{" "}
 										<code className="font-mono">provider:path</code> references,
@@ -155,20 +214,8 @@ export function OnboardingPage() {
 							<WorkspaceForm
 								mode="create"
 								kind={kind}
-								key={
-									astraCliDetected
-										? `prefill-${astraCliDetected.database.id}`
-										: "no-prefill"
-								}
-								prefill={
-									astraCliDetected
-										? {
-												name: astraCliDetected.database.name,
-												keyspace:
-													astraCliDetected.database.keyspace ?? undefined,
-											}
-										: undefined
-								}
+								key={formKey}
+								prefill={formPrefill}
 								submitting={create.isPending || checkingConnection}
 								submitLabel="Create workspace"
 								onCancel={() => setStep("kind")}

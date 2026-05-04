@@ -14,8 +14,12 @@ vi.mock("@/hooks/useWorkspaces", () => ({
 vi.mock("@/hooks/useAstraCliInfo", () => ({
 	useAstraCliInfo: vi.fn(),
 }));
+vi.mock("@/hooks/useAstraCliInventory", () => ({
+	useAstraCliInventory: vi.fn(),
+}));
 
 import { useAstraCliInfo } from "@/hooks/useAstraCliInfo";
+import { useAstraCliInventory } from "@/hooks/useAstraCliInventory";
 import { useCreateWorkspace, useWorkspaces } from "@/hooks/useWorkspaces";
 import { OnboardingPage } from "./OnboardingPage";
 
@@ -23,6 +27,7 @@ afterEach(() => {
 	vi.mocked(useWorkspaces).mockReset();
 	vi.mocked(useCreateWorkspace).mockReset();
 	vi.mocked(useAstraCliInfo).mockReset();
+	vi.mocked(useAstraCliInventory).mockReset();
 });
 
 function setupHooks(workspaces: unknown[]) {
@@ -42,6 +47,9 @@ function setupHooks(workspaces: unknown[]) {
 	vi.mocked(useAstraCliInfo).mockReturnValue({
 		data: null,
 	} as unknown as ReturnType<typeof useAstraCliInfo>);
+	vi.mocked(useAstraCliInventory).mockReturnValue({
+		data: null,
+	} as unknown as ReturnType<typeof useAstraCliInventory>);
 }
 
 describe("OnboardingPage", () => {

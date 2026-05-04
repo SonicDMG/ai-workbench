@@ -486,6 +486,93 @@ function defaultRunner(binary: string): AstraCliRunner {
 	return (args) => spawnSync(binary, [...args, "--no-spinner"], opts);
 }
 
+/**
+ * Public shape of one profile in {@link discoverAstraCliInventory}.
+ * Mirrors {@link AstraCliProfile} but drops the token (the discovery
+ * endpoint never serializes secrets) and folds in the profile's
+ * visible databases.
+ */
+export interface AstraCliProfileEntry {
+	readonly name: string;
+	readonly env: string;
+	readonly isUsedAsDefault: boolean;
+	// Mutable array on purpose — the OpenAPI/Hono response type is
+	// derived from `AstraCliInventorySchema` and doesn't accept
+	// `readonly` here. The objects themselves are still readonly.
+	readonly databases: AstraCliDatabase[];
+}
+
+export type AstraCliInventory =
+	| { readonly available: true; readonly profiles: AstraCliProfileEntry[] }
+	| {
+			readonly available: false;
+			readonly reason: AstraCliSkipReason;
+			readonly stderr?: string;
+	  };
+
+export interface DiscoverAstraCliInventoryOptions {
+	readonly env?: NodeJS.ProcessEnv;
+	readonly binary?: string;
+	readonly runner?: AstraCliRunner;
+}
+
+/**
+ * List every astra-cli profile the developer has configured along
+ * with the databases each profile can see. Token-redacted by
+ * construction — `AstraCliProfileEntry` doesn't carry the token field.
+ *
+ * Used by `GET /astra-cli/profiles` to drive the workspace onboarding
+ * picker so the user can pick a profile + database in the UI without
+ * dropping to a terminal.
+ *
+ * Returns `{ available: false, reason: ... }` rather than throwing on
+ * the well-known degraded states (no binary, disabled via env var,
+ * CLI returned an error). The route layer maps these to a 200
+ * response with `available: false` so the UI can render a graceful
+ * fallback.
+ */
+export function discoverAstraCliInventory(
+	options: DiscoverAstraCliInventoryOptions = {},
+): AstraCliInventory {
+	const env = options.env ?? process.env;
+	if (env[DISABLE_ENV] === "1" || env[DISABLE_ENV] === "true") {
+		return { available: false, reason: "disabled" };
+	}
+	const binary = options.binary ?? ASTRA_BIN_DEFAULT;
+	const runner = options.runner ?? defaultRunner(binary);
+	if (!binaryAvailable(runner)) {
+		return { available: false, reason: "binary-not-found" };
+	}
+	const profilesResult = listProfiles(runner);
+	if (profilesResult.status !== "ok") {
+		return {
+			available: false,
+			reason: "cli-error",
+			stderr: profilesResult.stderr,
+		};
+	}
+	const profiles = profilesResult.data;
+	if (profiles.length === 0) {
+		return { available: false, reason: "no-profiles" };
+	}
+	const entries: AstraCliProfileEntry[] = [];
+	for (const profile of profiles) {
+		const databasesResult = listDatabases(runner, profile.name);
+		// A failing per-profile listing shouldn't poison the whole
+		// inventory — surface that profile with an empty `databases` list
+		// so the UI can still show the others. The caller can re-fetch.
+		const databases =
+			databasesResult.status === "ok" ? databasesResult.data : [];
+		entries.push({
+			name: profile.name,
+			env: profile.env,
+			isUsedAsDefault: profile.isUsedAsDefault,
+			databases,
+		});
+	}
+	return { available: true, profiles: entries };
+}
+
 function defaultPrompt(): AstraCliPrompt {
 	return {
 		async choose<T>(

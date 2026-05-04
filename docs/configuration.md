@@ -418,6 +418,7 @@ Providers available today:
 |---|---|---|
 | `env` | `env:VAR_NAME` | Reads `process.env.VAR_NAME`. Errors if unset or empty. |
 | `file` | `file:/abs/path` | Reads the file and trims trailing whitespace. |
+| `astra-cli` | `astra-cli:<profile>:<dbId>:<token\|endpoint>` | Sources the token / Data API endpoint from a specific [`astra` CLI](astra-cli.md) profile + database. Lets different workspaces target different Astra databases without restarting. Cached for the process lifetime; errors are not cached. |
 
 Future providers (Vault, AWS SM, etc.) plug into the same
 `SecretProvider` interface. See

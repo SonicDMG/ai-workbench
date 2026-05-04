@@ -4,6 +4,7 @@ import {
 	type AstraCliPrompt,
 	type AstraCliRunner,
 	buildDataApiEndpoint,
+	discoverAstraCliInventory,
 	listDatabases,
 	listProfiles,
 	loadAstraFromCli,
@@ -496,5 +497,128 @@ describe("loadAstraFromCli", () => {
 			interactive: false,
 		});
 		expect(result).toEqual({ status: "skipped", reason: "no-databases" });
+	});
+});
+
+describe("discoverAstraCliInventory", () => {
+	test("returns every profile + its databases, token-redacted", () => {
+		const profilesJson = JSON.stringify({
+			data: [
+				{ name: "alpha", env: "PROD", token: FAKE_TOKEN },
+				{
+					name: "beta",
+					env: "PROD",
+					token: FAKE_TOKEN_2,
+					isUsedAsDefault: true,
+				},
+			],
+		});
+		const alphaDbs = JSON.stringify({
+			data: [
+				{
+					id: "11111111-1111-1111-1111-111111111111",
+					status: "ACTIVE",
+					info: { name: "alpha-db", region: "us-east-2" },
+				},
+			],
+		});
+		const betaDbs = JSON.stringify({
+			data: [
+				{
+					id: "22222222-2222-2222-2222-222222222222",
+					status: "ACTIVE",
+					info: { name: "beta-db", region: "us-west-2" },
+				},
+			],
+		});
+		const runner: AstraCliRunner = (args) => {
+			if (args[0] === "--version") return ok("astra/1.0.0");
+			if (args[0] === "config" && args[1] === "list") return ok(profilesJson);
+			if (args[0] === "db" && args[1] === "list") {
+				const idx = args.indexOf("-p");
+				const profile = idx >= 0 ? args[idx + 1] : "";
+				if (profile === "alpha") return ok(alphaDbs);
+				if (profile === "beta") return ok(betaDbs);
+			}
+			return fail("unexpected args");
+		};
+		const result = discoverAstraCliInventory({ env: {}, runner });
+		expect(result.available).toBe(true);
+		if (!result.available) throw new Error("unreachable");
+		expect(result.profiles).toHaveLength(2);
+		expect(result.profiles[0]).toMatchObject({
+			name: "alpha",
+			env: "PROD",
+			isUsedAsDefault: false,
+		});
+		expect(result.profiles[1]).toMatchObject({
+			name: "beta",
+			isUsedAsDefault: true,
+		});
+		expect(result.profiles[0]?.databases?.[0]?.endpoint).toContain(
+			"11111111-1111-1111-1111-111111111111-us-east-2",
+		);
+		// Tokens must never appear in the inventory payload.
+		const serialized = JSON.stringify(result);
+		expect(serialized).not.toContain(FAKE_TOKEN);
+		expect(serialized).not.toContain(FAKE_TOKEN_2);
+	});
+
+	test("returns available:false reason:binary-not-found when astra is missing", () => {
+		const runner: AstraCliRunner = () => fail("not found", 127);
+		const result = discoverAstraCliInventory({ env: {}, runner });
+		expect(result).toEqual({ available: false, reason: "binary-not-found" });
+	});
+
+	test("returns available:false reason:disabled when WORKBENCH_DISABLE_ASTRA_CLI=1", () => {
+		const runner: AstraCliRunner = () => ok("");
+		const result = discoverAstraCliInventory({
+			env: { WORKBENCH_DISABLE_ASTRA_CLI: "1" },
+			runner,
+		});
+		expect(result).toEqual({ available: false, reason: "disabled" });
+	});
+
+	test("returns available:false reason:no-profiles when CLI returns empty list", () => {
+		const runner: AstraCliRunner = (args) => {
+			if (args[0] === "--version") return ok("astra/1.0.0");
+			return ok(JSON.stringify({ data: [] }));
+		};
+		const result = discoverAstraCliInventory({ env: {}, runner });
+		expect(result).toEqual({ available: false, reason: "no-profiles" });
+	});
+
+	test("a per-profile listing failure does not poison the rest of the inventory", () => {
+		const profilesJson = JSON.stringify({
+			data: [
+				{ name: "good", env: "PROD", token: FAKE_TOKEN },
+				{ name: "broken", env: "PROD", token: FAKE_TOKEN_2 },
+			],
+		});
+		const goodDbs = JSON.stringify({
+			data: [
+				{
+					id: "11111111-1111-1111-1111-111111111111",
+					status: "ACTIVE",
+					info: { name: "good-db", region: "us-east-2" },
+				},
+			],
+		});
+		const runner: AstraCliRunner = (args) => {
+			if (args[0] === "--version") return ok("astra/1.0.0");
+			if (args[0] === "config" && args[1] === "list") return ok(profilesJson);
+			const idx = args.indexOf("-p");
+			const profile = idx >= 0 ? args[idx + 1] : "";
+			if (profile === "good") return ok(goodDbs);
+			return fail("token expired for broken profile");
+		};
+		const result = discoverAstraCliInventory({ env: {}, runner });
+		expect(result.available).toBe(true);
+		if (!result.available) throw new Error("unreachable");
+		expect(result.profiles).toHaveLength(2);
+		expect(result.profiles[0]?.databases).toHaveLength(1);
+		// "broken" still appears in the listing — just with no databases.
+		expect(result.profiles[1]?.name).toBe("broken");
+		expect(result.profiles[1]?.databases).toEqual([]);
 	});
 });

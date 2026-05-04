@@ -703,6 +703,35 @@ export const AstraCliInfoSchema = z.discriminatedUnion("detected", [
 ]);
 export type AstraCliInfo = z.infer<typeof AstraCliInfoSchema>;
 
+const AstraCliDatabaseInfoSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	region: z.string(),
+	endpoint: z.string().url(),
+	keyspace: z.string().nullable(),
+});
+export type AstraCliDatabaseInfo = z.infer<typeof AstraCliDatabaseInfoSchema>;
+
+const AstraCliProfileEntrySchema = z.object({
+	name: z.string(),
+	env: z.string(),
+	isUsedAsDefault: z.boolean(),
+	databases: z.array(AstraCliDatabaseInfoSchema),
+});
+export type AstraCliProfileEntry = z.infer<typeof AstraCliProfileEntrySchema>;
+
+export const AstraCliInventorySchema = z.discriminatedUnion("available", [
+	z.object({
+		available: z.literal(true),
+		profiles: z.array(AstraCliProfileEntrySchema),
+	}),
+	z.object({
+		available: z.literal(false),
+		reason: z.string(),
+	}),
+]);
+export type AstraCliInventory = z.infer<typeof AstraCliInventorySchema>;
+
 /* ---------------- runtime feature flags ---------------- */
 
 export const FeaturesSchema = z.object({

@@ -10,6 +10,8 @@ import {
 	type ApiKeyRecord,
 	type AstraCliInfo,
 	AstraCliInfoSchema,
+	type AstraCliInventory,
+	AstraCliInventorySchema,
 	type ChatMessage,
 	ChatMessagePageSchema,
 	ChunkingServicePageSchema,
@@ -211,6 +213,28 @@ export const api = {
 			if (!res.ok) return null;
 			const body = (await res.json()) as unknown;
 			const parsed = AstraCliInfoSchema.safeParse(body);
+			return parsed.success ? parsed.data : null;
+		} catch {
+			return null;
+		}
+	},
+
+	/**
+	 * Full astra-cli inventory (every profile + the databases each can
+	 * see, token-redacted). Drives the workspace onboarding picker so
+	 * the user can choose a target profile + database in the UI rather
+	 * than restarting with `ASTRA_PROFILE=…`. Same auth-free contract
+	 * as `getAstraCliInfo`.
+	 */
+	getAstraCliInventory: async (): Promise<AstraCliInventory | null> => {
+		try {
+			const res = await fetch("/astra-cli/profiles", {
+				credentials: "include",
+				headers: { accept: "application/json" },
+			});
+			if (!res.ok) return null;
+			const body = (await res.json()) as unknown;
+			const parsed = AstraCliInventorySchema.safeParse(body);
 			return parsed.success ? parsed.data : null;
 		} catch {
 			return null;

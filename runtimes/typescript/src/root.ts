@@ -26,6 +26,7 @@ import { JobOrphanSweeper } from "./jobs/sweeper.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
 import { generateReplicaId } from "./lib/replica-id.js";
 import { setEndpointEgressPolicy } from "./openapi/schemas.js";
+import { AstraCliSecretProvider } from "./secrets/astra-cli.js";
 import { EnvSecretProvider } from "./secrets/env.js";
 import { FileSecretProvider } from "./secrets/file.js";
 import { assertConfigSecretsResolvable } from "./secrets/preflight.js";
@@ -89,6 +90,11 @@ async function main(): Promise<void> {
 	const secrets = new SecretResolver({
 		env: new EnvSecretProvider(),
 		file: new FileSecretProvider(),
+		// `astra-cli:<profile>:<dbId>:<token|endpoint>` — workspace creds
+		// can name a specific astra-cli profile + database directly,
+		// independent of whatever the boot-time picker chose for the
+		// control plane. See `secrets/astra-cli.ts`.
+		"astra-cli": new AstraCliSecretProvider(),
 	});
 
 	// Fail-fast on missing required secrets (Astra control-plane token,

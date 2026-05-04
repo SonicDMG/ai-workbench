@@ -124,6 +124,12 @@ export interface AppOptions {
 	 */
 	readonly astraCli?: AstraCliInfo | null;
 	/**
+	 * Override for `GET /astra-cli/profiles`. Defaults to the live
+	 * `discoverAstraCliInventory()` shellout. Tests pass a fake to
+	 * decouple from the host's CLI installation.
+	 */
+	readonly astraCliInventoryFn?: () => import("./config/astra-cli.js").AstraCliInventory;
+	/**
 	 * Chat-completion service used by the agent send / stream surface
 	 * (`/api/v1/workspaces/{w}/agents/{a}/conversations/{c}/messages`).
 	 * `null` (or undefined) means the runtime was booted without a
@@ -344,6 +350,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			opts.readiness,
 			opts.astraCli ?? null,
 			opts.mcpConfig ?? null,
+			opts.astraCliInventoryFn,
 		),
 	);
 
