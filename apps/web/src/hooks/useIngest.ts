@@ -36,6 +36,36 @@ export function useAsyncIngest(
 	});
 }
 
+export interface AsyncIngestFileInput {
+	readonly file: File;
+	readonly filename: string;
+	readonly parser?: "auto" | "native" | "docling";
+	readonly metadata?: Readonly<Record<string, string>>;
+	readonly overwriteOnNameConflict?: boolean;
+}
+
+/**
+ * Multipart variant of {@link useAsyncIngest} — uploads a `File`
+ * (PDF / DOCX / text) and lets the server extract plain text before
+ * the chunk + embed pipeline runs. Same response envelope, same
+ * cache-invalidation behavior; the only difference is the wire
+ * format.
+ */
+export function useAsyncIngestFile(
+	workspaceId: string,
+	kbId: string,
+): UseMutationResult<KbIngestAsyncOrDuplicate, Error, AsyncIngestFileInput> {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (input) => api.kbIngestFileAsync(workspaceId, kbId, input),
+		onSuccess: () => {
+			qc.invalidateQueries({
+				queryKey: documentQueryKey(workspaceId, kbId),
+			});
+		},
+	});
+}
+
 /**
  * Poll a job until it hits a terminal state (`succeeded` / `failed`).
  */

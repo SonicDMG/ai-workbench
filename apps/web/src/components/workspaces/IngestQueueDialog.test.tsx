@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 // Mock `@/lib/api` before importing anything that pulls it in.
 vi.mock("@/lib/api", () => ({
 	api: {
-		kbIngestAsync: vi.fn(),
+		kbIngestFileAsync: vi.fn(),
 		getJob: vi.fn(),
 	},
 	formatApiError: (err: unknown) =>
@@ -20,7 +20,6 @@ import type {
 	KbAsyncIngestResponse,
 	KbIngestDuplicateResponse,
 	KbIngestNameConflictResponse,
-	KbIngestRequest,
 	KnowledgeBaseRecord,
 } from "@/lib/schemas";
 import { IngestQueueDialog } from "./IngestQueueDialog";
@@ -199,7 +198,7 @@ describe("IngestQueueDialog", () => {
 	});
 
 	it("processes a queue of three files end-to-end without re-render storms", async () => {
-		vi.mocked(api.kbIngestAsync)
+		vi.mocked(api.kbIngestFileAsync)
 			.mockResolvedValueOnce(ingestResponse("job-1"))
 			.mockResolvedValueOnce(ingestResponse("job-2"))
 			.mockResolvedValueOnce(ingestResponse("job-3"));
@@ -237,7 +236,7 @@ describe("IngestQueueDialog", () => {
 
 		await waitFor(
 			() => {
-				expect(api.kbIngestAsync).toHaveBeenCalledTimes(3);
+				expect(api.kbIngestFileAsync).toHaveBeenCalledTimes(3);
 				expect(screen.queryAllByText(/5 chunks/).length).toBe(3);
 			},
 			{ timeout: 5_000 },
@@ -249,7 +248,7 @@ describe("IngestQueueDialog", () => {
 
 	it("kicks exactly one ingest per file even while the mutation stays pending", async () => {
 		const resolvers: Array<(res: KbAsyncIngestResponse) => void> = [];
-		vi.mocked(api.kbIngestAsync).mockImplementation(
+		vi.mocked(api.kbIngestFileAsync).mockImplementation(
 			() =>
 				new Promise<KbAsyncIngestResponse>((resolve) => {
 					resolvers.push(resolve);
@@ -278,7 +277,7 @@ describe("IngestQueueDialog", () => {
 
 		await new Promise((r) => setTimeout(r, 100));
 
-		expect(api.kbIngestAsync).toHaveBeenCalledTimes(1);
+		expect(api.kbIngestFileAsync).toHaveBeenCalledTimes(1);
 
 		resolvers[0]?.(ingestResponse("job-1"));
 		await waitFor(() =>
@@ -291,7 +290,7 @@ describe("IngestQueueDialog", () => {
 		// runs a normal ingest. The skipped row must reach a terminal state
 		// without ever calling getJob, and the queue must continue to drain
 		// on to the next file.
-		vi.mocked(api.kbIngestAsync)
+		vi.mocked(api.kbIngestFileAsync)
 			.mockResolvedValueOnce(duplicateResponse("dup-doc-1", 7))
 			.mockResolvedValueOnce(ingestResponse("job-2"));
 		vi.mocked(api.getJob).mockImplementation(async (_ws, jobId) =>
@@ -336,7 +335,7 @@ describe("IngestQueueDialog", () => {
 		// modal pops up. User clicks Overwrite — the queue re-issues
 		// the ingest with `overwriteOnNameConflict: true` and the
 		// retry succeeds (simulated as a normal queued ingest).
-		vi.mocked(api.kbIngestAsync)
+		vi.mocked(api.kbIngestFileAsync)
 			.mockResolvedValueOnce(nameConflictResponse("existing-doc-1"))
 			.mockResolvedValueOnce(ingestResponse("job-after-overwrite"));
 		vi.mocked(api.getJob).mockImplementation(async (_ws, jobId) =>
@@ -373,23 +372,19 @@ describe("IngestQueueDialog", () => {
 
 		// Two ingest calls: the initial probe (no flag) and the retry
 		// with overwriteOnNameConflict=true.
-		expect(api.kbIngestAsync).toHaveBeenCalledTimes(2);
-		const firstCall = vi.mocked(api.kbIngestAsync).mock.calls[0];
-		const secondCall = vi.mocked(api.kbIngestAsync).mock.calls[1];
-		expect(
-			(firstCall?.[2] as KbIngestRequest).overwriteOnNameConflict,
-		).toBeUndefined();
-		expect((secondCall?.[2] as KbIngestRequest).overwriteOnNameConflict).toBe(
-			true,
-		);
+		expect(api.kbIngestFileAsync).toHaveBeenCalledTimes(2);
+		const firstCall = vi.mocked(api.kbIngestFileAsync).mock.calls[0];
+		const secondCall = vi.mocked(api.kbIngestFileAsync).mock.calls[1];
+		expect(firstCall?.[2]?.overwriteOnNameConflict).toBeUndefined();
+		expect(secondCall?.[2]?.overwriteOnNameConflict).toBe(true);
 	});
 
 	it("marks the row as skipped and continues to the next file when the user picks Skip on a name_conflict", async () => {
 		// First file conflicts → user picks Skip (no remember). Second
 		// file is unrelated and ingests normally. The queue must reach
-		// "1 done, 1 skipped" without ever calling kbIngestAsync a
+		// "1 done, 1 skipped" without ever calling kbIngestFileAsync a
 		// third time (no retry on Skip).
-		vi.mocked(api.kbIngestAsync)
+		vi.mocked(api.kbIngestFileAsync)
 			.mockResolvedValueOnce(nameConflictResponse("existing-doc-1"))
 			.mockResolvedValueOnce(ingestResponse("job-2"));
 		vi.mocked(api.getJob).mockImplementation(async (_ws, jobId) =>
@@ -427,7 +422,7 @@ describe("IngestQueueDialog", () => {
 		});
 		// No retry on Skip — only the initial probe + the second file's
 		// ingest.
-		expect(api.kbIngestAsync).toHaveBeenCalledTimes(2);
+		expect(api.kbIngestFileAsync).toHaveBeenCalledTimes(2);
 	});
 
 	it("auto-applies subsequent name_conflicts when 'Apply this choice' is checked", async () => {
@@ -436,7 +431,7 @@ describe("IngestQueueDialog", () => {
 		// two files must auto-overwrite without surfacing the modal
 		// again. Final mutation count: 3 probes + 3 overwrite retries
 		// = 6.
-		vi.mocked(api.kbIngestAsync)
+		vi.mocked(api.kbIngestFileAsync)
 			.mockResolvedValueOnce(nameConflictResponse("existing-1"))
 			.mockResolvedValueOnce(ingestResponse("job-1"))
 			.mockResolvedValueOnce(nameConflictResponse("existing-2"))
@@ -484,14 +479,14 @@ describe("IngestQueueDialog", () => {
 			expect(screen.getByText(/3 files queued — 3 done/)).toBeInTheDocument();
 		});
 
-		expect(api.kbIngestAsync).toHaveBeenCalledTimes(6);
+		expect(api.kbIngestFileAsync).toHaveBeenCalledTimes(6);
 		// Modal must NOT have re-opened for the second/third files.
 		expect(screen.queryByText(/Replace "b\.md"/)).not.toBeInTheDocument();
 		expect(screen.queryByText(/Replace "c\.md"/)).not.toBeInTheDocument();
 	});
 
 	it("captures a non-Error mutation rejection as 'Unknown error' on the failed row, not as a crash", async () => {
-		vi.mocked(api.kbIngestAsync)
+		vi.mocked(api.kbIngestFileAsync)
 			.mockRejectedValueOnce("string-not-an-error" as unknown as Error)
 			.mockResolvedValueOnce(ingestResponse("job-2"));
 		vi.mocked(api.getJob).mockImplementation(async (_ws, jobId) =>
@@ -522,6 +517,6 @@ describe("IngestQueueDialog", () => {
 			expect(screen.getByText(/Unknown error/)).toBeInTheDocument();
 			expect(screen.getByText(/5 chunks/)).toBeInTheDocument();
 		});
-		expect(api.kbIngestAsync).toHaveBeenCalledTimes(2);
+		expect(api.kbIngestFileAsync).toHaveBeenCalledTimes(2);
 	});
 });

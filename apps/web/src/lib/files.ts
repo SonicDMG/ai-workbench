@@ -8,9 +8,14 @@
  * extension. Unknown extensions get a neutral slate fallback.
  *
  * `isReadableTextFile(file)` is the ingest UI's client-side
- * accept/reject guard for plain-text-ish uploads. It accepts known
- * text/config/data/source extensions, common extensionless text
- * filenames, and `text/*` MIME types.
+ * accept/reject guard for plain-text uploads — used by callers that
+ * need to know whether `file.text()` is meaningful.
+ *
+ * `isIngestableFile(file)` is the broader ingest accept/reject —
+ * accepts plain text plus `.pdf` and `.docx`, which the server
+ * handles through its extractor pipeline. Use this for the queue's
+ * up-front filter so users can drag binary documents in alongside
+ * text.
  *
  * `formatFileSize(bytes)` renders a byte count with an appropriate
  * SI-ish unit (KB/MB/GB) and one decimal place beyond bytes —
@@ -191,6 +196,29 @@ export function isReadableTextFile(file: Pick<File, "name" | "type">): boolean {
 	const ext = extOf(name);
 	if (READABLE_TEXT_EXTENSION_SET.has(ext)) return true;
 	return type.startsWith("text/") || READABLE_TEXT_MIME_TYPES.has(type);
+}
+
+/** MIME types accepted by the server's binary-document extractor surface. */
+const INGEST_BINARY_MIME_TYPES = new Set([
+	"application/pdf",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+
+/** Extensions accepted by the server's binary-document extractor surface. */
+const INGEST_BINARY_EXTENSIONS = new Set(["pdf", "docx"]);
+
+/**
+ * Broader accept guard for the ingest queue: plain text plus the
+ * binary document types the server's extractor pipeline handles
+ * (PDF, DOCX). Used by the drop zone's up-front filter so users can
+ * mix `.md`, `.pdf`, and `.docx` files in a single batch.
+ */
+export function isIngestableFile(file: Pick<File, "name" | "type">): boolean {
+	if (isReadableTextFile(file)) return true;
+	const type = file.type.toLowerCase();
+	if (INGEST_BINARY_MIME_TYPES.has(type)) return true;
+	const ext = extOf(file.name);
+	return INGEST_BINARY_EXTENSIONS.has(ext);
 }
 
 const KB = 1024;

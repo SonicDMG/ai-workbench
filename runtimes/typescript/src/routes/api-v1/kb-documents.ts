@@ -15,6 +15,8 @@ import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
+import type { ExtractorRegistry } from "../../ingest/extractors/index.js";
+import { ExtractError } from "../../ingest/extractors/index.js";
 import {
 	CHUNK_INDEX_KEY,
 	CHUNK_TEXT_KEY,
@@ -54,12 +56,13 @@ export interface KbDocumentRouteDeps {
 	readonly jobs: JobStore;
 	readonly replicaId: string;
 	readonly ingestSemaphore: import("../../jobs/ingest-semaphore.js").IngestSemaphore;
+	readonly extractors: ExtractorRegistry;
 }
 
 export function kbDocumentRoutes(
 	deps: KbDocumentRouteDeps,
 ): OpenAPIHono<AppEnv> {
-	const { store, drivers } = deps;
+	const { store, drivers, extractors } = deps;
 	const ingestService = createIngestService(deps);
 	const app = makeOpenApi();
 
@@ -194,6 +197,206 @@ export function kbDocumentRoutes(
 				knowledgeBaseId,
 				body,
 				{ async: asyncMode === "true" },
+			);
+
+			if (outcome.kind === "duplicate") {
+				return c.json(
+					{ document: outcome.document, outcome: "duplicate" as const },
+					200,
+				);
+			}
+			if (outcome.kind === "name_conflict") {
+				return c.json(
+					{ document: outcome.document, outcome: "name_conflict" as const },
+					200,
+				);
+			}
+			if (outcome.kind === "queued") {
+				c.header(
+					"Location",
+					`/api/v1/workspaces/${workspaceId}/jobs/${outcome.job.jobId}`,
+				);
+				return c.json(
+					{ job: toWireJob(outcome.job), document: outcome.document },
+					202,
+				);
+			}
+			return c.json(
+				{ document: outcome.document, chunks: outcome.chunks },
+				201,
+			);
+		},
+	);
+
+	// Multipart binary ingest. Accepts PDF / DOCX / text uploads via
+	// `multipart/form-data`, routes the bytes through the extractor
+	// dispatcher (`native` or `docling-serve` depending on the
+	// caller's preference + `DOCLING_URL`), and hands the resulting
+	// plain text off to the same ingest service the JSON route uses.
+	// Response shapes are identical to the JSON path so the web UI
+	// can keep one queue / conflict-resolution flow for both.
+	//
+	// Bypasses the `app.openapi(...)` wrapper because zod-openapi's
+	// validator doesn't model `File` form fields cleanly; the field
+	// shape is documented inline and exercised by integration tests.
+	app.post(
+		"/:workspaceId/knowledge-bases/:knowledgeBaseId/ingest/file",
+		async (c) => {
+			const workspaceId = c.req.param("workspaceId") as string;
+			const knowledgeBaseId = c.req.param("knowledgeBaseId") as string;
+			const asyncMode = c.req.query("async") === "true";
+
+			let form: FormData;
+			try {
+				form = await c.req.formData();
+			} catch (err) {
+				throw new ApiError(
+					"invalid_multipart",
+					`request body is not a valid multipart/form-data envelope: ${
+						err instanceof Error ? err.message : String(err)
+					}`,
+					400,
+				);
+			}
+
+			const fileEntry = form.get("file");
+			if (!(fileEntry instanceof File)) {
+				throw new ApiError(
+					"missing_file",
+					"multipart request must include a `file` field with the document bytes",
+					400,
+				);
+			}
+			if (fileEntry.size === 0) {
+				throw new ApiError("empty_file", "uploaded file is empty", 400);
+			}
+
+			const parserField = (form.get("parser") as string | null) ?? "auto";
+			if (
+				parserField !== "auto" &&
+				parserField !== "native" &&
+				parserField !== "docling"
+			) {
+				throw new ApiError(
+					"invalid_parser",
+					`parser must be "auto", "native", or "docling"; got "${parserField}"`,
+					400,
+				);
+			}
+
+			const bytes = new Uint8Array(await fileEntry.arrayBuffer());
+
+			let extracted: Awaited<ReturnType<ExtractorRegistry["extract"]>>;
+			try {
+				extracted = await extractors.extract(
+					{
+						bytes,
+						filename: fileEntry.name,
+						mimeType: (fileEntry.type ?? "").toLowerCase(),
+					},
+					{ parser: parserField },
+				);
+			} catch (err) {
+				if (err instanceof ExtractError) {
+					const status =
+						err.code === "unsupported_file_type"
+							? 415
+							: err.code === "docling_unavailable"
+								? 503
+								: 422;
+					throw new ApiError(err.code, err.message, status);
+				}
+				throw err;
+			}
+
+			const metadataField = form.get("metadata") as string | null;
+			let metadata: Record<string, string> | undefined;
+			if (metadataField) {
+				try {
+					const parsed = JSON.parse(metadataField);
+					if (
+						parsed === null ||
+						typeof parsed !== "object" ||
+						Array.isArray(parsed)
+					) {
+						throw new Error("metadata must be a JSON object of strings");
+					}
+					metadata = {} as Record<string, string>;
+					for (const [k, v] of Object.entries(
+						parsed as Record<string, unknown>,
+					)) {
+						if (typeof v !== "string") {
+							throw new Error(`metadata field "${k}" must be a string`);
+						}
+						metadata[k] = v;
+					}
+				} catch (err) {
+					throw new ApiError(
+						"invalid_metadata",
+						`metadata field is not valid JSON: ${
+							err instanceof Error ? err.message : String(err)
+						}`,
+						400,
+					);
+				}
+			}
+			// Stamp the parser provenance into metadata so the UI / audit
+			// trail can tell native uploads from docling ones without
+			// re-running the dispatcher. Caller-supplied metadata wins
+			// only when they didn't reuse the reserved keys.
+			metadata = {
+				...(metadata ?? {}),
+				ingestParser: extracted.parser,
+				...(extracted.parserVersion
+					? { ingestParserVersion: extracted.parserVersion }
+					: {}),
+			};
+
+			const chunkerField = form.get("chunker") as string | null;
+			let chunker: Record<string, unknown> | undefined;
+			if (chunkerField) {
+				try {
+					const parsed = JSON.parse(chunkerField);
+					if (
+						parsed === null ||
+						typeof parsed !== "object" ||
+						Array.isArray(parsed)
+					) {
+						throw new Error("chunker must be a JSON object");
+					}
+					chunker = parsed as Record<string, unknown>;
+				} catch (err) {
+					throw new ApiError(
+						"invalid_chunker",
+						`chunker field is not valid JSON: ${
+							err instanceof Error ? err.message : String(err)
+						}`,
+						400,
+					);
+				}
+			}
+
+			const overwrite =
+				(form.get("overwriteOnNameConflict") as string | null) === "true";
+			const documentId = (form.get("documentId") as string | null) ?? undefined;
+			const sourceDocId =
+				(form.get("sourceDocId") as string | null) ?? undefined;
+
+			const outcome = await ingestService.ingest(
+				workspaceId,
+				knowledgeBaseId,
+				{
+					text: extracted.text,
+					sourceFilename: fileEntry.name,
+					fileType: fileEntry.type || null,
+					fileSize: fileEntry.size,
+					...(documentId !== undefined && { documentId }),
+					...(sourceDocId !== undefined && { sourceDocId }),
+					metadata,
+					...(chunker !== undefined && { chunker }),
+					overwriteOnNameConflict: overwrite,
+				},
+				{ async: asyncMode },
 			);
 
 			if (outcome.kind === "duplicate") {

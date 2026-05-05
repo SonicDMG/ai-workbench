@@ -98,7 +98,7 @@ export function IngestDropZone({
 				</Button>
 			</div>
 			<p className="text-xs text-slate-500">
-				Text, Markdown, YAML, JSON, CSV, config, and source files up to{" "}
+				Text, Markdown, JSON, CSV, source code, plus PDF and DOCX up to{" "}
 				{maxBytes / 1024 / 1024} MB each.
 			</p>
 		</div>

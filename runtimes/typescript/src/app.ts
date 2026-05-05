@@ -7,7 +7,8 @@
  *   `/api/v1/workspaces/{w}/knowledge-bases`                          KB CRUD
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents`           document CRUD
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents/{d}/chunks` chunk listing
- *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest`              sync + async ingest
+ *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest`              sync + async ingest (JSON)
+ *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest/file`         multipart binary ingest (PDF / DOCX / text)
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records`             upsert
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records/{id}`        delete record
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/search`              vector / hybrid / rerank
@@ -36,6 +37,8 @@ import type { AuthConfig, ChatConfig, McpConfig } from "./config/schema.js";
 import type { ControlPlaneStore } from "./control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "./drivers/registry.js";
 import type { EmbedderFactory } from "./embeddings/factory.js";
+import type { ExtractorRegistry } from "./ingest/extractors/index.js";
+import { createExtractorRegistry } from "./ingest/extractors/index.js";
 import { IngestSemaphore } from "./jobs/ingest-semaphore.js";
 import { MemoryJobStore } from "./jobs/memory-store.js";
 import type { JobStore } from "./jobs/store.js";
@@ -162,6 +165,14 @@ export interface AppOptions {
 	 * future external plugins register via this hook.
 	 */
 	readonly routePlugins?: RoutePluginRegistry;
+	/**
+	 * Document extractor dispatcher used by the multipart `/ingest/file`
+	 * route. Defaults to {@link createExtractorRegistry} which reads
+	 * `DOCLING_URL` from `process.env`. Tests pass a hand-built
+	 * registry (with `docling: null` or a stubbed config) to keep the
+	 * extractor surface deterministic.
+	 */
+	readonly extractors?: ExtractorRegistry;
 }
 
 const DEFAULT_API_RATE_LIMIT: Required<
@@ -272,20 +283,25 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	// `MAX_API_JSON_BODY_BYTES` (~10 MB). Ingest middleware is
 	// registered FIRST so its higher limit wins on the ingest path
 	// before the broader middleware would short-circuit.
-	app.use(
-		"/api/v1/workspaces/*/knowledge-bases/*/ingest",
-		bodyLimit({
-			maxSize: MAX_INGEST_BODY_BYTES,
-			onError: (c) =>
-				c.json(
-					errorEnvelope(
-						c,
-						"payload_too_large",
-						`request body must be <= ${MAX_INGEST_BODY_BYTES} bytes`,
-					),
-					413,
+	const ingestBodyLimit = bodyLimit({
+		maxSize: MAX_INGEST_BODY_BYTES,
+		onError: (c) =>
+			c.json(
+				errorEnvelope(
+					c,
+					"payload_too_large",
+					`request body must be <= ${MAX_INGEST_BODY_BYTES} bytes`,
 				),
-		}),
+				413,
+			),
+	});
+	app.use("/api/v1/workspaces/*/knowledge-bases/*/ingest", ingestBodyLimit);
+	// Multipart variant — same ceiling, different path. Splitting the
+	// middleware registrations is cheaper than a regex `app.use(...)`
+	// and keeps the routing surface explicit.
+	app.use(
+		"/api/v1/workspaces/*/knowledge-bases/*/ingest/file",
+		ingestBodyLimit,
 	);
 	app.use(
 		"/api/v1/workspaces/*",
@@ -296,7 +312,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 				// middleware above has already let the body through.
 				const path = c.req.path;
 				if (
-					/\/api\/v1\/workspaces\/[^/]+\/knowledge-bases\/[^/]+\/ingest$/.test(
+					/\/api\/v1\/workspaces\/[^/]+\/knowledge-bases\/[^/]+\/ingest(?:\/file)?$/.test(
 						path,
 					)
 				) {
@@ -397,6 +413,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	// (workspaces, KB, agents, services, jobs, MCP, …); tests can pass
 	// `routePlugins` to override or trim it. See
 	// `docs/route-plugins.md`.
+	const extractors = opts.extractors ?? createExtractorRegistry();
 	const routePluginCtx = {
 		store: opts.store,
 		drivers: opts.drivers,
@@ -408,6 +425,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		chatConfig: opts.chatConfig ?? null,
 		mcpConfig: opts.mcpConfig ?? { enabled: false, exposeChat: false },
 		replicaId,
+		extractors,
 	};
 	const plugins = opts.routePlugins ?? buildDefaultRoutePlugins(routePluginCtx);
 	for (const plugin of plugins.list()) {

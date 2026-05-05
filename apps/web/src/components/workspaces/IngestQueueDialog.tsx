@@ -10,13 +10,12 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { useAsyncIngest, useJobPoller } from "@/hooks/useIngest";
+import { useAsyncIngestFile, useJobPoller } from "@/hooks/useIngest";
 import { formatApiError } from "@/lib/api";
-import { extOf, isReadableTextFile } from "@/lib/files";
+import { isIngestableFile } from "@/lib/files";
 import type {
 	JobRecord,
 	KbIngestAsyncOrDuplicate,
-	KbIngestRequest,
 	KnowledgeBaseRecord,
 	RagDocumentRecord,
 } from "@/lib/schemas";
@@ -36,14 +35,15 @@ type ApplyToAll = "overwrite" | "skip" | null;
 /**
  * State for the active name-conflict prompt. Holds enough context to
  * either continue the parked ingest with `overwriteOnNameConflict:
- * true` or drop the row as a user-skip. `text` is preserved here so
- * we don't have to re-read the File on overwrite — keeps the queue
- * deterministic if the user happens to swap the on-disk file mid-
- * flight (their decision is on what we already read).
+ * true` or drop the row as a user-skip. We keep a reference to the
+ * original `File` rather than its bytes — File handles are stable in
+ * memory and the multipart route re-reads them on each call, which
+ * also means we transparently pick up any in-flight on-disk edits if
+ * the user touched the file between the probe and the overwrite.
  */
 interface PendingConflict {
 	readonly itemId: string;
-	readonly text: string;
+	readonly file: File;
 	readonly existing: RagDocumentRecord;
 }
 
@@ -59,13 +59,16 @@ interface PendingConflict {
  * don't tend to need parallelism, and a misbehaving file shouldn't
  * tank the others.
  *
- * Text-ish extensions only, 5 MB per file. Binaries get rejected inline
- * rather than silently dropped from the queue so the user can fix the
- * source set. The drop zone lives in {@link IngestDropZone}; the
- * per-file row + progress bar live in {@link QueueRow}.
+ * Plain text plus PDF / DOCX, 25 MB per file. Anything else gets
+ * rejected inline rather than silently dropped from the queue so
+ * the user can fix the source set. PDF / DOCX bytes are extracted
+ * server-side (native pdfjs-dist + mammoth by default; docling-serve
+ * when `DOCLING_URL` is configured) before chunk + embed runs. The
+ * drop zone lives in {@link IngestDropZone}; the per-file row +
+ * progress bar live in {@link QueueRow}.
  */
 
-const MAX_BYTES = 5 * 1024 * 1024;
+const MAX_BYTES = 25 * 1024 * 1024;
 
 export function IngestQueueDialog({
 	workspace,
@@ -89,7 +92,7 @@ export function IngestQueueDialog({
 		useState<PendingConflict | null>(null);
 	const [applyToAll, setApplyToAll] = useState<ApplyToAll>(null);
 
-	const ingest = useAsyncIngest(workspace, knowledgeBase.knowledgeBaseId);
+	const ingest = useAsyncIngestFile(workspace, knowledgeBase.knowledgeBaseId);
 	// Drives only the *active* row's poller. Each row shows a live
 	// snapshot from this hook while it's the head of the queue. We
 	// derive the jobId from items+activeId synchronously each render
@@ -142,7 +145,7 @@ export function IngestQueueDialog({
 			// `webkitRelativePath` is empty for plain file picks; non-empty
 			// only for the directory picker (and drag-drop'd folders).
 			const relative = file.webkitRelativePath || file.name;
-			if (!isReadableTextFile(file)) {
+			if (!isIngestableFile(file)) {
 				rejected.push({ name: relative, reason: "unsupported file type" });
 				continue;
 			}
@@ -213,25 +216,19 @@ export function IngestQueueDialog({
 	// `mutateAsync` itself is a stable function across renders per
 	// TanStack Query's contract, so closing over the latest
 	// `ingest.mutateAsync` from any render is fine.
-	// Issue a single ingest call for one queue row. Returns the union
-	// response so the caller can drive its own state machine on
-	// duplicate / name_conflict / running. Lifted out of the drain
+	// Issue a single multipart ingest call for one queue row. Returns
+	// the union response so the caller can drive its own state machine
+	// on duplicate / name_conflict / running. Lifted out of the drain
 	// effect so the overwrite-prompt's "Overwrite" handler can re-use
 	// it for the retry call (with the flag set) without copying the
 	// payload assembly logic.
-	const submitIngest = useCallback(
-		(item: QueueItem, text: string, overwrite: boolean) => {
-			const payload: KbIngestRequest = {
-				text,
-				sourceFilename: item.relativePath,
-				fileType: item.file.type || extOf(item.relativePath) || null,
-				fileSize: item.file.size,
-				...(overwrite && { overwriteOnNameConflict: true }),
-			};
-			return ingestMutateAsyncRef.current(payload);
-		},
-		[],
-	);
+	const submitIngest = useCallback((item: QueueItem, overwrite: boolean) => {
+		return ingestMutateAsyncRef.current({
+			file: item.file,
+			filename: item.relativePath,
+			...(overwrite && { overwriteOnNameConflict: true }),
+		});
+	}, []);
 
 	// Apply an ingest response to a queue row. Centralises the union
 	// discrimination so the drain effect and the overwrite-retry
@@ -290,22 +287,12 @@ export function IngestQueueDialog({
 		kickInFlight.current = true;
 		(async () => {
 			try {
-				let text: string;
-				try {
-					text = await next.file.text();
-				} catch (err) {
-					updateItem(next.id, {
-						status: "failed",
-						errorMessage: err instanceof Error ? err.message : "read failed",
-					});
-					return;
-				}
 				try {
 					// First-pass call never sets the overwrite flag — the
 					// server's job is to detect the conflict and surface
 					// it. Only the retry call after an explicit user
 					// "Overwrite" sets it.
-					const res = await submitIngest(next, text, false);
+					const res = await submitIngest(next, false);
 					const decision = applyIngestResponse(next.id, res);
 					if (decision === "advance" || decision === "running") return;
 					// Name conflict. If the user already picked a standing
@@ -320,7 +307,7 @@ export function IngestQueueDialog({
 						return;
 					}
 					if (applyToAll === "overwrite") {
-						const retry = await submitIngest(next, text, true);
+						const retry = await submitIngest(next, true);
 						applyIngestResponse(next.id, retry);
 						return;
 					}
@@ -328,7 +315,7 @@ export function IngestQueueDialog({
 					// prompt. The handlers below pick it back up.
 					setPendingConflict({
 						itemId: next.id,
-						text,
+						file: next.file,
 						existing: decision.existing,
 					});
 				} catch (err) {
@@ -390,7 +377,7 @@ export function IngestQueueDialog({
 				const row = items.find((i) => i.id === parked.itemId);
 				if (!row) return;
 				try {
-					const retry = await submitIngest(row, parked.text, true);
+					const retry = await submitIngest(row, true);
 					applyIngestResponse(row.id, retry);
 				} catch (err) {
 					updateItem(row.id, {

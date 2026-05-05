@@ -326,6 +326,24 @@ wins over `chat.systemPrompt` when present. Multi-provider support
 is a follow-up; today only `provider: "huggingface"` LLM services
 are wired end-to-end.
 
+## Document extraction *(optional)*
+
+The runtime exposes a multipart ingest route at
+`POST /api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest/file`
+that accepts PDF, DOCX, and text uploads. Extraction is dispatched
+based on the upload's MIME type / extension; configuration is via
+environment variables, not `workbench.yaml`.
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `DOCLING_URL` | unset | Base URL of a [docling-serve](https://github.com/docling-project/docling-serve) instance. When set, the dispatcher prefers docling over the native pipeline for non-text files (PDF, DOCX) and falls back to native if docling is unreachable. The route also accepts an explicit per-upload `parser=native\|docling\|auto` form field. |
+| `DOCLING_TIMEOUT_MS` | `60000` | Per-request budget for docling-serve calls. Scanned/OCR'd PDFs can run long; raise this if you see `docling_unavailable` with `timed out after …` messages. |
+
+When `DOCLING_URL` is unset (the default), the runtime uses
+`pdfjs-dist` for PDFs and `mammoth` for DOCX. Native extraction is
+fast and zero-ops but flattens tables and skips OCR; docling
+preserves layout and does OCR for scanned documents.
+
 ## `mcp` *(optional)*
 
 Toggles the Model Context Protocol façade at

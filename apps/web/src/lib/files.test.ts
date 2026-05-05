@@ -3,6 +3,7 @@ import {
 	extOf,
 	fileTypeMeta,
 	formatFileSize,
+	isIngestableFile,
 	isReadableTextFile,
 	READABLE_TEXT_EXTENSIONS,
 } from "./files";
@@ -78,6 +79,39 @@ describe("isReadableTextFile", () => {
 			false,
 		);
 		expect(isReadableTextFile({ name: "archive.zip", type: "" })).toBe(false);
+	});
+});
+
+describe("isIngestableFile", () => {
+	it("accepts everything isReadableTextFile accepts", () => {
+		expect(isIngestableFile({ name: "guide.md", type: "" })).toBe(true);
+		expect(isIngestableFile({ name: "Makefile", type: "" })).toBe(true);
+		expect(isIngestableFile({ name: "main.ts", type: "" })).toBe(true);
+	});
+
+	it("accepts PDF and DOCX uploads (server extracts text)", () => {
+		expect(
+			isIngestableFile({ name: "report.pdf", type: "application/pdf" }),
+		).toBe(true);
+		expect(isIngestableFile({ name: "REPORT.PDF", type: "" })).toBe(true);
+		expect(
+			isIngestableFile({
+				name: "memo.docx",
+				type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+			}),
+		).toBe(true);
+		expect(isIngestableFile({ name: "memo.docx", type: "" })).toBe(true);
+	});
+
+	it("still rejects binaries the extractor can't handle", () => {
+		expect(isIngestableFile({ name: "photo.png", type: "image/png" })).toBe(
+			false,
+		);
+		expect(isIngestableFile({ name: "archive.zip", type: "" })).toBe(false);
+		// Legacy `.doc` is intentionally rejected — see the docx extractor.
+		expect(
+			isIngestableFile({ name: "old.doc", type: "application/msword" }),
+		).toBe(false);
 	});
 });
 

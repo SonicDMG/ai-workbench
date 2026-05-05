@@ -117,12 +117,21 @@ async function request<T>(
 		? { authorization: `Bearer ${token}` }
 		: {};
 
+	// Multipart bodies set their own `content-type` (with the
+	// boundary) when the browser serializes them. Leaving the default
+	// `application/json` in place would clobber that and the server
+	// would reject the upload as malformed. Detect FormData bodies and
+	// drop the default; explicit per-call headers always win.
+	const isMultipart = init.body instanceof FormData;
+	const defaultHeaders: Record<string, string> = isMultipart
+		? { accept: "application/json" }
+		: { "content-type": "application/json", accept: "application/json" };
+
 	const res = await fetch(`${BASE}${path}`, {
 		...init,
 		credentials: "include",
 		headers: {
-			"content-type": "application/json",
-			accept: "application/json",
+			...defaultHeaders,
 			...authHeader,
 			...(init.headers ?? {}),
 		},
@@ -836,6 +845,39 @@ export const api = {
 			{ method: "POST", body: JSON.stringify(input) },
 			KbIngestAsyncOrDuplicateSchema,
 		),
+
+	/**
+	 * Ingest a binary file (PDF, DOCX, or text) via the multipart route.
+	 * The server runs the bytes through the configured extractor
+	 * (native by default; docling-serve when `DOCLING_URL` is set or
+	 * when `parser: "docling"` is forced) and feeds the resulting
+	 * plain text into the same ingest pipeline as `kbIngestAsync`,
+	 * returning the same response shape.
+	 */
+	kbIngestFileAsync: (
+		workspaceId: string,
+		kbId: string,
+		params: {
+			readonly file: File | Blob;
+			readonly filename: string;
+			readonly parser?: "auto" | "native" | "docling";
+			readonly metadata?: Readonly<Record<string, string>>;
+			readonly overwriteOnNameConflict?: boolean;
+		},
+	): Promise<KbIngestAsyncOrDuplicate> => {
+		const form = new FormData();
+		form.append("file", params.file, params.filename);
+		if (params.parser) form.append("parser", params.parser);
+		if (params.metadata)
+			form.append("metadata", JSON.stringify(params.metadata));
+		if (params.overwriteOnNameConflict)
+			form.append("overwriteOnNameConflict", "true");
+		return request(
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/ingest/file?async=true`,
+			{ method: "POST", body: form },
+			KbIngestAsyncOrDuplicateSchema,
+		);
+	},
 
 	getJob: (workspaceId: string, jobId: string): Promise<JobRecord> =>
 		request(

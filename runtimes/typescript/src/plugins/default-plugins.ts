@@ -139,6 +139,7 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					jobs: ctx.jobs,
 					replicaId: ctx.replicaId,
 					ingestSemaphore: ctx.ingestSemaphore,
+					extractors: ctx.extractors,
 				}),
 		},
 		{
