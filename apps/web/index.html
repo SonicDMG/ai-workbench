@@ -15,8 +15,28 @@
 			rel="stylesheet"
 			href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
 		/>
+		<script>
+			// Resolve the theme preference before paint so the user
+			// doesn't see a light flash before React mounts. Mirrors
+			// the resolution rule in src/hooks/useTheme.ts.
+			(() => {
+				try {
+					const stored = localStorage.getItem("aiwb.theme");
+					const theme =
+						stored === "light" || stored === "dark" ? stored : "system";
+					const prefersDark =
+						window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+					const isDark =
+						theme === "dark" || (theme === "system" && prefersDark);
+					if (isDark) document.documentElement.classList.add("dark");
+					document.documentElement.dataset.theme = isDark ? "dark" : "light";
+				} catch {
+					/* storage / matchMedia unavailable — fall through to default light */
+				}
+			})();
+		</script>
 	</head>
-	<body class="h-full bg-slate-50 text-slate-900 antialiased">
+	<body class="h-full antialiased">
 		<div id="root" class="h-full"></div>
 		<script type="module" src="/src/main.tsx"></script>
 	</body>

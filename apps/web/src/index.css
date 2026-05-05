@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Class-based dark variant: switches on `<html class="dark">` (also
+ * matches descendants), set by the theme switcher / pre-paint script.
+ * Without this, Tailwind's `dark:` utilities default to the OS media
+ * query and ignore our explicit user choice. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /**
  * Design tokens — IBM Plex typography + Carbon-inspired palette.
  *
@@ -27,6 +33,20 @@
 	--color-accent-600: #198038;
 
 	--gradient-brand: linear-gradient(90deg, #0f62fe 0%, #4589ff 100%);
+
+	/* Surface tokens — body background + foreground. Overridden in
+	 * `.dark` below so the body flips without per-element overrides.
+	 * Per-component surfaces (cards, dialogs, etc.) still use Tailwind
+	 * `dark:` variants on the elements themselves. */
+	--app-bg: #f4f4f4;
+	--app-fg: #161616;
+	--app-grid: #e0e0e0;
+}
+
+.dark {
+	--app-bg: #0b0d12;
+	--app-fg: #e6e6e6;
+	--app-grid: #1f242c;
 }
 
 html,
@@ -38,8 +58,8 @@ body,
 body {
 	font-family: var(--font-sans);
 	font-feature-settings: "ss01", "cv11";
-	background: #f4f4f4;
-	color: #161616;
+	background: var(--app-bg);
+	color: var(--app-fg);
 }
 
 code,
@@ -92,10 +112,14 @@ samp,
 	background:
 		linear-gradient(90deg, var(--color-brand-500) 0 5rem, transparent 5rem) top
 		left / 100% 2px no-repeat,
-		linear-gradient(#e0e0e0 1px, transparent 1px) top left / 2rem 2rem,
-		linear-gradient(90deg, #e0e0e0 1px, transparent 1px) top left / 2rem 2rem;
+		linear-gradient(var(--app-grid) 1px, transparent 1px) top left / 2rem 2rem,
+		linear-gradient(90deg, var(--app-grid) 1px, transparent 1px) top left / 2rem
+		2rem;
 	opacity: 0.58;
 	pointer-events: none;
+}
+.dark .app-backdrop::before {
+	opacity: 0.32;
 }
 
 /* Page-header chip — square IBM blue tile anchoring the page title. */

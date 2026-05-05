@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { ThemeSwitcher } from "@/components/layout/ThemeSwitcher";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -17,8 +18,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 	const currentWorkspaceId = currentWorkspaceIdFromPath(pathname);
 
 	return (
-		<div className="min-h-full flex flex-col bg-[#f4f4f4] text-[#161616]">
-			<header className="sticky top-0 z-30 border-b border-[#c6c6c6] bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/88">
+		<div className="min-h-full flex flex-col bg-[var(--app-bg)] text-[var(--app-fg)]">
+			<header className="sticky top-0 z-30 border-b border-[#c6c6c6] bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/88 dark:border-slate-800 dark:bg-slate-900/90 dark:supports-[backdrop-filter]:bg-slate-900/80">
 				<div
 					aria-hidden
 					className="h-[3px] w-full bg-[var(--color-brand-500)]"
@@ -30,22 +31,23 @@ export function AppShell({ children }: { children: ReactNode }) {
 					>
 						<BrandMark size={28} />
 						<div className="flex min-w-0 flex-col leading-none">
-							<span className="truncate whitespace-nowrap text-sm font-semibold tracking-tight text-[#161616] group-hover:text-[#393939]">
+							<span className="truncate whitespace-nowrap text-sm font-semibold tracking-tight text-[#161616] group-hover:text-[#393939] dark:text-slate-100 dark:group-hover:text-white">
 								AI Workbench
 							</span>
-							<span className="mt-0.5 hidden truncate whitespace-nowrap text-[11px] font-medium tracking-[0.02em] text-[#525252] sm:block">
+							<span className="mt-0.5 hidden truncate whitespace-nowrap text-[11px] font-medium tracking-[0.02em] text-[#525252] sm:block dark:text-slate-400">
 								DataStax, an IBM company
 							</span>
 						</div>
 					</Link>
 					<WorkspaceSwitcher currentWorkspaceId={currentWorkspaceId} />
 					<nav className="flex shrink-0 items-center gap-1 text-sm">
+						<ThemeSwitcher />
 						<UserMenu />
 						<a
 							href="/docs"
 							target="_blank"
 							rel="noreferrer"
-							className="hidden rounded-md px-3 py-1.5 text-[#525252] transition-colors hover:bg-[#f4f4f4] hover:text-[#161616] sm:inline-flex"
+							className="hidden rounded-md px-3 py-1.5 text-[#525252] transition-colors hover:bg-[#f4f4f4] hover:text-[#161616] sm:inline-flex dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
 						>
 							API docs
 						</a>
@@ -55,15 +57,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 			<main className="app-backdrop mx-auto w-full max-w-6xl flex-1 px-6 py-10">
 				{children}
 			</main>
-			<footer className="border-t border-[#c6c6c6] bg-white">
-				<div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between text-xs text-slate-500">
+			<footer className="border-t border-[#c6c6c6] bg-white dark:border-slate-800 dark:bg-slate-900">
+				<div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
 					<span>
 						AI Workbench · DataStax, an IBM company ·{" "}
 						<a
 							href="https://www.ibm.com/products/datastax"
 							target="_blank"
 							rel="noreferrer"
-							className="text-slate-700 hover:underline"
+							className="text-slate-700 hover:underline dark:text-slate-200"
 						>
 							IBM DataStax
 						</a>{" "}
