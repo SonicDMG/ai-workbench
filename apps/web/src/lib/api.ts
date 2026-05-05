@@ -44,8 +44,8 @@ import {
 	FeaturesSchema,
 	type JobRecord,
 	JobRecordSchema,
-	type KbAsyncIngestResponse,
-	KbAsyncIngestResponseSchema,
+	type KbIngestAsyncOrDuplicate,
+	KbIngestAsyncOrDuplicateSchema,
 	type KbIngestRequest,
 	KnowledgeBasePageSchema,
 	type KnowledgeBaseRecord,
@@ -830,11 +830,11 @@ export const api = {
 		workspaceId: string,
 		kbId: string,
 		input: KbIngestRequest,
-	): Promise<KbAsyncIngestResponse> =>
+	): Promise<KbIngestAsyncOrDuplicate> =>
 		request(
 			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/ingest?async=true`,
 			{ method: "POST", body: JSON.stringify(input) },
-			KbAsyncIngestResponseSchema,
+			KbIngestAsyncOrDuplicateSchema,
 		),
 
 	getJob: (workspaceId: string, jobId: string): Promise<JobRecord> =>

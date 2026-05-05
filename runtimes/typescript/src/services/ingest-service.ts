@@ -9,6 +9,7 @@
  * one place this branching lives.
  */
 
+import { createHash } from "node:crypto";
 import type { z } from "@hono/zod-openapi";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type { RagDocumentRecord } from "../control-plane/types.js";
@@ -26,8 +27,15 @@ export type KbIngestRequest = z.infer<typeof KbIngestRequestSchema>;
 
 /**
  * Domain outcome of an ingest call. The route maps `queued` to 202
- * with a Location header and `completed` to 201; the service stays
- * out of the HTTP shape entirely.
+ * with a Location header, `completed` to 201, and `duplicate` to 200;
+ * the service stays out of the HTTP shape entirely.
+ *
+ * `duplicate` fires when an existing document in this KB has the same
+ * SHA-256 of its content. The pipeline does NOT run again — the
+ * existing record is returned verbatim. Same-named files with
+ * different content (and any non-content-collision conflict) still
+ * fall through to the regular create path; name-collision handling
+ * is left for a follow-up.
  */
 export type IngestOutcome =
 	| {
@@ -39,7 +47,21 @@ export type IngestOutcome =
 			readonly kind: "queued";
 			readonly document: RagDocumentRecord;
 			readonly job: JobRecord;
+	  }
+	| {
+			readonly kind: "duplicate";
+			readonly document: RagDocumentRecord;
 	  };
+
+/**
+ * Compute the SHA-256 hex digest of the ingest text. The runtime is
+ * the authoritative source for the hash so clients can't accidentally
+ * (or deliberately) lie about what they uploaded — same input bytes
+ * always produce the same digest, deterministically across hosts.
+ */
+function hashIngestText(text: string): string {
+	return createHash("sha256").update(text, "utf8").digest("hex");
+}
 
 export interface IngestServiceDeps {
 	readonly store: ControlPlaneStore;
@@ -73,6 +95,26 @@ export function createIngestService(deps: IngestServiceDeps): IngestService {
 		async ingest(workspaceId, knowledgeBaseId, input, opts) {
 			const resolved = await resolveKb(store, workspaceId, knowledgeBaseId);
 
+			// Authoritative content hash. Trust the request's hash only as
+			// a hint — recompute server-side so the dedup index can't be
+			// fooled by clients sending a fake digest.
+			const contentHash = hashIngestText(input.text);
+
+			// Dedup pre-check. If a document with the same content hash
+			// already exists in this KB, short-circuit the create + chunk
+			// + embed pipeline and return the existing record. The
+			// pipeline is idempotent on chunkId (deterministic from the
+			// document id), but re-running it for byte-identical content
+			// is wasted work + redundant audit noise.
+			const existing = await store.findRagDocumentByContentHash(
+				workspaceId,
+				knowledgeBaseId,
+				contentHash,
+			);
+			if (existing) {
+				return { kind: "duplicate", document: existing };
+			}
+
 			const document = await store.createRagDocument(
 				workspaceId,
 				knowledgeBaseId,
@@ -82,7 +124,7 @@ export function createIngestService(deps: IngestServiceDeps): IngestService {
 					sourceFilename: input.sourceFilename,
 					fileType: input.fileType,
 					fileSize: input.fileSize,
-					contentHash: input.contentHash,
+					contentHash,
 					status: "writing",
 					metadata: input.metadata,
 				},

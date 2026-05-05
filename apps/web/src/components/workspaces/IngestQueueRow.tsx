@@ -1,9 +1,31 @@
-import { AlertTriangle, CheckCircle2, Loader2, X } from "lucide-react";
+import {
+	AlertTriangle,
+	CheckCircle2,
+	CircleSlash,
+	Loader2,
+	X,
+} from "lucide-react";
 import { formatFileSize } from "@/lib/files";
 import { cn } from "@/lib/utils";
 import { FileTypeBadge } from "./FileTypeBadge";
 
-export type QueueStatus = "queued" | "running" | "succeeded" | "failed";
+/**
+ * Per-file lifecycle in the queue.
+ *
+ * - `queued`: dropped but not yet started
+ * - `running`: ingest job in flight; poller wired up
+ * - `succeeded`: ingest finished and produced chunks
+ * - `failed`: ingest job (or read) errored
+ * - `skipped`: server returned the dedup envelope — content hash matched
+ *   an existing doc in the same KB and we re-used it without re-running
+ *   the pipeline. Treated as a non-error terminal state.
+ */
+export type QueueStatus =
+	| "queued"
+	| "running"
+	| "succeeded"
+	| "failed"
+	| "skipped";
 
 export interface QueueItem {
 	readonly id: string;
@@ -52,6 +74,11 @@ export function QueueRow({
 							{item.chunkCount} chunk{item.chunkCount === 1 ? "" : "s"}
 						</span>
 					) : null}
+					{item.status === "skipped" ? (
+						<span className="text-slate-600">
+							already ingested — content hash matched existing document
+						</span>
+					) : null}
 					{item.status === "failed" && item.errorMessage ? (
 						<span className="text-red-700 truncate">{item.errorMessage}</span>
 					) : null}
@@ -90,6 +117,8 @@ function StatusGlyph({ status }: { status: QueueStatus }) {
 			return <Loader2 className={cn(cls, "animate-spin text-slate-500")} />;
 		case "succeeded":
 			return <CheckCircle2 className={cn(cls, "text-emerald-600")} />;
+		case "skipped":
+			return <CircleSlash className={cn(cls, "text-slate-500")} />;
 		case "failed":
 			return <AlertTriangle className={cn(cls, "text-red-600")} />;
 	}

@@ -203,6 +203,20 @@ export function IngestQueueDialog({
 						fileType: next.file.type || extOf(next.relativePath) || null,
 						fileSize: next.file.size,
 					});
+					// Server-side dedup: identical content hash → existing
+					// document re-used, no job, terminal state immediately.
+					// Discriminate on the literal `outcome` field; the
+					// other arm of the union always carries `job`.
+					if ("outcome" in res && res.outcome === "duplicate") {
+						updateItem(next.id, {
+							status: "skipped",
+							jobId: null,
+							chunkCount: res.document.chunkTotal,
+						});
+						// No setActiveId → drain effect picks the next queued
+						// item on the following tick.
+						return;
+					}
 					updateItem(next.id, {
 						status: "running",
 						jobId: res.job.jobId,
@@ -286,14 +300,19 @@ export function IngestQueueDialog({
 	}
 
 	const counts = useMemo(() => {
-		const c = { queued: 0, running: 0, succeeded: 0, failed: 0 };
+		const c = { queued: 0, running: 0, succeeded: 0, skipped: 0, failed: 0 };
 		for (const i of items) c[i.status] += 1;
 		return c;
 	}, [items]);
 
 	const allDone =
 		items.length > 0 &&
-		items.every((i) => i.status === "succeeded" || i.status === "failed");
+		items.every(
+			(i) =>
+				i.status === "succeeded" ||
+				i.status === "failed" ||
+				i.status === "skipped",
+		);
 	const anyQueued = counts.queued > 0;
 
 	return (
@@ -319,8 +338,10 @@ export function IngestQueueDialog({
 						<div className="flex items-center justify-between text-xs text-slate-600">
 							<span>
 								{items.length} file{items.length === 1 ? "" : "s"} queued
-								{counts.succeeded + counts.failed > 0
-									? ` — ${counts.succeeded} done, ${counts.failed} failed`
+								{counts.succeeded + counts.failed + counts.skipped > 0
+									? ` — ${counts.succeeded} done${
+											counts.skipped > 0 ? `, ${counts.skipped} skipped` : ""
+										}${counts.failed > 0 ? `, ${counts.failed} failed` : ""}`
 									: ""}
 							</span>
 							{!draining && counts.queued > 0 ? (

@@ -509,6 +509,30 @@ export const KbAsyncIngestResponseSchema = z.object({
 });
 export type KbAsyncIngestResponse = z.infer<typeof KbAsyncIngestResponseSchema>;
 
+/**
+ * Response when an ingest call's content (SHA-256 of the body text)
+ * matches an existing document in the same KB. Pipeline does NOT
+ * run; the existing document comes back verbatim. Distinguished from
+ * `KbAsyncIngestResponse` by the literal `outcome: "duplicate"` field
+ * + the absence of `job` — discriminated unions all the way through
+ * the queue UI.
+ */
+export const KbIngestDuplicateResponseSchema = z.object({
+	document: RagDocumentRecordSchema,
+	outcome: z.literal("duplicate"),
+});
+export type KbIngestDuplicateResponse = z.infer<
+	typeof KbIngestDuplicateResponseSchema
+>;
+
+export const KbIngestAsyncOrDuplicateSchema = z.union([
+	KbAsyncIngestResponseSchema,
+	KbIngestDuplicateResponseSchema,
+]);
+export type KbIngestAsyncOrDuplicate = z.infer<
+	typeof KbIngestAsyncOrDuplicateSchema
+>;
+
 /* ---------------- Agents + conversations (workspace-scoped) ---------------- */
 
 // Use `.nullish()` (= nullable + optional) on every nullable field so

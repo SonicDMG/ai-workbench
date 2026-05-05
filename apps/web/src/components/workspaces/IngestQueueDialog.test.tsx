@@ -18,6 +18,7 @@ import { api } from "@/lib/api";
 import type {
 	JobRecord,
 	KbAsyncIngestResponse,
+	KbIngestDuplicateResponse,
 	KnowledgeBaseRecord,
 } from "@/lib/schemas";
 import { IngestQueueDialog } from "./IngestQueueDialog";
@@ -84,6 +85,32 @@ function ingestResponse(jobId: string): KbAsyncIngestResponse {
 			ingestedAt: null,
 			updatedAt: "2026-04-25T00:00:00.000Z",
 			status: "writing",
+			errorMessage: null,
+			metadata: {},
+		},
+	};
+}
+
+function duplicateResponse(
+	documentId: string,
+	chunkTotal = 7,
+): KbIngestDuplicateResponse {
+	return {
+		outcome: "duplicate",
+		document: {
+			workspaceId: "ws-1",
+			knowledgeBaseId: KB.knowledgeBaseId,
+			documentId,
+			sourceDocId: null,
+			sourceFilename: "f.md",
+			fileType: "text/markdown",
+			fileSize: 0,
+			contentHash:
+				"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+			chunkTotal,
+			ingestedAt: "2026-04-25T00:00:00.000Z",
+			updatedAt: "2026-04-25T00:00:00.000Z",
+			status: "ready",
 			errorMessage: null,
 			metadata: {},
 		},
@@ -229,6 +256,51 @@ describe("IngestQueueDialog", () => {
 		await waitFor(() =>
 			expect(screen.getByText(/5 chunks/)).toBeInTheDocument(),
 		);
+	});
+
+	it("marks duplicate-content responses as skipped without polling getJob", async () => {
+		// First file dedupes (server returns 200 + outcome:duplicate), second
+		// runs a normal ingest. The skipped row must reach a terminal state
+		// without ever calling getJob, and the queue must continue to drain
+		// on to the next file.
+		vi.mocked(api.kbIngestAsync)
+			.mockResolvedValueOnce(duplicateResponse("dup-doc-1", 7))
+			.mockResolvedValueOnce(ingestResponse("job-2"));
+		vi.mocked(api.getJob).mockImplementation(async (_ws, jobId) =>
+			jobRecord(jobId, "succeeded"),
+		);
+
+		const user = userEvent.setup();
+		render(
+			<IngestQueueDialog
+				workspace="ws-1"
+				knowledgeBase={KB}
+				open
+				onOpenChange={() => {}}
+			/>,
+			{ wrapper },
+		);
+
+		const fileInput = document.querySelector(
+			'input[type="file"]:not([webkitdirectory])',
+		) as HTMLInputElement;
+		await user.upload(fileInput, [
+			makeFile("dup.md", "duplicate body"),
+			makeFile("fresh.md", "fresh body"),
+		]);
+		await user.click(screen.getByRole("button", { name: /Start ingest/ }));
+
+		await waitFor(() => {
+			expect(screen.getByText(/already ingested/i)).toBeInTheDocument();
+			expect(screen.getByText(/5 chunks/)).toBeInTheDocument();
+		});
+		expect(screen.getByText(/1 done, 1 skipped/)).toBeInTheDocument();
+		// Crucially: duplicate path must NOT poll a job. Only the second
+		// (fresh) ingest should drive getJob.
+		const dupCalls = vi
+			.mocked(api.getJob)
+			.mock.calls.filter(([, jobId]) => jobId === "dup-doc-1");
+		expect(dupCalls).toHaveLength(0);
 	});
 
 	it("captures a non-Error mutation rejection as 'Unknown error' on the failed row, not as a crash", async () => {

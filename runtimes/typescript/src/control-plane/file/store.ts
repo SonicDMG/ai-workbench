@@ -722,6 +722,23 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 		);
 	}
 
+	async findRagDocumentByContentHash(
+		workspace: string,
+		knowledgeBase: string,
+		contentHash: string,
+	): Promise<RagDocumentRecord | null> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const all = await this.readAll<RagDocumentRecord>("rag-documents");
+		return (
+			all.find(
+				(d) =>
+					d.workspaceId === workspace &&
+					d.knowledgeBaseId === knowledgeBase &&
+					d.contentHash === contentHash,
+			) ?? null
+		);
+	}
+
 	async createRagDocument(
 		workspace: string,
 		knowledgeBase: string,

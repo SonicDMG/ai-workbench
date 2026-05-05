@@ -641,6 +641,27 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		return row ? ragDocumentFromRow(row) : null;
 	}
 
+	async findRagDocumentByContentHash(
+		workspace: string,
+		knowledgeBase: string,
+		contentHash: string,
+	): Promise<RagDocumentRecord | null> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		// `wb_rag_documents_by_content_hash` is partitioned by hash and
+		// clustered by `(workspace_id, knowledge_base_id, document_id)`,
+		// so an exact-match lookup is a single partition read.
+		const indexRow = await this.tables.ragDocumentsByHash.findOne({
+			content_hash: contentHash,
+			workspace_id: workspace,
+			knowledge_base_id: knowledgeBase,
+		});
+		if (!indexRow) return null;
+		// Fetch the canonical record from the by-KB table. The index
+		// row only stores identifiers; the full document state (status,
+		// timestamps, metadata) lives in `wb_rag_documents_by_knowledge_base`.
+		return this.getRagDocument(workspace, knowledgeBase, indexRow.document_id);
+	}
+
 	async createRagDocument(
 		workspace: string,
 		knowledgeBase: string,

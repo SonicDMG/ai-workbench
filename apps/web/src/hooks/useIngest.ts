@@ -8,21 +8,23 @@ import {
 import { api } from "@/lib/api";
 import type {
 	JobRecord,
-	KbAsyncIngestResponse,
+	KbIngestAsyncOrDuplicate,
 	KbIngestRequest,
 } from "@/lib/schemas";
 import { documentQueryKey } from "./useDocuments";
 
 /**
- * Kick off an async ingest into a knowledge base. Returns the
- * immediate 202 envelope (`{ job, document }`); the caller threads
- * `job.jobId` into {@link useJobPoller} to watch through to a
- * terminal state.
+ * Kick off an async ingest into a knowledge base. Returns either the
+ * 202 envelope (`{ job, document }`) for fresh content or the dedup
+ * 200 envelope (`{ document, outcome: "duplicate" }`) when the body
+ * matches an existing document by SHA-256 hash. Callers thread
+ * `job.jobId` into {@link useJobPoller} for the live-progress case;
+ * for the duplicate case there's no job to poll.
  */
 export function useAsyncIngest(
 	workspaceId: string,
 	kbId: string,
-): UseMutationResult<KbAsyncIngestResponse, Error, KbIngestRequest> {
+): UseMutationResult<KbIngestAsyncOrDuplicate, Error, KbIngestRequest> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (input) => api.kbIngestAsync(workspaceId, kbId, input),

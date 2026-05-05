@@ -252,6 +252,20 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		);
 	}
 
+	async findRagDocumentByContentHash(
+		workspace: string,
+		knowledgeBase: string,
+		contentHash: string,
+	): Promise<RagDocumentRecord | null> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const map = this.ragDocuments.get(docKey(workspace, knowledgeBase));
+		if (!map) return null;
+		for (const doc of map.values()) {
+			if (doc.contentHash === contentHash) return doc;
+		}
+		return null;
+	}
+
 	async createRagDocument(
 		workspace: string,
 		knowledgeBase: string,

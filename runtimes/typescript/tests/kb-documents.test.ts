@@ -244,6 +244,97 @@ describe("kb-documents routes", () => {
 		expect(typeof chunks[0].text).toBe("string");
 	});
 
+	test("POST .../ingest with byte-identical text returns 200 duplicate", async () => {
+		const harness = makeApp();
+		const { ws, kbId } = await setupKb(harness);
+
+		const text = "alpha bravo charlie delta. ".repeat(40);
+		const body = JSON.stringify({
+			text,
+			sourceFilename: "ramble.txt",
+			fileType: "text",
+		});
+		// First ingest creates the document.
+		const first = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body,
+			},
+		);
+		expect(first.status).toBe(201);
+		const firstBody = await json(first);
+		const firstDocId = firstBody.document.documentId as string;
+		const firstHash = firstBody.document.contentHash as string;
+		expect(firstHash).toMatch(/^[a-f0-9]{64}$/);
+
+		// Second ingest with the same body collapses to the existing
+		// document — pipeline does NOT run again. Response is the dedup
+		// shape: 200 with `outcome: "duplicate"` and the existing record.
+		const second = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body,
+			},
+		);
+		expect(second.status).toBe(200);
+		const secondBody = await json(second);
+		expect(secondBody.outcome).toBe("duplicate");
+		expect(secondBody.document.documentId).toBe(firstDocId);
+		expect(secondBody.document.contentHash).toBe(firstHash);
+		expect(secondBody.chunks).toBeUndefined();
+
+		// Document table still shows exactly one record.
+		const list = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents`,
+		);
+		expect(list.status).toBe(200);
+		const docs = (await json(list)).items as Array<{ documentId: string }>;
+		expect(docs).toHaveLength(1);
+		expect(docs[0]?.documentId).toBe(firstDocId);
+	});
+
+	test("POST .../ingest with the same name but different text creates a new document", async () => {
+		// Phase-1 dedup is hash-based only. A different body with the
+		// same `sourceFilename` should create a fresh document; the
+		// name-collision overwrite UX is a follow-up PR.
+		const harness = makeApp();
+		const { ws, kbId } = await setupKb(harness);
+
+		const first = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "first version of the doc",
+					sourceFilename: "policy.md",
+				}),
+			},
+		);
+		expect(first.status).toBe(201);
+		const firstId = (await json(first)).document.documentId as string;
+
+		const second = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "second version of the doc — different content entirely",
+					sourceFilename: "policy.md",
+				}),
+			},
+		);
+		expect(second.status).toBe(201);
+		const secondId = (await json(second)).document.documentId as string;
+
+		expect(secondId).not.toBe(firstId);
+	});
+
 	test("POST .../ingest with empty text returns 400", async () => {
 		const harness = makeApp();
 		const { ws, kbId } = await setupKb(harness);

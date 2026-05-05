@@ -34,6 +34,19 @@ export interface RagDocumentRepo {
 		knowledgeBase: string,
 		uid: string,
 	): Promise<RagDocumentRecord | null>;
+	/**
+	 * Look up an existing document by its content hash within a KB.
+	 * Returns `null` if no document with that hash exists. Used by the
+	 * ingest service to short-circuit re-ingestion of byte-identical
+	 * content (the hash is SHA-256 of the input text). Returns the
+	 * first match if multiple exist (which shouldn't happen for a
+	 * post-dedup-launch document set, but is tolerated for backfill).
+	 */
+	findRagDocumentByContentHash(
+		workspace: string,
+		knowledgeBase: string,
+		contentHash: string,
+	): Promise<RagDocumentRecord | null>;
 	createRagDocument(
 		workspace: string,
 		knowledgeBase: string,

@@ -32,6 +32,7 @@ import {
 	DocumentChunkSchema,
 	DocumentIdParamSchema,
 	KbAsyncIngestResponseSchema,
+	KbIngestDuplicateResponseSchema,
 	KbIngestRequestSchema,
 	KbIngestResponseSchema,
 	KnowledgeBaseIdParamSchema,
@@ -158,6 +159,13 @@ export function kbDocumentRoutes(
 				},
 			},
 			responses: {
+				200: {
+					content: {
+						"application/json": { schema: KbIngestDuplicateResponseSchema },
+					},
+					description:
+						"Content matches an existing document by SHA-256 hash — pipeline did not run; the existing document is returned. Both sync and async requests collapse to this shape when the dedup index hits.",
+				},
 				201: {
 					content: { "application/json": { schema: KbIngestResponseSchema } },
 					description: "Document created and chunks upserted (sync path)",
@@ -187,6 +195,12 @@ export function kbDocumentRoutes(
 				{ async: asyncMode === "true" },
 			);
 
+			if (outcome.kind === "duplicate") {
+				return c.json(
+					{ document: outcome.document, outcome: "duplicate" as const },
+					200,
+				);
+			}
 			if (outcome.kind === "queued") {
 				c.header(
 					"Location",
