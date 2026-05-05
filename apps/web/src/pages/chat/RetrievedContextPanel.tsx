@@ -86,10 +86,13 @@ export function RetrievedContextPanel({
 	const [selected, setSelected] = useState<SelectedChunk | null>(null);
 
 	return (
+		// `overflow-hidden` lets the panel fill its (fixed) grid-row
+		// height without spilling content outside the row; the inner
+		// chunks list owns the scroll.
 		<aside
 			aria-label="Retrieved context for the latest assistant turn"
 			className={cn(
-				"flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4",
+				"flex flex-col gap-3 overflow-hidden rounded-lg border border-slate-200 bg-white p-4",
 				className,
 			)}
 		>
@@ -119,12 +122,13 @@ export function RetrievedContextPanel({
 					description="The agent answered without retrieving any chunks. RAG runs only on turns that need grounding."
 				/>
 			) : (
-				// Cap the height so a heavily-cited turn (8+ chunks across a few
-				// documents) doesn't bloat the chat surface. Each group card is
-				// roughly 5rem of header + ~2.5rem per chunk row; 22rem fits
-				// roughly 5 chunks before scrolling kicks in.
+				// Fill the panel's available height; scroll internally so the
+				// outer aside stays bounded by the chat layout's fixed grid
+				// row. `min-h-0` is the standard flex-child fix that lets
+				// `flex-1` actually shrink instead of being floored at the
+				// content's intrinsic height.
 				<ul
-					className="flex max-h-[22rem] flex-col gap-2.5 overflow-y-auto pr-0.5"
+					className="flex flex-1 flex-col gap-2.5 overflow-y-auto pr-0.5 min-h-0"
 					data-testid="context-panel-groups"
 				>
 					{[...groups.entries()].map(([groupKey, refs]) => {

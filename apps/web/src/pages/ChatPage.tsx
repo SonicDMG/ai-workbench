@@ -192,7 +192,15 @@ function ChatLayout({
 	const messages = messagesQuery.data ?? [];
 
 	return (
-		<div className="grid grid-cols-[14rem_minmax(0,1fr)] gap-4 min-h-[28rem] xl:grid-cols-[14rem_minmax(0,1fr)_18rem]">
+		// Fixed-height grid row. Default layout sizing made the empty-
+		// conversation pane taller than the retrieved-context panel
+		// (or vice versa) because each pane sized to its own content
+		// and the row's `min-h` only set a floor. With `h-[…]`, both
+		// panes inherit the same row height; long conversations and
+		// busy context panels handle their own internal scrolling.
+		// Viewport-aware so big monitors get a tall chat surface and
+		// laptops still see a usable floor.
+		<div className="grid grid-cols-[14rem_minmax(0,1fr)] gap-4 h-[calc(100vh-14rem)] min-h-[32rem] xl:grid-cols-[14rem_minmax(0,1fr)_18rem]">
 			<ConversationSidebar
 				workspaceId={workspaceId}
 				agentId={agentId}
