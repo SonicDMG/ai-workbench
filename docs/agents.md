@@ -61,7 +61,8 @@ list — so existing API clients are unaffected.
 Adding a new template is a one-file change (append to
 [`agent-templates.ts`](../runtimes/typescript/src/control-plane/agent-templates.ts)
 and decide if `defaultOnNewWorkspace` should be `true`); see
-[ADR 0003](./adr/0003-agent-templates.md) for the design context.
+[ADR 0003](https://github.com/datastax/ai-workbench/blob/main/docs/adr/0003-agent-templates.md)
+for the design context.
 
 ## Data model
 
