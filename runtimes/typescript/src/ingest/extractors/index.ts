@@ -31,6 +31,7 @@ import {
 	type ExtractInput,
 	type ExtractParser,
 } from "./types.js";
+import { extractXlsx } from "./xlsx.js";
 
 export type { DoclingConfig } from "./docling.js";
 export type {
@@ -51,6 +52,7 @@ export interface ExtractorRegistry {
 
 const PDF_EXTENSIONS = new Set(["pdf"]);
 const DOCX_EXTENSIONS = new Set(["docx"]);
+const XLSX_EXTENSIONS = new Set(["xlsx"]);
 const TEXT_EXTENSIONS = new Set([
 	"txt",
 	"text",
@@ -126,9 +128,20 @@ function isDocxLike(input: ExtractInput): boolean {
 	return DOCX_EXTENSIONS.has(lowerExt(input.filename));
 }
 
+function isXlsxLike(input: ExtractInput): boolean {
+	if (
+		input.mimeType ===
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	) {
+		return true;
+	}
+	return XLSX_EXTENSIONS.has(lowerExt(input.filename));
+}
+
 async function extractNative(input: ExtractInput): Promise<ExtractedDocument> {
 	if (isPdfLike(input)) return extractPdf(input);
 	if (isDocxLike(input)) return extractDocx(input);
+	if (isXlsxLike(input)) return extractXlsx(input);
 	if (isTextLike(input)) return extractText(input);
 	throw new ExtractError(
 		"unsupported_file_type",
@@ -220,4 +233,5 @@ export const SUPPORTED_INGEST_EXTENSIONS: ReadonlySet<string> = new Set([
 	...TEXT_EXTENSIONS,
 	...PDF_EXTENSIONS,
 	...DOCX_EXTENSIONS,
+	...XLSX_EXTENSIONS,
 ]);

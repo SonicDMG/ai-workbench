@@ -330,19 +330,21 @@ are wired end-to-end.
 
 The runtime exposes a multipart ingest route at
 `POST /api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest/file`
-that accepts PDF, DOCX, and text uploads. Extraction is dispatched
-based on the upload's MIME type / extension; configuration is via
-environment variables, not `workbench.yaml`.
+that accepts PDF, DOCX, XLSX, and text uploads. Extraction is
+dispatched based on the upload's MIME type / extension;
+configuration is via environment variables, not `workbench.yaml`.
 
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `DOCLING_URL` | unset | Base URL of a [docling-serve](https://github.com/docling-project/docling-serve) instance. When set, the dispatcher prefers docling over the native pipeline for non-text files (PDF, DOCX) and falls back to native if docling is unreachable. The route also accepts an explicit per-upload `parser=native\|docling\|auto` form field. |
+| `DOCLING_URL` | unset | Base URL of a [docling-serve](https://github.com/docling-project/docling-serve) instance. When set, the dispatcher prefers docling over the native pipeline for non-text files (PDF, DOCX, XLSX) and falls back to native if docling is unreachable. The route also accepts an explicit per-upload `parser=native\|docling\|auto` form field. |
 | `DOCLING_TIMEOUT_MS` | `60000` | Per-request budget for docling-serve calls. Scanned/OCR'd PDFs can run long; raise this if you see `docling_unavailable` with `timed out after …` messages. |
 
 When `DOCLING_URL` is unset (the default), the runtime uses
-`pdfjs-dist` for PDFs and `mammoth` for DOCX. Native extraction is
-fast and zero-ops but flattens tables and skips OCR; docling
-preserves layout and does OCR for scanned documents.
+`pdfjs-dist` for PDFs, `mammoth` for DOCX, and `exceljs` for XLSX
+(rendered as one markdown table per worksheet). Native extraction
+is fast and zero-ops but flattens layout-specific structure and
+skips OCR; docling preserves layout and does OCR for scanned
+documents.
 
 ## `mcp` *(optional)*
 

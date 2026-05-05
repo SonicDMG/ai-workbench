@@ -230,6 +230,48 @@ describe("POST .../ingest/file (multipart)", () => {
 		expect((await json(res)).error.code).toBe("invalid_parser");
 	});
 
+	test("round-trips a real XLSX through exceljs", async () => {
+		const harness = makeApp();
+		const { ws, kbId } = await setupKb(harness);
+
+		const ExcelJS = await import("exceljs");
+		const wb = new ExcelJS.default.Workbook();
+		const sheet = wb.addWorksheet("Inventory");
+		sheet.addRow(["SKU", "Name", "Qty"]);
+		sheet.addRow(["A-001", "Widget alpha", 12]);
+		sheet.addRow(["A-002", "Widget beta", 7]);
+		const xlsxBuffer = Buffer.from(await wb.xlsx.writeBuffer());
+
+		const form = new FormData();
+		form.append(
+			"file",
+			new Blob([new Uint8Array(xlsxBuffer)], {
+				type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+			}),
+			"inventory.xlsx",
+		);
+
+		const res = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest/file`,
+			{ method: "POST", body: form },
+		);
+		expect(res.status, await res.clone().text()).toBe(201);
+		const body = await json(res);
+		expect(body.chunks).toBeGreaterThan(0);
+		expect(body.document.metadata.ingestParser).toBe("native");
+		expect(body.document.metadata.ingestParserVersion).toBe("exceljs");
+
+		const chunksRes = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents/${body.document.documentId}/chunks`,
+		);
+		expect(chunksRes.status).toBe(200);
+		const chunks = (await json(chunksRes)) as Array<{ text: string }>;
+		const joined = chunks.map((c) => c.text).join(" ");
+		expect(joined).toContain("Inventory");
+		expect(joined).toContain("Widget alpha");
+		expect(joined).toContain("A-001");
+	});
+
 	test("round-trips a real PDF through pdfjs-dist", async () => {
 		const harness = makeApp();
 		const { ws, kbId } = await setupKb(harness);

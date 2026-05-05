@@ -8,7 +8,7 @@
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents`           document CRUD
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/documents/{d}/chunks` chunk listing
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest`              sync + async ingest (JSON)
- *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest/file`         multipart binary ingest (PDF / DOCX / text)
+ *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/ingest/file`         multipart binary ingest (PDF / DOCX / XLSX / text)
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records`             upsert
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/records/{id}`        delete record
  *   `/api/v1/workspaces/{w}/knowledge-bases/{kb}/search`              vector / hybrid / rerank

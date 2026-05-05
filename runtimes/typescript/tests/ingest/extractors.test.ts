@@ -108,6 +108,95 @@ describe("text extractor (native fast-path)", () => {
 	});
 });
 
+describe("xlsx extractor (native)", () => {
+	test("renders each sheet as a markdown table with header alignment row", async () => {
+		const ExcelJS = await import("exceljs");
+		const wb = new ExcelJS.default.Workbook();
+		const s1 = wb.addWorksheet("Inventory");
+		s1.addRow(["SKU", "Name", "Qty"]);
+		s1.addRow(["A-001", "Widget alpha", 12]);
+		s1.addRow(["A-002", "Widget beta", 7]);
+		const s2 = wb.addWorksheet("Notes");
+		s2.addRow(["Field", "Value"]);
+		s2.addRow(["Owner", "finance"]);
+		const buf = await wb.xlsx.writeBuffer();
+
+		const reg = createExtractorRegistry({ docling: null });
+		const out = await reg.extract({
+			bytes: new Uint8Array(buf),
+			filename: "book.xlsx",
+			mimeType:
+				"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		});
+		expect(out.parser).toBe("native");
+		expect(out.parserVersion).toBe("exceljs");
+		// Each sheet appears as a level-2 heading.
+		expect(out.text).toContain("## Inventory");
+		expect(out.text).toContain("## Notes");
+		// Header row + alignment row are present.
+		expect(out.text).toContain("| SKU | Name | Qty |");
+		expect(out.text).toContain("| --- | --- | --- |");
+		// Data rows preserve cell values.
+		expect(out.text).toContain("| A-001 | Widget alpha | 12 |");
+		expect(out.text).toContain("| Owner | finance |");
+	});
+
+	test("escapes pipes and newlines so cells don't bust the table grid", async () => {
+		const ExcelJS = await import("exceljs");
+		const wb = new ExcelJS.default.Workbook();
+		const s = wb.addWorksheet("Data");
+		s.addRow(["Header"]);
+		s.addRow(["pipe | inside"]);
+		s.addRow(["multi\nline"]);
+		const buf = await wb.xlsx.writeBuffer();
+
+		const reg = createExtractorRegistry({ docling: null });
+		const out = await reg.extract({
+			bytes: new Uint8Array(buf),
+			filename: "data.xlsx",
+			mimeType: "",
+		});
+		// Pipe is escaped; newline is collapsed to a space.
+		expect(out.text).toContain("pipe \\| inside");
+		expect(out.text).toContain("multi line");
+		expect(out.text).not.toContain("multi\nline");
+	});
+
+	test("rejects an empty workbook with empty_document", async () => {
+		const ExcelJS = await import("exceljs");
+		const wb = new ExcelJS.default.Workbook();
+		wb.addWorksheet("blank");
+		const buf = await wb.xlsx.writeBuffer();
+
+		const reg = createExtractorRegistry({ docling: null });
+		await expect(
+			reg.extract({
+				bytes: new Uint8Array(buf),
+				filename: "blank.xlsx",
+				mimeType: "",
+			}),
+		).rejects.toMatchObject({
+			name: "ExtractError",
+			code: "empty_document",
+		});
+	});
+
+	test("rejects a non-XLSX byte stream as extraction_failed", async () => {
+		const reg = createExtractorRegistry({ docling: null });
+		await expect(
+			reg.extract({
+				bytes: new TextEncoder().encode("definitely not a zip"),
+				filename: "bogus.xlsx",
+				mimeType:
+					"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+			}),
+		).rejects.toMatchObject({
+			name: "ExtractError",
+			code: "extraction_failed",
+		});
+	});
+});
+
 describe("dispatcher routing", () => {
 	test("rejects unsupported types with unsupported_file_type", async () => {
 		const reg = createExtractorRegistry({ docling: null });

@@ -89,7 +89,7 @@ describe("isIngestableFile", () => {
 		expect(isIngestableFile({ name: "main.ts", type: "" })).toBe(true);
 	});
 
-	it("accepts PDF and DOCX uploads (server extracts text)", () => {
+	it("accepts PDF, DOCX, and XLSX uploads (server extracts text)", () => {
 		expect(
 			isIngestableFile({ name: "report.pdf", type: "application/pdf" }),
 		).toBe(true);
@@ -101,6 +101,13 @@ describe("isIngestableFile", () => {
 			}),
 		).toBe(true);
 		expect(isIngestableFile({ name: "memo.docx", type: "" })).toBe(true);
+		expect(
+			isIngestableFile({
+				name: "book.xlsx",
+				type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+			}),
+		).toBe(true);
+		expect(isIngestableFile({ name: "BOOK.XLSX", type: "" })).toBe(true);
 	});
 
 	it("still rejects binaries the extractor can't handle", () => {

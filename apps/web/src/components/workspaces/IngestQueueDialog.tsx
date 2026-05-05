@@ -59,13 +59,13 @@ interface PendingConflict {
  * don't tend to need parallelism, and a misbehaving file shouldn't
  * tank the others.
  *
- * Plain text plus PDF / DOCX, 25 MB per file. Anything else gets
- * rejected inline rather than silently dropped from the queue so
- * the user can fix the source set. PDF / DOCX bytes are extracted
- * server-side (native pdfjs-dist + mammoth by default; docling-serve
- * when `DOCLING_URL` is configured) before chunk + embed runs. The
- * drop zone lives in {@link IngestDropZone}; the per-file row +
- * progress bar live in {@link QueueRow}.
+ * Plain text plus PDF / DOCX / XLSX, 25 MB per file. Anything else
+ * gets rejected inline rather than silently dropped from the queue so
+ * the user can fix the source set. Binary documents are extracted
+ * server-side (native pdfjs-dist / mammoth / exceljs by default;
+ * docling-serve when `DOCLING_URL` is configured) before chunk +
+ * embed runs. The drop zone lives in {@link IngestDropZone}; the
+ * per-file row + progress bar live in {@link QueueRow}.
  */
 
 const MAX_BYTES = 25 * 1024 * 1024;

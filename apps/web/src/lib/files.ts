@@ -172,6 +172,8 @@ const META: Record<string, FileTypeMeta> = {
 	pdf: { label: "PDF", badgeClass: BINARY },
 	docx: { label: "DOCX", badgeClass: BINARY },
 	doc: { label: "DOC", badgeClass: BINARY },
+	xlsx: { label: "XLSX", badgeClass: BINARY },
+	xls: { label: "XLS", badgeClass: BINARY },
 };
 
 export function extOf(name: string | null | undefined): string {
@@ -202,10 +204,11 @@ export function isReadableTextFile(file: Pick<File, "name" | "type">): boolean {
 const INGEST_BINARY_MIME_TYPES = new Set([
 	"application/pdf",
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
 
 /** Extensions accepted by the server's binary-document extractor surface. */
-const INGEST_BINARY_EXTENSIONS = new Set(["pdf", "docx"]);
+const INGEST_BINARY_EXTENSIONS = new Set(["pdf", "docx", "xlsx"]);
 
 /**
  * Combined extension list (text + binary) the ingest queue's file
@@ -217,6 +220,7 @@ export const INGESTABLE_EXTENSIONS: ReadonlyArray<string> = [
 	...READABLE_TEXT_EXTENSIONS,
 	".pdf",
 	".docx",
+	".xlsx",
 ];
 
 /**
