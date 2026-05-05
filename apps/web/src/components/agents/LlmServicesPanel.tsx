@@ -56,10 +56,10 @@ export function LlmServicesPanel({ workspace }: LlmServicesPanelProps) {
 			<CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
 				<div>
 					<CardTitle className="flex items-center gap-2">
-						<Cpu className="h-5 w-5 text-slate-500" />
+						<Cpu className="h-5 w-5 text-slate-500 dark:text-slate-400" />
 						LLM services
 					</CardTitle>
-					<p className="text-xs text-slate-500 mt-1">
+					<p className="text-xs text-slate-500 mt-1 dark:text-slate-400">
 						Workspace-scoped chat-completion model definitions. Agents
 						optionally bind to one via <code>agent.llmServiceId</code>; unbound
 						agents fall back to the runtime's global <code>chat:</code> block.
@@ -72,17 +72,17 @@ export function LlmServicesPanel({ workspace }: LlmServicesPanelProps) {
 			</CardHeader>
 			<CardContent>
 				{services.length === 0 ? (
-					<div className="rounded-md border border-dashed border-slate-300 p-6 text-center">
-						<p className="text-sm text-slate-600">
+					<div className="rounded-md border border-dashed border-slate-300 p-6 text-center dark:border-slate-600">
+						<p className="text-sm text-slate-600 dark:text-slate-400">
 							No LLM services configured yet.
 						</p>
-						<p className="text-xs text-slate-500 mt-1">
+						<p className="text-xs text-slate-500 mt-1 dark:text-slate-400">
 							The runtime's global <code>chat:</code> block (when present) is
 							used by agents that don't bind to a service explicitly.
 						</p>
 					</div>
 				) : (
-					<ul className="divide-y divide-slate-100">
+					<ul className="divide-y divide-slate-100 dark:divide-slate-800">
 						{services.map((svc) => (
 							<li
 								key={svc.llmServiceId}
@@ -91,19 +91,19 @@ export function LlmServicesPanel({ workspace }: LlmServicesPanelProps) {
 								<div className="min-w-0 flex-1">
 									<div className="flex items-center gap-2">
 										<p className="text-sm font-semibold truncate">{svc.name}</p>
-										<span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600">
+										<span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-400">
 											{svc.provider}
 										</span>
 									</div>
-									<p className="mt-1 text-xs text-slate-500 truncate">
+									<p className="mt-1 text-xs text-slate-500 truncate dark:text-slate-400">
 										{svc.modelName}
 									</p>
 									{svc.description ? (
-										<p className="mt-1 line-clamp-2 text-xs text-slate-500">
+										<p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">
 											{svc.description}
 										</p>
 									) : null}
-									<p className="mt-1 text-[11px] text-slate-400">
+									<p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
 										Updated {formatDate(svc.updatedAt)}
 									</p>
 								</div>

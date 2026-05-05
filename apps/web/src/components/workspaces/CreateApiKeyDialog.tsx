@@ -93,7 +93,7 @@ export function CreateApiKeyDialog({
 								}}
 								autoFocus
 							/>
-							<p className="text-xs text-slate-500">
+							<p className="text-xs text-slate-500 dark:text-slate-400">
 								A human-readable name that shows up in the keys list. Required
 								so operators can tell keys apart.
 							</p>
@@ -127,8 +127,8 @@ export function CreateApiKeyDialog({
 								this dialog it's gone — the runtime only keeps a scrypt digest.
 							</DialogDescription>
 						</DialogHeader>
-						<div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-							<AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600 shrink-0" />
+						<div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+							<AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600 shrink-0 dark:text-amber-400" />
 							<span>
 								Treat this like a password. Don't commit it, don't paste it into
 								chat, don't log it. Revoke and re-issue if it leaks.
@@ -136,8 +136,8 @@ export function CreateApiKeyDialog({
 						</div>
 						<div className="flex flex-col gap-2">
 							<Label>Token</Label>
-							<div className="flex items-center gap-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2">
-								<code className="flex-1 font-mono text-xs break-all text-slate-900">
+							<div className="flex items-center gap-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-800">
+								<code className="flex-1 font-mono text-xs break-all text-slate-900 dark:text-slate-100">
 									{plaintext}
 								</code>
 								<CopyButton value={plaintext} label="Copy API key" />

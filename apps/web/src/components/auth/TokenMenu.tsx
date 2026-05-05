@@ -62,7 +62,7 @@ export function TokenMenu() {
 			<DialogTrigger asChild>
 				<button
 					type="button"
-					className="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+					className="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
 					aria-label={hasToken ? "Change API token" : "Set API token"}
 				>
 					{hasToken ? (
@@ -72,7 +72,7 @@ export function TokenMenu() {
 						/>
 					) : (
 						<ShieldAlert
-							className="h-4 w-4 text-slate-400"
+							className="h-4 w-4 text-slate-400 dark:text-slate-500"
 							aria-hidden="true"
 						/>
 					)}
@@ -111,7 +111,7 @@ export function TokenMenu() {
 						spellCheck={false}
 						autoComplete="off"
 					/>
-					<p className="text-xs text-slate-500">
+					<p className="text-xs text-slate-500 dark:text-slate-400">
 						The token never leaves this browser. It's not persisted on the
 						server, and only this origin's JavaScript can read it.
 					</p>

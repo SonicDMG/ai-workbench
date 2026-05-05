@@ -97,12 +97,14 @@ export function ChatPage() {
 
 			<div className="flex items-start justify-between gap-4">
 				<div className="min-w-0">
-					<h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+					<h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
 						Chat
 					</h1>
-					<p className="mt-1 text-sm text-slate-500">
+					<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
 						Talk to an agent in{" "}
-						<span className="font-medium text-slate-700">{workspace.name}</span>
+						<span className="font-medium text-slate-700 dark:text-slate-300">
+							{workspace.name}
+						</span>
 						.
 					</p>
 				</div>

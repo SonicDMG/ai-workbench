@@ -92,10 +92,10 @@ export function AgentsPage() {
 							Back to workspace
 						</Link>
 					</Button>
-					<h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+					<h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
 						Agents
 					</h1>
-					<p className="mt-1 text-sm text-slate-500">
+					<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
 						{workspace.name} · Manage workspace agents and the LLM services they
 						use.
 					</p>
@@ -135,10 +135,10 @@ function AgentsCard({ workspace }: { workspace: string }) {
 			<CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
 				<div>
 					<CardTitle className="flex items-center gap-2">
-						<Bot className="h-5 w-5 text-slate-500" />
+						<Bot className="h-5 w-5 text-slate-500 dark:text-slate-400" />
 						Agents
 					</CardTitle>
-					<p className="mt-1 text-xs text-slate-500">
+					<p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
 						Each agent carries a system prompt, default RAG scope, and optional
 						LLM service binding.
 					</p>
@@ -156,14 +156,16 @@ function AgentsCard({ workspace }: { workspace: string }) {
 			</CardHeader>
 			<CardContent>
 				{agents.length === 0 ? (
-					<div className="rounded-md border border-dashed border-slate-300 p-6 text-center">
-						<p className="text-sm text-slate-600">No agents yet.</p>
-						<p className="mt-1 text-xs text-slate-500">
+					<div className="rounded-md border border-dashed border-slate-300 p-6 text-center dark:border-slate-600">
+						<p className="text-sm text-slate-600 dark:text-slate-400">
+							No agents yet.
+						</p>
+						<p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
 							Create one to start running conversations against this workspace.
 						</p>
 					</div>
 				) : (
-					<ul className="divide-y divide-slate-100">
+					<ul className="divide-y divide-slate-100 dark:divide-slate-800">
 						{agents.map((agent) => (
 							<AgentRow
 								key={agent.agentId}
@@ -268,11 +270,11 @@ function AgentRow({
 			<div className="min-w-0 flex-1">
 				<p className="text-sm font-semibold truncate">{agent.name}</p>
 				{agent.description ? (
-					<p className="mt-0.5 text-xs text-slate-600 truncate">
+					<p className="mt-0.5 text-xs text-slate-600 truncate dark:text-slate-400">
 						{agent.description}
 					</p>
 				) : null}
-				<p className="mt-1 text-[11px] text-slate-500">
+				<p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
 					{llmLabel} · {kbLabel}
 					{agent.rerankEnabled ? " · reranking on" : ""} · updated{" "}
 					{formatDate(agent.updatedAt)}

@@ -72,10 +72,10 @@ export function PlaygroundPage() {
 						<Sparkles className="h-5 w-5" />
 					</span>
 					<div>
-						<h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+						<h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
 							Playground
 						</h1>
-						<p className="mt-1 text-sm text-slate-600">
+						<p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
 							Query{" "}
 							<span className="font-medium">{knowledgeBase.data.name}</span> in{" "}
 							<span className="font-medium">{workspace.data?.name}</span>. No

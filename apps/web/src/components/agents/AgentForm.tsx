@@ -136,7 +136,9 @@ export function AgentForm({
 					{...form.register("name")}
 				/>
 				{errors.name ? (
-					<p className="text-xs text-red-600">{errors.name.message}</p>
+					<p className="text-xs text-red-600 dark:text-red-400">
+						{errors.name.message}
+					</p>
 				) : null}
 			</div>
 
@@ -207,12 +209,12 @@ export function AgentForm({
 				>
 					Knowledge base bindings
 				</FieldLabel>
-				<p className="text-xs text-slate-500">
+				<p className="text-xs text-slate-500 dark:text-slate-400">
 					Default RAG scope for conversations against this agent. Leave empty to
 					draw from every KB in the workspace.
 				</p>
 				{knowledgeBases.length === 0 ? (
-					<p className="text-xs text-slate-500 italic">
+					<p className="text-xs text-slate-500 italic dark:text-slate-400">
 						No knowledge bases in this workspace yet.
 					</p>
 				) : (
@@ -228,11 +230,11 @@ export function AgentForm({
 										type="checkbox"
 										checked={checked}
 										onChange={() => toggleKb(kb.knowledgeBaseId)}
-										className="h-4 w-4 rounded border-slate-300 text-[var(--color-brand-500)] focus:ring-[var(--color-brand-500)]"
+										className="h-4 w-4 rounded border-slate-300 text-[var(--color-brand-500)] focus:ring-[var(--color-brand-500)] dark:border-slate-600 dark:bg-slate-900"
 									/>
 									<span className="font-medium">{kb.name}</span>
 									{kb.description ? (
-										<span className="text-slate-500 text-xs">
+										<span className="text-slate-500 text-xs dark:text-slate-400">
 											— {kb.description}
 										</span>
 									) : null}
@@ -243,13 +245,13 @@ export function AgentForm({
 				)}
 			</div>
 
-			<fieldset className="flex flex-col gap-3 rounded-md border border-slate-200 bg-slate-50/50 p-4">
+			<fieldset className="flex flex-col gap-3 rounded-md border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
 				<div className="flex items-center gap-2">
 					<label className="flex items-center gap-2 text-sm font-medium">
 						<input
 							type="checkbox"
 							{...form.register("rerankEnabled")}
-							className="h-4 w-4 rounded border-slate-300 text-[var(--color-brand-500)] focus:ring-[var(--color-brand-500)]"
+							className="h-4 w-4 rounded border-slate-300 text-[var(--color-brand-500)] focus:ring-[var(--color-brand-500)] dark:border-slate-600 dark:bg-slate-900"
 						/>
 						Enable reranking
 					</label>

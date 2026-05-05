@@ -35,7 +35,7 @@ export function FieldHelp({ help }: { help: string }) {
 		<span className="group relative inline-flex">
 			<button
 				type="button"
-				className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+				className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] dark:text-slate-500 dark:hover:text-slate-200"
 				aria-label="Field information"
 				aria-describedby={tooltipId}
 			>
@@ -44,7 +44,7 @@ export function FieldHelp({ help }: { help: string }) {
 			<span
 				id={tooltipId}
 				role="tooltip"
-				className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden w-72 -translate-x-1/2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-normal leading-5 text-slate-700 shadow-lg group-hover:block group-focus-within:block"
+				className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden w-72 -translate-x-1/2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-normal leading-5 text-slate-700 shadow-lg group-hover:block group-focus-within:block dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
 			>
 				{help}
 			</span>

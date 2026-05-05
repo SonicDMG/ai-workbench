@@ -77,10 +77,10 @@ export function KindPicker({
 							"group relative flex flex-col gap-2 rounded-xl border p-4 text-left transition-all",
 							"focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",
 							disabled
-								? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-70"
+								? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-70 dark:border-slate-700 dark:bg-slate-800"
 								: selected
 									? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] ring-1 ring-[var(--color-brand-500)]"
-									: "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm",
+									: "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600",
 						)}
 					>
 						<div className="flex items-center justify-between">
@@ -88,10 +88,10 @@ export function KindPicker({
 								className={cn(
 									"flex h-10 w-10 items-center justify-center rounded-lg",
 									disabled
-										? "bg-slate-100 text-slate-400"
+										? "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
 										: selected
 											? "bg-[var(--color-brand-600)] text-white"
-											: "bg-slate-100 text-slate-600 group-hover:bg-slate-200",
+											: "bg-slate-100 text-slate-600 group-hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:group-hover:bg-slate-700",
 								)}
 							>
 								{m.icon}
@@ -102,7 +102,7 @@ export function KindPicker({
 								</span>
 							) : null}
 							{disabled ? (
-								<span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-600">
+								<span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300">
 									Coming soon
 								</span>
 							) : null}
@@ -111,7 +111,9 @@ export function KindPicker({
 							<p
 								className={cn(
 									"font-semibold",
-									disabled ? "text-slate-500" : "text-slate-900",
+									disabled
+										? "text-slate-500 dark:text-slate-400"
+										: "text-slate-900 dark:text-slate-100",
 								)}
 							>
 								{m.label}
@@ -119,7 +121,9 @@ export function KindPicker({
 							<p
 								className={cn(
 									"mt-1 text-sm leading-relaxed",
-									disabled ? "text-slate-400" : "text-slate-500",
+									disabled
+										? "text-slate-400 dark:text-slate-500"
+										: "text-slate-500 dark:text-slate-400",
 								)}
 							>
 								{m.description}

@@ -43,10 +43,10 @@ export function WorkspacesPage() {
 						<Layers className="h-5 w-5" />
 					</span>
 					<div>
-						<h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+						<h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
 							Workspaces
 						</h1>
-						<p className="mt-1 text-sm text-slate-500">
+						<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
 							{workspaces.length}{" "}
 							{workspaces.length === 1 ? "workspace" : "workspaces"} · sorted by
 							creation time

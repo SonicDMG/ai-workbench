@@ -271,7 +271,7 @@ export function CreateKnowledgeBaseDialog({
 					className="flex flex-col gap-4"
 				>
 					<div
-						className="grid grid-cols-2 gap-2 rounded-md border bg-slate-50 p-1"
+						className="grid grid-cols-2 gap-2 rounded-md border bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800"
 						role="tablist"
 						aria-label="Knowledge base creation mode"
 					>
@@ -282,8 +282,8 @@ export function CreateKnowledgeBaseDialog({
 							onClick={() => handleModeChange("create")}
 							className={`rounded px-3 py-2 text-sm transition ${
 								mode === "create"
-									? "bg-white shadow-sm font-medium"
-									: "text-slate-600 hover:text-slate-900"
+									? "bg-white shadow-sm font-medium dark:bg-slate-900 dark:text-slate-100"
+									: "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
 							}`}
 						>
 							Create new collection
@@ -295,8 +295,8 @@ export function CreateKnowledgeBaseDialog({
 							onClick={() => handleModeChange("attach")}
 							className={`rounded px-3 py-2 text-sm transition ${
 								mode === "attach"
-									? "bg-white shadow-sm font-medium"
-									: "text-slate-600 hover:text-slate-900"
+									? "bg-white shadow-sm font-medium dark:bg-slate-900 dark:text-slate-100"
+									: "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
 							}`}
 						>
 							Attach existing
@@ -333,7 +333,7 @@ export function CreateKnowledgeBaseDialog({
 									{selectableCollections.map((c) => (
 										<SelectItem key={c.name} value={c.name}>
 											{c.name}
-											<span className="ml-2 text-xs text-slate-500">
+											<span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
 												(dim {c.vectorDimension} / {c.vectorSimilarity}
 												{c.vectorService
 													? ` / vectorize: ${c.vectorService.provider}:${c.vectorService.modelName}`
@@ -345,12 +345,12 @@ export function CreateKnowledgeBaseDialog({
 								</SelectContent>
 							</Select>
 							{errors.vectorCollection ? (
-								<p className="text-xs text-red-600">
+								<p className="text-xs text-red-600 dark:text-red-400">
 									{errors.vectorCollection.message}
 								</p>
 							) : null}
 							{cols.some((c) => c.attached) ? (
-								<p className="text-xs text-slate-500">
+								<p className="text-xs text-slate-500 dark:text-slate-400">
 									{cols.filter((c) => c.attached).length} collection
 									{cols.filter((c) => c.attached).length === 1 ? "" : "s"}{" "}
 									already attached to a KB and hidden.
@@ -372,7 +372,9 @@ export function CreateKnowledgeBaseDialog({
 								{...form.register("name")}
 							/>
 							{errors.name ? (
-								<p className="text-xs text-red-600">{errors.name.message}</p>
+								<p className="text-xs text-red-600 dark:text-red-400">
+									{errors.name.message}
+								</p>
 							) : null}
 						</div>
 					)}
@@ -421,7 +423,7 @@ export function CreateKnowledgeBaseDialog({
 										value={s.embeddingServiceId}
 									>
 										{s.name}
-										<span className="ml-2 text-xs text-slate-500">
+										<span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
 											({s.provider}:{s.modelName} / dim {s.embeddingDimension})
 										</span>
 									</SelectItem>
@@ -429,14 +431,14 @@ export function CreateKnowledgeBaseDialog({
 							</SelectContent>
 						</Select>
 						{errors.embeddingServiceId ? (
-							<p className="text-xs text-red-600">
+							<p className="text-xs text-red-600 dark:text-red-400">
 								{errors.embeddingServiceId.message}
 							</p>
 						) : null}
 						{mode === "attach" &&
 						selectedCollection &&
 						compatibleEmbeddings.length === 0 ? (
-							<p className="text-xs text-amber-700">
+							<p className="text-xs text-amber-700 dark:text-amber-300">
 								No existing embedding service matches this collection (dim{" "}
 								{selectedCollection.vectorDimension}
 								{selectedCollection.vectorService
@@ -475,7 +477,7 @@ export function CreateKnowledgeBaseDialog({
 										value={s.chunkingServiceId}
 									>
 										{s.name}
-										<span className="ml-2 text-xs text-slate-500">
+										<span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
 											({s.engine})
 										</span>
 									</SelectItem>
@@ -483,7 +485,7 @@ export function CreateKnowledgeBaseDialog({
 							</SelectContent>
 						</Select>
 						{errors.chunkingServiceId ? (
-							<p className="text-xs text-red-600">
+							<p className="text-xs text-red-600 dark:text-red-400">
 								{errors.chunkingServiceId.message}
 							</p>
 						) : null}
@@ -514,7 +516,7 @@ export function CreateKnowledgeBaseDialog({
 										value={s.rerankingServiceId}
 									>
 										{s.name}
-										<span className="ml-2 text-xs text-slate-500">
+										<span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
 											({s.provider}:{s.modelName})
 										</span>
 									</SelectItem>
@@ -538,7 +540,7 @@ export function CreateKnowledgeBaseDialog({
 					</div>
 
 					{blockedReason ? (
-						<p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+						<p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
 							{blockedReason}.
 						</p>
 					) : null}

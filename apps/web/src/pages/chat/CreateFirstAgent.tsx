@@ -54,10 +54,10 @@ export function CreateFirstAgent({
 						/>
 					</div>
 					<div>
-						<h2 className="text-base font-semibold text-slate-900">
+						<h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
 							Pick an agent to start with
 						</h2>
-						<p className="text-xs text-slate-500">
+						<p className="text-xs text-slate-500 dark:text-slate-400">
 							Templates ship with a tuned persona and tool-use guidance. Click
 							Add to drop one into this workspace.
 						</p>
@@ -131,10 +131,10 @@ export function CustomAgentForm({
 						/>
 					</div>
 					<div className="min-w-0 flex-1">
-						<h2 className="text-base font-semibold text-slate-900">
+						<h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
 							Create your first agent
 						</h2>
-						<p className="text-xs text-slate-500">
+						<p className="text-xs text-slate-500 dark:text-slate-400">
 							An agent owns its conversations, system prompt, and (later)
 							knowledge bases.
 						</p>
@@ -152,7 +152,7 @@ export function CustomAgentForm({
 					aria-label="Create agent"
 				>
 					<div className="flex flex-col gap-1 text-sm">
-						<div className="flex items-center gap-1.5 font-medium text-slate-700">
+						<div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
 							<label htmlFor="custom-agent-name">Name</label>
 							<FieldHelp help="Shown in agent pickers and conversation history. Pick something memorable — you can rename it later." />
 						</div>
@@ -163,14 +163,16 @@ export function CustomAgentForm({
 							value={name}
 							onChange={(e) => setName(e.target.value)}
 							placeholder="e.g. Bobby"
-							className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--color-brand-600)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-100)]"
+							className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--color-brand-600)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-100)] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
 						/>
 					</div>
 					<div className="flex flex-col gap-1 text-sm">
-						<div className="flex items-center gap-1.5 font-medium text-slate-700">
+						<div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
 							<label htmlFor="custom-agent-system-prompt">
 								System prompt{" "}
-								<span className="font-normal text-slate-400">(optional)</span>
+								<span className="font-normal text-slate-400 dark:text-slate-500">
+									(optional)
+								</span>
 							</label>
 							<FieldHelp help="The persona / instructions injected at the top of every conversation. Leave it blank to fall back to the runtime's default helpful-assistant prompt." />
 						</div>
@@ -180,7 +182,7 @@ export function CustomAgentForm({
 							value={systemPrompt}
 							onChange={(e) => setSystemPrompt(e.target.value)}
 							placeholder="You are a helpful assistant grounded in this workspace."
-							className="resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--color-brand-600)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-100)]"
+							className="resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--color-brand-600)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-100)] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
 						/>
 					</div>
 					<div className="flex justify-end">

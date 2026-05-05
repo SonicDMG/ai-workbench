@@ -118,7 +118,9 @@ export function LlmServiceForm({
 					{...form.register("name")}
 				/>
 				{errors.name ? (
-					<p className="text-xs text-red-600">{errors.name.message}</p>
+					<p className="text-xs text-red-600 dark:text-red-400">
+						{errors.name.message}
+					</p>
 				) : null}
 			</div>
 
@@ -162,7 +164,9 @@ export function LlmServiceForm({
 						</SelectContent>
 					</Select>
 					{errors.provider ? (
-						<p className="text-xs text-red-600">{errors.provider.message}</p>
+						<p className="text-xs text-red-600 dark:text-red-400">
+							{errors.provider.message}
+						</p>
 					) : null}
 				</div>
 
@@ -180,7 +184,9 @@ export function LlmServiceForm({
 						{...form.register("modelName")}
 					/>
 					{errors.modelName ? (
-						<p className="text-xs text-red-600">{errors.modelName.message}</p>
+						<p className="text-xs text-red-600 dark:text-red-400">
+							{errors.modelName.message}
+						</p>
 					) : null}
 				</div>
 			</div>
@@ -197,7 +203,7 @@ export function LlmServiceForm({
 					placeholder="env:HUGGINGFACE_API_KEY"
 					{...form.register("credentialRef")}
 				/>
-				<p className="text-xs text-slate-500">
+				<p className="text-xs text-slate-500 dark:text-slate-400">
 					Format: <code>env:VAR_NAME</code> or <code>file:/path</code>. Plain
 					token strings are rejected by the runtime.
 				</p>

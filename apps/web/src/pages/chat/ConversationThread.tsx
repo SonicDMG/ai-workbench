@@ -42,7 +42,7 @@ export function EmptyConversationPane({
 						aria-hidden="true"
 					/>
 				</div>
-				<p className="max-w-md text-sm text-slate-700">
+				<p className="max-w-md text-sm text-slate-700 dark:text-slate-300">
 					Pick a conversation from the left, or start a new one with{" "}
 					<span className="font-medium">{agent.name}</span>.
 				</p>
@@ -202,12 +202,12 @@ export function ConversationThread({
 		// alone doesn't survive the column-flex Cardresetting children
 		// to intrinsic heights once `min-h-0` is in play.
 		<Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-			<header className="flex items-start justify-between gap-3 border-b border-slate-100 p-4">
+			<header className="flex items-start justify-between gap-3 border-b border-slate-100 p-4 dark:border-slate-800">
 				<div className="min-w-0">
-					<h2 className="truncate text-base font-semibold tracking-tight text-slate-900">
+					<h2 className="truncate text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100">
 						{conversation.title ?? "Untitled"}
 					</h2>
-					<p className="mt-1 text-xs text-slate-500">
+					<p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
 						{conversation.knowledgeBaseIds.length === 0
 							? `Grounded in: ${agent.name}'s default knowledge bases`
 							: `Grounded in ${conversation.knowledgeBaseIds.length} KB${conversation.knowledgeBaseIds.length > 1 ? "s" : ""}`}
@@ -234,7 +234,7 @@ export function ConversationThread({
 					{messagesQuery.isLoading ? (
 						<LoadingState label="Loading messages…" />
 					) : messagesQuery.isError ? (
-						<p className="text-sm text-red-600">
+						<p className="text-sm text-red-600 dark:text-red-400">
 							{formatApiError(messagesQuery.error)}
 						</p>
 					) : (messagesQuery.data?.length ?? 0) === 0 && !stream.pending ? (
@@ -261,7 +261,7 @@ export function ConversationThread({
 
 				<form
 					onSubmit={onSubmit}
-					className="flex items-end gap-2 border-t border-slate-100 p-3"
+					className="flex items-end gap-2 border-t border-slate-100 p-3 dark:border-slate-800"
 					aria-label="Send a message"
 				>
 					<label htmlFor="chat-composer" className="sr-only">
@@ -280,7 +280,7 @@ export function ConversationThread({
 						}}
 						disabled={stream.pending}
 						placeholder={`Ask ${agent.name}… (Enter to send)`}
-						className="flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--color-brand-600)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-100)] disabled:cursor-not-allowed disabled:bg-slate-50"
+						className="flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--color-brand-600)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-100)] disabled:cursor-not-allowed disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:disabled:bg-slate-800"
 					/>
 					{stream.pending ? (
 						<Button

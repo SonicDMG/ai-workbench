@@ -494,7 +494,7 @@ export function IngestQueueDialog({
 
 					{items.length > 0 ? (
 						<div className="flex flex-col gap-2">
-							<div className="flex items-center justify-between text-xs text-slate-600">
+							<div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
 								<span>
 									{items.length} file{items.length === 1 ? "" : "s"} queued
 									{counts.succeeded + counts.failed + counts.skipped > 0
@@ -506,7 +506,7 @@ export function IngestQueueDialog({
 								{!draining && counts.queued > 0 ? (
 									<button
 										type="button"
-										className="text-xs text-slate-500 hover:text-slate-900"
+										className="text-xs text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
 										onClick={() =>
 											setItems((cur) =>
 												cur.filter((i) => i.status === "running"),
@@ -517,8 +517,8 @@ export function IngestQueueDialog({
 									</button>
 								) : null}
 							</div>
-							<div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200">
-								<ul className="divide-y divide-slate-100">
+							<div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700">
+								<ul className="divide-y divide-slate-100 dark:divide-slate-800">
 									{items.map((item) => (
 										<QueueRow
 											key={item.id}

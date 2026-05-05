@@ -83,12 +83,12 @@ export function WorkspaceDetailPage() {
 			<div className="flex items-start justify-between gap-4">
 				<div className="min-w-0">
 					<div className="flex items-center gap-3 flex-wrap">
-						<h1 className="text-2xl font-semibold tracking-tight text-slate-900 truncate">
+						<h1 className="text-2xl font-semibold tracking-tight text-slate-900 truncate dark:text-slate-100">
 							{data.name}
 						</h1>
 						<KindBadge kind={data.kind} />
 					</div>
-					<div className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+					<div className="mt-1 flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
 						<span className="font-mono truncate">{data.workspaceId}</span>
 						<CopyButton value={data.workspaceId} label="Copy workspace id" />
 					</div>
@@ -111,7 +111,7 @@ export function WorkspaceDetailPage() {
 								) : null}
 								<div
 									aria-hidden="true"
-									className="mx-1 h-6 w-px bg-slate-200"
+									className="mx-1 h-6 w-px bg-slate-200 dark:bg-slate-700"
 								/>
 								<TestConnectionPanel workspaceId={data.workspaceId} />
 							</>
@@ -231,16 +231,16 @@ function MetadataStrip({ workspace }: { workspace: Workspace }) {
 	return (
 		<section
 			aria-label="Workspace details"
-			className="rounded-lg border border-slate-200 bg-white px-5 py-4 shadow-sm"
+			className="rounded-lg border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-900"
 		>
-			<dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4 sm:divide-x sm:divide-slate-100">
+			<dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4 sm:divide-x sm:divide-slate-100 sm:dark:divide-slate-800">
 				<MetaCell label="Keyspace">
 					{workspace.keyspace ? (
-						<code className="font-mono text-sm text-slate-900">
+						<code className="font-mono text-sm text-slate-900 dark:text-slate-100">
 							{workspace.keyspace}
 						</code>
 					) : (
-						<span className="text-slate-400">—</span>
+						<span className="text-slate-400 dark:text-slate-500">—</span>
 					)}
 				</MetaCell>
 				<MetaCell label="Url">
@@ -256,39 +256,41 @@ function MetadataStrip({ workspace }: { workspace: Workspace }) {
 								<ExternalLink className="h-3 w-3 shrink-0" />
 							</a>
 						) : (
-							<code className="block truncate font-mono text-sm text-slate-900">
+							<code className="block truncate font-mono text-sm text-slate-900 dark:text-slate-100">
 								{workspace.url}
 							</code>
 						)
 					) : (
-						<span className="text-slate-400">—</span>
+						<span className="text-slate-400 dark:text-slate-500">—</span>
 					)}
 				</MetaCell>
 				<MetaCell label="Created">
-					<span className="text-sm text-slate-900">
+					<span className="text-sm text-slate-900 dark:text-slate-100">
 						{formatDate(workspace.createdAt)}
 					</span>
 				</MetaCell>
 				<MetaCell label="Updated">
-					<span className="text-sm text-slate-900">
+					<span className="text-sm text-slate-900 dark:text-slate-100">
 						{formatDate(workspace.updatedAt)}
 					</span>
 				</MetaCell>
 			</dl>
 			{credentialEntries.length > 0 ? (
-				<div className="mt-4 border-t border-slate-100 pt-3">
-					<p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+				<div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+					<p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
 						Credentials
 					</p>
 					<ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
 						{credentialEntries.map(([key, ref]) => (
 							<li
 								key={key}
-								className="flex items-baseline gap-1.5 text-sm text-slate-700"
+								className="flex items-baseline gap-1.5 text-sm text-slate-700 dark:text-slate-300"
 							>
 								<span className="font-medium">{key}</span>
-								<span className="text-slate-400">→</span>
-								<code className="font-mono text-xs text-slate-600">{ref}</code>
+								<span className="text-slate-400 dark:text-slate-500">→</span>
+								<code className="font-mono text-xs text-slate-600 dark:text-slate-400">
+									{ref}
+								</code>
 								<CopyButton value={ref} label={`Copy ${key} secret ref`} />
 							</li>
 						))}
@@ -308,7 +310,7 @@ function MetaCell({
 }) {
 	return (
 		<div className="flex min-w-0 flex-col gap-0.5 sm:px-5 sm:first:pl-0 sm:last:pr-0">
-			<dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+			<dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
 				{label}
 			</dt>
 			<dd className="min-w-0 truncate">{children}</dd>
@@ -333,14 +335,14 @@ function MetaCell({
 function KnowledgeBaseHero({ workspaceId }: { workspaceId: string }) {
 	return (
 		<Card className="overflow-hidden border-t-2 border-t-[var(--color-brand-500)] shadow-sm">
-			<CardHeader className="gap-1 bg-gradient-to-b from-[var(--color-brand-50)]/60 to-white pb-4">
+			<CardHeader className="gap-1 bg-gradient-to-b from-[var(--color-brand-50)]/60 to-white pb-4 dark:to-slate-900">
 				<div className="flex items-center gap-3">
 					<SectionIcon tone="brand">
 						<Database className="h-4 w-4" />
 					</SectionIcon>
 					<CardTitle className="text-lg">Knowledge bases</CardTitle>
 				</div>
-				<p className="text-sm text-slate-600 pl-11">
+				<p className="text-sm text-slate-600 pl-11 dark:text-slate-400">
 					Vector collections this workspace serves to agents and the retrieval
 					playground. Each KB binds chunking, embedding, and (optional)
 					reranking services.
@@ -368,7 +370,7 @@ function SectionIcon({
 	const cls =
 		tone === "brand"
 			? "bg-[var(--color-brand-100)] text-[var(--color-brand-700)]"
-			: "bg-slate-100 text-slate-600";
+			: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400";
 	return (
 		<div
 			aria-hidden="true"

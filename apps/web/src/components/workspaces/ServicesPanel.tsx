@@ -14,7 +14,7 @@ import { RerankingSubpanel } from "./RerankingSubpanel";
 export function ServicesPanel({ workspace }: { workspace: string }) {
 	return (
 		<div className="flex flex-col gap-4">
-			<p className="text-xs text-slate-500">
+			<p className="text-xs text-slate-500 dark:text-slate-400">
 				Chunkers, embedders, and rerankers a knowledge base can bind to. A KB
 				composes exactly one chunking + one embedding service at create time,
 				plus an optional reranker.

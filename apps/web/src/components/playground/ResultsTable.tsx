@@ -29,7 +29,7 @@ export function ResultsTable({
 
 	if (loading && !hits) {
 		return (
-			<div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+			<div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
 				Searching…
 			</div>
 		);
@@ -37,20 +37,20 @@ export function ResultsTable({
 
 	if (hits && hits.length === 0) {
 		return (
-			<div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+			<div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
 				No matches.
 			</div>
 		);
 	}
 
 	return (
-		<div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-			<div className="grid grid-cols-[24px,1fr,96px] gap-4 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium uppercase tracking-wider text-slate-500">
+		<div className="rounded-xl border border-slate-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">
+			<div className="grid grid-cols-[24px,1fr,96px] gap-4 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium uppercase tracking-wider text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
 				<span />
 				<span>Chunk</span>
 				<span className="text-right">Score</span>
 			</div>
-			<ul className="divide-y divide-slate-100">
+			<ul className="divide-y divide-slate-100 dark:divide-slate-800">
 				{(hits ?? []).map((h) => (
 					<ResultRow key={h.id} hit={h} />
 				))}
@@ -73,41 +73,47 @@ function ResultRow({ hit }: { hit: SearchHit }) {
 			<button
 				type="button"
 				onClick={() => setOpen((v) => !v)}
-				className="grid w-full grid-cols-[24px,1fr,96px] items-start gap-4 px-4 py-3 text-left hover:bg-slate-50"
+				className="grid w-full grid-cols-[24px,1fr,96px] items-start gap-4 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
 			>
 				{open ? (
-					<ChevronDown className="h-4 w-4 text-slate-500 mt-0.5" aria-hidden />
+					<ChevronDown
+						className="h-4 w-4 text-slate-500 mt-0.5 dark:text-slate-400"
+						aria-hidden
+					/>
 				) : (
-					<ChevronRight className="h-4 w-4 text-slate-500 mt-0.5" aria-hidden />
+					<ChevronRight
+						className="h-4 w-4 text-slate-500 mt-0.5 dark:text-slate-400"
+						aria-hidden
+					/>
 				)}
 				<div className="min-w-0">
 					<div className="flex items-center gap-2">
 						{chunkIndex !== null ? (
-							<span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 tabular-nums shrink-0">
+							<span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 tabular-nums shrink-0 dark:bg-slate-700 dark:text-slate-300">
 								#{chunkIndex}
 							</span>
 						) : null}
-						<span className="font-mono text-xs text-slate-500 truncate">
+						<span className="font-mono text-xs text-slate-500 truncate dark:text-slate-400">
 							{documentId ?? hit.id}
 						</span>
 					</div>
 					{chunkText ? (
-						<p className="mt-1 line-clamp-2 text-sm text-slate-800">
+						<p className="mt-1 line-clamp-2 text-sm text-slate-800 dark:text-slate-100">
 							{chunkText}
 						</p>
 					) : (
-						<p className="mt-1 text-xs text-slate-400 italic">
+						<p className="mt-1 text-xs text-slate-400 italic dark:text-slate-500">
 							(text not stored on this chunk's payload — older ingest)
 						</p>
 					)}
 				</div>
-				<span className="text-right font-mono text-sm text-slate-600 mt-0.5">
+				<span className="text-right font-mono text-sm text-slate-600 mt-0.5 dark:text-slate-400">
 					{hit.score.toFixed(4)}
 				</span>
 			</button>
 			{open ? (
-				<div className="border-t border-slate-100 bg-slate-50 px-4 py-3">
-					<pre className="overflow-auto rounded-md border border-slate-200 bg-white p-3 text-xs font-mono text-slate-800">
+				<div className="border-t border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800">
+					<pre className="overflow-auto rounded-md border border-slate-200 bg-white p-3 text-xs font-mono text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
 						{JSON.stringify(
 							{ id: hit.id, payload: hit.payload ?? {}, score: hit.score },
 							null,

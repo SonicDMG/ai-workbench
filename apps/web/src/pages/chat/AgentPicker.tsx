@@ -24,7 +24,7 @@ export function AgentPicker({
 	const manageLink = (
 		<Link
 			to={`/workspaces/${workspaceId}/agents`}
-			className="ml-auto text-xs text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
+			className="ml-auto text-xs text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
 		>
 			Manage agents
 		</Link>
@@ -33,7 +33,7 @@ export function AgentPicker({
 		const only = agents[0];
 		if (!only) return null;
 		return (
-			<div className="flex items-center gap-2 text-sm text-slate-700">
+			<div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
 				<Bot
 					className="h-4 w-4 text-[var(--color-brand-600)]"
 					aria-hidden="true"
@@ -44,7 +44,7 @@ export function AgentPicker({
 		);
 	}
 	return (
-		<div className="flex items-center gap-2 text-sm text-slate-700">
+		<div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
 			<Bot
 				className="h-4 w-4 text-[var(--color-brand-600)]"
 				aria-hidden="true"
@@ -54,7 +54,7 @@ export function AgentPicker({
 				<select
 					value={activeAgentId}
 					onChange={(e) => onSelect(e.target.value)}
-					className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-[var(--color-brand-600)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-100)]"
+					className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-[var(--color-brand-600)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-100)] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
 					data-testid="agent-picker"
 				>
 					{agents.map((agent) => (

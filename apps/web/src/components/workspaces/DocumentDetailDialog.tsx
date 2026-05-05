@@ -72,17 +72,17 @@ export function DocumentDetailDialog({
 					<div className="flex flex-col gap-4 text-sm">
 						<div className="flex flex-wrap items-center gap-3">
 							<DocumentStatusBadge status={doc.status} />
-							<span className="text-slate-500 text-xs">
+							<span className="text-slate-500 text-xs dark:text-slate-400">
 								Ingested{" "}
 								{doc.ingestedAt ? formatDate(doc.ingestedAt) : "(pending)"}
 							</span>
-							<span className="text-slate-500 text-xs">
+							<span className="text-slate-500 text-xs dark:text-slate-400">
 								Updated {formatDate(doc.updatedAt)}
 							</span>
 						</div>
 
 						{doc.status === "failed" && doc.errorMessage ? (
-							<div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-900">
+							<div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
 								<p className="font-medium mb-1">Error</p>
 								<p className="font-mono break-words whitespace-pre-wrap">
 									{doc.errorMessage}
@@ -96,7 +96,12 @@ export function DocumentDetailDialog({
 							<KV
 								label="Size"
 								value={formatFileSize(doc.fileSize)}
-								icon={<Hash className="h-3 w-3 text-slate-400" aria-hidden />}
+								icon={
+									<Hash
+										className="h-3 w-3 text-slate-400 dark:text-slate-500"
+										aria-hidden
+									/>
+								}
 							/>
 							<KV
 								label="Chunks"
@@ -108,15 +113,17 @@ export function DocumentDetailDialog({
 
 						{Object.keys(doc.metadata).length > 0 ? (
 							<div className="flex flex-col gap-1.5">
-								<p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+								<p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
 									Metadata
 								</p>
-								<div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs font-mono">
+								<div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs font-mono dark:border-slate-700 dark:bg-slate-800">
 									<dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
 										{Object.entries(doc.metadata).map(([k, v]) => (
 											<div key={k} className="contents">
-												<dt className="text-slate-500">{k}</dt>
-												<dd className="text-slate-900 break-words">
+												<dt className="text-slate-500 dark:text-slate-400">
+													{k}
+												</dt>
+												<dd className="text-slate-900 break-words dark:text-slate-100">
 													{String(v)}
 												</dd>
 											</div>
@@ -128,10 +135,10 @@ export function DocumentDetailDialog({
 
 						{doc.status === "ready" ? (
 							<div className="flex flex-col gap-1.5">
-								<p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+								<p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
 									Chunks
 									{chunks.data ? (
-										<span className="ml-2 text-slate-400">
+										<span className="ml-2 text-slate-400 dark:text-slate-500">
 											({chunks.data.length})
 										</span>
 									) : null}
@@ -162,11 +169,17 @@ function KV({
 }) {
 	return (
 		<div className="flex flex-col gap-0.5">
-			<span className="text-[10px] font-medium uppercase tracking-wider text-slate-500 inline-flex items-center gap-1">
+			<span className="text-[10px] font-medium uppercase tracking-wider text-slate-500 inline-flex items-center gap-1 dark:text-slate-400">
 				{icon}
 				{label}
 			</span>
-			<span className={mono ? "font-mono text-xs break-all" : "text-slate-900"}>
+			<span
+				className={
+					mono
+						? "font-mono text-xs break-all dark:text-slate-300"
+						: "text-slate-900 dark:text-slate-100"
+				}
+			>
 				{value}
 			</span>
 		</div>
@@ -197,14 +210,14 @@ function ChunksList({
 
 	if (query.isLoading) {
 		return (
-			<p className="inline-flex items-center gap-2 text-xs text-slate-500">
+			<p className="inline-flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
 				<Loader2 className="h-3 w-3 animate-spin" /> Loading chunks…
 			</p>
 		);
 	}
 	if (query.isError) {
 		return (
-			<p className="text-xs text-red-700">
+			<p className="text-xs text-red-700 dark:text-red-300">
 				Couldn't load chunks: {query.error.message}
 			</p>
 		);
@@ -212,14 +225,14 @@ function ChunksList({
 	const chunks = data ?? [];
 	if (chunks.length === 0) {
 		return (
-			<p className="text-xs text-slate-500">
+			<p className="text-xs text-slate-500 dark:text-slate-400">
 				No chunks under this document. (Drivers without `listRecords` return 501
 				here — the runtime falls back to the empty list.)
 			</p>
 		);
 	}
 	return (
-		<ol className="flex flex-col gap-1.5 max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white p-2">
+		<ol className="flex flex-col gap-1.5 max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
 			{chunks.map((c) => {
 				const isHighlight = c.id === highlightChunkId;
 				return (
@@ -231,23 +244,23 @@ function ChunksList({
 							"rounded-md border p-2 text-xs",
 							isHighlight
 								? "border-[var(--color-brand-400)] bg-[var(--color-brand-50)] ring-1 ring-[var(--color-brand-200)]"
-								: "border-slate-100 bg-slate-50",
+								: "border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-800",
 						)}
 					>
 						<div className="flex items-baseline gap-2">
-							<span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 tabular-nums">
+							<span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 tabular-nums dark:bg-slate-700 dark:text-slate-300">
 								#{c.chunkIndex ?? "—"}
 							</span>
-							<span className="font-mono text-[10px] text-slate-400 truncate">
+							<span className="font-mono text-[10px] text-slate-400 truncate dark:text-slate-500">
 								{c.id}
 							</span>
 						</div>
 						{c.text ? (
-							<p className="mt-1 whitespace-pre-wrap break-words text-slate-700 leading-snug">
+							<p className="mt-1 whitespace-pre-wrap break-words text-slate-700 leading-snug dark:text-slate-300">
 								{c.text}
 							</p>
 						) : (
-							<p className="mt-1 text-slate-400 italic">
+							<p className="mt-1 text-slate-400 italic dark:text-slate-500">
 								(text not stored — older ingest, before the chunkText payload
 								key landed)
 							</p>

@@ -180,11 +180,11 @@ export function WorkspaceForm(
 					{...register("name")}
 				/>
 				{errors.name ? (
-					<p className="text-xs text-red-600">
+					<p className="text-xs text-red-600 dark:text-red-400">
 						{errors.name.message as string}
 					</p>
 				) : (
-					<p className="text-xs text-slate-500">
+					<p className="text-xs text-slate-500 dark:text-slate-400">
 						A human-readable label. Not unique — the workspaceId is the
 						identity.
 					</p>
@@ -197,15 +197,15 @@ export function WorkspaceForm(
 						Kind
 					</FieldLabel>
 					{props.mode === "edit" ? (
-						<span className="text-xs text-slate-500">
+						<span className="text-xs text-slate-500 dark:text-slate-400">
 							Read-only — immutable after creation
 						</span>
 					) : null}
 				</div>
-				<div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+				<div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
 					<span className="font-medium">{kind}</span>
-					<span className="text-slate-400">—</span>
-					<span className="text-slate-500 text-xs truncate">
+					<span className="text-slate-400 dark:text-slate-500">—</span>
+					<span className="text-slate-500 text-xs truncate dark:text-slate-400">
 						{KIND_DESCRIPTIONS[kind]}
 					</span>
 				</div>
@@ -224,7 +224,7 @@ export function WorkspaceForm(
 						placeholder="default_keyspace"
 						{...register("keyspace")}
 					/>
-					<p className="text-xs text-slate-500">
+					<p className="text-xs text-slate-500 dark:text-slate-400">
 						The Astra keyspace this workspace targets. Leave empty to use the
 						default.
 					</p>
@@ -253,16 +253,18 @@ export function WorkspaceForm(
 					{...register("url")}
 				/>
 				{errors.url ? (
-					<p className="text-xs text-red-600">{errors.url.message as string}</p>
+					<p className="text-xs text-red-600 dark:text-red-400">
+						{errors.url.message as string}
+					</p>
 				) : astraLike ? (
-					<p className="text-xs text-slate-500">
+					<p className="text-xs text-slate-500 dark:text-slate-400">
 						The per-workspace Data API URL. Paste it in directly, or use a
 						SecretRef like <code className="font-mono">env:VAR</code> /{" "}
 						<code className="font-mono">file:/path</code>. Each Astra DB has its
 						own url — one workspace per DB.
 					</p>
 				) : (
-					<p className="text-xs text-slate-500">
+					<p className="text-xs text-slate-500 dark:text-slate-400">
 						Data-plane url for this workspace. URL or SecretRef.
 					</p>
 				)}
@@ -283,7 +285,11 @@ export function WorkspaceForm(
 			) : null}
 
 			{submitError ? (
-				<p className="text-sm text-red-600" role="alert" aria-live="polite">
+				<p
+					className="text-sm text-red-600 dark:text-red-400"
+					role="alert"
+					aria-live="polite"
+				>
 					{submitError}
 				</p>
 			) : null}

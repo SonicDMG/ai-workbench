@@ -44,7 +44,7 @@ export function IngestDropZone({
 				"flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-5 text-sm transition-colors",
 				dragActive
 					? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)]"
-					: "border-slate-300 bg-slate-50",
+					: "border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-800",
 				disabled && "opacity-60",
 			)}
 		>
@@ -73,8 +73,11 @@ export function IngestDropZone({
 				}}
 			/>
 
-			<Upload className="h-5 w-5 text-slate-400" aria-hidden />
-			<p className="text-slate-700">
+			<Upload
+				className="h-5 w-5 text-slate-400 dark:text-slate-500"
+				aria-hidden
+			/>
+			<p className="text-slate-700 dark:text-slate-300">
 				Drop files or a folder, or use a button below.
 			</p>
 			<div className="flex flex-wrap items-center gap-2">
@@ -97,7 +100,7 @@ export function IngestDropZone({
 					<FolderOpen className="h-4 w-4" /> Folder…
 				</Button>
 			</div>
-			<p className="text-xs text-slate-500">
+			<p className="text-xs text-slate-500 dark:text-slate-400">
 				Text, Markdown, JSON, CSV, source code, plus PDF, DOCX, and XLSX up to{" "}
 				{maxBytes / 1024 / 1024} MB each.
 			</p>

@@ -141,10 +141,10 @@ export function OnboardingPage() {
 				</div>
 			) : (
 				<div className="mb-8">
-					<h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+					<h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
 						New workspace
 					</h1>
-					<p className="mt-1 text-sm text-slate-500">
+					<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
 						Pick a backend, then fill in the details.
 					</p>
 				</div>
@@ -157,14 +157,14 @@ export function OnboardingPage() {
 					active={step === "kind"}
 					done={step !== "kind"}
 				/>
-				<div className="h-px flex-1 bg-slate-200" />
+				<div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
 				<StepDot
 					index={2}
 					label="Details"
 					active={step === "details"}
 					done={step === "agents"}
 				/>
-				<div className="h-px flex-1 bg-slate-200" />
+				<div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
 				<StepDot
 					index={3}
 					label="Agents"
@@ -349,7 +349,7 @@ function StepDot({
 						? "bg-[var(--color-brand-600)] text-white"
 						: active
 							? "bg-[var(--color-brand-600)] text-white ring-4 ring-[var(--color-brand-50)]"
-							: "bg-slate-100 text-slate-500",
+							: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
 				)}
 			>
 				{done ? <CheckCircle2 className="h-4 w-4" /> : index}
@@ -357,7 +357,9 @@ function StepDot({
 			<span
 				className={cn(
 					"text-sm",
-					active ? "font-medium text-slate-900" : "text-slate-500",
+					active
+						? "font-medium text-slate-900 dark:text-slate-100"
+						: "text-slate-500 dark:text-slate-400",
 				)}
 			>
 				{label}

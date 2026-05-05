@@ -67,7 +67,7 @@ export function CredentialsEditor({
 				<FieldLabel help="Credential values are SecretRefs such as env:ASTRA_DB_APPLICATION_TOKEN or file:/path/to/token. The left side is the credential name the driver expects, usually token.">
 					Credentials
 				</FieldLabel>
-				<p className="text-xs text-slate-500">
+				<p className="text-xs text-slate-500 dark:text-slate-400">
 					Values must be <code className="font-mono">provider:path</code> — e.g.{" "}
 					<code className="font-mono">env:ASTRA_TOKEN</code>
 				</p>

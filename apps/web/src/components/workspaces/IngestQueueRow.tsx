@@ -58,11 +58,11 @@ export function QueueRow({
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2">
 					<FileTypeBadge sourceFilename={item.relativePath} />
-					<span className="truncate font-medium text-slate-900">
+					<span className="truncate font-medium text-slate-900 dark:text-slate-100">
 						{item.relativePath}
 					</span>
 				</div>
-				<div className="mt-0.5 flex items-center gap-3 text-xs text-slate-500">
+				<div className="mt-0.5 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
 					<span>{formatFileSize(item.file.size)}</span>
 					{item.status === "running" ? (
 						<span className="tabular-nums">
@@ -75,16 +75,18 @@ export function QueueRow({
 						</span>
 					) : null}
 					{item.status === "skipped" ? (
-						<span className="text-slate-600">
+						<span className="text-slate-600 dark:text-slate-400">
 							already ingested — content hash matched existing document
 						</span>
 					) : null}
 					{item.status === "failed" && item.errorMessage ? (
-						<span className="text-red-700 truncate">{item.errorMessage}</span>
+						<span className="text-red-700 truncate dark:text-red-300">
+							{item.errorMessage}
+						</span>
 					) : null}
 				</div>
 				{percent !== null && item.status === "running" ? (
-					<div className="mt-1.5 h-1 rounded-full bg-slate-200 overflow-hidden">
+					<div className="mt-1.5 h-1 rounded-full bg-slate-200 overflow-hidden dark:bg-slate-700">
 						<div
 							className="h-full bg-[var(--color-brand-500)] transition-[width] duration-200"
 							style={{ width: `${percent}%` }}
@@ -96,7 +98,7 @@ export function QueueRow({
 				<button
 					type="button"
 					onClick={onRemove}
-					className="text-slate-400 hover:text-slate-700"
+					className="text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200"
 					aria-label={`Remove ${item.relativePath}`}
 				>
 					<X className="h-4 w-4" />
@@ -111,14 +113,27 @@ function StatusGlyph({ status }: { status: QueueStatus }) {
 	switch (status) {
 		case "queued":
 			return (
-				<div className={cn(cls, "rounded-full border border-slate-300")} />
+				<div
+					className={cn(
+						cls,
+						"rounded-full border border-slate-300 dark:border-slate-600",
+					)}
+				/>
 			);
 		case "running":
-			return <Loader2 className={cn(cls, "animate-spin text-slate-500")} />;
+			return (
+				<Loader2
+					className={cn(cls, "animate-spin text-slate-500 dark:text-slate-400")}
+				/>
+			);
 		case "succeeded":
 			return <CheckCircle2 className={cn(cls, "text-emerald-600")} />;
 		case "skipped":
-			return <CircleSlash className={cn(cls, "text-slate-500")} />;
+			return (
+				<CircleSlash
+					className={cn(cls, "text-slate-500 dark:text-slate-400")}
+				/>
+			);
 		case "failed":
 			return <AlertTriangle className={cn(cls, "text-red-600")} />;
 	}

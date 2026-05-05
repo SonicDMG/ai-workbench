@@ -44,9 +44,21 @@
 }
 
 .dark {
-	--app-bg: #0b0d12;
+	--app-bg: #0b0f1a;
 	--app-fg: #e6e6e6;
 	--app-grid: #1f242c;
+
+	/* Brand-tone tokens flip semantically in dark mode: the "50/100"
+	 * tints — used as light surfaces in light mode — become deep-blue
+	 * tints; the "700/900" deep-blues — used as text on those tints —
+	 * become bright blues that read on a dark surface. Buttons keep
+	 * IBM blue (`--color-brand-600`) so brand identity stays
+	 * consistent. Carbon dark theme does the same swap. */
+	--color-brand-50: #0a1733;
+	--color-brand-100: #102553;
+	--color-brand-200: #1e3a8a;
+	--color-brand-700: #78a9ff;
+	--color-brand-900: #d0e2ff;
 }
 
 html,
@@ -136,6 +148,12 @@ samp,
 		inset 0 -2px 0 rgba(0, 29, 108, 0.45),
 		0 8px 18px -14px rgba(15, 98, 254, 0.85);
 }
+.dark .brand-tile {
+	box-shadow:
+		inset 0 -2px 0 rgba(0, 29, 108, 0.65),
+		0 0 0 1px rgba(120, 169, 255, 0.18),
+		0 10px 22px -10px rgba(15, 98, 254, 0.55);
+}
 
 /* Softly-elevated card that picks up a tinted border on hover.
  * Opt-in via className so existing `Card` usage is untouched. */
@@ -149,6 +167,10 @@ samp,
 	transform: translateY(-1px);
 	box-shadow: 0 12px 24px -18px rgba(22, 22, 22, 0.4);
 	border-color: var(--color-brand-200);
+}
+.dark .card-lift:hover {
+	box-shadow: 0 12px 28px -18px rgba(0, 0, 0, 0.7);
+	border-color: rgba(120, 169, 255, 0.4);
 }
 
 /* ---------- Motion ---------- */

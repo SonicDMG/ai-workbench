@@ -67,7 +67,9 @@ export function PresetPicker({
 				</SelectContent>
 			</Select>
 			{selected?.description ? (
-				<p className="text-xs text-slate-500">{selected.description}</p>
+				<p className="text-xs text-slate-500 dark:text-slate-400">
+					{selected.description}
+				</p>
 			) : null}
 		</div>
 	);
@@ -163,7 +165,7 @@ export interface ServiceCardProps<T> {
 export function ServiceCard<T>(props: ServiceCardProps<T>) {
 	const rows = props.rows ?? [];
 	return (
-		<div className="rounded-lg border border-slate-200 bg-white">
+		<div className="rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
 			<div className="flex items-center gap-3 p-3">
 				<button
 					type="button"
@@ -172,13 +174,18 @@ export function ServiceCard<T>(props: ServiceCardProps<T>) {
 					aria-expanded={props.expanded}
 				>
 					{props.expanded ? (
-						<ChevronDown className="h-4 w-4 text-slate-400" />
+						<ChevronDown className="h-4 w-4 text-slate-400 dark:text-slate-500" />
 					) : (
-						<ChevronRight className="h-4 w-4 text-slate-400" />
+						<ChevronRight className="h-4 w-4 text-slate-400 dark:text-slate-500" />
 					)}
-					<Box className="h-4 w-4 text-slate-400" aria-hidden />
-					<span className="font-medium text-slate-900">{props.label}</span>
-					<span className="text-xs text-slate-500">
+					<Box
+						className="h-4 w-4 text-slate-400 dark:text-slate-500"
+						aria-hidden
+					/>
+					<span className="font-medium text-slate-900 dark:text-slate-100">
+						{props.label}
+					</span>
+					<span className="text-xs text-slate-500 dark:text-slate-400">
 						{rows.length} {props.countLabel}
 						{rows.length === 1 ? "" : "s"}
 					</span>
@@ -188,7 +195,7 @@ export function ServiceCard<T>(props: ServiceCardProps<T>) {
 				</Button>
 			</div>
 			{props.expanded ? (
-				<div className="border-t border-slate-100 bg-slate-50/50 p-3 flex flex-col gap-2">
+				<div className="border-t border-slate-100 bg-slate-50/50 p-3 flex flex-col gap-2 dark:border-slate-800 dark:bg-slate-800/50">
 					{props.loading ? (
 						<LoadingState label={`Loading ${props.label.toLowerCase()}…`} />
 					) : props.error ? (
@@ -202,7 +209,7 @@ export function ServiceCard<T>(props: ServiceCardProps<T>) {
 							}
 						/>
 					) : rows.length === 0 ? (
-						<p className="text-xs text-slate-500">
+						<p className="text-xs text-slate-500 dark:text-slate-400">
 							None yet. Click <span className="font-medium">New</span> to add
 							one.
 						</p>
@@ -228,10 +235,14 @@ export function ServiceRow({
 	onDelete: () => void;
 }) {
 	return (
-		<div className="flex items-center gap-2 rounded-md bg-white border border-slate-200 px-2 py-1.5 text-sm">
-			<span className="font-medium text-slate-900 truncate">{title}</span>
-			<span className="text-xs text-slate-500 truncate">{subtitle}</span>
-			<span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+		<div className="flex items-center gap-2 rounded-md bg-white border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900">
+			<span className="font-medium text-slate-900 truncate dark:text-slate-100">
+				{title}
+			</span>
+			<span className="text-xs text-slate-500 truncate dark:text-slate-400">
+				{subtitle}
+			</span>
+			<span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
 				{status}
 			</span>
 			<Button

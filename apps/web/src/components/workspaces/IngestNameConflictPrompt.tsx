@@ -101,10 +101,10 @@ export function NameConflictPrompt({
 					</DialogDescription>
 				</DialogHeader>
 
-				<label className="flex items-center gap-2 text-sm text-slate-700">
+				<label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
 					<input
 						type="checkbox"
-						className="h-4 w-4 rounded border-slate-300 text-[var(--color-brand-600)] focus:ring-[var(--color-brand-500)]"
+						className="h-4 w-4 rounded border-slate-300 text-[var(--color-brand-600)] focus:ring-[var(--color-brand-500)] dark:border-slate-600 dark:bg-slate-900"
 						checked={rememberChoice}
 						onChange={(e) => setRememberChoice(e.target.checked)}
 					/>

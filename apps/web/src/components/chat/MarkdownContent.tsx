@@ -161,7 +161,7 @@ const MARKDOWN_COMPONENTS: Components = {
 		// the block rather than rendering as a pill on dark.
 		return (
 			<code
-				className="rounded bg-slate-200 px-1 py-0.5 font-mono text-[12px] text-slate-900"
+				className="rounded bg-slate-200 px-1 py-0.5 font-mono text-[12px] text-slate-900 dark:bg-slate-700 dark:text-slate-100"
 				{...rest}
 			>
 				{children}
@@ -183,7 +183,7 @@ const MARKDOWN_COMPONENTS: Components = {
 		return (
 			<pre
 				className={cn(
-					"overflow-x-auto rounded-md bg-slate-900 p-3 font-mono text-xs text-slate-100",
+					"overflow-x-auto rounded-md bg-slate-900 p-3 font-mono text-xs text-slate-100 dark:bg-slate-950 dark:ring-1 dark:ring-slate-800",
 					"[&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit",
 				)}
 				{...rest}
@@ -209,7 +209,7 @@ const MARKDOWN_COMPONENTS: Components = {
 	},
 	blockquote({ children }) {
 		return (
-			<blockquote className="border-l-2 border-slate-300 pl-3 text-slate-700 italic">
+			<blockquote className="border-l-2 border-slate-300 pl-3 text-slate-700 italic dark:border-slate-600 dark:text-slate-300">
 				{children}
 			</blockquote>
 		);
@@ -223,14 +223,14 @@ const MARKDOWN_COMPONENTS: Components = {
 	},
 	th({ children }) {
 		return (
-			<th className="border border-slate-300 bg-slate-100 px-2 py-1 text-left font-medium">
+			<th className="border border-slate-300 bg-slate-100 px-2 py-1 text-left font-medium dark:border-slate-600 dark:bg-slate-800">
 				{children}
 			</th>
 		);
 	},
 	td({ children }) {
 		return (
-			<td className="border border-slate-300 px-2 py-1 align-top">
+			<td className="border border-slate-300 px-2 py-1 align-top dark:border-slate-600">
 				{children}
 			</td>
 		);

@@ -17,7 +17,7 @@ export function DialogContent({
 			<DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm data-[state=open]:animate-wb-fade-in data-[state=closed]:animate-wb-fade-in" />
 			<DialogPrimitive.Content
 				className={cn(
-					"fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-[0_20px_50px_-20px_rgba(15,23,42,0.25)]",
+					"fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-[0_20px_50px_-20px_rgba(15,23,42,0.25)] dark:border-slate-700 dark:bg-slate-900",
 					"data-[state=open]:animate-wb-scale-in data-[state=closed]:animate-wb-scale-out",
 					className,
 				)}
@@ -26,7 +26,7 @@ export function DialogContent({
 				{children}
 				<DialogPrimitive.Close
 					aria-label="Close"
-					className="absolute right-4 top-4 rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+					className="absolute right-4 top-4 rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
 				>
 					<X className="h-4 w-4" />
 				</DialogPrimitive.Close>
@@ -74,7 +74,10 @@ export function DialogDescription({
 }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>) {
 	return (
 		<DialogPrimitive.Description
-			className={cn("text-sm text-slate-500 leading-relaxed", className)}
+			className={cn(
+				"text-sm text-slate-500 leading-relaxed dark:text-slate-400",
+				className,
+			)}
 			{...props}
 		/>
 	);

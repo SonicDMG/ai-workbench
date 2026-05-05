@@ -14,7 +14,7 @@ export function SelectTrigger({
 	return (
 		<SelectPrimitive.Trigger
 			className={cn(
-				"flex h-9 w-full items-center justify-between rounded-md border border-slate-300 bg-white px-3 py-1 text-sm shadow-sm",
+				"flex h-9 w-full items-center justify-between rounded-md border border-slate-300 bg-white px-3 py-1 text-sm shadow-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100",
 				"focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:border-[var(--color-brand-500)]",
 				"disabled:cursor-not-allowed disabled:opacity-50",
 				className,
@@ -40,7 +40,7 @@ export function SelectContent({
 				position="popper"
 				sideOffset={4}
 				className={cn(
-					"relative z-50 min-w-[8rem] overflow-hidden rounded-md border border-slate-200 bg-white text-slate-900 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)]",
+					"relative z-50 min-w-[8rem] overflow-hidden rounded-md border border-slate-200 bg-white text-slate-900 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100",
 					"data-[state=open]:animate-wb-fade-in",
 					className,
 				)}
@@ -63,7 +63,7 @@ export function SelectItem({
 		<SelectPrimitive.Item
 			className={cn(
 				"relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none",
-				"focus:bg-slate-100 focus:text-slate-900 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+				"focus:bg-slate-100 focus:text-slate-900 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 dark:focus:bg-slate-800 dark:focus:text-slate-100",
 				className,
 			)}
 			{...props}

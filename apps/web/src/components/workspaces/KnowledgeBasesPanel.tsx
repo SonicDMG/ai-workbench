@@ -103,7 +103,7 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 	return (
 		<div className="flex flex-col gap-4">
 			<div className="flex items-start justify-between gap-3 flex-wrap">
-				<p className="text-xs text-slate-500">
+				<p className="text-xs text-slate-500 dark:text-slate-400">
 					{rows.length === 0
 						? "No knowledge bases yet — create one to start ingesting documents."
 						: `${rows.length} knowledge base${rows.length === 1 ? "" : "s"} in this workspace.`}
@@ -114,7 +114,7 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 			</div>
 
 			{rows.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600">
+				<div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
 					A knowledge base owns one Astra collection plus the chunking,
 					embedding, and (optionally) reranking services that produce its
 					content. Create the services first, then a KB that binds them.
@@ -215,7 +215,7 @@ function KnowledgeBaseRow({
 
 	const detailPath = `/workspaces/${workspace}/knowledge-bases/${kb.knowledgeBaseId}`;
 	return (
-		<div className="rounded-lg border border-slate-200 bg-white transition-colors hover:border-slate-300">
+		<div className="rounded-lg border border-slate-200 bg-white transition-colors hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600">
 			<div className="flex items-center gap-3 p-3">
 				{/*
 				 * Primary action — clicking the info zone (icon + name + chips
@@ -227,23 +227,26 @@ function KnowledgeBaseRow({
 				 */}
 				<Link
 					to={detailPath}
-					className="-m-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+					className="-m-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] dark:hover:bg-slate-800"
 					title={`Open ${kb.name}`}
 				>
-					<Database className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+					<Database
+						className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500"
+						aria-hidden
+					/>
 					<div className="min-w-0 flex-1">
 						<div className="flex items-center gap-2 flex-wrap">
-							<span className="font-medium text-slate-900 truncate">
+							<span className="font-medium text-slate-900 truncate dark:text-slate-100">
 								{kb.name}
 							</span>
 							<KbStatusBadge status={kb.status} />
 						</div>
 						{kb.description ? (
-							<p className="text-xs text-slate-500 mt-0.5 truncate">
+							<p className="text-xs text-slate-500 mt-0.5 truncate dark:text-slate-400">
 								{kb.description}
 							</p>
 						) : (
-							<p className="text-xs text-slate-400 mt-0.5 font-mono truncate">
+							<p className="text-xs text-slate-400 mt-0.5 font-mono truncate dark:text-slate-500">
 								{kb.knowledgeBaseId}
 							</p>
 						)}
@@ -267,7 +270,7 @@ function KnowledgeBaseRow({
 							) : null}
 						</div>
 					</div>
-					<span className="text-xs text-slate-500 shrink-0">
+					<span className="text-xs text-slate-500 shrink-0 dark:text-slate-400">
 						{formatDate(kb.createdAt)}
 					</span>
 				</Link>
@@ -278,7 +281,7 @@ function KnowledgeBaseRow({
 						aria-expanded={expanded}
 						aria-label={`${expanded ? "Collapse" : "Expand"} documents for ${kb.name}`}
 						title={expanded ? "Hide documents" : "Show documents"}
-						className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+						className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
 					>
 						<ChevronDown
 							className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
@@ -302,7 +305,7 @@ function KnowledgeBaseRow({
 						aria-label={`Edit ${kb.name}`}
 						title={`Edit ${kb.name}`}
 					>
-						<Pencil className="h-4 w-4 text-slate-600" />
+						<Pencil className="h-4 w-4 text-slate-600 dark:text-slate-400" />
 					</Button>
 					<Button
 						variant="ghost"
@@ -315,21 +318,21 @@ function KnowledgeBaseRow({
 				</div>
 			</div>
 			{expanded ? (
-				<div className="border-t border-slate-100 bg-slate-50/50 p-3 flex flex-col gap-4">
+				<div className="border-t border-slate-100 bg-slate-50/50 p-3 flex flex-col gap-4 dark:border-slate-800 dark:bg-slate-800/50">
 					<div className="flex flex-col gap-2">
-						<p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+						<p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
 							Documents
 						</p>
 						{docs.isLoading ? (
-							<p className="text-xs text-slate-500 inline-flex items-center gap-2">
+							<p className="text-xs text-slate-500 inline-flex items-center gap-2 dark:text-slate-400">
 								<Loader2 className="h-3 w-3 animate-spin" /> Loading documents…
 							</p>
 						) : docs.isError ? (
-							<p className="text-xs text-red-600">
+							<p className="text-xs text-red-600 dark:text-red-400">
 								Couldn't load documents: {docs.error.message}
 							</p>
 						) : (docs.data?.length ?? 0) === 0 ? (
-							<p className="text-xs text-slate-500">
+							<p className="text-xs text-slate-500 dark:text-slate-400">
 								No documents yet. Click{" "}
 								<span className="font-medium">Ingest</span> to add one.
 							</p>
@@ -351,15 +354,18 @@ const SERVICE_CHIP_STYLES: Record<
 > = {
 	chunking: {
 		label: "chunking",
-		className: "bg-sky-50 text-sky-700 border-sky-200",
+		className:
+			"bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-900/50",
 	},
 	embedding: {
 		label: "embedding",
-		className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+		className:
+			"bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/50",
 	},
 	reranking: {
 		label: "reranker",
-		className: "bg-purple-50 text-purple-700 border-purple-200",
+		className:
+			"bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-900/50",
 	},
 };
 
@@ -388,9 +394,12 @@ function ServiceChip({
 
 function KbStatusBadge({ status }: { status: KnowledgeBaseRecord["status"] }) {
 	const styles: Record<KnowledgeBaseRecord["status"], string> = {
-		active: "bg-emerald-50 text-emerald-700 border-emerald-200",
-		draft: "bg-slate-50 text-slate-600 border-slate-200",
-		deprecated: "bg-amber-50 text-amber-700 border-amber-200",
+		active:
+			"bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/50",
+		draft:
+			"bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700",
+		deprecated:
+			"bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/50",
 	};
 	return (
 		<span
@@ -409,7 +418,7 @@ function DocumentList({ rows }: { rows: readonly RagDocumentRecord[] }) {
 				<DocumentRow key={d.documentId} doc={d} />
 			))}
 			{rows.length > trimmed.length ? (
-				<p className="text-xs text-slate-500 pl-6">
+				<p className="text-xs text-slate-500 pl-6 dark:text-slate-400">
 					+ {rows.length - trimmed.length} more
 				</p>
 			) : null}
@@ -419,18 +428,20 @@ function DocumentList({ rows }: { rows: readonly RagDocumentRecord[] }) {
 
 function DocumentRow({ doc }: { doc: RagDocumentRecord }) {
 	return (
-		<div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-white">
+		<div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-white dark:hover:bg-slate-900">
 			<DocumentStatusBadge status={doc.status} />
 			<FileTypeBadge
 				sourceFilename={doc.sourceFilename}
 				fileType={doc.fileType}
 			/>
-			<span className="min-w-0 truncate text-slate-700">
+			<span className="min-w-0 truncate text-slate-700 dark:text-slate-300">
 				{doc.sourceFilename ?? (
-					<span className="font-mono text-slate-500">{doc.documentId}</span>
+					<span className="font-mono text-slate-500 dark:text-slate-400">
+						{doc.documentId}
+					</span>
 				)}
 			</span>
-			<span className="ml-auto flex shrink-0 items-center gap-3 text-slate-500 tabular-nums">
+			<span className="ml-auto flex shrink-0 items-center gap-3 text-slate-500 tabular-nums dark:text-slate-400">
 				<span>{formatFileSize(doc.fileSize)}</span>
 				<span>
 					{doc.chunkTotal !== null ? `${doc.chunkTotal} chunks` : "—"}
@@ -473,7 +484,7 @@ function DeleteKnowledgeBaseDialog({
 					</DialogDescription>
 				</DialogHeader>
 				<input
-					className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+					className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
 					value={confirm}
 					onChange={(e) => setConfirm(e.target.value)}
 					placeholder={expected}

@@ -81,7 +81,7 @@ export function DocumentTable({
 
 	if (docs.length === 0) {
 		return (
-			<div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600">
+			<div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
 				No documents yet. Use <span className="font-medium">Ingest</span> to add
 				one (or several — multi-file and folder upload are supported).
 			</div>
@@ -92,7 +92,7 @@ export function DocumentTable({
 		<div className="flex flex-col gap-3">
 			<div className="relative max-w-xs">
 				<Search
-					className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+					className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500"
 					aria-hidden
 				/>
 				<Input
@@ -104,9 +104,9 @@ export function DocumentTable({
 				/>
 			</div>
 
-			<div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+			<div className="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
 				<table className="min-w-full text-sm">
-					<thead className="bg-slate-50 text-xs font-medium text-slate-600">
+					<thead className="bg-slate-50 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
 						<tr>
 							<SortHead
 								active={sortKey === "name"}
@@ -156,7 +156,7 @@ export function DocumentTable({
 							<tr>
 								<td
 									colSpan={onDelete ? 7 : 6}
-									className="px-3 py-6 text-center text-xs text-slate-500"
+									className="px-3 py-6 text-center text-xs text-slate-500 dark:text-slate-400"
 								>
 									No documents match “{filter}”.
 								</td>
@@ -167,21 +167,21 @@ export function DocumentTable({
 									key={d.documentId}
 									onClick={() => onSelect?.(d)}
 									className={cn(
-										"border-t border-slate-100",
+										"border-t border-slate-100 dark:border-slate-800",
 										onSelect &&
-											"cursor-pointer transition-colors hover:bg-slate-50",
+											"cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800",
 									)}
 								>
 									<td className="px-3 py-2 max-w-0">
-										<div className="truncate font-medium text-slate-900">
+										<div className="truncate font-medium text-slate-900 dark:text-slate-100">
 											{d.sourceFilename ?? (
-												<span className="font-mono text-slate-500">
+												<span className="font-mono text-slate-500 dark:text-slate-400">
 													{d.documentId}
 												</span>
 											)}
 										</div>
 										{d.sourceDocId ? (
-											<div className="truncate font-mono text-[11px] text-slate-500">
+											<div className="truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">
 												{d.sourceDocId}
 											</div>
 										) : null}
@@ -192,16 +192,16 @@ export function DocumentTable({
 											fileType={d.fileType}
 										/>
 									</td>
-									<td className="px-3 py-2 tabular-nums text-slate-700">
+									<td className="px-3 py-2 tabular-nums text-slate-700 dark:text-slate-300">
 										{formatFileSize(d.fileSize)}
 									</td>
-									<td className="px-3 py-2 tabular-nums text-slate-700">
+									<td className="px-3 py-2 tabular-nums text-slate-700 dark:text-slate-300">
 										{d.chunkTotal ?? "—"}
 									</td>
 									<td className="px-3 py-2">
 										<DocumentStatusBadge status={d.status} />
 									</td>
-									<td className="px-3 py-2 text-slate-600 text-xs">
+									<td className="px-3 py-2 text-slate-600 text-xs dark:text-slate-400">
 										{d.ingestedAt
 											? formatDate(d.ingestedAt)
 											: formatDate(d.updatedAt)}
@@ -232,7 +232,7 @@ export function DocumentTable({
 					</tbody>
 				</table>
 			</div>
-			<p className="text-xs text-slate-500">
+			<p className="text-xs text-slate-500 dark:text-slate-400">
 				{sorted.length === docs.length
 					? `${docs.length} document${docs.length === 1 ? "" : "s"}`
 					: `${sorted.length} of ${docs.length} document${docs.length === 1 ? "" : "s"}`}
@@ -290,8 +290,10 @@ function SortHead({
 				type="button"
 				onClick={onClick}
 				className={cn(
-					"inline-flex items-center gap-1 hover:text-slate-900",
-					active ? "text-slate-900" : "text-slate-600",
+					"inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-100",
+					active
+						? "text-slate-900 dark:text-slate-100"
+						: "text-slate-600 dark:text-slate-400",
 				)}
 			>
 				{children}

@@ -80,7 +80,7 @@ export function AgentTemplateGallery({
 	// the user knows, but don't block the rest of the page.
 	if (templatesQuery.isError) {
 		return (
-			<p className="text-sm text-slate-500">
+			<p className="text-sm text-slate-500 dark:text-slate-400">
 				Couldn't load templates: {formatApiError(templatesQuery.error)}
 			</p>
 		);
@@ -146,10 +146,10 @@ function TemplateCard({
 	return (
 		<div
 			className={cn(
-				"flex flex-col gap-3 rounded-xl border bg-white p-4 transition-shadow",
+				"flex flex-col gap-3 rounded-xl border bg-white p-4 transition-shadow dark:bg-slate-900",
 				alreadyAdded
-					? "border-slate-200 opacity-75"
-					: "border-slate-200 hover:shadow-sm",
+					? "border-slate-200 opacity-75 dark:border-slate-700"
+					: "border-slate-200 hover:shadow-sm dark:border-slate-700",
 			)}
 		>
 			<div className="flex items-start justify-between gap-2">
@@ -158,17 +158,17 @@ function TemplateCard({
 						<Bot className="h-4 w-4" aria-hidden="true" />
 					</span>
 					<div className="min-w-0">
-						<p className="truncate text-sm font-semibold text-slate-900">
+						<p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
 							{template.name}
 						</p>
-						<p className="truncate text-xs text-slate-500">
+						<p className="truncate text-xs text-slate-500 dark:text-slate-400">
 							{template.description}
 						</p>
 					</div>
 				</div>
 				<div className="flex shrink-0 items-center gap-1">
 					{alreadyAdded ? (
-						<span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+						<span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
 							<Check className="h-3 w-3" aria-hidden="true" />
 							Added
 						</span>
@@ -180,7 +180,7 @@ function TemplateCard({
 					) : null}
 				</div>
 			</div>
-			<p className="text-xs text-slate-600 leading-relaxed">
+			<p className="text-xs text-slate-600 leading-relaxed dark:text-slate-400">
 				{template.persona}
 			</p>
 			<div className="flex justify-end">

@@ -127,24 +127,27 @@ export function KnowledgeBaseExplorerPage() {
 			<header className="flex flex-col gap-2">
 				<Link
 					to={`/workspaces/${workspaceId}`}
-					className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900 w-max"
+					className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900 w-max dark:text-slate-400 dark:hover:text-slate-100"
 				>
 					<ArrowLeft className="h-4 w-4" />
 					{ws.data?.name ?? "Workspace"}
 				</Link>
 				<div className="flex flex-wrap items-start justify-between gap-3">
 					<div className="flex items-start gap-3">
-						<Database className="h-7 w-7 text-slate-400 mt-1" aria-hidden />
+						<Database
+							className="h-7 w-7 text-slate-400 mt-1 dark:text-slate-500"
+							aria-hidden
+						/>
 						<div>
-							<h1 className="text-2xl font-semibold text-slate-900">
+							<h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
 								{knowledgeBase.name}
 							</h1>
 							{knowledgeBase.description ? (
-								<p className="text-sm text-slate-600">
+								<p className="text-sm text-slate-600 dark:text-slate-400">
 									{knowledgeBase.description}
 								</p>
 							) : (
-								<p className="text-xs text-slate-500 font-mono">
+								<p className="text-xs text-slate-500 font-mono dark:text-slate-400">
 									{knowledgeBase.knowledgeBaseId}
 								</p>
 							)}
@@ -284,15 +287,15 @@ function DeleteDocumentDialog({
 				</DialogHeader>
 
 				{doc ? (
-					<div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+					<div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
 						<FileTypeBadge
 							sourceFilename={doc.sourceFilename}
 							fileType={doc.fileType}
 						/>
-						<span className="font-medium text-slate-900 truncate">
+						<span className="font-medium text-slate-900 truncate dark:text-slate-100">
 							{doc.sourceFilename ?? doc.documentId}
 						</span>
-						<span className="ml-auto text-xs text-slate-500 tabular-nums">
+						<span className="ml-auto text-xs text-slate-500 tabular-nums dark:text-slate-400">
 							{formatFileSize(doc.fileSize)}
 						</span>
 					</div>

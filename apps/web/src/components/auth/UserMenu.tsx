@@ -27,7 +27,12 @@ export function UserMenu() {
 	// OIDC browser-login isn't configured — doesn't leave the menu
 	// stuck in its skeleton placeholder forever.
 	if (cfg.isLoading || session.isLoading) {
-		return <div aria-hidden className="h-8 w-8 rounded-full bg-slate-100" />;
+		return (
+			<div
+				aria-hidden
+				className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800"
+			/>
+		);
 	}
 	const modes = cfg.data?.modes;
 	const loginPath = cfg.data?.loginPath;
@@ -73,7 +78,7 @@ function SignedIn({ label }: { label: string }) {
 	};
 	return (
 		<div className="flex items-center gap-2">
-			<span className="inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-1 text-sm text-slate-700">
+			<span className="inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-1 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">
 				<UserRound
 					className="h-4 w-4 text-[var(--color-brand-600)]"
 					aria-hidden="true"
@@ -85,7 +90,7 @@ function SignedIn({ label }: { label: string }) {
 			<button
 				type="button"
 				onClick={onLogout}
-				className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+				className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
 				aria-label="Log out"
 			>
 				<LogOut className="h-4 w-4" aria-hidden="true" />

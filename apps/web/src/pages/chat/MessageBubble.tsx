@@ -43,9 +43,9 @@ export function MessageBubble({
 				isUser ? "items-end" : "items-start",
 			)}
 		>
-			<span className="text-xs font-medium text-slate-500">
+			<span className="text-xs font-medium text-slate-500 dark:text-slate-400">
 				{isUser ? "You" : message.role === "agent" ? agentName : "System"}
-				<span className="ml-2 font-normal text-slate-400">
+				<span className="ml-2 font-normal text-slate-400 dark:text-slate-500">
 					{formatDate(message.messageTs)}
 				</span>
 			</span>
@@ -63,8 +63,8 @@ export function MessageBubble({
 					isUser
 						? "whitespace-pre-wrap bg-[var(--color-brand-600)] text-white"
 						: isError
-							? "whitespace-pre-wrap border border-red-200 bg-red-50 text-red-900"
-							: "bg-slate-100 text-slate-900",
+							? "whitespace-pre-wrap border border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
+							: "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100",
 				)}
 				data-testid={isError ? "agent-error" : undefined}
 			>
@@ -102,7 +102,7 @@ export function SourcesDisclosure({
 }) {
 	const entries = [...chunks.values()];
 	return (
-		<details className="text-xs text-slate-500">
+		<details className="text-xs text-slate-500 dark:text-slate-400">
 			{/*
 			 * `<summary>` styled as a chip to match `AstraQueryCodeButton` —
 			 * same icon size (3x3), same padding (px-1.5 py-0.5), same text
@@ -113,7 +113,7 @@ export function SourcesDisclosure({
 			<summary
 				className={cn(
 					"inline-flex cursor-pointer list-none items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium",
-					"text-slate-400 transition-colors hover:bg-slate-100 hover:text-[var(--color-brand-700)]",
+					"text-slate-400 transition-colors hover:bg-slate-100 hover:text-[var(--color-brand-700)] dark:text-slate-500 dark:hover:bg-slate-800",
 					"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]",
 					"[&::-webkit-details-marker]:hidden",
 				)}
@@ -129,7 +129,7 @@ export function SourcesDisclosure({
 						{ref.knowledgeBaseId.length > 0 ? (
 							<Link
 								to={citationHref(workspaceId, ref)}
-								className="text-slate-500 hover:text-[var(--color-brand-700)] hover:underline"
+								className="text-slate-500 hover:text-[var(--color-brand-700)] hover:underline dark:text-slate-400"
 								data-testid="chat-source-link"
 							>
 								{ref.chunkId}
@@ -137,7 +137,9 @@ export function SourcesDisclosure({
 						) : (
 							// Legacy `context_document_ids` only — no KB / doc info,
 							// so we can't deep-link. Render as plain text.
-							<span className="text-slate-400">{ref.chunkId}</span>
+							<span className="text-slate-400 dark:text-slate-500">
+								{ref.chunkId}
+							</span>
 						)}
 					</li>
 				))}
@@ -165,8 +167,10 @@ export function EmptyMessages({ agentName }: { agentName: string }) {
 					aria-hidden="true"
 				/>
 			</div>
-			<p className="text-sm text-slate-700">No messages yet — say hi!</p>
-			<p className="text-xs text-slate-500 max-w-sm">
+			<p className="text-sm text-slate-700 dark:text-slate-300">
+				No messages yet — say hi!
+			</p>
+			<p className="text-xs text-slate-500 max-w-sm dark:text-slate-400">
 				{agentName} streams its replies token-by-token as the model generates.
 			</p>
 		</div>
@@ -176,7 +180,7 @@ export function EmptyMessages({ agentName }: { agentName: string }) {
 export function AgentThinking({ agentName }: { agentName: string }) {
 	return (
 		<li
-			className="flex items-center gap-2 self-start rounded-md bg-slate-100 px-3 py-1.5 text-xs"
+			className="flex items-center gap-2 self-start rounded-md bg-slate-100 px-3 py-1.5 text-xs dark:bg-slate-800 dark:text-slate-300"
 			data-testid="agent-thinking"
 		>
 			<Sparkles
@@ -212,13 +216,15 @@ export function StreamingBubble({
 			className="flex flex-col gap-1 items-start min-w-0"
 			data-testid="agent-streaming"
 		>
-			<span className="text-xs font-medium text-slate-500">
+			<span className="text-xs font-medium text-slate-500 dark:text-slate-400">
 				{agentName}
-				<span className="ml-2 font-normal text-slate-400">streaming…</span>
+				<span className="ml-2 font-normal text-slate-400 dark:text-slate-500">
+					streaming…
+				</span>
 			</span>
-			<div className="max-w-[80%] min-w-0 whitespace-pre-wrap rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-900">
+			<div className="max-w-[80%] min-w-0 whitespace-pre-wrap rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-900 dark:bg-slate-800 dark:text-slate-100">
 				{delta}
-				<span className="ml-0.5 inline-block animate-pulse text-slate-400">
+				<span className="ml-0.5 inline-block animate-pulse text-slate-400 dark:text-slate-500">
 					▍
 				</span>
 			</div>

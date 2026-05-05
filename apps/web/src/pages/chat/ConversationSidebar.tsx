@@ -45,10 +45,10 @@ export function ConversationSidebar({
 
 	return (
 		<aside
-			className="flex flex-col rounded-lg border border-slate-200 bg-white"
+			className="flex flex-col rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
 			aria-label="Conversations"
 		>
-			<div className="border-b border-slate-100 px-3 py-2">
+			<div className="border-b border-slate-100 px-3 py-2 dark:border-slate-800">
 				<Button
 					variant="brand"
 					size="sm"
@@ -62,13 +62,15 @@ export function ConversationSidebar({
 			</div>
 			<div className="flex-1 overflow-y-auto">
 				{conversationsQuery.isLoading ? (
-					<p className="p-3 text-xs text-slate-400">Loading…</p>
+					<p className="p-3 text-xs text-slate-400 dark:text-slate-500">
+						Loading…
+					</p>
 				) : conversationsQuery.isError ? (
-					<p className="p-3 text-xs text-red-600">
+					<p className="p-3 text-xs text-red-600 dark:text-red-400">
 						{formatApiError(conversationsQuery.error)}
 					</p>
 				) : conversations.length === 0 ? (
-					<p className="p-3 text-xs text-slate-400">
+					<p className="p-3 text-xs text-slate-400 dark:text-slate-500">
 						No conversations yet. Start one above.
 					</p>
 				) : (
@@ -79,15 +81,15 @@ export function ConversationSidebar({
 									type="button"
 									onClick={() => onSelect(conv.conversationId)}
 									className={cn(
-										"flex w-full flex-col items-start gap-1 border-b border-slate-100 px-3 py-2 text-left text-sm transition hover:bg-slate-50",
+										"flex w-full flex-col items-start gap-1 border-b border-slate-100 px-3 py-2 text-left text-sm transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800",
 										activeConversationId === conv.conversationId &&
 											"bg-[var(--color-brand-50)]/60",
 									)}
 								>
-									<span className="truncate font-medium text-slate-800 max-w-full">
+									<span className="truncate font-medium text-slate-800 max-w-full dark:text-slate-100">
 										{conv.title ?? "Untitled"}
 									</span>
-									<span className="flex items-center gap-1 text-xs text-slate-400">
+									<span className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
 										<MessageSquare className="h-3 w-3" />
 										{conv.knowledgeBaseIds.length === 0
 											? "agent default KBs"

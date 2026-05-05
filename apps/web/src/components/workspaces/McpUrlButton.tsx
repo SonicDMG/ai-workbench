@@ -47,8 +47,8 @@ export function McpUrlButton({
 							knowledge bases and tools.
 						</DialogDescription>
 					</DialogHeader>
-					<div className="flex items-start gap-2 rounded-md border bg-slate-50 px-3 py-2">
-						<code className="min-w-0 flex-1 break-all font-mono text-xs leading-relaxed text-slate-800">
+					<div className="flex items-start gap-2 rounded-md border bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
+						<code className="min-w-0 flex-1 break-all font-mono text-xs leading-relaxed text-slate-800 dark:text-slate-100">
 							{url}
 						</code>
 						<CopyButton value={url} label="Copy MCP URL" className="shrink-0" />

@@ -20,3 +20,4 @@ runtimes/typescript/workbench.yaml
 
 # Local-only Claude Code settings (per-developer)
 .claude/settings.local.json
+.claude/launch.json

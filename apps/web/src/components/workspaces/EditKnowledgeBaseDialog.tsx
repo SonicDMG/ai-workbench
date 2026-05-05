@@ -141,7 +141,7 @@ export function EditKnowledgeBaseDialog({
 							disabled
 							readOnly
 						/>
-						<p className="text-xs text-slate-500">
+						<p className="text-xs text-slate-500 dark:text-slate-400">
 							Names are bound to the underlying collection and cannot be changed
 							after creation.
 						</p>
@@ -204,7 +204,7 @@ export function EditKnowledgeBaseDialog({
 										value={s.rerankingServiceId}
 									>
 										{s.name}
-										<span className="ml-2 text-xs text-slate-500">
+										<span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
 											({s.provider}:{s.modelName})
 										</span>
 									</SelectItem>

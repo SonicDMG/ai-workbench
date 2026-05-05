@@ -91,17 +91,17 @@ export function AstraCliPicker({
 
 	return (
 		<div
-			className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50/70 p-5 text-emerald-900"
+			className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50/70 p-5 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-100"
 			data-testid="astra-cli-picker"
 		>
 			<div className="flex items-start gap-3">
 				<CheckCircle2
-					className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-600"
+					className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-600 dark:text-emerald-400"
 					aria-hidden="true"
 				/>
 				<div className="min-w-0 flex-1">
 					<p className="text-sm font-semibold">Astra CLI profiles detected</p>
-					<p className="mt-1 text-sm text-emerald-800/90">
+					<p className="mt-1 text-sm text-emerald-800/90 dark:text-emerald-200/90">
 						Pick a profile + database — the workspace's credentials will resolve
 						on demand from your{" "}
 						<code className="font-mono text-xs">astra-cli</code> configuration.
@@ -109,14 +109,14 @@ export function AstraCliPicker({
 					</p>
 
 					<div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-						<div className="flex flex-col gap-1.5 text-xs font-medium text-emerald-900/80">
+						<div className="flex flex-col gap-1.5 text-xs font-medium text-emerald-900/80 dark:text-emerald-200/80">
 							<span id="astra-cli-picker-profile-label">Profile</span>
 							<Select
 								value={value?.profile ?? ""}
 								onValueChange={handleProfile}
 							>
 								<SelectTrigger
-									className="bg-white"
+									className="bg-white dark:bg-slate-900"
 									aria-labelledby="astra-cli-picker-profile-label"
 									data-testid="astra-cli-picker-profile"
 								>
@@ -127,12 +127,12 @@ export function AstraCliPicker({
 										<SelectItem key={p.name} value={p.name}>
 											<span className="font-mono">{p.name}</span>
 											{p.isUsedAsDefault ? (
-												<span className="ml-2 text-xs text-emerald-700">
+												<span className="ml-2 text-xs text-emerald-700 dark:text-emerald-300">
 													default
 												</span>
 											) : null}
 											{p.databases.length === 0 ? (
-												<span className="ml-2 text-xs text-amber-700">
+												<span className="ml-2 text-xs text-amber-700 dark:text-amber-300">
 													no databases
 												</span>
 											) : null}
@@ -142,7 +142,7 @@ export function AstraCliPicker({
 							</Select>
 						</div>
 
-						<div className="flex flex-col gap-1.5 text-xs font-medium text-emerald-900/80">
+						<div className="flex flex-col gap-1.5 text-xs font-medium text-emerald-900/80 dark:text-emerald-200/80">
 							<span id="astra-cli-picker-database-label">Database</span>
 							<Select
 								value={value?.database.id ?? ""}
@@ -152,7 +152,7 @@ export function AstraCliPicker({
 								}
 							>
 								<SelectTrigger
-									className="bg-white"
+									className="bg-white dark:bg-slate-900"
 									aria-labelledby="astra-cli-picker-database-label"
 									data-testid="astra-cli-picker-database"
 								>
@@ -162,7 +162,7 @@ export function AstraCliPicker({
 									{(selectedProfile?.databases ?? []).map((d) => (
 										<SelectItem key={d.id} value={d.id}>
 											<span className="font-mono">{d.name}</span>
-											<span className="ml-2 text-xs text-emerald-700">
+											<span className="ml-2 text-xs text-emerald-700 dark:text-emerald-300">
 												{d.region}
 											</span>
 										</SelectItem>
@@ -177,22 +177,26 @@ export function AstraCliPicker({
 							className="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs"
 							data-testid="astra-cli-picker-summary"
 						>
-							<dt className="font-medium text-emerald-900/70">endpoint</dt>
+							<dt className="font-medium text-emerald-900/70 dark:text-emerald-200/70">
+								endpoint
+							</dt>
 							<dd
-								className="truncate font-mono text-emerald-900"
+								className="truncate font-mono text-emerald-900 dark:text-emerald-100"
 								title={value.database.endpoint}
 							>
 								{value.database.endpoint}
 							</dd>
-							<dt className="font-medium text-emerald-900/70">keyspace</dt>
-							<dd className="truncate font-mono text-emerald-900">
+							<dt className="font-medium text-emerald-900/70 dark:text-emerald-200/70">
+								keyspace
+							</dt>
+							<dd className="truncate font-mono text-emerald-900 dark:text-emerald-100">
 								{value.database.keyspace ?? "default_keyspace"}
 							</dd>
-							<dt className="font-medium text-emerald-900/70">
+							<dt className="font-medium text-emerald-900/70 dark:text-emerald-200/70">
 								credentialsRef
 							</dt>
 							<dd
-								className="truncate font-mono text-emerald-900"
+								className="truncate font-mono text-emerald-900 dark:text-emerald-100"
 								title={`astra-cli:${value.profile}:${value.database.id}:token`}
 							>
 								astra-cli:{value.profile}:{value.database.id}

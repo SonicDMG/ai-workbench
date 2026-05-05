@@ -56,7 +56,7 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 	return (
 		<div className="flex flex-col gap-4">
 			<div className="flex items-start justify-between gap-3 flex-wrap">
-				<p className="text-xs text-slate-500 leading-relaxed">
+				<p className="text-xs text-slate-500 leading-relaxed dark:text-slate-400">
 					Bearer tokens; sent as{" "}
 					<code className="font-mono">Authorization: Bearer wb_live_…</code>.
 					{rows.length === 0
@@ -84,15 +84,15 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 
 			{rows.length === 0 ? (
 				<Card>
-					<CardContent className="py-6 text-center text-sm text-slate-500">
+					<CardContent className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
 						No keys yet. Create one to let a client authenticate against this
 						workspace.
 					</CardContent>
 				</Card>
 			) : (
-				<div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+				<div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
 					<table className="w-full text-sm">
-						<thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+						<thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
 							<tr>
 								<th className="px-4 py-2 font-medium">Label</th>
 								<th className="px-4 py-2 font-medium">Prefix</th>
@@ -102,20 +102,23 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 								<th className="px-2 py-2 sr-only">Actions</th>
 							</tr>
 						</thead>
-						<tbody className="divide-y divide-slate-100">
+						<tbody className="divide-y divide-slate-100 dark:divide-slate-800">
 							{rows.map((row) => (
-								<tr key={row.keyId} className="text-slate-800">
+								<tr
+									key={row.keyId}
+									className="text-slate-800 dark:text-slate-100"
+								>
 									<td className="px-4 py-2 font-medium">{row.label}</td>
-									<td className="px-4 py-2 font-mono text-xs text-slate-600">
+									<td className="px-4 py-2 font-mono text-xs text-slate-600 dark:text-slate-400">
 										wb_live_{row.prefix}_…
 									</td>
 									<td className="px-4 py-2">
 										<StatusBadge row={row} />
 									</td>
-									<td className="px-4 py-2 text-slate-600">
+									<td className="px-4 py-2 text-slate-600 dark:text-slate-400">
 										{row.lastUsedAt ? formatDate(row.lastUsedAt) : "—"}
 									</td>
-									<td className="px-4 py-2 text-slate-600">
+									<td className="px-4 py-2 text-slate-600 dark:text-slate-400">
 										{formatDate(row.createdAt)}
 									</td>
 									<td className="px-2 py-2 text-right">
@@ -170,9 +173,12 @@ function Badge({
 	children: React.ReactNode;
 }) {
 	const styles: Record<typeof tone, string> = {
-		green: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-		amber: "bg-amber-50 text-amber-700 ring-amber-200",
-		muted: "bg-slate-100 text-slate-600 ring-slate-200",
+		green:
+			"bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/50",
+		amber:
+			"bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900/50",
+		muted:
+			"bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700",
 	};
 	return (
 		<span

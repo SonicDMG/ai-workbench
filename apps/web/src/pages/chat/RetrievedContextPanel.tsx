@@ -92,7 +92,7 @@ export function RetrievedContextPanel({
 		<aside
 			aria-label="Retrieved context for the latest assistant turn"
 			className={cn(
-				"flex flex-col gap-3 overflow-hidden rounded-lg border border-slate-200 bg-white p-4",
+				"flex flex-col gap-3 overflow-hidden rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900",
 				className,
 			)}
 		>
@@ -101,10 +101,10 @@ export function RetrievedContextPanel({
 					<Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
 				</span>
 				<div className="min-w-0">
-					<h2 className="text-sm font-semibold text-slate-900">
+					<h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
 						Retrieved context
 					</h2>
-					<p className="text-[11px] text-slate-500">
+					<p className="text-[11px] text-slate-500 dark:text-slate-400">
 						Chunks the agent grounded on this turn.
 					</p>
 				</div>
@@ -195,18 +195,18 @@ function DocumentGroup({
 	}, [chunks.data]);
 
 	return (
-		<li className="rounded-md border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+		<li className="rounded-md border border-slate-200 bg-slate-50/50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/50">
 			<div className="flex items-center justify-between gap-2 mb-1.5">
 				<div className="flex items-center gap-1.5 min-w-0">
 					<FileText
-						className="h-3.5 w-3.5 shrink-0 text-slate-500"
+						className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400"
 						aria-hidden="true"
 					/>
-					<span className="truncate text-xs font-medium text-slate-700">
+					<span className="truncate text-xs font-medium text-slate-700 dark:text-slate-300">
 						{documentId ? (
 							<DocumentTitle documentId={documentId} refsLen={refs.length} />
 						) : (
-							<span className="italic text-slate-500">
+							<span className="italic text-slate-500 dark:text-slate-400">
 								Legacy citation (no document link)
 							</span>
 						)}
@@ -238,20 +238,22 @@ function DocumentGroup({
 					const clickable = Boolean(ref.documentId);
 					const inner = (
 						<>
-							<span className="font-mono text-[10px] text-slate-500">
+							<span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
 								{ref.chunkId.slice(0, 12)}
 								{ref.chunkId.length > 12 ? "…" : ""}
 							</span>
 							{text ? (
 								<p className="mt-0.5 line-clamp-3">{text}</p>
 							) : chunks.isLoading && documentId ? (
-								<p className="mt-0.5 italic text-slate-400">Loading…</p>
+								<p className="mt-0.5 italic text-slate-400 dark:text-slate-500">
+									Loading…
+								</p>
 							) : chunks.isError ? (
-								<p className="mt-0.5 italic text-red-600">
+								<p className="mt-0.5 italic text-red-600 dark:text-red-400">
 									Couldn't load chunk preview.
 								</p>
 							) : (
-								<p className="mt-0.5 italic text-slate-400">
+								<p className="mt-0.5 italic text-slate-400 dark:text-slate-500">
 									No preview available.
 								</p>
 							)}
@@ -269,14 +271,14 @@ function DocumentGroup({
 											chunkId: ref.chunkId,
 										})
 									}
-									className="block w-full text-left rounded border border-slate-200 bg-white px-2 py-1.5 text-[11px] leading-snug text-slate-700 hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
+									className="block w-full text-left rounded border border-slate-200 bg-white px-2 py-1.5 text-[11px] leading-snug text-slate-700 hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
 								>
 									{inner}
 								</button>
 							) : (
 								// Legacy citation — chunk id only, no document to
 								// open. Render a non-interactive card.
-								<div className="block rounded border border-slate-200 bg-white px-2 py-1.5 text-[11px] leading-snug text-slate-700">
+								<div className="block rounded border border-slate-200 bg-white px-2 py-1.5 text-[11px] leading-snug text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
 									{inner}
 								</div>
 							)}
@@ -303,11 +305,11 @@ function DocumentTitle({
 	// user clicks through.
 	return (
 		<>
-			<span className="font-mono text-slate-700">
+			<span className="font-mono text-slate-700 dark:text-slate-300">
 				{documentId.slice(0, 12)}
 				{documentId.length > 12 ? "…" : ""}
 			</span>
-			<span className="ml-1 text-slate-500">
+			<span className="ml-1 text-slate-500 dark:text-slate-400">
 				· {refsLen} {refsLen === 1 ? "chunk" : "chunks"}
 			</span>
 		</>
@@ -363,11 +365,15 @@ function EmptyState({
 	description?: string;
 }) {
 	return (
-		<div className="flex flex-col items-center gap-1.5 rounded-md border border-dashed border-slate-200 bg-slate-50/40 px-3 py-4 text-center">
-			<span className="text-slate-400">{icon}</span>
-			<p className="text-xs font-medium text-slate-700">{title}</p>
+		<div className="flex flex-col items-center gap-1.5 rounded-md border border-dashed border-slate-200 bg-slate-50/40 px-3 py-4 text-center dark:border-slate-700 dark:bg-slate-800/40">
+			<span className="text-slate-400 dark:text-slate-500">{icon}</span>
+			<p className="text-xs font-medium text-slate-700 dark:text-slate-300">
+				{title}
+			</p>
 			{description ? (
-				<p className="text-[11px] text-slate-500">{description}</p>
+				<p className="text-[11px] text-slate-500 dark:text-slate-400">
+					{description}
+				</p>
 			) : null}
 		</div>
 	);
