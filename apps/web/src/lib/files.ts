@@ -208,6 +208,18 @@ const INGEST_BINARY_MIME_TYPES = new Set([
 const INGEST_BINARY_EXTENSIONS = new Set(["pdf", "docx"]);
 
 /**
+ * Combined extension list (text + binary) the ingest queue's file
+ * picker advertises via its `accept` attribute. The OS native
+ * dialog uses this to grey out files we'd reject anyway. Includes
+ * the leading dot like {@link READABLE_TEXT_EXTENSIONS}.
+ */
+export const INGESTABLE_EXTENSIONS: ReadonlyArray<string> = [
+	...READABLE_TEXT_EXTENSIONS,
+	".pdf",
+	".docx",
+];
+
+/**
  * Broader accept guard for the ingest queue: plain text plus the
  * binary document types the server's extractor pipeline handles
  * (PDF, DOCX). Used by the drop zone's up-front filter so users can

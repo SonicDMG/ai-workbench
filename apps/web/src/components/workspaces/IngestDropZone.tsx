@@ -1,7 +1,7 @@
 import { FolderOpen, Plus, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { READABLE_TEXT_EXTENSIONS } from "@/lib/files";
+import { INGESTABLE_EXTENSIONS } from "@/lib/files";
 import { cn } from "@/lib/utils";
 
 /**
@@ -52,7 +52,7 @@ export function IngestDropZone({
 				ref={fileInputRef}
 				type="file"
 				multiple
-				accept={READABLE_TEXT_EXTENSIONS.join(",")}
+				accept={INGESTABLE_EXTENSIONS.join(",")}
 				className="hidden"
 				onChange={(e) => {
 					if (e.target.files) onFiles(e.target.files);
