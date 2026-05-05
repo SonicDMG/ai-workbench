@@ -323,8 +323,10 @@ agent's bound LLM service overrides this block — the runtime
 instantiates a chat service from the LLM-service record instead of
 using the global block. The agent's own `systemPrompt` likewise
 wins over `chat.systemPrompt` when present. Multi-provider support
-is a follow-up; today only `provider: "huggingface"` LLM services
-are wired end-to-end.
+is incremental; today `provider: "huggingface"` and
+`provider: "openai"` LLM services are wired end-to-end. Other
+providers can be stored but return `422 llm_provider_unsupported`
+until their adapters land.
 
 ## Document extraction *(optional)*
 

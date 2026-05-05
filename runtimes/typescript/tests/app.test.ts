@@ -330,16 +330,35 @@ describe("operational routes", () => {
 		expect(body.mcp.baseUrl).toBe("https://workbench.example.com");
 	});
 
-	test("unhandled errors return a generic envelope", async () => {
+	test("unhandled errors return a generic envelope and redacted logs", async () => {
+		const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => logger);
 		const { app } = makeApp();
 		app.get("/boom", () => {
-			throw new Error("database password leaked in exception text");
+			throw new Error(
+				"provider failed token=AstraCS:abcdefghijklmnopqrstuvwxyz123456", // secret-scan: allow
+			);
 		});
-		const res = await app.request("/boom");
-		expect(res.status).toBe(500);
-		const body = await json(res);
-		expect(body.error.code).toBe("internal_error");
-		expect(body.error.message).toBe("internal server error");
+		try {
+			const res = await app.request("/boom");
+			expect(res.status).toBe(500);
+			const body = await json(res);
+			expect(body.error.code).toBe("internal_error");
+			expect(body.error.message).toBe("internal server error");
+			const logFields = errorSpy.mock.calls
+				.map((call) => call[0])
+				.find(
+					(fields): fields is Record<string, unknown> =>
+						typeof fields === "object" &&
+						fields !== null &&
+						"errMessage" in fields,
+				);
+			expect(logFields).toBeTruthy();
+			const serialized = JSON.stringify(logFields);
+			expect(serialized).not.toContain("AstraCS:");
+			expect(serialized).toContain("[redacted]");
+		} finally {
+			errorSpy.mockRestore();
+		}
 	});
 
 	test("oversized API bodies are rejected before route handling", async () => {

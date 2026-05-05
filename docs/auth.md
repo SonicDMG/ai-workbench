@@ -230,7 +230,8 @@ OIDC login (Phase 3b) avoids this because the session cookie is
   (`scrypt$<salt>$<digest>`) and uses `timingSafeEqual`; OIDC
   uses signature verification.
 - **Basic resource ceilings.** The TypeScript runtime rejects
-  `/api/v1/workspaces/*` request bodies over 1 MB and caps the
+  `/api/v1/workspaces/*` request bodies over 10 MB by default, raises
+  that to 50 MB only for explicit ingest routes, and caps the
   highest-risk text/vector fields before chunking, embedding, or
   search dispatch.
 

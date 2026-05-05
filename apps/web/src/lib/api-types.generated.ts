@@ -823,7 +823,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Create a knowledge base in a workspace
-		 * @description Creates a KB bound to existing chunking + embedding (and optional reranking) services. The vector collection is auto-provisioned from the embedding service's dimension and distance metric, named `wb_vectors_<kb_id>` unless overridden.
+		 * @description Creates a KB bound to existing chunking + embedding (and optional reranking) services. Owned KBs auto-provision a vector collection named after the KB `name`; attach mode binds to an existing `vectorCollection` instead.
 		 */
 		post: {
 			parameters: {
@@ -1024,7 +1024,7 @@ export interface paths {
 		head?: never;
 		/**
 		 * Update a knowledge base
-		 * @description `embeddingServiceId` and `chunkingServiceId` are immutable after creation — vectors and chunks on disk are bound to the model that produced them. The reranker, lexical config, language, name, description, and status can all be patched.
+		 * @description `name`, `embeddingServiceId`, and `chunkingServiceId` are immutable after creation — the name doubles as the collection identifier, and vectors/chunks on disk are bound to the services that produced them. The reranker, lexical config, language, description, and status can all be patched.
 		 */
 		patch: {
 			parameters: {

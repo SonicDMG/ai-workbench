@@ -289,10 +289,11 @@ Shipped:
 
 - **Knowledge bases.** New `wb_config_knowledge_bases_by_workspace`
   table. KB create transactionally provisions the underlying
-  `wb_vectors_<kb_id>` collection through the workspace's driver,
-  using the bound embedding service to determine vector dimensions
-  and similarity. KB delete drops the collection and cascades RAG
-  documents.
+  collection through the workspace's driver, using the KB `name` as
+  the owned collection identifier and the bound embedding service to
+  determine vector dimensions and similarity. KB delete drops owned
+  collections and cascades RAG documents; attached KBs detach without
+  dropping external collections.
 - **Execution services.** Three new tables —
   `wb_config_chunking_service_by_workspace`,
   `wb_config_embedding_service_by_workspace`,
@@ -409,12 +410,12 @@ retired the `/chats` route + Bobbie singleton entirely. See
 
 Remaining open work in this area:
 
-- **Multi-provider chat**. Today only `provider: "huggingface"` is
-  wired in the chat-service factory; LLM services with other
-  providers (OpenAI, Cohere, Anthropic, …) can be created and
-  stored, but agent send returns `422 llm_provider_unsupported`
-  until the dispatcher grows a case for them. The `ChatService`
-  abstraction is already provider-agnostic; this is mechanical.
+- **Multi-provider chat**. Per-agent LLM services currently wire
+  `provider: "huggingface"` and `provider: "openai"` end-to-end.
+  Other stored providers (Cohere, Anthropic, …) return
+  `422 llm_provider_unsupported` until the dispatcher grows a case
+  for them. The `ChatService` abstraction is already
+  provider-agnostic; this is mechanical.
 - **Tool execution via MCP**. Now that the MCP server façade is in,
   the inverse — letting an agent **call** MCP tools — is the same
   SDK, just on the client side. Lands alongside
@@ -440,8 +441,9 @@ fetch.
 
 ### Multi-provider chat backends
 
-`ChatService` is provider-agnostic. Adding an `OpenAIChatService`
-and a `CohereChatService` is mostly mechanical — the prompt
+`ChatService` is provider-agnostic, and the runtime now has
+HuggingFace and OpenAI implementations. Adding a `CohereChatService`
+or Anthropic-backed service is mostly mechanical — the prompt
 assembler and route are unchanged. Worth doing once we have a
 reason to compare quality / latency / cost across providers.
 

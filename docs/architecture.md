@@ -23,10 +23,11 @@ under [`runtimes/`](../runtimes/README.md).
    picks which control-plane backend to use; workspaces themselves
    are mutable records managed via the HTTP API.
 4. **A KB owns its collection end-to-end.** Creating a knowledge
-   base auto-provisions the underlying Astra collection
-   (`wb_vectors_<kb_id>`), sized to the bound embedding service's
-   dimension; deleting the KB drops the collection. The control
-   plane and data plane never diverge.
+   base auto-provisions the underlying Astra collection named by the
+   KB's `vectorCollection` (owned KBs derive it from `name`), sized
+   to the bound embedding service's dimension; deleting an owned KB
+   drops the collection. The control plane and data plane never
+   diverge.
 5. **Driver-based control plane.** `memory` for CI and demos, `file`
    for single-node self-hosted, `astra` for production. Same
    contract.
@@ -261,10 +262,11 @@ data-plane backends per workspace). The runtime's own control plane
 is separate — chosen via `workbench.yaml`.
 
 **Knowledge bases own their collection.** `vector_collection` on
-the KB row is the auto-provisioned Astra collection name
-(`wb_vectors_<kb_id>`, hyphen-stripped). The actual vector data
-lives in that Data API Collection, provisioned transactionally
-when the KB is created and dropped when it's deleted.
+the KB row is the Astra collection name. Owned KBs derive it from
+the KB `name`; attached KBs bind to an existing collection with the
+same name. The actual vector data lives in that Data API Collection,
+provisioned transactionally when an owned KB is created and dropped
+when that owned KB is deleted.
 
 **Reserved chunk-payload keys.** The KB-scoped ingest pipeline
 stamps `knowledgeBaseId`, `documentId`, `chunkIndex`, and

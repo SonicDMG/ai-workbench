@@ -133,9 +133,11 @@ A workspace owns:
   rows. Each KB pins an embedding service (which determines the
   dimensions and similarity metric of its vector collection) and a
   chunking service, and may optionally bind a reranking service. A
-  KB's underlying Astra collection (`wb_vectors_<kb_id>`) is
-  provisioned transactionally when the KB is created and dropped when
-  it is deleted.
+  KB's underlying Astra collection is named by `vectorCollection`
+  (owned KBs derive it from the KB `name`; attached KBs bind to an
+  existing collection). Owned collections are provisioned
+  transactionally when the KB is created and dropped when it is
+  deleted.
 - **Execution services** — three families of `wb_config_*_service_by_workspace`
   rows describing the chunking, embedding, and reranking
   implementations available to KBs in this workspace.

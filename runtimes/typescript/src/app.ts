@@ -55,6 +55,7 @@ import { generateReplicaId } from "./lib/replica-id.js";
 import { requestId } from "./lib/request-id.js";
 import { requestLogger } from "./lib/request-logger.js";
 import { buildRuntimeMetrics, requestMetrics } from "./lib/runtime-metrics.js";
+import { safeErrorMessage } from "./lib/safe-error.js";
 import { SCALAR_CDN_PINNED, securityHeaders } from "./lib/security-headers.js";
 import type { AppEnv } from "./lib/types.js";
 import { buildDefaultRoutePlugins } from "./plugins/default-plugins.js";
@@ -497,14 +498,12 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		logger.error(
 			{
 				errName: err instanceof Error ? err.name : typeof err,
-				errMessage: err instanceof Error ? err.message : String(err),
-				errStack: err instanceof Error ? err.stack : undefined,
-				errCause:
-					err instanceof Error && err.cause !== undefined
-						? err.cause instanceof Error
-							? { name: err.cause.name, message: err.cause.message }
-							: String(err.cause)
+				errMessage: safeErrorMessage(err, "unhandled request error"),
+				errStack:
+					err instanceof Error && err.stack
+						? safeErrorMessage(err.stack, "stack unavailable")
 						: undefined,
+				errCause: safeErrorCause(err),
 				method: c.req.method,
 				path: c.req.path,
 				requestId: c.get("requestId"),
@@ -518,6 +517,22 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	});
 
 	return app;
+}
+
+function safeErrorCause(err: unknown):
+	| {
+			readonly name?: string;
+			readonly message: string;
+	  }
+	| undefined {
+	if (!(err instanceof Error) || err.cause === undefined) return undefined;
+	if (err.cause instanceof Error) {
+		return {
+			name: err.cause.name,
+			message: safeErrorMessage(err.cause, "cause unavailable"),
+		};
+	}
+	return { message: safeErrorMessage(err.cause, "cause unavailable") };
 }
 
 function auditApiAuthDenied(

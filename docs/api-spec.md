@@ -92,7 +92,7 @@ human-readable and may change. Currently emitted:
 | 400 | `validation_error` | Request body / params / query failed Zod validation. `message` carries the first failing field path and its reason (`name: Name is required`, `credentials.token: expected '<provider>:<path>', e.g. 'env:FOO'`). |
 | 401 | `unauthorized` | Missing / malformed / invalid bearer token. `WWW-Authenticate: Bearer` set. See [`auth.md`](auth.md). |
 | 403 | `forbidden` | Token is valid but not authorized for the requested action — either the subject's `workspaceScopes` doesn't include the target workspace, or it's a scoped subject attempting a platform-level action (e.g. `POST /workspaces`). Also reserved for role-based checks in the upcoming RBAC phase. |
-| 413 | `payload_too_large` | `/api/v1/workspaces/*` request body exceeded the runtime's 1 MB JSON body limit. |
+| 413 | `payload_too_large` | `/api/v1/workspaces/*` request body exceeded the runtime's 10 MB default JSON body limit, or an ingest request exceeded the 50 MB ingest-only limit. |
 | 404 | `not_found` | Unknown route |
 | 404 | `workspace_not_found` | Workspace ID doesn't exist |
 | 404 | `knowledge_base_not_found` | Knowledge-base ID doesn't exist in workspace |
@@ -475,29 +475,38 @@ straight to it.
 A knowledge base is the runtime's atomic *retrieval unit*: a logical
 group of documents indexed by exactly one embedding service and one
 chunking service, optionally re-ranked by one reranker. Creating a
-KB through `POST` does three things in lockstep:
+KB through `POST` does four things in lockstep:
 
-1. **Materialize the underlying vector collection on the workspace's
+1. **Validate the requested collection shape.** Owned KBs use the
+   KB `name` as the underlying collection identifier. Attach-mode KBs
+   (`attach: true`) must supply `vectorCollection`, and the supplied
+   value must equal `name` so the KB row and data-plane collection
+   cannot drift apart.
+2. **Insert the control-plane row.** The `KnowledgeBase` record is
+   written before owned collection provisioning; if provisioning fails,
+   the runtime rolls the row back so callers never observe a KB that
+   points at a missing collection.
+3. **Materialize the underlying vector collection on the workspace's
    driver.** The driver (`mock` for tests, `astra` for production)
    creates a collection sized for the bound embedding service's
    `embeddingDimension` with the requested `vectorSimilarity`. For
    Astra workspaces with an `astra`-provider embedding service, the
    collection is provisioned with a `service:` block so embedding
    runs server-side ([see Configuration §Vectorize-on-ingest](configuration.md#embedding-services-and-vectorize-on-ingest)).
-2. **Insert the control-plane row.** The `KnowledgeBase` record is
-   only persisted *after* the collection is materialized — if step
-   #1 fails, no row is written and the operator gets a clean error
-   instead of an orphan KB pointing at a non-existent collection.
-3. **Seed any default knowledge filters** declared on the workspace.
+   Attach mode skips this step and binds to the existing data-plane
+   collection after validating compatibility.
+4. **Seed any default knowledge filters** declared on the workspace.
    Filters are mutable post-create via `POST /{kb}/filters`.
 
-**Collection naming.** `vectorCollection` defaults to
-`wb_vectors_<knowledgeBaseId-with-hyphens-stripped>` so the name is
-deterministic from the KB id. Supply your own at create time to
-adopt a pre-existing collection — the driver verifies its dimension
-and similarity match the bound embedding service before the row is
-written. Renaming after create is not supported (would require a
-re-index).
+**Collection naming.** Owned KBs derive `vectorCollection` from
+`name`, and the KB name must match Astra collection-name rules
+(letters, digits, underscores; starts with a letter; max 48 chars).
+To adopt a pre-existing collection, set `attach: true` and supply
+that collection name as both `name` and `vectorCollection`; the
+driver verifies its dimension and vectorize provider/model match the
+bound embedding service before the row is accepted. Renaming after
+create is not supported because the name is the collection
+identifier.
 
 **Idempotence.** `POST` is **not** idempotent on its own — re-issuing
 the same request creates a second KB with a fresh `knowledgeBaseId`.
@@ -541,7 +550,7 @@ A `KnowledgeBase`:
   "chunkingServiceId": "…",
   "rerankingServiceId": null,
   "language": "en",
-  "vectorCollection": "wb_vectors_<kb_id>",
+  "vectorCollection": "support_docs",
   "lexical": { "enabled": false, "analyzer": null, "options": {} },
   "createdAt": "…",
   "updatedAt": "…"
@@ -554,9 +563,10 @@ Create a KB **and** auto-provision its underlying Astra collection.
 Transactional — if collection provisioning fails, the KB row is
 rolled back so the control plane and data plane never drift.
 
-`vectorCollection` is generated as `wb_vectors_<kb_id>` (hyphen-
-stripped) by default; supply your own to adopt a pre-existing
-collection.
+For owned KBs, omit `vectorCollection`; the runtime uses `name` as
+the collection name. To adopt a pre-existing collection, set
+`attach: true` and supply the same collection name in both `name` and
+`vectorCollection`.
 
 **Request**
 
@@ -585,13 +595,14 @@ must reference services that exist in the same workspace.
 
 ### `GET /{knowledgeBaseId}` / `PATCH /{knowledgeBaseId}` / `DELETE /{knowledgeBaseId}`
 
-`GET` reads the record. `PATCH` accepts a partial — `name`,
-`description`, `status`, `rerankingServiceId`, `language`, `lexical`
-are mutable; **`embeddingServiceId` and `chunkingServiceId` are
+`GET` reads the record. `PATCH` accepts a partial — `description`,
+`status`, `rerankingServiceId`, `language`, and `lexical` are
+mutable; **`name`, `embeddingServiceId`, and `chunkingServiceId` are
 immutable post-create** and the schema is `.strict()`, so accidentally
 including them in a body returns `400`. `DELETE` drops the underlying
-Astra collection first, then the KB row, then cascades RAG document
-rows.
+collection first for owned KBs, then the KB row, then cascades RAG
+document rows. Attached KBs detach without dropping the external
+collection.
 
 ### `POST /{knowledgeBaseId}/records` — upsert records
 
@@ -956,9 +967,9 @@ same workspace may bind one of these via `agent.llmServiceId`; the
 agent's send + streaming pipeline then instantiates a chat service
 from the bound record.
 
-Today only `provider: "huggingface"` is wired end-to-end; other
-providers can be created and stored, but agent send returns
-`422 llm_provider_unsupported` for any non-`huggingface` binding.
+Today `provider: "huggingface"` and `provider: "openai"` are wired
+end-to-end; other providers can be created and stored, but agent send
+returns `422 llm_provider_unsupported` until their adapters land.
 
 ### `GET /llm-services`
 
@@ -1075,9 +1086,10 @@ When unset it falls back to the runtime's global `chat:` block.
 - **201** — `{ user, assistant }`
 - **404** when the conversation does not belong to the named agent
 - **422** `llm_provider_unsupported` — `agent.llmServiceId` points
-  at an LLM service whose `provider` is not `huggingface`
-- **422** `llm_credential_missing` — bound HuggingFace service has
-  no `credentialRef`
+  at an LLM service whose `provider` is neither `huggingface` nor
+  `openai`
+- **422** `llm_credential_missing` — bound LLM service has no
+  `credentialRef`
 - **503** `chat_disabled` — runtime has no global `chat:` block
   configured **and** the agent has no `llmServiceId`
 

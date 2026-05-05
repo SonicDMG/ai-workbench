@@ -185,9 +185,10 @@ workspace-route wrapper.
 - **404** when the conversation does not belong to the named agent
   (or when the workspace, agent, or conversation does not exist).
 - **422** `llm_provider_unsupported` when `agent.llmServiceId`
-  points at an LLM service whose `provider` is not `huggingface`.
-- **422** `llm_credential_missing` when the bound HuggingFace
-  service has no `credentialRef`.
+  points at an LLM service whose `provider` is neither
+  `huggingface` nor `openai`.
+- **422** `llm_credential_missing` when the bound LLM service has no
+  `credentialRef`.
 - **503** `chat_disabled` when the runtime has no global `chat:`
   block configured **and** the agent has no `llmServiceId` — there
   is no executor available.

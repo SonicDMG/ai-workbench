@@ -82,7 +82,7 @@ table.
                         │       wb_rag_documents_          │
                         │         by_knowledge_base        │
                         │     Collections (data plane):    │
-                        │       wb_vectors_<kb_id>         │
+                        │       <kb vectorCollection>      │
                         │       (one per knowledge base)   │
                         └──────────────────────────────────┘
 ```

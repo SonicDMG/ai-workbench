@@ -16,7 +16,7 @@ contract first, then the runtime architecture behind them.
    vector, hybrid, and rerank search.
 3. [`agents.md`](agents.md) — user-defined agents: personas, RAG
    defaults, per-agent LLM service binding, and the conversation +
-   message routes (HuggingFace-backed, multi-KB-grounded, SSE token
+   message routes (provider-backed, multi-KB-grounded, SSE token
    streaming).
 4. [`mcp.md`](mcp.md) — Model Context Protocol façade for external
    agents (Claude Code, Cursor, hosted MCP gateways).
@@ -45,10 +45,9 @@ contract first, then the runtime architecture behind them.
 - [`cross-replica-jobs.md`](cross-replica-jobs.md) — shipped design
   for cross-replica job pub/sub, lease reclaim, and in-flight ingest
   resume.
-- [`route-plugins.md`](route-plugins.md) — proposed in-runtime plugin
-  registry so adding a new resource module never edits `app.ts`.
-  Scaffold (interface + registry + tests) shipped; route migrations
-  follow.
+- [`route-plugins.md`](route-plugins.md) — shipped in-runtime plugin
+  registry so adding a new resource module no longer needs direct
+  `app.ts` route wiring; external plugin loading remains future work.
 - [`astra-cli.md`](astra-cli.md) — optional integration that
   auto-fills `ASTRA_DB_APPLICATION_TOKEN` / `ASTRA_DB_API_ENDPOINT`
   from a configured DataStax `astra` CLI profile at startup.

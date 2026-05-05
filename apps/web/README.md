@@ -113,7 +113,10 @@ navigation shows the shared loader while the chunk streams.
 | `/` | Workspaces list. Redirects to `/onboarding` when empty. |
 | `/onboarding` | Two-step wizard — pick a backend kind, then fill details. HCD / OpenRAG tiles render but are non-selectable. |
 | `/workspaces/:workspaceId` | Detail + edit + destructive delete (type-to-confirm). Hosts the knowledge-bases, services, and API-keys panels for this workspace. |
+| `/workspaces/:workspaceId/agents` | Agent management — create agents directly or from templates, configure personas, RAG defaults, and LLM service binding. |
+| `/workspaces/:workspaceId/chat` | Conversation surface for workspace agents, including conversation history and retrieved context. |
 | `/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId` | Knowledge-base explorer — sortable / filterable document table with file-type badges, sizes, statuses, and a click-through detail dialog. Multi-file / folder ingest queue lives here. |
+| `/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId/playground` | KB-scoped playground entry point from the explorer. |
 | `/playground` | Ad-hoc text / vector / hybrid / rerank queries against a workspace's knowledge bases. See [`docs/playground.md`](../../docs/playground.md). |
 
 The workspace detail page composes four panels (collapsible cards):
@@ -143,7 +146,8 @@ The KB explorer adds:
 - **React Hook Form + Zod** for forms; the same Zod schemas that
   describe API shapes drive form validation, so the UI and backend
   can't disagree about request shape.
-- **React Router** for the five routes (`/`, `/onboarding`, `/workspaces/:workspaceId`, `/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId`, `/playground`).
+- **React Router** for the workspace, KB explorer, playground, agents,
+  and chat routes.
 - **Sonner** for toasts.
 - **Lucide React** for icons.
 
