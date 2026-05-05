@@ -47,6 +47,21 @@ export interface RagDocumentRepo {
 		knowledgeBase: string,
 		contentHash: string,
 	): Promise<RagDocumentRecord | null>;
+	/**
+	 * Look up an existing document by its `sourceFilename` within a KB.
+	 * Returns `null` if no document with that filename exists. Used by
+	 * the ingest service to detect name collisions: when the user
+	 * uploads a file whose name already exists in the KB but whose
+	 * content hash differs, the service prompts the client to confirm
+	 * an overwrite. Filenames are not unique by construction (the same
+	 * doc can be re-ingested with `overwriteOnNameConflict: true` and
+	 * the old row is dropped first), so this returns the first match.
+	 */
+	findRagDocumentBySourceFilename(
+		workspace: string,
+		knowledgeBase: string,
+		sourceFilename: string,
+	): Promise<RagDocumentRecord | null>;
 	createRagDocument(
 		workspace: string,
 		knowledgeBase: string,

@@ -34,7 +34,7 @@ export function EmptyConversationPane({
 }: EmptyConversationPaneProps) {
 	const create = useCreateConversation(workspaceId, agent.agentId);
 	return (
-		<Card className="flex flex-col">
+		<Card className="flex h-full min-h-0 min-w-0 flex-col">
 			<CardContent className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
 				<div className="rounded-full bg-[var(--color-brand-50)] p-3">
 					<Sparkles
@@ -125,7 +125,7 @@ export function ConversationThread({
 
 	if (conversationQuery.isLoading) {
 		return (
-			<Card className="flex flex-col">
+			<Card className="flex h-full min-h-0 min-w-0 flex-col">
 				<CardContent className="flex-1 p-8">
 					<LoadingState label="Loading conversation…" />
 				</CardContent>
@@ -139,7 +139,7 @@ export function ConversationThread({
 				? "This conversation doesn't exist or was deleted."
 				: formatApiError(conversationQuery.error);
 		return (
-			<Card className="flex flex-col">
+			<Card className="flex h-full min-h-0 min-w-0 flex-col">
 				<CardContent className="flex flex-1 items-center justify-center p-8">
 					<ErrorState title="Couldn't load conversation" message={message} />
 				</CardContent>
@@ -184,14 +184,24 @@ export function ConversationThread({
 	};
 
 	return (
-		// `min-w-0` is critical: this Card is a grid item in the chat
-		// page's `[14rem_minmax(0,1fr)_18rem]` row. Without it, a wide
-		// `<pre>` from a markdown reply (long table row, long code line)
-		// inflates the column past the `1fr` budget via the default
-		// `min-width: auto` on flex/grid items, pushing the right rail
-		// off-screen. The same constraint propagates down the message-
-		// list chain so the bubble's `max-w-[80%]` can actually clamp.
-		<Card className="flex flex-col min-w-0">
+		// `min-w-0` and `min-h-0` together let the chat row size to its
+		// fixed grid budget (set by ChatLayout's
+		// `h-[calc(100vh-14rem)]`) instead of its content:
+		//   - `min-w-0` prevents wide `<pre>` from a markdown reply
+		//     inflating the column past `1fr` (right rail gets pushed
+		//     off-screen).
+		//   - `min-h-0` prevents a long conversation from inflating the
+		//     row past its calc'd height (composer gets pushed below
+		//     the viewport). Without it, the column-flex children
+		//     default to `min-height: auto` (intrinsic content), which
+		//     defeats the message-list's `flex-1 overflow-y-auto`.
+		// Both constraints have to thread through every flex/grid
+		// descendant in the chain (Card → CardContent → list scroller
+		// → ul) so the inner `overflow-{x,y}-auto` can actually fire.
+		// `h-full` is explicit on the Card because the grid auto-stretch
+		// alone doesn't survive the column-flex Cardresetting children
+		// to intrinsic heights once `min-h-0` is in play.
+		<Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
 			<header className="flex items-start justify-between gap-3 border-b border-slate-100 p-4">
 				<div className="min-w-0">
 					<h2 className="truncate text-base font-semibold tracking-tight text-slate-900">
@@ -215,10 +225,10 @@ export function ConversationThread({
 				</Button>
 			</header>
 
-			<CardContent className="flex flex-1 flex-col gap-4 p-0 min-w-0">
+			<CardContent className="flex flex-1 min-h-0 min-w-0 flex-col gap-4 p-0">
 				<div
 					ref={messageListRef}
-					className="flex-1 overflow-y-auto px-4 py-4 min-w-0"
+					className="flex-1 min-h-0 overflow-y-auto px-4 py-4 min-w-0"
 					data-testid="chat-message-list"
 				>
 					{messagesQuery.isLoading ? (

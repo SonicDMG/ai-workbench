@@ -100,4 +100,23 @@ describe("OnboardingPage", () => {
 			screen.getByRole("heading", { name: /New workspace/i }),
 		).toBeInTheDocument();
 	});
+
+	it("pre-selects Astra so the Continue button is enabled on first paint", () => {
+		// Default-to-Astra: the recommended backend should be picked
+		// without a click. The "Astra DB" tile must render with
+		// `aria-pressed="true"`, and the Continue button must be
+		// enabled.
+		setupHooks([]);
+		render(
+			<MemoryRouter>
+				<OnboardingPage />
+			</MemoryRouter>,
+		);
+		// The Astra tile is the only `aria-pressed="true"` button on
+		// the kind step.
+		const astraTile = screen.getByRole("button", { name: /Astra DB/i });
+		expect(astraTile).toHaveAttribute("aria-pressed", "true");
+		const continueBtn = screen.getByRole("button", { name: /Continue/i });
+		expect(continueBtn).not.toBeDisabled();
+	});
 });

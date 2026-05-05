@@ -1,28 +1,39 @@
-# Default dev config. Boots cleanly with no env vars and persists
-# workspaces / catalogs / vector stores / documents / jobs to a
-# JSON tree under `./.workbench-data/` (gitignored), so restarting
-# `npm run dev` doesn't wipe your work.
+# Default dev config. With no `controlPlane:` block, the runtime
+# auto-picks the storage backend at boot:
 #
-# Other backends — see docs/examples/workbench.yaml for the
-# annotated full reference, or the matrix below:
+#   - if the canonical Astra env vars are set —
+#     `ASTRA_DB_API_ENDPOINT` + `ASTRA_DB_APPLICATION_TOKEN` —
+#     all workspace / agent / KB / job metadata lives in Astra
+#     Data API Tables. The astra-cli auto-detection on boot also
+#     fills these env vars for any developer with a working
+#     astra-cli profile, so Astra is the out-of-the-box default
+#     when the runtime can reach it.
+#   - otherwise, persists to a JSON tree under `./.workbench-data/`
+#     (gitignored). Restarting `npm run dev` doesn't wipe your work.
 #
-# - `memory` (no persistence; lost on restart) — change `driver`
-#   below to `memory` and remove `root`. Useful for tests, CI,
-#   and `docker run` demos that don't need durability.
+# Override with an explicit `controlPlane:` block if you want a
+# specific backend regardless of env. Examples:
 #
-# - `astra` (Astra Data API Tables, multi-writer-safe, production)
-#   — change `driver` to `astra` and supply `endpoint`, `tokenRef`,
-#   `keyspace`. See docs/configuration.md.
+#   controlPlane:
+#     driver: memory             # no persistence; lost on restart
+#
+#   controlPlane:
+#     driver: file
+#     root: .workbench-data
+#
+#   controlPlane:
+#     driver: astra
+#     endpoint: https://<id>-<region>.apps.astra.datastax.com
+#     tokenRef: env:ASTRA_DB_APPLICATION_TOKEN
+#     keyspace: workbench
+#
+# See docs/configuration.md for the full reference.
 
 version: 1
 
 runtime:
   port: 8080
   logLevel: info
-
-controlPlane:
-  driver: file
-  root: .workbench-data
 
 # Optional — loaded into the memory backend at startup. Ignored by
 # `file` and `astra` backends. Only useful when you flip `driver`

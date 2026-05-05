@@ -22,20 +22,31 @@ import type { JobStore } from "../jobs/store.js";
 import type { IngestInputSnapshot, JobRecord } from "../jobs/types.js";
 import type { KbIngestRequestSchema } from "../openapi/schemas.js";
 import { resolveKb } from "../routes/api-v1/kb-descriptor.js";
+import { cascadeDeleteRagDocument } from "./document-cascade.js";
 
 export type KbIngestRequest = z.infer<typeof KbIngestRequestSchema>;
 
 /**
  * Domain outcome of an ingest call. The route maps `queued` to 202
- * with a Location header, `completed` to 201, and `duplicate` to 200;
- * the service stays out of the HTTP shape entirely.
+ * with a Location header, `completed` to 201, and `duplicate` /
+ * `name_conflict` to 200; the service stays out of the HTTP shape
+ * entirely.
  *
- * `duplicate` fires when an existing document in this KB has the same
- * SHA-256 of its content. The pipeline does NOT run again — the
- * existing record is returned verbatim. Same-named files with
- * different content (and any non-content-collision conflict) still
- * fall through to the regular create path; name-collision handling
- * is left for a follow-up.
+ * - `duplicate` fires when an existing document in this KB has the
+ *   same SHA-256 of its content. The pipeline does NOT run again —
+ *   the existing record is returned verbatim.
+ * - `name_conflict` fires when an existing document in this KB
+ *   has the same `sourceFilename` but a DIFFERENT content hash, and
+ *   the request didn't set `overwriteOnNameConflict: true`. The
+ *   client is expected to prompt the user (overwrite / skip) and
+ *   re-issue the request with the flag set when they choose
+ *   overwrite. The existing record is returned so the UI can show
+ *   what's being replaced.
+ *
+ * When `overwriteOnNameConflict: true` is on the request, a
+ * name-conflicted document is cascade-deleted (chunks + row) before
+ * the new content is ingested in its place — `name_conflict` is NOT
+ * returned in that path.
  */
 export type IngestOutcome =
 	| {
@@ -50,6 +61,10 @@ export type IngestOutcome =
 	  }
 	| {
 			readonly kind: "duplicate";
+			readonly document: RagDocumentRecord;
+	  }
+	| {
+			readonly kind: "name_conflict";
 			readonly document: RagDocumentRecord;
 	  };
 
@@ -113,6 +128,40 @@ export function createIngestService(deps: IngestServiceDeps): IngestService {
 			);
 			if (existing) {
 				return { kind: "duplicate", document: existing };
+			}
+
+			// Name-collision pre-check. If another doc in this KB has the
+			// same `sourceFilename`, two paths:
+			//   1. The client opted in to overwrite (`overwriteOnNameConflict
+			//      = true`) → cascade-delete the old row + its vector chunks,
+			//      then fall through to the normal create + ingest below.
+			//   2. The client did not opt in → return `name_conflict` with
+			//      the existing record so the UI can prompt the user. The
+			//      pipeline does NOT run; a follow-up call with the flag
+			//      set is expected.
+			//
+			// Skipped when `sourceFilename` is null/empty because there's
+			// nothing to collide on — programmatic ingests without a name
+			// always fall through to the create path.
+			if (input.sourceFilename) {
+				const nameMatch = await store.findRagDocumentBySourceFilename(
+					workspaceId,
+					knowledgeBaseId,
+					input.sourceFilename,
+				);
+				if (nameMatch && nameMatch.contentHash !== contentHash) {
+					if (input.overwriteOnNameConflict !== true) {
+						return { kind: "name_conflict", document: nameMatch };
+					}
+					await cascadeDeleteRagDocument({
+						store,
+						drivers,
+						workspace: resolved.workspace,
+						knowledgeBase: resolved.knowledgeBase,
+						descriptor: resolved.descriptor,
+						documentId: nameMatch.documentId,
+					});
+				}
 			}
 
 			const document = await store.createRagDocument(

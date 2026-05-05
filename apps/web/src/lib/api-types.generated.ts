@@ -3361,6 +3361,15 @@ export interface paths {
 				};
 			};
 			responses: {
+				/** @description Pipeline did not run; the existing document is returned. Discriminated by `outcome`: `duplicate` when content matches an existing document by SHA-256 hash, `name_conflict` when `sourceFilename` matches but content differs and `overwriteOnNameConflict` was not set. Both sync and async requests collapse to this shape when either condition hits. */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["KbIngestNonCreateResponse"];
+					};
+				};
 				/** @description Document created and chunks upserted (sync path) */
 				201: {
 					headers: {
@@ -4588,6 +4597,25 @@ export interface components {
 				[key: string]: string;
 			};
 		};
+		KbIngestNonCreateResponse:
+			| components["schemas"]["KbIngestDuplicateResponse"]
+			| components["schemas"]["KbIngestNameConflictResponse"];
+		KbIngestDuplicateResponse: {
+			document: components["schemas"]["RagDocument"];
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			outcome: "duplicate";
+		};
+		KbIngestNameConflictResponse: {
+			document: components["schemas"]["RagDocument"];
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			outcome: "name_conflict";
+		};
 		KbIngestResponse: {
 			document: components["schemas"]["RagDocument"];
 			chunks: number;
@@ -4609,6 +4637,7 @@ export interface components {
 				[key: string]: string;
 			};
 			chunker?: components["schemas"]["IngestChunkerOptions"];
+			overwriteOnNameConflict?: boolean;
 		};
 		IngestChunkerOptions: {
 			maxChars?: number;

@@ -39,7 +39,13 @@ export function OnboardingPage() {
 	const { data: astraCliInventory } = useAstraCliInventory();
 	const create = useCreateWorkspace();
 	const [step, setStep] = useState<Step>("kind");
-	const [kind, setKind] = useState<WorkspaceKind | null>(null);
+	// Default to Astra: it's the recommended (and production-grade)
+	// backend, and the astra-cli auto-detection logic + workspace
+	// test-connection flow downstream all assume the user picked
+	// Astra unless they actively switched. Pre-selecting saves a
+	// click on the happy path; users who want mock / HCD / OpenRAG
+	// just click that tile to override before continuing.
+	const [kind, setKind] = useState<WorkspaceKind | null>("astra");
 	const [astraCliSelection, setAstraCliSelection] =
 		useState<AstraCliSelection | null>(null);
 	const [checkingConnection, setCheckingConnection] = useState(false);

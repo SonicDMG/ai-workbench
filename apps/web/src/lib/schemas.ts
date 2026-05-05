@@ -500,6 +500,16 @@ export const KbIngestRequestSchema = z.object({
 	contentHash: z.string().nullable().optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
 	chunker: IngestChunkerOptionsSchema.optional(),
+	/**
+	 * When true, an existing document with the same `sourceFilename`
+	 * but a different content hash is cascade-deleted before this
+	 * ingest runs. The queue UI sets this on the retry call after the
+	 * user picks "Overwrite" in the name-conflict prompt; omit (or
+	 * `false`) for the initial pass so the server can detect the
+	 * conflict and surface a 200 `name_conflict` response for the
+	 * client to prompt on.
+	 */
+	overwriteOnNameConflict: z.boolean().optional(),
 });
 export type KbIngestRequest = z.infer<typeof KbIngestRequestSchema>;
 
@@ -525,9 +535,39 @@ export type KbIngestDuplicateResponse = z.infer<
 	typeof KbIngestDuplicateResponseSchema
 >;
 
+/**
+ * Response when an ingest's `sourceFilename` matches an existing
+ * document but the content hash differs and the caller did NOT set
+ * `overwriteOnNameConflict: true`. The pipeline did not run; the
+ * existing document comes back so the queue UI can show the user
+ * what's about to be replaced. Expected client follow-up: prompt
+ * the user, then either re-call with the overwrite flag set or
+ * skip the file.
+ */
+export const KbIngestNameConflictResponseSchema = z.object({
+	document: RagDocumentRecordSchema,
+	outcome: z.literal("name_conflict"),
+});
+export type KbIngestNameConflictResponse = z.infer<
+	typeof KbIngestNameConflictResponseSchema
+>;
+
+/**
+ * Discriminated union of every shape `POST .../ingest` (sync or
+ * async) can return. Three arms:
+ *   - 202 / 201 success: `{ job, document }` — pipeline running
+ *     (async) or just finished (sync).
+ *   - 200 duplicate: `{ document, outcome: "duplicate" }` — content
+ *     hash collision, the existing doc is returned.
+ *   - 200 name_conflict: `{ document, outcome: "name_conflict" }`
+ *     — filename collision with different content; client must
+ *     prompt and re-issue with `overwriteOnNameConflict: true` to
+ *     replace, or skip.
+ */
 export const KbIngestAsyncOrDuplicateSchema = z.union([
 	KbAsyncIngestResponseSchema,
 	KbIngestDuplicateResponseSchema,
+	KbIngestNameConflictResponseSchema,
 ]);
 export type KbIngestAsyncOrDuplicate = z.infer<
 	typeof KbIngestAsyncOrDuplicateSchema

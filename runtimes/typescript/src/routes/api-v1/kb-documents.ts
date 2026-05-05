@@ -32,7 +32,7 @@ import {
 	DocumentChunkSchema,
 	DocumentIdParamSchema,
 	KbAsyncIngestResponseSchema,
-	KbIngestDuplicateResponseSchema,
+	KbIngestNonCreateResponseSchema,
 	KbIngestRequestSchema,
 	KbIngestResponseSchema,
 	KnowledgeBaseIdParamSchema,
@@ -42,6 +42,7 @@ import {
 	UpdateRagDocumentInputSchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
+import { cascadeDeleteRagDocument } from "../../services/document-cascade.js";
 import { createIngestService } from "../../services/ingest-service.js";
 import { resolveKb } from "./kb-descriptor.js";
 import { toWireJob } from "./serdes/index.js";
@@ -161,10 +162,10 @@ export function kbDocumentRoutes(
 			responses: {
 				200: {
 					content: {
-						"application/json": { schema: KbIngestDuplicateResponseSchema },
+						"application/json": { schema: KbIngestNonCreateResponseSchema },
 					},
 					description:
-						"Content matches an existing document by SHA-256 hash — pipeline did not run; the existing document is returned. Both sync and async requests collapse to this shape when the dedup index hits.",
+						"Pipeline did not run; the existing document is returned. Discriminated by `outcome`: `duplicate` when content matches an existing document by SHA-256 hash, `name_conflict` when `sourceFilename` matches but content differs and `overwriteOnNameConflict` was not set. Both sync and async requests collapse to this shape when either condition hits.",
 				},
 				201: {
 					content: { "application/json": { schema: KbIngestResponseSchema } },
@@ -198,6 +199,12 @@ export function kbDocumentRoutes(
 			if (outcome.kind === "duplicate") {
 				return c.json(
 					{ document: outcome.document, outcome: "duplicate" as const },
+					200,
+				);
+			}
+			if (outcome.kind === "name_conflict") {
+				return c.json(
+					{ document: outcome.document, outcome: "name_conflict" as const },
 					200,
 				);
 			}
@@ -420,36 +427,18 @@ export function kbDocumentRoutes(
 
 			// Cascade: drop chunk records out of the KB's vector collection
 			// before the doc row goes away. Otherwise orphan chunks linger
-			// and surface in KB-scoped search.
+			// and surface in KB-scoped search. Shared with the ingest
+			// service's overwrite-on-name-conflict path so both call
+			// sites stay in lockstep.
 			const resolved = await resolveKb(store, workspaceId, knowledgeBaseId);
-			const driver = drivers.for(resolved.workspace);
-			const filter = {
-				[KB_SCOPE_KEY]: knowledgeBaseId,
-				[DOCUMENT_SCOPE_KEY]: documentId,
-			};
-			if (typeof driver.deleteRecords === "function") {
-				await driver.deleteRecords(
-					{ workspace: resolved.workspace, descriptor: resolved.descriptor },
-					filter,
-				);
-			} else if (typeof driver.listRecords === "function") {
-				const rows = await driver.listRecords(
-					{ workspace: resolved.workspace, descriptor: resolved.descriptor },
-					{ filter, limit: 1000 },
-				);
-				for (const r of rows) {
-					await driver.deleteRecord(
-						{ workspace: resolved.workspace, descriptor: resolved.descriptor },
-						r.id,
-					);
-				}
-			}
-
-			const { deleted } = await store.deleteRagDocument(
-				workspaceId,
-				knowledgeBaseId,
+			const { deleted } = await cascadeDeleteRagDocument({
+				store,
+				drivers,
+				workspace: resolved.workspace,
+				knowledgeBase: resolved.knowledgeBase,
+				descriptor: resolved.descriptor,
 				documentId,
-			);
+			});
 			if (!deleted) {
 				throw new ControlPlaneNotFoundError("document", documentId);
 			}

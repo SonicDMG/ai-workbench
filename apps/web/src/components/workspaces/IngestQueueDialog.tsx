@@ -13,9 +13,39 @@ import {
 import { useAsyncIngest, useJobPoller } from "@/hooks/useIngest";
 import { formatApiError } from "@/lib/api";
 import { extOf, isReadableTextFile } from "@/lib/files";
-import type { JobRecord, KnowledgeBaseRecord } from "@/lib/schemas";
+import type {
+	JobRecord,
+	KbIngestAsyncOrDuplicate,
+	KbIngestRequest,
+	KnowledgeBaseRecord,
+	RagDocumentRecord,
+} from "@/lib/schemas";
 import { IngestDropZone } from "./IngestDropZone";
+import { NameConflictPrompt } from "./IngestNameConflictPrompt";
 import { type QueueItem, QueueRow } from "./IngestQueueRow";
+
+/**
+ * The user's standing answer for name-conflict prompts in this
+ * batch. `null` means "ask me each time"; `"overwrite"` /
+ * `"skip"` means "apply this choice automatically to subsequent
+ * conflicts." Set by the prompt dialog's "apply to all" checkbox
+ * + a terminal action; cleared on dialog close (= queue reset).
+ */
+type ApplyToAll = "overwrite" | "skip" | null;
+
+/**
+ * State for the active name-conflict prompt. Holds enough context to
+ * either continue the parked ingest with `overwriteOnNameConflict:
+ * true` or drop the row as a user-skip. `text` is preserved here so
+ * we don't have to re-read the File on overwrite — keeps the queue
+ * deterministic if the user happens to swap the on-disk file mid-
+ * flight (their decision is on what we already read).
+ */
+interface PendingConflict {
+	readonly itemId: string;
+	readonly text: string;
+	readonly existing: RagDocumentRecord;
+}
 
 /**
  * Multi-file / folder ingest queue.
@@ -51,6 +81,13 @@ export function IngestQueueDialog({
 	const [items, setItems] = useState<QueueItem[]>([]);
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const [draining, setDraining] = useState(false);
+	// Name-conflict prompt state. When `pendingConflict` is non-null,
+	// the drain effect halts so the user can decide overwrite vs skip
+	// in the modal. `applyToAll` carries the standing answer if the
+	// user opted in to "apply to all" earlier in this batch.
+	const [pendingConflict, setPendingConflict] =
+		useState<PendingConflict | null>(null);
+	const [applyToAll, setApplyToAll] = useState<ApplyToAll>(null);
 
 	const ingest = useAsyncIngest(workspace, knowledgeBase.knowledgeBaseId);
 	// Drives only the *active* row's poller. Each row shows a live
@@ -85,6 +122,8 @@ export function IngestQueueDialog({
 		setItems([]);
 		setActiveId(null);
 		setDraining(false);
+		setPendingConflict(null);
+		setApplyToAll(null);
 		onOpenChange(false);
 	}
 
@@ -174,10 +213,75 @@ export function IngestQueueDialog({
 	// `mutateAsync` itself is a stable function across renders per
 	// TanStack Query's contract, so closing over the latest
 	// `ingest.mutateAsync` from any render is fine.
+	// Issue a single ingest call for one queue row. Returns the union
+	// response so the caller can drive its own state machine on
+	// duplicate / name_conflict / running. Lifted out of the drain
+	// effect so the overwrite-prompt's "Overwrite" handler can re-use
+	// it for the retry call (with the flag set) without copying the
+	// payload assembly logic.
+	const submitIngest = useCallback(
+		(item: QueueItem, text: string, overwrite: boolean) => {
+			const payload: KbIngestRequest = {
+				text,
+				sourceFilename: item.relativePath,
+				fileType: item.file.type || extOf(item.relativePath) || null,
+				fileSize: item.file.size,
+				...(overwrite && { overwriteOnNameConflict: true }),
+			};
+			return ingestMutateAsyncRef.current(payload);
+		},
+		[],
+	);
+
+	// Apply an ingest response to a queue row. Centralises the union
+	// discrimination so the drain effect and the overwrite-retry
+	// branch share one decoder. Returns the next state hint:
+	//   - "advance"   → row reached a terminal state (duplicate /
+	//                   user-skip / failure logged); drain to the
+	//                   next item.
+	//   - "running"   → ingest is in flight; wait on the poller.
+	//   - "conflict"  → name_conflict that wasn't auto-resolved by
+	//                   `applyToAll`; the caller surfaces the prompt.
+	const applyIngestResponse = useCallback(
+		(
+			itemId: string,
+			res: KbIngestAsyncOrDuplicate,
+		):
+			| "advance"
+			| "running"
+			| { kind: "conflict"; existing: RagDocumentRecord } => {
+			if ("outcome" in res) {
+				if (res.outcome === "duplicate") {
+					updateItem(itemId, {
+						status: "skipped",
+						jobId: null,
+						chunkCount: res.document.chunkTotal,
+					});
+					return "advance";
+				}
+				// `name_conflict`: caller decides whether to auto-apply
+				// (applyToAll set) or surface the prompt.
+				return { kind: "conflict", existing: res.document };
+			}
+			updateItem(itemId, {
+				status: "running",
+				jobId: res.job.jobId,
+			});
+			setActiveId(itemId);
+			return "running";
+		},
+		[updateItem],
+	);
+
 	useEffect(() => {
 		if (!draining) return;
 		if (activeId !== null) return;
 		if (kickInFlight.current) return;
+		// Halt the drain while the user is being prompted on a
+		// name conflict. The prompt's handlers re-enter the loop by
+		// either marking the row terminal (Skip) or kicking a retry
+		// ingest with `overwriteOnNameConflict: true` (Overwrite).
+		if (pendingConflict !== null) return;
 		const next = items.find((i) => i.status === "queued");
 		if (!next) {
 			setDraining(false);
@@ -197,36 +301,36 @@ export function IngestQueueDialog({
 					return;
 				}
 				try {
-					const res = await ingestMutateAsyncRef.current({
-						text,
-						sourceFilename: next.relativePath,
-						fileType: next.file.type || extOf(next.relativePath) || null,
-						fileSize: next.file.size,
-					});
-					// Server-side dedup: identical content hash → existing
-					// document re-used, no job, terminal state immediately.
-					// `outcome` only exists on the duplicate variant of the
-					// union; using just the property check (without
-					// comparing the literal value) lets TS narrow `res` to
-					// the success variant after the early return — comparing
-					// `res.outcome === "duplicate"` defeats narrowing because
-					// the negation `!== "duplicate"` is satisfiable on the
-					// duplicate variant in TS's mental model.
-					if ("outcome" in res) {
+					// First-pass call never sets the overwrite flag — the
+					// server's job is to detect the conflict and surface
+					// it. Only the retry call after an explicit user
+					// "Overwrite" sets it.
+					const res = await submitIngest(next, text, false);
+					const decision = applyIngestResponse(next.id, res);
+					if (decision === "advance" || decision === "running") return;
+					// Name conflict. If the user already picked a standing
+					// answer earlier in this batch, apply it now without a
+					// modal round-trip.
+					if (applyToAll === "skip") {
 						updateItem(next.id, {
 							status: "skipped",
 							jobId: null,
-							chunkCount: res.document.chunkTotal,
+							chunkCount: decision.existing.chunkTotal,
 						});
-						// No setActiveId → drain effect picks the next queued
-						// item on the following tick.
 						return;
 					}
-					updateItem(next.id, {
-						status: "running",
-						jobId: res.job.jobId,
+					if (applyToAll === "overwrite") {
+						const retry = await submitIngest(next, text, true);
+						applyIngestResponse(next.id, retry);
+						return;
+					}
+					// No standing answer → park the row and surface the
+					// prompt. The handlers below pick it back up.
+					setPendingConflict({
+						itemId: next.id,
+						text,
+						existing: decision.existing,
 					});
-					setActiveId(next.id);
 				} catch (err) {
 					updateItem(next.id, {
 						status: "failed",
@@ -237,7 +341,69 @@ export function IngestQueueDialog({
 				kickInFlight.current = false;
 			}
 		})();
-	}, [draining, activeId, items, updateItem]);
+	}, [
+		draining,
+		activeId,
+		items,
+		updateItem,
+		pendingConflict,
+		applyToAll,
+		submitIngest,
+		applyIngestResponse,
+	]);
+
+	// Resolve a parked name-conflict the user just decided. Either
+	// re-issues the ingest with the overwrite flag set, or marks the
+	// row as user-skipped. `rememberChoice` propagates the decision to
+	// any future name-conflicts in this batch via `applyToAll`.
+	//
+	// Critical: we set `kickInFlight = true` BEFORE clearing
+	// `pendingConflict`. Without it, the drain effect fires the
+	// instant `pendingConflict` flips to null — sees the same row
+	// still in `queued` status (we haven't run the retry's status
+	// update yet) — and submits a SECOND probe call. The result is
+	// 3 mutation calls per conflict (probe → conflict, drain re-fire
+	// → probe → conflict, retry → success) instead of 2.
+	const resolveConflict = useCallback(
+		async (
+			choice: "overwrite" | "skip",
+			rememberChoice: boolean,
+		): Promise<void> => {
+			if (!pendingConflict) return;
+			const parked = pendingConflict;
+			kickInFlight.current = true;
+			setPendingConflict(null);
+			if (rememberChoice) setApplyToAll(choice);
+			try {
+				if (choice === "skip") {
+					updateItem(parked.itemId, {
+						status: "skipped",
+						jobId: null,
+						chunkCount: parked.existing.chunkTotal,
+					});
+					return;
+				}
+				// Overwrite. Find the row in the current items snapshot;
+				// fall back to a synthetic with the parked metadata if it
+				// was removed (shouldn't happen — Remove is disabled while
+				// draining).
+				const row = items.find((i) => i.id === parked.itemId);
+				if (!row) return;
+				try {
+					const retry = await submitIngest(row, parked.text, true);
+					applyIngestResponse(row.id, retry);
+				} catch (err) {
+					updateItem(row.id, {
+						status: "failed",
+						errorMessage: formatApiError(err),
+					});
+				}
+			} finally {
+				kickInFlight.current = false;
+			}
+		},
+		[pendingConflict, items, submitIngest, applyIngestResponse, updateItem],
+	);
 
 	// Wire the active poller's snapshot back into the queue row so the
 	// table reflects live progress.
@@ -321,86 +487,103 @@ export function IngestQueueDialog({
 	const anyQueued = counts.queued > 0;
 
 	return (
-		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent className="max-w-2xl">
-				<DialogHeader>
-					<DialogTitle>Ingest into "{knowledgeBase.name}"</DialogTitle>
-					<DialogDescription>
-						Drop one or more files, or a folder. Each file becomes a separate
-						document; ingests run sequentially through the KB's bound chunking +
-						embedding services.
-					</DialogDescription>
-				</DialogHeader>
+		<>
+			<Dialog open={open} onOpenChange={handleOpenChange}>
+				<DialogContent className="max-w-2xl">
+					<DialogHeader>
+						<DialogTitle>Ingest into "{knowledgeBase.name}"</DialogTitle>
+						<DialogDescription>
+							Drop one or more files, or a folder. Each file becomes a separate
+							document; ingests run sequentially through the KB's bound chunking
+							+ embedding services.
+						</DialogDescription>
+					</DialogHeader>
 
-				<IngestDropZone
-					maxBytes={MAX_BYTES}
-					disabled={draining}
-					onFiles={enqueue}
-				/>
-
-				{items.length > 0 ? (
-					<div className="flex flex-col gap-2">
-						<div className="flex items-center justify-between text-xs text-slate-600">
-							<span>
-								{items.length} file{items.length === 1 ? "" : "s"} queued
-								{counts.succeeded + counts.failed + counts.skipped > 0
-									? ` — ${counts.succeeded} done${
-											counts.skipped > 0 ? `, ${counts.skipped} skipped` : ""
-										}${counts.failed > 0 ? `, ${counts.failed} failed` : ""}`
-									: ""}
-							</span>
-							{!draining && counts.queued > 0 ? (
-								<button
-									type="button"
-									className="text-xs text-slate-500 hover:text-slate-900"
-									onClick={() =>
-										setItems((cur) => cur.filter((i) => i.status === "running"))
-									}
-								>
-									Clear queue
-								</button>
-							) : null}
-						</div>
-						<div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200">
-							<ul className="divide-y divide-slate-100">
-								{items.map((item) => (
-									<QueueRow
-										key={item.id}
-										item={item}
-										draining={draining}
-										onRemove={() => removeItem(item.id)}
-									/>
-								))}
-							</ul>
-						</div>
-					</div>
-				) : null}
-
-				<DialogFooter>
-					<Button
-						type="button"
-						variant="ghost"
-						onClick={close}
+					<IngestDropZone
+						maxBytes={MAX_BYTES}
 						disabled={draining}
-					>
-						{allDone ? "Close" : "Cancel"}
-					</Button>
-					<Button
-						type="button"
-						variant="brand"
-						onClick={startDrain}
-						disabled={draining || !anyQueued}
-					>
-						{draining ? (
-							<>
-								<Loader2 className="h-4 w-4 animate-spin" /> Ingesting…
-							</>
-						) : (
-							`Start ingest (${counts.queued})`
-						)}
-					</Button>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
+						onFiles={enqueue}
+					/>
+
+					{items.length > 0 ? (
+						<div className="flex flex-col gap-2">
+							<div className="flex items-center justify-between text-xs text-slate-600">
+								<span>
+									{items.length} file{items.length === 1 ? "" : "s"} queued
+									{counts.succeeded + counts.failed + counts.skipped > 0
+										? ` — ${counts.succeeded} done${
+												counts.skipped > 0 ? `, ${counts.skipped} skipped` : ""
+											}${counts.failed > 0 ? `, ${counts.failed} failed` : ""}`
+										: ""}
+								</span>
+								{!draining && counts.queued > 0 ? (
+									<button
+										type="button"
+										className="text-xs text-slate-500 hover:text-slate-900"
+										onClick={() =>
+											setItems((cur) =>
+												cur.filter((i) => i.status === "running"),
+											)
+										}
+									>
+										Clear queue
+									</button>
+								) : null}
+							</div>
+							<div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200">
+								<ul className="divide-y divide-slate-100">
+									{items.map((item) => (
+										<QueueRow
+											key={item.id}
+											item={item}
+											draining={draining}
+											onRemove={() => removeItem(item.id)}
+										/>
+									))}
+								</ul>
+							</div>
+						</div>
+					) : null}
+
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="ghost"
+							onClick={close}
+							disabled={draining}
+						>
+							{allDone ? "Close" : "Cancel"}
+						</Button>
+						<Button
+							type="button"
+							variant="brand"
+							onClick={startDrain}
+							disabled={draining || !anyQueued}
+						>
+							{draining ? (
+								<>
+									<Loader2 className="h-4 w-4 animate-spin" /> Ingesting…
+								</>
+							) : (
+								`Start ingest (${counts.queued})`
+							)}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+			<NameConflictPrompt
+				open={pendingConflict !== null}
+				filename={
+					pendingConflict
+						? (items.find((i) => i.id === pendingConflict.itemId)
+								?.relativePath ??
+							pendingConflict.existing.sourceFilename ??
+							"this file")
+						: ""
+				}
+				existing={pendingConflict?.existing ?? null}
+				onChoose={resolveConflict}
+			/>
+		</>
 	);
 }

@@ -297,10 +297,64 @@ describe("kb-documents routes", () => {
 		expect(docs[0]?.documentId).toBe(firstDocId);
 	});
 
-	test("POST .../ingest with the same name but different text creates a new document", async () => {
-		// Phase-1 dedup is hash-based only. A different body with the
-		// same `sourceFilename` should create a fresh document; the
-		// name-collision overwrite UX is a follow-up PR.
+	test("POST .../ingest with the same name but different text returns 200 name_conflict and does not ingest", async () => {
+		// Phase-2 dedup: a name-only collision (same `sourceFilename`,
+		// different content hash) defaults to NOT ingesting and instead
+		// returning the existing document under a `name_conflict`
+		// outcome — the client is expected to prompt the user. The
+		// existing doc must still be the only row in the KB after the
+		// call.
+		const harness = makeApp();
+		const { ws, kbId } = await setupKb(harness);
+
+		const first = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "first version of the doc",
+					sourceFilename: "policy.md",
+				}),
+			},
+		);
+		expect(first.status).toBe(201);
+		const firstBody = await json(first);
+		const firstId = firstBody.document.documentId as string;
+		const firstHash = firstBody.document.contentHash as string;
+
+		const second = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "second version of the doc — different content entirely",
+					sourceFilename: "policy.md",
+				}),
+			},
+		);
+		expect(second.status).toBe(200);
+		const secondBody = await json(second);
+		expect(secondBody.outcome).toBe("name_conflict");
+		// The returned document is the *existing* row (so the UI can
+		// show what's about to be replaced), not a freshly created one.
+		expect(secondBody.document.documentId).toBe(firstId);
+		expect(secondBody.document.contentHash).toBe(firstHash);
+
+		const list = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents`,
+		);
+		const docs = (await json(list)).items as Array<{ documentId: string }>;
+		expect(docs).toHaveLength(1);
+		expect(docs[0]?.documentId).toBe(firstId);
+	});
+
+	test("POST .../ingest with overwriteOnNameConflict=true replaces the existing document", async () => {
+		// Overwrite path: same `sourceFilename`, different content,
+		// AND `overwriteOnNameConflict: true` → cascade-delete the old
+		// row + its chunks, then ingest the new content. The new
+		// document gets a fresh documentId; the old row is gone.
 		const harness = makeApp();
 		const { ws, kbId } = await setupKb(harness);
 
@@ -326,13 +380,67 @@ describe("kb-documents routes", () => {
 				body: JSON.stringify({
 					text: "second version of the doc — different content entirely",
 					sourceFilename: "policy.md",
+					overwriteOnNameConflict: true,
 				}),
 			},
 		);
 		expect(second.status).toBe(201);
-		const secondId = (await json(second)).document.documentId as string;
-
+		const secondBody = await json(second);
+		const secondId = secondBody.document.documentId as string;
 		expect(secondId).not.toBe(firstId);
+
+		const list = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents`,
+		);
+		const docs = (await json(list)).items as Array<{
+			documentId: string;
+			sourceFilename: string;
+		}>;
+		// Old row must be gone — only the freshly-ingested replacement
+		// for `policy.md` survives.
+		expect(docs).toHaveLength(1);
+		expect(docs[0]?.documentId).toBe(secondId);
+		expect(docs[0]?.sourceFilename).toBe("policy.md");
+	});
+
+	test("POST .../ingest with overwriteOnNameConflict=true and identical content still returns duplicate (hash check wins)", async () => {
+		// Hash dedup runs BEFORE name-conflict detection, so a request
+		// with the overwrite flag but byte-identical content takes the
+		// duplicate path — no destructive cascade-delete just because
+		// the user happened to set the flag for this batch.
+		const harness = makeApp();
+		const { ws, kbId } = await setupKb(harness);
+
+		const first = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "same content both times",
+					sourceFilename: "policy.md",
+				}),
+			},
+		);
+		expect(first.status).toBe(201);
+		const firstId = (await json(first)).document.documentId as string;
+
+		const second = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					text: "same content both times",
+					sourceFilename: "policy.md",
+					overwriteOnNameConflict: true,
+				}),
+			},
+		);
+		expect(second.status).toBe(200);
+		const body = await json(second);
+		expect(body.outcome).toBe("duplicate");
+		expect(body.document.documentId).toBe(firstId);
 	});
 
 	test("POST .../ingest with empty text returns 400", async () => {

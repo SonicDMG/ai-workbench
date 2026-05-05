@@ -266,6 +266,20 @@ export class MemoryControlPlaneStore implements ControlPlaneStore {
 		return null;
 	}
 
+	async findRagDocumentBySourceFilename(
+		workspace: string,
+		knowledgeBase: string,
+		sourceFilename: string,
+	): Promise<RagDocumentRecord | null> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		const map = this.ragDocuments.get(docKey(workspace, knowledgeBase));
+		if (!map) return null;
+		for (const doc of map.values()) {
+			if (doc.sourceFilename === sourceFilename) return doc;
+		}
+		return null;
+	}
+
 	async createRagDocument(
 		workspace: string,
 		knowledgeBase: string,

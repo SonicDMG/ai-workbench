@@ -380,11 +380,36 @@ const McpSchema = z.object({
 	exposeChat: z.boolean().default(false),
 });
 
+/**
+ * Default control-plane block when `controlPlane:` is omitted from
+ * `workbench.yaml`. Prefers Astra when the canonical env vars are
+ * populated (the project's astra-cli auto-detection on boot fills
+ * these for any developer with a working astra-cli profile), falls
+ * back to JSON-on-disk under `./.workbench-data` otherwise. This
+ * makes Astra the default storage for workspace metadata when the
+ * runtime can reach it — no `controlPlane:` stanza required in
+ * the user's YAML.
+ */
+function defaultControlPlane(): z.infer<typeof ControlPlaneSchema> {
+	const endpoint = process.env.ASTRA_DB_API_ENDPOINT;
+	const token = process.env.ASTRA_DB_APPLICATION_TOKEN;
+	if (endpoint && token) {
+		return {
+			driver: "astra",
+			endpoint,
+			tokenRef: "env:ASTRA_DB_APPLICATION_TOKEN",
+			keyspace: process.env.ASTRA_DB_KEYSPACE ?? "workbench",
+			jobPollIntervalMs: 500,
+		};
+	}
+	return { driver: "file", root: ".workbench-data" };
+}
+
 export const ConfigSchema = z
 	.object({
 		version: z.literal(1),
 		runtime: RuntimeSchema,
-		controlPlane: ControlPlaneSchema.default({ driver: "memory" }),
+		controlPlane: ControlPlaneSchema.default(defaultControlPlane),
 		auth: AuthSchema,
 		seedWorkspaces: z.array(SeedWorkspaceSchema).default([]),
 		chat: ChatSchema.optional(),

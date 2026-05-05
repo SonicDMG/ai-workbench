@@ -2,16 +2,97 @@ import { describe, expect, test } from "vitest";
 import { ConfigSchema } from "../src/config/schema.js";
 
 describe("ConfigSchema", () => {
-	test("accepts a minimal config (memory default)", () => {
-		const cfg = ConfigSchema.parse({ version: 1 });
-		expect(cfg.runtime.environment).toBe("development");
-		expect(cfg.runtime.port).toBe(8080);
-		expect(cfg.runtime.logLevel).toBe("info");
-		expect(cfg.runtime.uiDir).toBe(null);
-		expect(cfg.runtime.publicOrigin).toBe(null);
-		expect(cfg.runtime.trustProxyHeaders).toBe(false);
-		expect(cfg.controlPlane.driver).toBe("memory");
-		expect(cfg.seedWorkspaces).toEqual([]);
+	test("falls back to the file driver when no controlPlane block is set and no Astra env vars", () => {
+		// Default control plane: prefer Astra when env vars are
+		// populated (the boot-time astra-cli detection wires those
+		// up automatically when a profile exists), fall back to
+		// JSON-on-disk under `./.workbench-data/` otherwise. This
+		// test runs without Astra creds so the fallback path is
+		// exercised; the env-driven branch is covered by the
+		// "auto-picks astra" test below.
+		const prevEndpoint = process.env.ASTRA_DB_API_ENDPOINT;
+		const prevToken = process.env.ASTRA_DB_APPLICATION_TOKEN;
+		delete process.env.ASTRA_DB_API_ENDPOINT;
+		delete process.env.ASTRA_DB_APPLICATION_TOKEN;
+		try {
+			const cfg = ConfigSchema.parse({ version: 1 });
+			expect(cfg.runtime.environment).toBe("development");
+			expect(cfg.runtime.port).toBe(8080);
+			expect(cfg.runtime.logLevel).toBe("info");
+			expect(cfg.runtime.uiDir).toBe(null);
+			expect(cfg.runtime.publicOrigin).toBe(null);
+			expect(cfg.runtime.trustProxyHeaders).toBe(false);
+			expect(cfg.controlPlane.driver).toBe("file");
+			expect(cfg.seedWorkspaces).toEqual([]);
+		} finally {
+			if (prevEndpoint !== undefined)
+				process.env.ASTRA_DB_API_ENDPOINT = prevEndpoint;
+			if (prevToken !== undefined)
+				process.env.ASTRA_DB_APPLICATION_TOKEN = prevToken;
+		}
+	});
+
+	test("auto-picks the astra driver when ASTRA_DB_API_ENDPOINT + ASTRA_DB_APPLICATION_TOKEN are set", () => {
+		// Default control plane: when the canonical Astra env vars are
+		// populated, the schema's smart default routes all workspace /
+		// agent / KB metadata into Astra Data API Tables — no
+		// `controlPlane:` stanza required.
+		const prevEndpoint = process.env.ASTRA_DB_API_ENDPOINT;
+		const prevToken = process.env.ASTRA_DB_APPLICATION_TOKEN;
+		const prevKeyspace = process.env.ASTRA_DB_KEYSPACE;
+		process.env.ASTRA_DB_API_ENDPOINT =
+			"https://abc-def.apps.astra.datastax.com";
+		process.env.ASTRA_DB_APPLICATION_TOKEN = "AstraCS:test:token";
+		delete process.env.ASTRA_DB_KEYSPACE;
+		try {
+			const cfg = ConfigSchema.parse({ version: 1 });
+			expect(cfg.controlPlane.driver).toBe("astra");
+			if (cfg.controlPlane.driver === "astra") {
+				expect(cfg.controlPlane.endpoint).toBe(
+					"https://abc-def.apps.astra.datastax.com",
+				);
+				expect(cfg.controlPlane.tokenRef).toBe(
+					"env:ASTRA_DB_APPLICATION_TOKEN",
+				);
+				expect(cfg.controlPlane.keyspace).toBe("workbench");
+			}
+		} finally {
+			if (prevEndpoint !== undefined)
+				process.env.ASTRA_DB_API_ENDPOINT = prevEndpoint;
+			else delete process.env.ASTRA_DB_API_ENDPOINT;
+			if (prevToken !== undefined)
+				process.env.ASTRA_DB_APPLICATION_TOKEN = prevToken;
+			else delete process.env.ASTRA_DB_APPLICATION_TOKEN;
+			if (prevKeyspace !== undefined)
+				process.env.ASTRA_DB_KEYSPACE = prevKeyspace;
+		}
+	});
+
+	test("respects ASTRA_DB_KEYSPACE override on the auto-picked astra driver", () => {
+		const prevEndpoint = process.env.ASTRA_DB_API_ENDPOINT;
+		const prevToken = process.env.ASTRA_DB_APPLICATION_TOKEN;
+		const prevKeyspace = process.env.ASTRA_DB_KEYSPACE;
+		process.env.ASTRA_DB_API_ENDPOINT =
+			"https://abc-def.apps.astra.datastax.com";
+		process.env.ASTRA_DB_APPLICATION_TOKEN = "AstraCS:test:token";
+		process.env.ASTRA_DB_KEYSPACE = "custom_ks";
+		try {
+			const cfg = ConfigSchema.parse({ version: 1 });
+			expect(cfg.controlPlane.driver).toBe("astra");
+			if (cfg.controlPlane.driver === "astra") {
+				expect(cfg.controlPlane.keyspace).toBe("custom_ks");
+			}
+		} finally {
+			if (prevEndpoint !== undefined)
+				process.env.ASTRA_DB_API_ENDPOINT = prevEndpoint;
+			else delete process.env.ASTRA_DB_API_ENDPOINT;
+			if (prevToken !== undefined)
+				process.env.ASTRA_DB_APPLICATION_TOKEN = prevToken;
+			else delete process.env.ASTRA_DB_APPLICATION_TOKEN;
+			if (prevKeyspace !== undefined)
+				process.env.ASTRA_DB_KEYSPACE = prevKeyspace;
+			else delete process.env.ASTRA_DB_KEYSPACE;
+		}
 	});
 
 	test("accepts explicit memory driver with seeds", () => {

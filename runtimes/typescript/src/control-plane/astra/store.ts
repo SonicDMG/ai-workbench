@@ -662,6 +662,27 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		return this.getRagDocument(workspace, knowledgeBase, indexRow.document_id);
 	}
 
+	async findRagDocumentBySourceFilename(
+		workspace: string,
+		knowledgeBase: string,
+		sourceFilename: string,
+	): Promise<RagDocumentRecord | null> {
+		await this.assertKnowledgeBase(workspace, knowledgeBase);
+		// No dedicated index on source_filename; scan the KB partition
+		// and filter in-memory. Acceptable scope-wise — KBs are
+		// typically small (hundreds to low thousands of docs) and the
+		// only caller (ingest service's name-conflict pre-check) runs
+		// at most once per upload. If this becomes a hot path we can
+		// add a `wb_rag_documents_by_filename` index analogous to the
+		// content-hash one, but that's out of scope for the
+		// overwrite-prompt phase.
+		const rows = await this.tables.ragDocuments
+			.find({ workspace_id: workspace, knowledge_base_id: knowledgeBase })
+			.toArray();
+		const match = rows.find((r) => r.source_filename === sourceFilename);
+		return match ? ragDocumentFromRow(match) : null;
+	}
+
 	async createRagDocument(
 		workspace: string,
 		knowledgeBase: string,
