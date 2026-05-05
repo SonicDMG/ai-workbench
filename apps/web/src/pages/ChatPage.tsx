@@ -2,7 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
-import { useAgents } from "@/hooks/useConversations";
+import { useAgents, useConversationMessages } from "@/hooks/useConversations";
 import { useWorkspace } from "@/hooks/useWorkspaces";
 import { ApiError, formatApiError } from "@/lib/api";
 import { AgentPicker } from "./chat/AgentPicker";
@@ -12,6 +12,7 @@ import {
 	EmptyConversationPane,
 } from "./chat/ConversationThread";
 import { CreateFirstAgent } from "./chat/CreateFirstAgent";
+import { RetrievedContextPanel } from "./chat/RetrievedContextPanel";
 
 /**
  * Workspace-level chat surface.
@@ -124,13 +125,12 @@ export function ChatPage() {
 						onSelect={onSelectAgent}
 						workspaceId={workspaceId}
 					/>
-					<div className="grid grid-cols-[14rem_minmax(0,1fr)] gap-4 min-h-[28rem]">
-						<ConversationSidebar
-							workspaceId={workspaceId}
-							agentId={activeAgent.agentId}
-							activeConversationId={activeConversationId}
-							onSelect={onSelectConversation}
-						/>
+					<ChatLayout
+						workspaceId={workspaceId}
+						agentId={activeAgent.agentId}
+						activeConversationId={activeConversationId}
+						onSelectConversation={onSelectConversation}
+					>
 						{activeConversationId ? (
 							<ConversationThread
 								key={activeConversationId}
@@ -146,9 +146,68 @@ export function ChatPage() {
 								onCreated={(c) => onSelectConversation(c.conversationId)}
 							/>
 						)}
-					</div>
+					</ChatLayout>
 				</>
 			) : null}
+		</div>
+	);
+}
+
+interface ChatLayoutProps {
+	readonly workspaceId: string;
+	readonly agentId: string;
+	readonly activeConversationId: string | null;
+	readonly onSelectConversation: (conversationId: string) => void;
+	readonly children: React.ReactNode;
+}
+
+/**
+ * Three-column chat layout: ConversationSidebar (left), the
+ * conversation pane (middle, supplied as `children` so this layout
+ * doesn't need to know whether the right pane is the live thread or
+ * the empty-state), and {@link RetrievedContextPanel} (right) which
+ * surfaces the chunks the agent grounded its latest turn on.
+ *
+ * The context panel collapses on narrower viewports — chat is
+ * functional without it, so the right rail is allowed to fall away
+ * when the screen runs out of room. We share the same React Query
+ * key for messages between the thread and the panel, so the panel
+ * is effectively free network-wise.
+ */
+function ChatLayout({
+	workspaceId,
+	agentId,
+	activeConversationId,
+	onSelectConversation,
+	children,
+}: ChatLayoutProps) {
+	// Same hook as ConversationThread → TanStack Query dedupes the
+	// fetch through the shared cache, so the panel is rendered from
+	// the same data the thread renders without an extra round trip.
+	const messagesQuery = useConversationMessages(
+		workspaceId,
+		agentId,
+		activeConversationId ?? undefined,
+	);
+	const messages = messagesQuery.data ?? [];
+
+	return (
+		<div className="grid grid-cols-[14rem_minmax(0,1fr)] gap-4 min-h-[28rem] xl:grid-cols-[14rem_minmax(0,1fr)_18rem]">
+			<ConversationSidebar
+				workspaceId={workspaceId}
+				agentId={agentId}
+				activeConversationId={activeConversationId}
+				onSelect={onSelectConversation}
+			/>
+			{children}
+			{/* Hidden below xl until the screen has room. Operators on
+			    smaller viewports still see citations through the per-
+			    message Sources disclosure inside MessageBubble. */}
+			<RetrievedContextPanel
+				workspaceId={workspaceId}
+				messages={messages}
+				className="hidden xl:flex"
+			/>
 		</div>
 	);
 }

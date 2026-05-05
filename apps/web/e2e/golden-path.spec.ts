@@ -17,8 +17,12 @@ import { expect, test } from "@playwright/test";
 //
 // The runtime is memory-backed (default workbench.yaml). State does
 // not persist between specs.
-
-test.describe.configure({ mode: "serial" });
+//
+// Project-level `fullyParallel: false, workers: 1` in playwright.config.ts
+// already enforces serial execution; calling
+// `test.describe.configure({ mode: "serial" })` here would conflict with
+// a future second spec that doesn't have the same call (Playwright
+// disallows mixing) — hence not pinned at the file level.
 
 test("golden path: onboard → services → knowledge base → upsert → run query", async ({
 	page,
