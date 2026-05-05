@@ -205,9 +205,14 @@ export function IngestQueueDialog({
 					});
 					// Server-side dedup: identical content hash → existing
 					// document re-used, no job, terminal state immediately.
-					// Discriminate on the literal `outcome` field; the
-					// other arm of the union always carries `job`.
-					if ("outcome" in res && res.outcome === "duplicate") {
+					// `outcome` only exists on the duplicate variant of the
+					// union; using just the property check (without
+					// comparing the literal value) lets TS narrow `res` to
+					// the success variant after the early return — comparing
+					// `res.outcome === "duplicate"` defeats narrowing because
+					// the negation `!== "duplicate"` is satisfiable on the
+					// duplicate variant in TS's mental model.
+					if ("outcome" in res) {
 						updateItem(next.id, {
 							status: "skipped",
 							jobId: null,
