@@ -161,6 +161,8 @@ function SearchPanel({
 					lexicalSupported,
 					rerankSupported,
 				}}
+				workspaceId={workspaceId}
+				knowledgeBaseId={knowledgeBaseId}
 				onRun={run}
 				pending={search.isPending}
 			/>

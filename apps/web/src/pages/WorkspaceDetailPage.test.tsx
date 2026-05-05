@@ -41,6 +41,12 @@ vi.mock("@/components/workspaces/AstraCliDetectionCard", () => ({
 vi.mock("@/components/workspaces/ServicesPanel", () => ({
 	ServicesPanel: () => <div data-testid="services-panel" />,
 }));
+vi.mock("@/components/workspaces/SeededDefaultsCallout", () => ({
+	// The callout's own test file covers its conditional logic; here we
+	// just stub it out so WorkspaceDetailPage tests don't have to wire
+	// the chunking / embedding / agent list mocks.
+	SeededDefaultsCallout: () => null,
+}));
 
 import { useFeatures } from "@/hooks/useFeatures";
 import {

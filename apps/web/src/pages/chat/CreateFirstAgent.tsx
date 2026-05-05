@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { AgentTemplateGallery } from "@/components/agents/AgentTemplateGallery";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { FieldHelp } from "@/components/ui/field-label";
 import { useCreateAgent } from "@/hooks/useConversations";
 import { formatApiError } from "@/lib/api";
 
@@ -150,9 +151,13 @@ export function CustomAgentForm({
 					className="flex flex-col gap-3"
 					aria-label="Create agent"
 				>
-					<label className="flex flex-col gap-1 text-sm">
-						<span className="font-medium text-slate-700">Name</span>
+					<div className="flex flex-col gap-1 text-sm">
+						<div className="flex items-center gap-1.5 font-medium text-slate-700">
+							<label htmlFor="custom-agent-name">Name</label>
+							<FieldHelp help="Shown in agent pickers and conversation history. Pick something memorable — you can rename it later." />
+						</div>
 						<input
+							id="custom-agent-name"
 							type="text"
 							required
 							value={name}
@@ -160,20 +165,24 @@ export function CustomAgentForm({
 							placeholder="e.g. Bobby"
 							className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--color-brand-600)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-100)]"
 						/>
-					</label>
-					<label className="flex flex-col gap-1 text-sm">
-						<span className="font-medium text-slate-700">
-							System prompt{" "}
-							<span className="font-normal text-slate-400">(optional)</span>
-						</span>
+					</div>
+					<div className="flex flex-col gap-1 text-sm">
+						<div className="flex items-center gap-1.5 font-medium text-slate-700">
+							<label htmlFor="custom-agent-system-prompt">
+								System prompt{" "}
+								<span className="font-normal text-slate-400">(optional)</span>
+							</label>
+							<FieldHelp help="The persona / instructions injected at the top of every conversation. Leave it blank to fall back to the runtime's default helpful-assistant prompt." />
+						</div>
 						<textarea
+							id="custom-agent-system-prompt"
 							rows={3}
 							value={systemPrompt}
 							onChange={(e) => setSystemPrompt(e.target.value)}
 							placeholder="You are a helpful assistant grounded in this workspace."
 							className="resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--color-brand-600)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-100)]"
 						/>
-					</label>
+					</div>
 					<div className="flex justify-end">
 						<Button
 							type="submit"

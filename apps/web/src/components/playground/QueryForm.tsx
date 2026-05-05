@@ -1,9 +1,12 @@
-import { Play } from "lucide-react";
+import { Copy, Play } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
 import type { PlaygroundSearchInput } from "@/lib/api";
+import { getAuthToken } from "@/lib/authToken";
+import { formatCurl } from "@/lib/curl";
 import { cn } from "@/lib/utils";
 
 type Tab = "text" | "vector";
@@ -30,10 +33,15 @@ export interface QueryFormTarget {
  */
 export function QueryForm({
 	target,
+	workspaceId,
+	knowledgeBaseId,
 	onRun,
 	pending,
 }: {
 	target: QueryFormTarget;
+	/** Used by the Copy-as-cURL button to build the request URL. */
+	workspaceId: string;
+	knowledgeBaseId: string;
 	onRun: (input: PlaygroundSearchInput) => void;
 	pending: boolean;
 }) {
@@ -50,7 +58,16 @@ export function QueryForm({
 	const lexicalSupported = target.lexicalSupported;
 	const rerankSupported = target.rerankSupported;
 
-	function submit() {
+	/**
+	 * Validate the form state and produce the same `PlaygroundSearchInput`
+	 * the run handler would post. Both `submit` and the Copy-as-cURL
+	 * button consume this so the cURL is a faithful reproduction of
+	 * what Run would actually send.
+	 *
+	 * Returns `null` when the form is invalid; the appropriate error
+	 * message has already been written to `error` state via `setError`.
+	 */
+	function buildSearchInput(): PlaygroundSearchInput | null {
 		setError(null);
 		let filter: Record<string, unknown> | undefined;
 		if (filterStr.trim().length > 0) {
@@ -64,28 +81,27 @@ export function QueryForm({
 				setError(
 					`filter is not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
 				);
-				return;
+				return null;
 			}
 		}
 		if (tab === "text") {
 			if (text.trim().length === 0) {
 				setError("text is required");
-				return;
+				return null;
 			}
-			onRun({
+			return {
 				topK,
 				filter,
 				text: text.trim(),
 				...(hybrid && { hybrid: true, lexicalWeight }),
 				...(rerank && { rerank: true }),
-			});
-			return;
+			};
 		}
 		if (hybrid || rerank) {
 			setError(
 				"hybrid and rerank require a text query — switch to the Text tab or clear the toggles",
 			);
-			return;
+			return null;
 		}
 		let vec: number[];
 		try {
@@ -101,15 +117,49 @@ export function QueryForm({
 			setError(
 				`vector is not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
 			);
-			return;
+			return null;
 		}
 		if (vec.length !== target.vectorDimension) {
 			setError(
 				`vector length ${vec.length} doesn't match store dimension ${target.vectorDimension}`,
 			);
-			return;
+			return null;
 		}
-		onRun({ topK, filter, vector: vec });
+		return { topK, filter, vector: vec };
+	}
+
+	function submit() {
+		const input = buildSearchInput();
+		if (input) onRun(input);
+	}
+
+	async function copyAsCurl() {
+		const input = buildSearchInput();
+		if (!input) return;
+		const origin = typeof window !== "undefined" ? window.location.origin : "";
+		const token = getAuthToken();
+		const headers: Record<string, string> = {
+			"Content-Type": "application/json",
+		};
+		if (token) headers.Authorization = `Bearer ${token}`;
+		const command = formatCurl({
+			method: "POST",
+			url: `${origin}/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/search`,
+			headers,
+			body: JSON.stringify(input),
+		});
+		try {
+			await navigator.clipboard.writeText(command);
+			toast.success("Copied as cURL", {
+				description: token
+					? "Includes your bearer token — paste with care."
+					: "No bearer token attached. Add `-H 'Authorization: Bearer …'` if your runtime requires auth.",
+			});
+		} catch {
+			toast.error("Couldn't copy to clipboard", {
+				description: "Your browser blocked clipboard access.",
+			});
+		}
 	}
 
 	return (
@@ -269,6 +319,17 @@ export function QueryForm({
 			) : null}
 
 			<div className="flex items-center justify-end gap-2">
+				<Button
+					variant="secondary"
+					onClick={() => {
+						void copyAsCurl();
+					}}
+					disabled={pending}
+					title="Build the same request as cURL and copy it to your clipboard"
+				>
+					<Copy className="h-4 w-4" />
+					Copy as cURL
+				</Button>
 				<Button variant="brand" onClick={submit} disabled={pending}>
 					<Play className="h-4 w-4" />
 					{pending ? "Running…" : "Run query"}

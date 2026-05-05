@@ -21,6 +21,7 @@ import { DeleteDialog } from "@/components/workspaces/DeleteDialog";
 import { KindBadge } from "@/components/workspaces/KindBadge";
 import { KnowledgeBasesPanel } from "@/components/workspaces/KnowledgeBasesPanel";
 import { McpUrlButton } from "@/components/workspaces/McpUrlButton";
+import { SeededDefaultsCallout } from "@/components/workspaces/SeededDefaultsCallout";
 import { ServicesPanel } from "@/components/workspaces/ServicesPanel";
 import { TestConnectionPanel } from "@/components/workspaces/TestConnectionPanel";
 import { WorkspaceForm } from "@/components/workspaces/WorkspaceForm";
@@ -161,6 +162,8 @@ export function WorkspaceDetailPage() {
 				</Card>
 			) : (
 				<>
+					<SeededDefaultsCallout workspace={data} />
+
 					<MetadataStrip workspace={data} />
 
 					<KnowledgeBaseHero workspaceId={data.workspaceId} />

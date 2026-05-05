@@ -129,7 +129,12 @@ export function EditKnowledgeBaseDialog({
 					className="flex flex-col gap-4"
 				>
 					<div className="flex flex-col gap-1.5">
-						<FieldLabel htmlFor="kb-edit-name-readonly">Name</FieldLabel>
+						<FieldLabel
+							htmlFor="kb-edit-name-readonly"
+							help="The KB name doubles as its underlying Astra collection name, so it's immutable after creation. Delete and recreate the KB if you need to rename it."
+						>
+							Name
+						</FieldLabel>
 						<Input
 							id="kb-edit-name-readonly"
 							value={kb?.name ?? ""}
@@ -143,7 +148,10 @@ export function EditKnowledgeBaseDialog({
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<FieldLabel htmlFor="kb-edit-description">
+						<FieldLabel
+							htmlFor="kb-edit-description"
+							help="Free-text context for teammates. Doesn't affect ingestion or retrieval — purely operational metadata."
+						>
 							Description (optional)
 						</FieldLabel>
 						<Input id="kb-edit-description" {...form.register("description")} />
@@ -206,7 +214,12 @@ export function EditKnowledgeBaseDialog({
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<FieldLabel htmlFor="kb-edit-lang">Language (optional)</FieldLabel>
+						<FieldLabel
+							htmlFor="kb-edit-lang"
+							help="Optional language hint such as `en` or `multi`. The runtime forwards it to providers that take a language parameter (e.g. some embedding services). Leave it empty when the corpus is mixed or unknown."
+						>
+							Language (optional)
+						</FieldLabel>
 						<Input id="kb-edit-lang" {...form.register("language")} />
 					</div>
 

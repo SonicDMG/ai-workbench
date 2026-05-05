@@ -2,9 +2,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { FieldLabel } from "@/components/ui/field-label";
+import { FieldHelp, FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
 	Select,
 	SelectContent,
@@ -202,7 +201,12 @@ export function AgentForm({
 			</div>
 
 			<div className="flex flex-col gap-1.5">
-				<Label className="text-sm font-medium">Knowledge base bindings</Label>
+				<FieldLabel
+					className="text-sm font-medium"
+					help="The KBs this agent grounds on by default. A conversation can override the set, but the agent's defaults are what new conversations inherit. Leave every box unchecked to draw from every KB in the workspace."
+				>
+					Knowledge base bindings
+				</FieldLabel>
 				<p className="text-xs text-slate-500">
 					Default RAG scope for conversations against this agent. Leave empty to
 					draw from every KB in the workspace.
@@ -240,14 +244,17 @@ export function AgentForm({
 			</div>
 
 			<fieldset className="flex flex-col gap-3 rounded-md border border-slate-200 bg-slate-50/50 p-4">
-				<label className="flex items-center gap-2 text-sm font-medium">
-					<input
-						type="checkbox"
-						{...form.register("rerankEnabled")}
-						className="h-4 w-4 rounded border-slate-300 text-[var(--color-brand-500)] focus:ring-[var(--color-brand-500)]"
-					/>
-					Enable reranking
-				</label>
+				<div className="flex items-center gap-2">
+					<label className="flex items-center gap-2 text-sm font-medium">
+						<input
+							type="checkbox"
+							{...form.register("rerankEnabled")}
+							className="h-4 w-4 rounded border-slate-300 text-[var(--color-brand-500)] focus:ring-[var(--color-brand-500)]"
+						/>
+						Enable reranking
+					</label>
+					<FieldHelp help="Runs a second-pass model over vector-search hits to reorder them by relevance. Adds latency and cost — leave off for cheap KB lookups, turn on when precision matters more than throughput." />
+				</div>
 				{rerankEnabled ? (
 					<div className="grid grid-cols-2 gap-3 pl-6">
 						<div className="flex flex-col gap-1.5">
