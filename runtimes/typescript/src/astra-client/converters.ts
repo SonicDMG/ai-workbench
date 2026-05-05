@@ -42,6 +42,66 @@ import type {
 } from "./row-types.js";
 
 /* ------------------------------------------------------------------ */
+/* Coercion helpers                                                   */
+/* ------------------------------------------------------------------ */
+/*
+ * The default Tables serdes in `@datastax/astra-db-ts` v2.x returns
+ * column values typed as the underlying datatype's runtime class:
+ *   - `uuid` columns come back as `UUID` instances (`{ version, _raw }`)
+ *   - `map<text, text>` columns come back as `Map<string, string>`
+ * Our row types declare these as `string` and `Record<string, string>`
+ * respectively, so reading rows verbatim into the application records
+ * surfaces the wrong shape downstream:
+ *   - `JSON.stringify(record.uid)` produces `{"version":4,"_raw":"…"}`
+ *     instead of the canonical UUID string.
+ *   - `{ ...record.credentials }` spreads a `Map` into an empty object
+ *     (Maps have no enumerable own string-keyed properties), silently
+ *     dropping all credentials — which makes the workspace's
+ *     test-connection fail with "missing credentials.token" even
+ *     though the row was stored correctly.
+ *
+ * Rather than register custom Astra serdes codecs (which would change
+ * library behavior globally and surprise future readers), the
+ * converters coerce on the way out. `*ToRow` writes the
+ * application-shape value directly — astra-db-ts accepts both `string`
+ * (becomes a `uuid`) and `Record<string, string>` (becomes a `map`)
+ * for write, so the write path doesn't need this workaround.
+ */
+
+export function asUuidString(v: unknown): string {
+	if (typeof v === "string") return v;
+	if (v && typeof v === "object") {
+		const raw = (v as { _raw?: unknown })._raw;
+		if (typeof raw === "string") return raw;
+		// `UUID.toString()` returns the canonical lowercase form.
+		const candidate = (v as { toString?: () => string }).toString?.();
+		if (typeof candidate === "string" && /^[0-9a-f-]{36}$/i.test(candidate)) {
+			return candidate;
+		}
+	}
+	return String(v ?? "");
+}
+
+export function asNullableUuidString(v: unknown): string | null {
+	if (v === null || v === undefined) return null;
+	return asUuidString(v);
+}
+
+export function asPlainStringMap(v: unknown): Record<string, string> {
+	if (v instanceof Map) {
+		const out: Record<string, string> = {};
+		for (const [k, val] of v as Map<unknown, unknown>) {
+			if (typeof k === "string" && typeof val === "string") out[k] = val;
+		}
+		return out;
+	}
+	if (v && typeof v === "object") {
+		return { ...(v as Record<string, string>) };
+	}
+	return {};
+}
+
+/* ------------------------------------------------------------------ */
 /* Workspace                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -67,13 +127,17 @@ export function workspaceFromRow(row: WorkspaceRow): WorkspaceRecord {
 	// honest. Without this, a missing field reaches the JSON
 	// serializer as `undefined` and gets stripped, which fails the
 	// UI's schema validation downstream.
+	//
+	// `asUuidString` + `asPlainStringMap` coerce the runtime-class
+	// shapes (UUID + Map) the Tables serdes hands us back, see the
+	// "Coercion helpers" header above for the full rationale.
 	return {
-		uid: row.uid,
+		uid: asUuidString(row.uid),
 		name: row.name,
 		url: row.url ?? null,
 		kind: row.kind,
 		keyspace: row.keyspace ?? null,
-		credentials: { ...(row.credentials ?? {}) },
+		credentials: asPlainStringMap(row.credentials),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -103,8 +167,8 @@ export function apiKeyToRow(r: ApiKeyRecord): ApiKeyRow {
 
 export function apiKeyFromRow(row: ApiKeyRow): ApiKeyRecord {
 	return {
-		workspace: row.workspace,
-		keyId: row.key_id,
+		workspace: asUuidString(row.workspace),
+		keyId: asUuidString(row.key_id),
 		prefix: row.prefix,
 		hash: row.hash,
 		label: row.label,
@@ -128,12 +192,20 @@ export function apiKeyFromRow(row: ApiKeyRow): ApiKeyRecord {
 /**
  * Astra row → record: SET<T> arrives as a `Set<T>`; the application
  * record exposes it as a sorted `readonly string[]` so JSON
- * serialization roundtrips cleanly across every backend.
+ * serialization roundtrips cleanly across every backend. Elements are
+ * coerced through {@link asUuidString} on the way out so SET<UUID>
+ * columns (which the Tables serdes hands back as UUID instances) end
+ * up as canonical UUID strings — the rest of the codebase assumes
+ * `string` for `toolIds`, `knowledgeBaseIds`, etc.
  */
 function setToSortedArray(
-	value: Iterable<string> | null | undefined,
+	value: Iterable<unknown> | null | undefined,
 ): string[] {
-	return [...(value ?? [])].sort();
+	const out: string[] = [];
+	for (const v of value ?? []) {
+		out.push(typeof v === "string" ? v : asUuidString(v));
+	}
+	return out.sort();
 }
 
 /** Record → Astra row: arrays go in as `Set<string>` so astra-db-ts
@@ -187,14 +259,14 @@ export function knowledgeBaseFromRow(
 	row: KnowledgeBaseRow,
 ): KnowledgeBaseRecord {
 	return {
-		workspaceId: row.workspace_id,
-		knowledgeBaseId: row.knowledge_base_id,
+		workspaceId: asUuidString(row.workspace_id),
+		knowledgeBaseId: asUuidString(row.knowledge_base_id),
 		name: row.name,
 		description: row.description,
 		status: row.status,
-		embeddingServiceId: row.embedding_service_id,
-		chunkingServiceId: row.chunking_service_id,
-		rerankingServiceId: row.reranking_service_id,
+		embeddingServiceId: asUuidString(row.embedding_service_id),
+		chunkingServiceId: asUuidString(row.chunking_service_id),
+		rerankingServiceId: asNullableUuidString(row.reranking_service_id),
 		language: row.language,
 		vectorCollection: row.vector_collection,
 		// Pre-`owned`-column rows are coerced to `true` so their
@@ -204,7 +276,7 @@ export function knowledgeBaseFromRow(
 		lexical: {
 			enabled: row.lexical_enabled,
 			analyzer: row.lexical_analyzer,
-			options: { ...(row.lexical_options ?? {}) },
+			options: asPlainStringMap(row.lexical_options),
 		},
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
@@ -232,9 +304,9 @@ export function knowledgeFilterFromRow(
 	row: KnowledgeFilterRow,
 ): KnowledgeFilterRecord {
 	return {
-		workspaceId: row.workspace_id,
-		knowledgeBaseId: row.knowledge_base_id,
-		knowledgeFilterId: row.knowledge_filter_id,
+		workspaceId: asUuidString(row.workspace_id),
+		knowledgeBaseId: asUuidString(row.knowledge_base_id),
+		knowledgeFilterId: asUuidString(row.knowledge_filter_id),
 		name: row.name,
 		description: row.description,
 		filter: parseJsonObject(row.filter_json) ?? {},
@@ -283,8 +355,8 @@ export function chunkingServiceFromRow(
 	row: ChunkingServiceRow,
 ): ChunkingServiceRecord {
 	return {
-		workspaceId: row.workspace_id,
-		chunkingServiceId: row.chunking_service_id,
+		workspaceId: asUuidString(row.workspace_id),
+		chunkingServiceId: asUuidString(row.chunking_service_id),
 		name: row.name,
 		description: row.description,
 		status: row.status,
@@ -346,8 +418,8 @@ export function embeddingServiceFromRow(
 	row: EmbeddingServiceRow,
 ): EmbeddingServiceRecord {
 	return {
-		workspaceId: row.workspace_id,
-		embeddingServiceId: row.embedding_service_id,
+		workspaceId: asUuidString(row.workspace_id),
+		embeddingServiceId: asUuidString(row.embedding_service_id),
 		name: row.name,
 		description: row.description,
 		status: row.status,
@@ -405,8 +477,8 @@ export function rerankingServiceFromRow(
 	row: RerankingServiceRow,
 ): RerankingServiceRecord {
 	return {
-		workspaceId: row.workspace_id,
-		rerankingServiceId: row.reranking_service_id,
+		workspaceId: asUuidString(row.workspace_id),
+		rerankingServiceId: asUuidString(row.reranking_service_id),
 		name: row.name,
 		description: row.description,
 		status: row.status,
@@ -465,8 +537,8 @@ export function llmServiceToRow(r: LlmServiceRecord): LlmServiceRow {
 
 export function llmServiceFromRow(row: LlmServiceRow): LlmServiceRecord {
 	return {
-		workspaceId: row.workspace_id,
-		llmServiceId: row.llm_service_id,
+		workspaceId: asUuidString(row.workspace_id),
+		llmServiceId: asUuidString(row.llm_service_id),
 		name: row.name,
 		description: row.description,
 		status: row.status,
@@ -517,8 +589,8 @@ export function mcpToolToRow(r: McpToolRecord): McpToolRow {
 
 export function mcpToolFromRow(row: McpToolRow): McpToolRecord {
 	return {
-		workspaceId: row.workspace_id,
-		toolId: row.tool_id,
+		workspaceId: asUuidString(row.workspace_id),
+		toolId: asUuidString(row.tool_id),
 		name: row.name,
 		description: row.description,
 		toolType: row.tool_type,
@@ -558,9 +630,9 @@ export function ragDocumentToRow(r: RagDocumentRecord): RagDocumentRow {
 
 export function ragDocumentFromRow(row: RagDocumentRow): RagDocumentRecord {
 	return {
-		workspaceId: row.workspace_id,
-		knowledgeBaseId: row.knowledge_base_id,
-		documentId: row.document_id,
+		workspaceId: asUuidString(row.workspace_id),
+		knowledgeBaseId: asUuidString(row.knowledge_base_id),
+		documentId: asUuidString(row.document_id),
 		sourceDocId: row.source_doc_id,
 		sourceFilename: row.source_filename,
 		fileType: row.file_type,
@@ -571,7 +643,7 @@ export function ragDocumentFromRow(row: RagDocumentRow): RagDocumentRecord {
 		errorMessage: row.error_message,
 		ingestedAt: row.ingested_at,
 		updatedAt: row.updated_at,
-		metadata: { ...(row.metadata ?? {}) },
+		metadata: asPlainStringMap(row.metadata),
 	};
 }
 
@@ -592,10 +664,10 @@ export function ragDocumentByStatusFromRow(
 	row: RagDocumentByStatusRow,
 ): RagDocumentStatusEntry {
 	return {
-		workspaceId: row.workspace_id,
-		knowledgeBaseId: row.knowledge_base_id,
+		workspaceId: asUuidString(row.workspace_id),
+		knowledgeBaseId: asUuidString(row.knowledge_base_id),
 		status: row.status,
-		documentId: row.document_id,
+		documentId: asUuidString(row.document_id),
 		sourceFilename: row.source_filename,
 		ingestedAt: row.ingested_at,
 	};
@@ -617,9 +689,9 @@ export function ragDocumentByHashFromRow(
 ): RagDocumentHashEntry {
 	return {
 		contentHash: row.content_hash,
-		workspaceId: row.workspace_id,
-		knowledgeBaseId: row.knowledge_base_id,
-		documentId: row.document_id,
+		workspaceId: asUuidString(row.workspace_id),
+		knowledgeBaseId: asUuidString(row.knowledge_base_id),
+		documentId: asUuidString(row.document_id),
 	};
 }
 
@@ -646,17 +718,17 @@ export function agentToRow(r: AgentRecord): AgentRow {
 
 export function agentFromRow(row: AgentRow): AgentRecord {
 	return {
-		workspaceId: row.workspace_id,
-		agentId: row.agent_id,
+		workspaceId: asUuidString(row.workspace_id),
+		agentId: asUuidString(row.agent_id),
 		name: row.name,
 		description: row.description,
 		systemPrompt: row.system_prompt,
 		userPrompt: row.user_prompt,
 		toolIds: setToSortedArray(row.tool_ids),
-		llmServiceId: row.llm_service_id ?? null,
+		llmServiceId: asNullableUuidString(row.llm_service_id),
 		knowledgeBaseIds: setToSortedArray(row.knowledge_base_ids),
 		rerankEnabled: row.rerank_enabled,
-		rerankingServiceId: row.reranking_service_id,
+		rerankingServiceId: asNullableUuidString(row.reranking_service_id),
 		rerankMaxResults: row.rerank_max_results,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
@@ -682,9 +754,9 @@ export function conversationToRow(r: ConversationRecord): ConversationRow {
 
 export function conversationFromRow(row: ConversationRow): ConversationRecord {
 	return {
-		workspaceId: row.workspace_id,
-		agentId: row.agent_id,
-		conversationId: row.conversation_id,
+		workspaceId: asUuidString(row.workspace_id),
+		agentId: asUuidString(row.agent_id),
+		conversationId: asUuidString(row.conversation_id),
 		createdAt: row.created_at,
 		title: row.title,
 		knowledgeBaseIds: setToSortedArray(row.knowledge_base_ids),
@@ -714,10 +786,10 @@ export function messageToRow(r: MessageRecord): MessageRow {
 
 export function messageFromRow(row: MessageRow): MessageRecord {
 	return {
-		workspaceId: row.workspace_id,
-		conversationId: row.conversation_id,
+		workspaceId: asUuidString(row.workspace_id),
+		conversationId: asUuidString(row.conversation_id),
 		messageTs: row.message_ts,
-		messageId: row.message_id,
+		messageId: asUuidString(row.message_id),
 		role: row.role,
 		authorId: row.author_id,
 		content: row.content,
@@ -725,7 +797,7 @@ export function messageFromRow(row: MessageRow): MessageRecord {
 		toolCallPayload: parseJsonObject(row.tool_call_payload),
 		toolResponse: parseJsonObject(row.tool_response),
 		tokenCount: row.token_count,
-		metadata: { ...(row.metadata ?? {}) },
+		metadata: asPlainStringMap(row.metadata),
 	};
 }
 

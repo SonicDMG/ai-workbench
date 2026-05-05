@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
+	asNullableUuidString,
+	asPlainStringMap,
+	asUuidString,
 	ragDocumentFromRow,
 	ragDocumentToRow,
 	workspaceFromRow,
@@ -109,5 +112,104 @@ describe("converters — null/undefined handling", () => {
 		// @ts-expect-error — simulate a row returned by Astra without the map column
 		row.credentials = undefined;
 		expect(workspaceFromRow(row).credentials).toEqual({});
+	});
+});
+
+/**
+ * Tables serdes in `@datastax/astra-db-ts` v2.x hands rows back with
+ * runtime-class shapes for `uuid` (a UUID-like instance) and
+ * `map<text, text>` (a `Map`). The row-types interface declares
+ * these as `string` / `Record<string, string>`, so the converters
+ * have to coerce or downstream consumers see `{version, _raw}` JSON
+ * blobs and silently-empty credentials maps. These tests guard the
+ * coercion path.
+ */
+describe("converters — Tables serdes runtime-class coercion", () => {
+	test("asUuidString unwraps a UUID-like instance via the `_raw` field", () => {
+		const uuidLike = {
+			version: 4,
+			_raw: "11111111-2222-3333-4444-555555555555",
+		};
+		expect(asUuidString(uuidLike)).toBe("11111111-2222-3333-4444-555555555555");
+	});
+
+	test("asUuidString accepts a plain string verbatim", () => {
+		expect(asUuidString("abc-def")).toBe("abc-def");
+	});
+
+	test("asUuidString accepts an object whose toString is canonical", () => {
+		// Mimics the public surface of @datastax/astra-db-ts's `UUID` —
+		// `toString()` returns the canonical lowercase form.
+		const uuidLike = {
+			toString: () => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+		};
+		expect(asUuidString(uuidLike)).toBe("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+	});
+
+	test("asNullableUuidString preserves null/undefined", () => {
+		expect(asNullableUuidString(null)).toBeNull();
+		expect(asNullableUuidString(undefined)).toBeNull();
+		expect(asNullableUuidString("11111111-2222-3333-4444-555555555555")).toBe(
+			"11111111-2222-3333-4444-555555555555",
+		);
+	});
+
+	test("asPlainStringMap converts a Map to a plain object", () => {
+		const m = new Map<string, string>([
+			["token", "env:T"],
+			["scb", "file:/etc/scb.zip"],
+		]);
+		expect(asPlainStringMap(m)).toEqual({
+			token: "env:T",
+			scb: "file:/etc/scb.zip",
+		});
+	});
+
+	test("asPlainStringMap drops a Map's non-string entries (defensive)", () => {
+		const m = new Map<unknown, unknown>([
+			["good", "yes"],
+			[123, "skipped-bad-key"],
+			["skipped-bad-value", { nope: true }],
+		]);
+		expect(asPlainStringMap(m)).toEqual({ good: "yes" });
+	});
+
+	test("asPlainStringMap accepts a plain object as-is", () => {
+		expect(asPlainStringMap({ a: "b" })).toEqual({ a: "b" });
+	});
+
+	test("asPlainStringMap returns empty for null/undefined/non-object", () => {
+		expect(asPlainStringMap(null)).toEqual({});
+		expect(asPlainStringMap(undefined)).toEqual({});
+		expect(asPlainStringMap(42)).toEqual({});
+	});
+
+	test("workspaceFromRow coerces UUID + Map shapes to canonical record", () => {
+		// This is the regression that motivated the helpers: workspace
+		// list response was returning `workspaceId: {version, _raw}` and
+		// `credentials: {}` because the spread of a Map yields no
+		// enumerable properties. Both fields had to land as the
+		// declared types.
+		const row = {
+			uid: { version: 4, _raw: "11111111-2222-3333-4444-555555555555" },
+			name: "prod",
+			url: "https://prod.example",
+			kind: "astra" as const,
+			keyspace: "workbench",
+			credentials: new Map<string, string>([["token", "env:T"]]),
+			created_at: "2026-04-22T00:00:00.000Z",
+			updated_at: "2026-04-22T00:00:01.000Z",
+		};
+		// @ts-expect-error — simulate the runtime-class shapes Astra
+		// hands us; the typed row interface declares string + object.
+		const record = workspaceFromRow(row);
+		expect(record.uid).toBe("11111111-2222-3333-4444-555555555555");
+		expect(record.credentials).toEqual({ token: "env:T" });
+		// JSON serialisation must not leak the runtime-class shape —
+		// regression check for the API list response that previously
+		// produced `"workspaceId":{"version":4,"_raw":"…"}`.
+		const json = JSON.parse(JSON.stringify(record));
+		expect(json.uid).toBe("11111111-2222-3333-4444-555555555555");
+		expect(json.credentials).toEqual({ token: "env:T" });
 	});
 });

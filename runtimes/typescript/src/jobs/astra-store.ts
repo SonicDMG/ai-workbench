@@ -27,6 +27,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { asUuidString } from "../astra-client/converters.js";
 import type { JobRow } from "../astra-client/row-types.js";
 import type { TablesBundle } from "../astra-client/tables.js";
 import { nowIso } from "../control-plane/defaults.js";
@@ -349,11 +350,14 @@ function jobToRow(r: JobRecord): JobRow {
 
 function jobFromRow(row: JobRow): JobRecord {
 	return {
-		workspace: row.workspace,
-		jobId: row.job_id,
+		workspace: asUuidString(row.workspace),
+		jobId: asUuidString(row.job_id),
 		kind: row.kind as JobKind,
-		knowledgeBaseId: row.knowledge_base_id ?? null,
-		documentId: row.document_id,
+		knowledgeBaseId:
+			row.knowledge_base_id == null
+				? null
+				: asUuidString(row.knowledge_base_id),
+		documentId: row.document_id == null ? null : asUuidString(row.document_id),
 		status: row.status as JobStatus,
 		processed: row.processed,
 		total: row.total,
