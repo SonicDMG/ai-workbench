@@ -101,6 +101,33 @@ export function asPlainStringMap(v: unknown): Record<string, string> {
 	return {};
 }
 
+/**
+ * Coerce a numeric column value back to a plain `number`. The Tables
+ * serdes in `@datastax/astra-db-ts` v2.x decodes `int` and `bigint`
+ * columns as JS `BigInt` (so values larger than `Number.MAX_SAFE_INTEGER`
+ * survive the round-trip), but our row-type interfaces declare these
+ * as `number`. Without coercion, anything that flows through
+ * `JSON.stringify(record)` — every API response — throws
+ * `TypeError: Do not know how to serialize a BigInt`. The values we
+ * actually store (file sizes up to ~5MB, chunk counts in the
+ * thousands, request timeouts in ms, token counts) all fit in
+ * `Number.MAX_SAFE_INTEGER`, so the precision loss is benign.
+ *
+ * `double` columns also come back as plain `number` and pass through
+ * untouched.
+ */
+export function asNumber(v: unknown): number {
+	if (typeof v === "number") return v;
+	if (typeof v === "bigint") return Number(v);
+	if (typeof v === "string") return Number.parseFloat(v);
+	return Number(v);
+}
+
+export function asNumberOrNull(v: unknown): number | null {
+	if (v === null || v === undefined) return null;
+	return asNumber(v);
+}
+
 /* ------------------------------------------------------------------ */
 /* Workspace                                                          */
 /* ------------------------------------------------------------------ */
@@ -363,17 +390,17 @@ export function chunkingServiceFromRow(
 		engine: row.engine,
 		engineVersion: row.engine_version,
 		strategy: row.strategy,
-		maxChunkSize: row.max_chunk_size,
-		minChunkSize: row.min_chunk_size,
+		maxChunkSize: asNumberOrNull(row.max_chunk_size),
+		minChunkSize: asNumberOrNull(row.min_chunk_size),
 		chunkUnit: row.chunk_unit,
-		overlapSize: row.overlap_size,
+		overlapSize: asNumberOrNull(row.overlap_size),
 		overlapUnit: row.overlap_unit,
 		preserveStructure: row.preserve_structure,
 		language: row.language,
 		endpointBaseUrl: row.endpoint_base_url,
 		endpointPath: row.endpoint_path,
-		requestTimeoutMs: row.request_timeout_ms,
-		maxPayloadSizeKb: row.max_payload_size_kb,
+		requestTimeoutMs: asNumberOrNull(row.request_timeout_ms),
+		maxPayloadSizeKb: asNumberOrNull(row.max_payload_size_kb),
 		authType: row.auth_type,
 		credentialRef: row.credential_ref,
 		enableOcr: row.enable_ocr,
@@ -425,13 +452,13 @@ export function embeddingServiceFromRow(
 		status: row.status,
 		provider: row.provider,
 		modelName: row.model_name,
-		embeddingDimension: row.embedding_dimension,
+		embeddingDimension: asNumber(row.embedding_dimension),
 		distanceMetric: row.distance_metric,
 		endpointBaseUrl: row.endpoint_base_url,
 		endpointPath: row.endpoint_path,
-		requestTimeoutMs: row.request_timeout_ms,
-		maxBatchSize: row.max_batch_size,
-		maxInputTokens: row.max_input_tokens,
+		requestTimeoutMs: asNumberOrNull(row.request_timeout_ms),
+		maxBatchSize: asNumberOrNull(row.max_batch_size),
+		maxInputTokens: asNumberOrNull(row.max_input_tokens),
 		authType: row.auth_type,
 		credentialRef: row.credential_ref,
 		supportedLanguages: setToSortedArray(row.supported_languages),
@@ -486,14 +513,14 @@ export function rerankingServiceFromRow(
 		engine: row.engine,
 		modelName: row.model_name,
 		modelVersion: row.model_version,
-		maxCandidates: row.max_candidates,
+		maxCandidates: asNumberOrNull(row.max_candidates),
 		scoringStrategy: row.scoring_strategy,
 		scoreNormalized: row.score_normalized,
 		returnScores: row.return_scores,
 		endpointBaseUrl: row.endpoint_base_url,
 		endpointPath: row.endpoint_path,
-		requestTimeoutMs: row.request_timeout_ms,
-		maxBatchSize: row.max_batch_size,
+		requestTimeoutMs: asNumberOrNull(row.request_timeout_ms),
+		maxBatchSize: asNumberOrNull(row.max_batch_size),
 		authType: row.auth_type,
 		credentialRef: row.credential_ref,
 		supportedLanguages: setToSortedArray(row.supported_languages),
@@ -546,16 +573,16 @@ export function llmServiceFromRow(row: LlmServiceRow): LlmServiceRecord {
 		engine: row.engine,
 		modelName: row.model_name,
 		modelVersion: row.model_version,
-		contextWindowTokens: row.context_window_tokens,
-		maxOutputTokens: row.max_output_tokens,
-		temperatureMin: row.temperature_min,
-		temperatureMax: row.temperature_max,
+		contextWindowTokens: asNumberOrNull(row.context_window_tokens),
+		maxOutputTokens: asNumberOrNull(row.max_output_tokens),
+		temperatureMin: asNumberOrNull(row.temperature_min),
+		temperatureMax: asNumberOrNull(row.temperature_max),
 		supportsStreaming: row.supports_streaming,
 		supportsTools: row.supports_tools,
 		endpointBaseUrl: row.endpoint_base_url,
 		endpointPath: row.endpoint_path,
-		requestTimeoutMs: row.request_timeout_ms,
-		maxBatchSize: row.max_batch_size,
+		requestTimeoutMs: asNumberOrNull(row.request_timeout_ms),
+		maxBatchSize: asNumberOrNull(row.max_batch_size),
 		authType: row.auth_type,
 		credentialRef: row.credential_ref,
 		supportedLanguages: setToSortedArray(row.supported_languages),
@@ -636,9 +663,9 @@ export function ragDocumentFromRow(row: RagDocumentRow): RagDocumentRecord {
 		sourceDocId: row.source_doc_id,
 		sourceFilename: row.source_filename,
 		fileType: row.file_type,
-		fileSize: row.file_size,
+		fileSize: asNumberOrNull(row.file_size),
 		contentHash: row.content_hash,
-		chunkTotal: row.chunk_total,
+		chunkTotal: asNumberOrNull(row.chunk_total),
 		status: row.status,
 		errorMessage: row.error_message,
 		ingestedAt: row.ingested_at,
@@ -729,7 +756,7 @@ export function agentFromRow(row: AgentRow): AgentRecord {
 		knowledgeBaseIds: setToSortedArray(row.knowledge_base_ids),
 		rerankEnabled: row.rerank_enabled,
 		rerankingServiceId: asNullableUuidString(row.reranking_service_id),
-		rerankMaxResults: row.rerank_max_results,
+		rerankMaxResults: asNumberOrNull(row.rerank_max_results),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -791,12 +818,14 @@ export function messageFromRow(row: MessageRow): MessageRecord {
 		messageTs: row.message_ts,
 		messageId: asUuidString(row.message_id),
 		role: row.role,
-		authorId: row.author_id,
+		authorId: row.author_id == null ? null : asUuidString(row.author_id),
 		content: row.content,
-		toolId: row.tool_id,
+		// `tool_id` is text (tool *name*), not a UUID — see the schema
+		// note in `MESSAGES_DEFINITION`. Pass through verbatim.
+		toolId: row.tool_id ?? null,
 		toolCallPayload: parseJsonObject(row.tool_call_payload),
 		toolResponse: parseJsonObject(row.tool_response),
-		tokenCount: row.token_count,
+		tokenCount: asNumberOrNull(row.token_count),
 		metadata: asPlainStringMap(row.metadata),
 	};
 }

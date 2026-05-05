@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
 	asNullableUuidString,
+	asNumber,
+	asNumberOrNull,
 	asPlainStringMap,
 	asUuidString,
 	ragDocumentFromRow,
@@ -211,5 +213,85 @@ describe("converters — Tables serdes runtime-class coercion", () => {
 		const json = JSON.parse(JSON.stringify(record));
 		expect(json.uid).toBe("11111111-2222-3333-4444-555555555555");
 		expect(json.credentials).toEqual({ token: "env:T" });
+	});
+});
+
+/**
+ * Numeric columns (`int`, `bigint`) come back from astra-db-ts as
+ * `BigInt` instances. JSON.stringify rejects those with
+ * `TypeError: Do not know how to serialize a BigInt`. The coercer
+ * downcasts to `number` (safe for our value ranges) so every API
+ * response can serialise cleanly.
+ */
+describe("converters — numeric column coercion", () => {
+	test("asNumber coerces a BigInt to a JS number", () => {
+		expect(asNumber(42n)).toBe(42);
+	});
+
+	test("asNumber accepts a plain number verbatim", () => {
+		expect(asNumber(7)).toBe(7);
+	});
+
+	test("asNumber accepts a numeric string", () => {
+		expect(asNumber("3.14")).toBe(3.14);
+	});
+
+	test("asNumberOrNull preserves null/undefined", () => {
+		expect(asNumberOrNull(null)).toBeNull();
+		expect(asNumberOrNull(undefined)).toBeNull();
+		expect(asNumberOrNull(0n)).toBe(0);
+		expect(asNumberOrNull(42)).toBe(42);
+	});
+
+	test("ragDocumentFromRow round-trips file_size and chunk_total as numbers", () => {
+		// Tables decoder hands `bigint` and `int` columns back as
+		// BigInt instances. The record interface declares `number |
+		// null`, so without coercion `JSON.stringify(record)` throws.
+		const row = ragDocumentToRow({
+			workspaceId: "11111111-2222-3333-4444-555555555555",
+			knowledgeBaseId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+			documentId: "99999999-8888-7777-6666-555555555555",
+			sourceDocId: null,
+			sourceFilename: "x.md",
+			fileType: null,
+			fileSize: 4_096,
+			contentHash: null,
+			chunkTotal: 5,
+			ingestedAt: null,
+			updatedAt: "2026-04-22T00:00:01.000Z",
+			status: "ready",
+			errorMessage: null,
+			metadata: {},
+		});
+		// Simulate the Tables decoder handing back BigInts.
+		// @ts-expect-error — row-types declare these as `number`,
+		// the decoder violates that.
+		row.file_size = 4096n;
+		// @ts-expect-error
+		row.chunk_total = 5n;
+		const record = ragDocumentFromRow(row);
+		expect(record.fileSize).toBe(4096);
+		expect(record.chunkTotal).toBe(5);
+		// Critical: must JSON-serialise without throwing.
+		expect(() => JSON.stringify(record)).not.toThrow();
+	});
+});
+
+/**
+ * Schema regression: `messages.tool_id` is `text`, not `uuid`. The
+ * runtime stores tool *names* (e.g. "list_kbs") there for built-in
+ * chat tools, which don't have a row in `wb_config_mcp_tools_by_workspace`.
+ * Storing those into a `uuid` column makes the Data API reject the
+ * insert with "Invalid UUID string: list_kbs", which silently breaks
+ * the chat-tool persistence pipeline (the assistant's tool_calls
+ * land but the matching tool-response messages don't, which then
+ * makes OpenAI 400 the next round-trip).
+ */
+describe("schema — messages.tool_id is text, not uuid", () => {
+	test("MESSAGES_DEFINITION declares tool_id as text", async () => {
+		const { MESSAGES_DEFINITION } = await import(
+			"../../src/astra-client/table-definitions.js"
+		);
+		expect(MESSAGES_DEFINITION.columns.tool_id).toBe("text");
 	});
 });

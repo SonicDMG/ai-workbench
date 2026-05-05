@@ -27,7 +27,11 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { asUuidString } from "../astra-client/converters.js";
+import {
+	asNumber,
+	asNumberOrNull,
+	asUuidString,
+} from "../astra-client/converters.js";
 import type { JobRow } from "../astra-client/row-types.js";
 import type { TablesBundle } from "../astra-client/tables.js";
 import { nowIso } from "../control-plane/defaults.js";
@@ -359,8 +363,8 @@ function jobFromRow(row: JobRow): JobRecord {
 				: asUuidString(row.knowledge_base_id),
 		documentId: row.document_id == null ? null : asUuidString(row.document_id),
 		status: row.status as JobStatus,
-		processed: row.processed,
-		total: row.total,
+		processed: asNumber(row.processed),
+		total: asNumberOrNull(row.total),
 		result: row.result_json
 			? (JSON.parse(row.result_json) as Record<string, unknown>)
 			: null,

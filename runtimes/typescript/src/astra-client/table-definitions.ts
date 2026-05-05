@@ -464,6 +464,14 @@ export const CONVERSATIONS_DEFINITION = {
  * Clustered ASC by timestamp so replay/streaming reads in chronological
  * order; UI flips to display order client-side. `message_id` is a
  * non-key column for client-side dedup.
+ *
+ * `tool_id` is `text` (not `uuid`), because the runtime stores the
+ * called tool's *name* (e.g. `list_kbs`) — built-in chat tools
+ * don't have a row in `wb_config_mcp_tools_by_workspace` to point at,
+ * and the Data API rightly rejects non-UUID strings going into a
+ * `uuid` column. If we ever wire only-MCP-tool messages, this column
+ * still accepts the MCP tool's stringified UUID as the canonical
+ * tool name.
  */
 export const MESSAGES_TABLE = "wb_agentic_messages_by_conversation";
 export const MESSAGES_DEFINITION = {
@@ -475,7 +483,7 @@ export const MESSAGES_DEFINITION = {
 		role: "text", // user | agent | tool | system
 		author_id: "uuid",
 		content: "text",
-		tool_id: "uuid",
+		tool_id: "text",
 		tool_call_payload: "text",
 		tool_response: "text",
 		token_count: "int",

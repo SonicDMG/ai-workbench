@@ -291,7 +291,14 @@ export interface MessageRow {
 	role: AgentRole;
 	author_id: Uuid | null;
 	content: string | null;
-	tool_id: Uuid | null;
+	/**
+	 * Tool *name* (text), not a UUID. Built-in chat tools (e.g.
+	 * `list_kbs`) don't have a row in `wb_config_mcp_tools_by_workspace`
+	 * — the runtime stores the called tool's name here verbatim. MCP
+	 * tools, when wired, can store their stringified UUID since UUIDs
+	 * are valid text.
+	 */
+	tool_id: string | null;
 	/** Serialized JSON of the tool-call arguments for `role: "tool"` messages. */
 	tool_call_payload: string | null;
 	/** Serialized JSON of the tool's response. */
