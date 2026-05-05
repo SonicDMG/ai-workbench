@@ -4,6 +4,10 @@
  * all produce structurally identical records for identical input.
  */
 
+import {
+	defaultOnNewWorkspaceTemplates,
+	templateToCreateAgentInput,
+} from "./agent-templates.js";
 import type { CreateAgentInput } from "./store.js";
 import type {
 	AuthType,
@@ -13,6 +17,11 @@ import type {
 	RerankingConfig,
 	ServiceStatus,
 } from "./types.js";
+
+// Re-export so existing import sites for DEFAULT_AGENT_TOOL_GUIDANCE
+// (this file's prior home for it) keep resolving. The canonical home
+// is now the template catalog.
+export { DEFAULT_AGENT_TOOL_GUIDANCE } from "./agent-templates.js";
 
 /* ---- Knowledge-Base schema defaults (issue #98) ---- */
 
@@ -81,56 +90,24 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT =
  * pick up these defaults.
  */
 /**
- * Shared "how to use the workspace tools" guidance appended to every
- * default agent's persona prompt. Spelling out the tool-selection
- * heuristic in the system prompt is more reliable than hoping the
- * model infers the right tool from descriptions alone — especially
- * for `gpt-4o-mini`, which under-uses tools without explicit nudging.
+ * Derived from the template catalog
+ * ([`agent-templates.ts`](./agent-templates.ts)) by filtering on
+ * `defaultOnNewWorkspace === true`. Today: Bobby + Heidi. The
+ * dual-source-of-truth lives in the catalog so the catalog can grow
+ * (and offer opt-in personas) without changing what every fresh
+ * workspace ships with.
+ *
+ * Wire effect of POST `/api/v1/workspaces` is unchanged across this
+ * refactor — the conformance fixture
+ * [`agent-crud-basic.json`](../../../../conformance/fixtures/agent-crud-basic.json)
+ * still passes.
  */
-export const DEFAULT_AGENT_TOOL_GUIDANCE =
-	"When a question requires looking at the workspace's data, call " +
-	"the right tool rather than guessing. Quick rules of thumb: \n" +
-	"  - 'what's in my data?' / 'what knowledge bases do I have?' / " +
-	"'how many documents?' → call `summarize_kb`, `list_kbs`, or " +
-	"`count_documents`.\n" +
-	"  - 'what documents do I have?' → call `list_documents`.\n" +
-	"  - any specific content question (definitions, lookups, " +
-	"explanations) → call `search_kb` with the user's phrasing.\n" +
-	"  - asked about one specific document → call `get_document`.\n" +
-	"After a tool returns, weave its output into the answer in your " +
-	"own voice; cite individual chunks inline as `[chunk-uuid]` when " +
-	"`search_kb` results inform the reply. If a tool returns no " +
-	"results, say so plainly rather than hallucinating.";
-
 export const DEFAULT_WORKSPACE_AGENTS: readonly CreateAgentInput[] =
-	Object.freeze([
-		Object.freeze({
-			name: "Bobby",
-			description:
-				"A no-nonsense data analyst. Direct, precise, and grounded — " +
-				"Bobby gets to the point.",
-			systemPrompt:
-				"You are Bobby, a professional and firm data assistant. Be " +
-				"direct, concise, and precise. No filler, no apologies, no " +
-				"unnecessary preamble. If a tool returns nothing useful, " +
-				"say so plainly — do not speculate or hedge.\n\n" +
-				DEFAULT_AGENT_TOOL_GUIDANCE,
-		}) as CreateAgentInput,
-		Object.freeze({
-			name: "Heidi",
-			description:
-				"A friendly little ghost with a knack for digging up the " +
-				"answers that haunt your data. Warm, playful, and curious.",
-			systemPrompt:
-				"You are Heidi, a cheerful little ghost who loves helping " +
-				"users explore their data. You're warm, curious, and a touch " +
-				"whimsical — feel free to add a gentle 'boo!' or a wispy " +
-				"aside now and then — but you always finish with a clear, " +
-				"useful answer. If a tool turns up no results, fade away " +
-				"politely rather than inventing an answer.\n\n" +
-				DEFAULT_AGENT_TOOL_GUIDANCE,
-		}) as CreateAgentInput,
-	]);
+	Object.freeze(
+		defaultOnNewWorkspaceTemplates().map((t) =>
+			Object.freeze(templateToCreateAgentInput(t)),
+		),
+	);
 
 /**
  * Comparator that sorts records by `createdAt` ascending, then by `uid`

@@ -40,3 +40,4 @@ abandoned alternatives is the value of the format.
 
 - [0001 — Services domain layer (route-thin)](./0001-services-domain-layer.md)
 - [0002 — Per-aggregate repository interfaces](./0002-per-aggregate-repos.md)
+- [0003 — Agent template catalog](./0003-agent-templates.md)

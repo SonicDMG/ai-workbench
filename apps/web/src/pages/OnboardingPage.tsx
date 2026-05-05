@@ -1,7 +1,8 @@
-import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { AgentTemplateGallery } from "@/components/agents/AgentTemplateGallery";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,12 +24,13 @@ import {
 } from "@/components/workspaces/WorkspaceForm";
 import { useAstraCliInfo } from "@/hooks/useAstraCliInfo";
 import { useAstraCliInventory } from "@/hooks/useAstraCliInventory";
+import { useAgents } from "@/hooks/useConversations";
 import { useCreateWorkspace, useWorkspaces } from "@/hooks/useWorkspaces";
 import { api, formatApiError } from "@/lib/api";
 import type { WorkspaceKind } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 
-type Step = "kind" | "details";
+type Step = "kind" | "details" | "agents";
 
 export function OnboardingPage() {
 	const navigate = useNavigate();
@@ -41,6 +43,16 @@ export function OnboardingPage() {
 	const [astraCliSelection, setAstraCliSelection] =
 		useState<AstraCliSelection | null>(null);
 	const [checkingConnection, setCheckingConnection] = useState(false);
+	// Set when the workspace POST succeeds. Drives the step-3 agent
+	// gallery — without an id, there's no workspace to instantiate
+	// templates against.
+	const [createdWorkspaceId, setCreatedWorkspaceId] = useState<string | null>(
+		null,
+	);
+	// The post-create workspace already has Bobby + Heidi auto-seeded
+	// by the runtime. Surface them in the gallery as "Added" so the
+	// user knows they're not starting from zero.
+	const seededAgents = useAgents(createdWorkspaceId ?? undefined);
 
 	const isFirstRun = !workspaces || workspaces.length === 0;
 	const astraLike = kind === "astra" || kind === "hcd";
@@ -89,8 +101,12 @@ export function OnboardingPage() {
 				<Button
 					variant="ghost"
 					size="sm"
+					// Step 3 (agents) intentionally has no back-button affordance —
+					// the workspace is already created at that point and going
+					// "back" would be lying about the state.
 					onClick={() => (step === "details" ? setStep("kind") : navigate("/"))}
 					className="-ml-3"
+					disabled={step === "agents"}
 				>
 					<ArrowLeft className="h-4 w-4" />
 					{step === "details" ? "Change backend" : "Back"}
@@ -140,6 +156,13 @@ export function OnboardingPage() {
 					index={2}
 					label="Details"
 					active={step === "details"}
+					done={step === "agents"}
+				/>
+				<div className="h-px flex-1 bg-slate-200" />
+				<StepDot
+					index={3}
+					label="Agents"
+					active={step === "agents"}
 					done={false}
 				/>
 			</div>
@@ -163,6 +186,42 @@ export function OnboardingPage() {
 							onClick={() => setStep("details")}
 						>
 							Continue
+						</Button>
+					</div>
+				</Card>
+			) : null}
+
+			{step === "agents" && createdWorkspaceId ? (
+				<Card>
+					<CardHeader>
+						<div className="flex items-center gap-2">
+							<Sparkles
+								className="h-5 w-5 text-[var(--color-brand-600)]"
+								aria-hidden="true"
+							/>
+							<CardTitle>Pick your agents</CardTitle>
+						</div>
+						<CardDescription>
+							We've added <span className="font-medium">Bobby</span> and{" "}
+							<span className="font-medium">Heidi</span> to get you started.
+							Want any of these other personas too? You can always add more
+							later from the workspace's Agents page.
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<AgentTemplateGallery
+							workspaceId={createdWorkspaceId}
+							existingAgents={seededAgents.data ?? []}
+							hideRecommendedBadge
+						/>
+					</CardContent>
+					<div className="flex items-center justify-end gap-2 p-5 pt-0">
+						<Button
+							variant="brand"
+							onClick={() => navigate(`/workspaces/${createdWorkspaceId}`)}
+						>
+							Continue to workspace
+							<ArrowRight className="h-4 w-4" />
 						</Button>
 					</div>
 				</Card>
@@ -243,7 +302,11 @@ export function OnboardingPage() {
 										} finally {
 											setCheckingConnection(false);
 										}
-										navigate(`/workspaces/${ws.workspaceId}`);
+										// Pivot to step 3 instead of going straight to the
+										// workspace page so the user sees the template
+										// gallery while the workspace context is fresh.
+										setCreatedWorkspaceId(ws.workspaceId);
+										setStep("agents");
 									} catch (err) {
 										setCheckingConnection(false);
 										toast.error("Couldn't create workspace", {

@@ -36,7 +36,7 @@ describe("MessageBubble", () => {
 			<MessageBubble
 				message={makeMessage({ role: "user", content: "ping" })}
 				workspaceId="ws-1"
-				agentName="Bobbie"
+				agentName="Bobby"
 			/>,
 		);
 		expect(screen.getByText("You")).toBeInTheDocument();
@@ -51,10 +51,10 @@ describe("MessageBubble", () => {
 			<MessageBubble
 				message={makeMessage({ role: "agent", content: "pong" })}
 				workspaceId="ws-1"
-				agentName="Bobbie"
+				agentName="Bobby"
 			/>,
 		);
-		expect(screen.getByText("Bobbie")).toBeInTheDocument();
+		expect(screen.getByText("Bobby")).toBeInTheDocument();
 		// Agent reply renders through MarkdownContent, so the visible
 		// text still appears in the DOM.
 		expect(screen.getByText("pong")).toBeInTheDocument();
@@ -69,7 +69,7 @@ describe("MessageBubble", () => {
 					metadata: { finish_reason: "error" },
 				})}
 				workspaceId="ws-1"
-				agentName="Bobbie"
+				agentName="Bobby"
 			/>,
 		);
 		expect(screen.getByTestId("agent-error")).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe("MessageBubble", () => {
 					metadata: { context_chunks: contextChunks },
 				})}
 				workspaceId="ws-1"
-				agentName="Bobbie"
+				agentName="Bobby"
 			/>,
 		);
 		expect(screen.getByText(/1 source/)).toBeInTheDocument();
@@ -101,7 +101,7 @@ describe("MessageBubble", () => {
 			<MessageBubble
 				message={makeMessage({ role: "user", content: null })}
 				workspaceId="ws-1"
-				agentName="Bobbie"
+				agentName="Bobby"
 			/>,
 		);
 		expect(screen.getByText("You")).toBeInTheDocument();
@@ -170,10 +170,10 @@ describe("citationHref", () => {
 
 describe("EmptyMessages", () => {
 	it("shows the agent name in the helper copy", () => {
-		render(<EmptyMessages agentName="Bobbie" />);
+		render(<EmptyMessages agentName="Bobby" />);
 		expect(screen.getByTestId("chat-empty-messages")).toBeInTheDocument();
 		expect(screen.getByText(/No messages yet/)).toBeInTheDocument();
-		expect(screen.getByText(/Bobbie streams its replies/)).toBeInTheDocument();
+		expect(screen.getByText(/Bobby streams its replies/)).toBeInTheDocument();
 	});
 });
 
@@ -181,11 +181,11 @@ describe("AgentThinking", () => {
 	it("renders the thinking spinner with the agent name", () => {
 		render(
 			<ul>
-				<AgentThinking agentName="Bobbie" />
+				<AgentThinking agentName="Bobby" />
 			</ul>,
 		);
 		expect(screen.getByTestId("agent-thinking")).toBeInTheDocument();
-		expect(screen.getByText(/Bobbie is thinking/)).toBeInTheDocument();
+		expect(screen.getByText(/Bobby is thinking/)).toBeInTheDocument();
 	});
 });
 
@@ -193,7 +193,7 @@ describe("StreamingBubble", () => {
 	it("falls back to AgentThinking when no tokens have arrived yet", () => {
 		render(
 			<ul>
-				<StreamingBubble delta="" agentName="Bobbie" />
+				<StreamingBubble delta="" agentName="Bobby" />
 			</ul>,
 		);
 		expect(screen.getByTestId("agent-thinking")).toBeInTheDocument();
@@ -202,7 +202,7 @@ describe("StreamingBubble", () => {
 	it("renders the streaming bubble with the in-flight delta", () => {
 		render(
 			<ul>
-				<StreamingBubble delta="hello, wo" agentName="Bobbie" />
+				<StreamingBubble delta="hello, wo" agentName="Bobby" />
 			</ul>,
 		);
 		expect(screen.getByTestId("agent-streaming")).toBeInTheDocument();

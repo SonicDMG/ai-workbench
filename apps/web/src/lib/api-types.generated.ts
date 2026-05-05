@@ -1413,6 +1413,124 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/api/v1/workspaces/{workspaceId}/agent-templates": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List the agent template catalog
+		 * @description Returns the static catalog of agent templates the UI can offer for one-click agent creation. Templates are runtime data, not records — `templateId` is a stable lowercase-kebab slug. See ADR 0003.
+		 */
+		get: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description All available templates, in stable display order */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["AgentTemplateList"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/v1/workspaces/{workspaceId}/agents/from-template": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Create an agent from a catalog template
+		 * @description Instantiates the named template as a new agent in the workspace. Equivalent to POST `/agents` with the template's baked-in `name` / `description` / `systemPrompt`, but a single round-trip.
+		 */
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": components["schemas"]["CreateAgentFromTemplateInput"];
+				};
+			};
+			responses: {
+				/** @description Agent created from the template */
+				201: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["Agent"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace or template not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/api/v1/workspaces/{workspaceId}/agents/{agentId}": {
 		parameters: {
 			query?: never;
@@ -3889,6 +4007,20 @@ export interface components {
 			/** Format: uuid */
 			rerankingServiceId?: string | null;
 			rerankMaxResults?: number | null;
+		};
+		AgentTemplateList: {
+			items: components["schemas"]["AgentTemplate"][];
+		};
+		AgentTemplate: {
+			templateId: string;
+			name: string;
+			description: string;
+			persona: string;
+			systemPrompt: string;
+			defaultOnNewWorkspace: boolean;
+		};
+		CreateAgentFromTemplateInput: {
+			templateId: string;
 		};
 		UpdateAgentInput: {
 			name?: string;

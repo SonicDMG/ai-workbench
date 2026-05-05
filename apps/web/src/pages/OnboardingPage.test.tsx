@@ -17,6 +17,21 @@ vi.mock("@/hooks/useAstraCliInfo", () => ({
 vi.mock("@/hooks/useAstraCliInventory", () => ({
 	useAstraCliInventory: vi.fn(),
 }));
+vi.mock("@/hooks/useConversations", () => ({
+	// Onboarding step 3 fetches the seeded agent list to filter the
+	// template gallery; step 1/2 (covered here) never reach it.
+	useAgents: vi.fn(() => ({ data: [] })),
+	useAgentTemplates: vi.fn(() => ({
+		data: [],
+		isLoading: false,
+		isError: false,
+		error: null,
+	})),
+	useCreateAgentFromTemplate: vi.fn(() => ({
+		mutateAsync: vi.fn(),
+		isPending: false,
+	})),
+}));
 
 import { useAstraCliInfo } from "@/hooks/useAstraCliInfo";
 import { useAstraCliInventory } from "@/hooks/useAstraCliInventory";

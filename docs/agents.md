@@ -8,12 +8,11 @@ above this layer.
 
 > **Historical note.** Earlier drafts of the runtime auto-provisioned
 > a singleton "Bobbie" agent and exposed a parallel `/chats` route as
-> a thin alias. Bobbie was retired alongside the chat surface; new
-> workspaces start with zero agents and the chat UI prompts the user
-> to create their first on first visit. Existing agent rows in
-> production tables (including any that were originally Bobbie) keep
-> working — they are ordinary agent records that can be renamed or
-> deleted.
+> a thin alias. The singleton was retired and replaced with the
+> [template catalog](#template-catalog) (ADR 0003). Today's workspaces
+> are seeded with the catalog's `defaultOnNewWorkspace` templates
+> (currently Bobby + Heidi); the rest of the catalog is opt-in via
+> the UI gallery or `POST /agents/from-template`.
 
 ## Concepts
 
@@ -22,12 +21,47 @@ above this layer.
 | **Agent** | A row in `wb_agentic_agents_by_workspace`. Carries name, system / user prompts, RAG defaults (`ragEnabled`, `ragMaxResults`, `ragMinScore`, `knowledgeBaseIds`), reranker overrides, and an optional `llmServiceId` pointing at the LLM executor it uses. |
 | **Conversation** | A row in `wb_agentic_conversations_by_agent`. One conversation belongs to exactly one (workspace, agent) pair. Carries `title` and a per-conversation `knowledgeBaseIds` filter that overrides the agent's default at retrieval time. |
 | **Message** | A row in `wb_agentic_messages_by_conversation`. Same shape across all agents — `role ∈ {user, agent, system, tool}`, `metadata` carries RAG provenance / model id / finish reason. |
+| **Template** | A static catalog entry the UI can offer as a one-click agent. Identified by stable lowercase-kebab `templateId` slug. Not a record — runtime data shipped with the binary. See [Template catalog](#template-catalog). |
 
-There is no built-in agent. Workspaces start with zero agents; the
-chat UI prompts the user to create their first on first visit. When
-you delete an agent the cascade goes agent → its conversations →
-their messages. Workspace delete cascades workspace → agents →
-conversations → messages.
+Fresh workspaces are seeded with the catalog's `defaultOnNewWorkspace`
+templates (Bobby + Heidi today). When you delete an agent the cascade
+goes agent → its conversations → their messages. Workspace delete
+cascades workspace → agents → conversations → messages.
+
+## Template catalog
+
+The catalog ([`agent-templates.ts`](../runtimes/typescript/src/control-plane/agent-templates.ts))
+is a static list of personas the UI can offer as one-click agent
+creation. v1 ships with five entries:
+
+| `templateId` | Name | Default-on | Use case |
+|---|---|---|---|
+| `bobby` | Bobby | ✓ | Direct, terse data analyst |
+| `heidi` | Heidi | ✓ | Warm, exploratory ghost |
+| `maven` | Maven | — | Multi-source research synthesis |
+| `quill` | Quill | — | Concise, code-forward technical writer |
+| `sage`  | Sage  | — | Strict-grounding Q&A; declines confidently |
+
+Two HTTP routes are exposed:
+
+- `GET /api/v1/workspaces/{w}/agent-templates` — returns the full
+  catalog. Workspace-scoped for authz, but the body is workspace-
+  independent.
+- `POST /api/v1/workspaces/{w}/agents/from-template` with body
+  `{ "templateId": "..." }` — instantiates the template as a new
+  agent in the workspace. The new agent's `name`, `description`,
+  and `systemPrompt` are copied from the template; other fields
+  default to the same values as `POST /agents`.
+
+The seed step inside workspace POST uses the same catalog, filtered
+to `defaultOnNewWorkspace === true`. The wire effect of workspace
+POST is unchanged — Bobby and Heidi still appear in the seeded agent
+list — so existing API clients are unaffected.
+
+Adding a new template is a one-file change (append to
+[`agent-templates.ts`](../runtimes/typescript/src/control-plane/agent-templates.ts)
+and decide if `defaultOnNewWorkspace` should be `true`); see
+[ADR 0003](./adr/0003-agent-templates.md) for the design context.
 
 ## Data model
 

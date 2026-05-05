@@ -4,12 +4,14 @@ import {
 	MessageSquare,
 	Pencil,
 	Plus,
+	Sparkles,
 	Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { AgentForm } from "@/components/agents/AgentForm";
+import { AgentTemplateGallery } from "@/components/agents/AgentTemplateGallery";
 import { LlmServicesPanel } from "@/components/agents/LlmServicesPanel";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
@@ -112,6 +114,7 @@ function AgentsCard({ workspace }: { workspace: string }) {
 	const knowledgeBases = useKnowledgeBases(workspace);
 	const rerankingServices = useRerankingServices(workspace);
 	const [creating, setCreating] = useState(false);
+	const [templating, setTemplating] = useState(false);
 	const [editing, setEditing] = useState<AgentRecord | null>(null);
 	const [deleting, setDeleting] = useState<AgentRecord | null>(null);
 
@@ -140,10 +143,16 @@ function AgentsCard({ workspace }: { workspace: string }) {
 						LLM service binding.
 					</p>
 				</div>
-				<Button onClick={() => setCreating(true)}>
-					<Plus className="h-4 w-4" />
-					New agent
-				</Button>
+				<div className="flex items-center gap-2">
+					<Button variant="secondary" onClick={() => setTemplating(true)}>
+						<Sparkles className="h-4 w-4" />
+						From template
+					</Button>
+					<Button onClick={() => setCreating(true)}>
+						<Plus className="h-4 w-4" />
+						New agent
+					</Button>
+				</div>
 			</CardHeader>
 			<CardContent>
 				{agents.length === 0 ? (
@@ -176,6 +185,12 @@ function AgentsCard({ workspace }: { workspace: string }) {
 				llmServices={llmServices.data ?? []}
 				rerankingServices={rerankingServices.data ?? []}
 			/>
+			<TemplateGalleryDialog
+				workspace={workspace}
+				existingAgents={agents}
+				open={templating}
+				onOpenChange={setTemplating}
+			/>
 			<EditAgentDialog
 				workspace={workspace}
 				agent={editing}
@@ -190,6 +205,44 @@ function AgentsCard({ workspace }: { workspace: string }) {
 				onClose={() => setDeleting(null)}
 			/>
 		</Card>
+	);
+}
+
+function TemplateGalleryDialog({
+	workspace,
+	existingAgents,
+	open,
+	onOpenChange,
+}: {
+	workspace: string;
+	existingAgents: AgentRecord[];
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+}) {
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="max-w-2xl">
+				<DialogHeader>
+					<DialogTitle>Add an agent from the template catalog</DialogTitle>
+					<DialogDescription>
+						Templates ship with a tuned persona and tool-use guidance. Pick one
+						to instantiate it as a new agent in this workspace — you can edit or
+						delete it after.
+					</DialogDescription>
+				</DialogHeader>
+				<div className="max-h-[60vh] overflow-y-auto pr-1">
+					<AgentTemplateGallery
+						workspaceId={workspace}
+						existingAgents={existingAgents}
+					/>
+				</div>
+				<DialogFooter>
+					<Button variant="ghost" onClick={() => onOpenChange(false)}>
+						Done
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }
 

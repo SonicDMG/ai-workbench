@@ -36,7 +36,7 @@ by filter.
 | `kb.create` | `POST /api/v1/workspaces/{w}/knowledge-bases` | Provisions an Astra collection — destructive on rollback. Includes `knowledgeBaseId` + `label`. |
 | `kb.delete` | `DELETE /api/v1/workspaces/{w}/knowledge-bases/{kb}` | Cascades the underlying collection drop and all rag-document rows. Emitted **after** the cascade. |
 | `document.delete` | `DELETE /api/v1/workspaces/{w}/knowledge-bases/{kb}/documents/{d}` | Cascades chunk wipe before the row drop. Includes `knowledgeBaseId` + `documentId`. |
-| `agent.create` | `POST /api/v1/workspaces/{w}/agents` | Includes `agentId` + `label`. |
+| `agent.create` | `POST /api/v1/workspaces/{w}/agents` or `POST /api/v1/workspaces/{w}/agents/from-template` | Includes `agentId` + `label`. The from-template variant additionally includes `templateId` (the catalog slug). |
 | `agent.delete` | `DELETE /api/v1/workspaces/{w}/agents/{a}` | Cascades conversations + chat messages owned by the agent. Emitted **after** the cascade. |
 | `job.claim` | Cross-replica orphan reclaim in `jobs/sweeper.ts` | Emitted when a replica successfully CAS-claims an orphaned job. Includes `jobId` + `jobKind`. Subject is the replica id (synthetic), not a user. |
 | `mcp.invoke` | Any tool call into `/api/v1/workspaces/{w}/mcp` | Includes the `toolName`. Argument payloads are not logged. |

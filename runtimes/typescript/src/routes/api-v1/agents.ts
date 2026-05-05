@@ -18,6 +18,11 @@ import {
 } from "../../chat/agent-dispatch.js";
 import type { ChatService } from "../../chat/types.js";
 import type { ChatConfig } from "../../config/schema.js";
+import {
+	AGENT_TEMPLATES,
+	findAgentTemplate,
+	templateToCreateAgentInput,
+} from "../../control-plane/agent-templates.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type {
@@ -37,10 +42,12 @@ import {
 	AgentIdParamSchema,
 	AgentPageSchema,
 	AgentRecordSchema,
+	AgentTemplateListSchema,
 	ChatMessagePageSchema,
 	ConversationIdParamSchema,
 	ConversationPageSchema,
 	ConversationRecordSchema,
+	CreateAgentFromTemplateInputSchema,
 	CreateAgentInputSchema,
 	CreateConversationInputSchema,
 	MessageStreamEventSchema,
@@ -138,6 +145,99 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 				outcome: "success",
 				workspaceId,
 				details: { agentId: record.agentId, label: record.name },
+			});
+			return c.json(toAgentWire(record), 201);
+		},
+	);
+
+	/* ---- Agent templates (catalog + instantiation) ---- */
+
+	// Registered BEFORE the `:agentId` paths below so the literal
+	// `from-template` and `agent-templates` segments match first. The
+	// catalog itself is workspace-independent runtime data, but the
+	// route is mounted under `/{workspaceId}/...` so it inherits the
+	// existing workspace-scoped authz check.
+
+	app.openapi(
+		createRoute({
+			method: "get",
+			path: "/{workspaceId}/agent-templates",
+			tags: ["agents"],
+			summary: "List the agent template catalog",
+			description:
+				"Returns the static catalog of agent templates the UI can offer for one-click agent creation. Templates are runtime data, not records — `templateId` is a stable lowercase-kebab slug. See ADR 0003.",
+			request: {
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
+			},
+			responses: {
+				200: {
+					content: {
+						"application/json": { schema: AgentTemplateListSchema },
+					},
+					description: "All available templates, in stable display order",
+				},
+				...errorResponse(404, "Workspace not found"),
+			},
+		}),
+		async (c) => {
+			const { workspaceId } = c.req.valid("param");
+			const ws = await store.getWorkspace(workspaceId);
+			if (!ws) throw new ControlPlaneNotFoundError("workspace", workspaceId);
+			return c.json({ items: [...AGENT_TEMPLATES] }, 200);
+		},
+	);
+
+	app.openapi(
+		createRoute({
+			method: "post",
+			path: "/{workspaceId}/agents/from-template",
+			tags: ["agents"],
+			summary: "Create an agent from a catalog template",
+			description:
+				"Instantiates the named template as a new agent in the workspace. Equivalent to POST `/agents` with the template's baked-in `name` / `description` / `systemPrompt`, but a single round-trip.",
+			request: {
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
+				body: {
+					content: {
+						"application/json": {
+							schema: CreateAgentFromTemplateInputSchema,
+						},
+					},
+				},
+			},
+			responses: {
+				201: {
+					content: { "application/json": { schema: AgentRecordSchema } },
+					description: "Agent created from the template",
+				},
+				...errorResponse(404, "Workspace or template not found"),
+			},
+		}),
+		async (c) => {
+			const { workspaceId } = c.req.valid("param");
+			const { templateId } = c.req.valid("json");
+
+			const ws = await store.getWorkspace(workspaceId);
+			if (!ws) throw new ControlPlaneNotFoundError("workspace", workspaceId);
+
+			const template = findAgentTemplate(templateId);
+			if (!template) {
+				throw new ControlPlaneNotFoundError("agent_template", templateId);
+			}
+
+			const record = await store.createAgent(
+				workspaceId,
+				templateToCreateAgentInput(template),
+			);
+			audit(c, {
+				action: "agent.create",
+				outcome: "success",
+				workspaceId,
+				details: {
+					agentId: record.agentId,
+					label: record.name,
+					templateId,
+				},
 			});
 			return c.json(toAgentWire(record), 201);
 		},

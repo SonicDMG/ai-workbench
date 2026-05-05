@@ -14,7 +14,17 @@ vi.mock("@/hooks/useWorkspaces", () => ({
 }));
 vi.mock("@/hooks/useConversations", () => ({
 	useAgents: vi.fn(),
+	useAgentTemplates: vi.fn(() => ({
+		data: [],
+		isLoading: false,
+		isError: false,
+		error: null,
+	})),
 	useCreateAgent: vi.fn(),
+	useCreateAgentFromTemplate: vi.fn(() => ({
+		mutateAsync: vi.fn(),
+		isPending: false,
+	})),
 	useConversations: vi.fn(),
 	useCreateConversation: vi.fn(),
 	useConversation: vi.fn(),

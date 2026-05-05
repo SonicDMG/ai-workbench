@@ -27,6 +27,10 @@ export const keys = {
 		detail: (workspaceId: string, agentId: string) =>
 			["workspaces", workspaceId, "agents", agentId] as const,
 	},
+	agentTemplates: {
+		all: (workspaceId: string) =>
+			["workspaces", workspaceId, "agent-templates"] as const,
+	},
 	conversations: {
 		all: (workspaceId: string, agentId: string) =>
 			["workspaces", workspaceId, "agents", agentId, "conversations"] as const,

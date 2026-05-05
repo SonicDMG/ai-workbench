@@ -11,6 +11,7 @@ import { sendConversationStream } from "@/lib/chatStream";
 import { keys } from "@/lib/query";
 import type {
 	AgentRecord,
+	AgentTemplate,
 	ChatMessage,
 	ConversationRecord,
 	CreateAgentInput,
@@ -91,6 +92,46 @@ export function useDeleteAgent(
 				queryKey: keys.conversations.all(workspaceId, agentId),
 			});
 			qc.invalidateQueries({ queryKey: keys.agents.all(workspaceId) });
+		},
+	});
+}
+
+/* -------- Agent templates (catalog + instantiate) -------- */
+
+/**
+ * Cached fetch of the static agent template catalog. The catalog is
+ * workspace-independent on the runtime side, but the route is
+ * workspace-scoped for authz consistency. We let TanStack Query
+ * cache per-workspace — same body, but the cache key still aligns
+ * with the workspace navigation.
+ */
+export function useAgentTemplates(
+	workspaceId: string | undefined,
+): UseQueryResult<AgentTemplate[], Error> {
+	return useQuery({
+		queryKey: workspaceId
+			? keys.agentTemplates.all(workspaceId)
+			: ["agent-templates", "disabled"],
+		queryFn: () => api.listAgentTemplates(workspaceId as string),
+		enabled: Boolean(workspaceId),
+		// The catalog is shipped with the binary — no point re-fetching
+		// it on a window focus. A 5-minute stale window keeps the round
+		// trip count down while still letting a deploy-time catalog
+		// change propagate within a session.
+		staleTime: 5 * 60 * 1000,
+	});
+}
+
+export function useCreateAgentFromTemplate(
+	workspaceId: string,
+): UseMutationResult<AgentRecord, Error, string> {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (templateId: string) =>
+			api.createAgentFromTemplate(workspaceId, templateId),
+		onSuccess: (agent) => {
+			qc.invalidateQueries({ queryKey: keys.agents.all(workspaceId) });
+			qc.setQueryData(keys.agents.detail(workspaceId, agent.agentId), agent);
 		},
 	});
 }

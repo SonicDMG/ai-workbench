@@ -563,6 +563,34 @@ export const UpdateAgentInputSchema = z
 	.strict();
 export type UpdateAgentInput = z.infer<typeof UpdateAgentInputSchema>;
 
+/**
+ * Agent template catalog entry. Static runtime data — `templateId` is
+ * a stable lowercase-kebab slug, not a UUID. Backed by ADR 0003 on
+ * the runtime side.
+ */
+export const AgentTemplateSchema = z.object({
+	templateId: z.string().min(1),
+	name: z.string().min(1),
+	description: z.string(),
+	persona: z.string(),
+	systemPrompt: z.string(),
+	defaultOnNewWorkspace: z.boolean(),
+});
+export type AgentTemplate = z.infer<typeof AgentTemplateSchema>;
+
+export const AgentTemplateListSchema = z.object({
+	items: z.array(AgentTemplateSchema),
+});
+
+export const CreateAgentFromTemplateInputSchema = z
+	.object({
+		templateId: z.string().min(1),
+	})
+	.strict();
+export type CreateAgentFromTemplateInput = z.infer<
+	typeof CreateAgentFromTemplateInputSchema
+>;
+
 export const ConversationRecordSchema = z.object({
 	workspaceId: z.string().uuid(),
 	agentId: z.string().uuid(),

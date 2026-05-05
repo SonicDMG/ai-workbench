@@ -72,6 +72,8 @@ export interface AuditDetails {
 	readonly documentId?: string;
 	/** Agent id (workspace-scoped). */
 	readonly agentId?: string;
+	/** Agent template slug, when an agent was instantiated from the catalog. */
+	readonly templateId?: string;
 	/** Job id (workspace-scoped). */
 	readonly jobId?: string;
 	/** Job kind, e.g. "ingest". */

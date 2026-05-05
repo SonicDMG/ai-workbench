@@ -9,7 +9,7 @@ function makeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
 	return {
 		workspaceId: "00000000-0000-4000-8000-000000000001",
 		agentId: `agent-${Math.random()}`,
-		name: "Bobbie",
+		name: "Bobby",
 		description: null,
 		systemPrompt: null,
 		userPrompt: null,

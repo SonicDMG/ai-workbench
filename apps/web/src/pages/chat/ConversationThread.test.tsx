@@ -87,7 +87,7 @@ function makeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
 	return {
 		workspaceId: "00000000-0000-4000-8000-000000000001",
 		agentId: "00000000-0000-4000-8000-000000000002",
-		name: "Bobbie",
+		name: "Bobby",
 		description: null,
 		systemPrompt: null,
 		userPrompt: null,
@@ -197,13 +197,13 @@ describe("ConversationThread", () => {
 		renderInRouter(
 			<ConversationThread
 				workspaceId="ws-1"
-				agent={makeAgent({ name: "Bobbie" })}
+				agent={makeAgent({ name: "Bobby" })}
 				conversationId="conv-1"
 				onDeleted={() => {}}
 			/>,
 		);
 		expect(screen.getByTestId("chat-empty-messages")).toBeInTheDocument();
-		expect(screen.getByText(/Bobbie streams its replies/)).toBeInTheDocument();
+		expect(screen.getByText(/Bobby streams its replies/)).toBeInTheDocument();
 	});
 
 	it("renders one MessageBubble per persisted message", () => {
@@ -223,7 +223,7 @@ describe("ConversationThread", () => {
 		renderInRouter(
 			<ConversationThread
 				workspaceId="ws-1"
-				agent={makeAgent({ name: "Bobbie" })}
+				agent={makeAgent({ name: "Bobby" })}
 				conversationId="conv-1"
 				onDeleted={() => {}}
 			/>,
@@ -396,13 +396,13 @@ describe("ConversationThread", () => {
 		renderInRouter(
 			<ConversationThread
 				workspaceId="ws-1"
-				agent={makeAgent({ name: "Bobbie" })}
+				agent={makeAgent({ name: "Bobby" })}
 				conversationId="conv-1"
 				onDeleted={() => {}}
 			/>,
 		);
 		expect(
-			screen.getByText(/Grounded in: Bobbie's default knowledge bases/),
+			screen.getByText(/Grounded in: Bobby's default knowledge bases/),
 		).toBeInTheDocument();
 	});
 });
@@ -412,12 +412,12 @@ describe("EmptyConversationPane", () => {
 		renderInRouter(
 			<EmptyConversationPane
 				workspaceId="ws-1"
-				agent={makeAgent({ name: "Bobbie" })}
+				agent={makeAgent({ name: "Bobby" })}
 				onCreated={() => {}}
 			/>,
 		);
 		expect(screen.getByText(/Pick a conversation/)).toBeInTheDocument();
-		expect(screen.getByText("Bobbie")).toBeInTheDocument();
+		expect(screen.getByText("Bobby")).toBeInTheDocument();
 	});
 
 	it("creates a fresh conversation and forwards it to onCreated", async () => {

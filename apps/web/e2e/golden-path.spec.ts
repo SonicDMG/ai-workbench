@@ -45,14 +45,24 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	await page.getByLabel("Name").fill(workspaceName);
 	await page.getByRole("button", { name: "Create workspace" }).click();
 
-	// 4. Land on workspace detail; capture ID for API calls.
+	// 4. Workspace POST succeeded; the onboarding flow now stops on
+	//    the "Pick your agents" template-gallery step (ADR 0003,
+	//    PR #174). The user can opt into more templates here, but
+	//    Bobby + Heidi are already auto-seeded, so the golden path
+	//    just clicks straight through to the workspace.
+	await expect(
+		page.getByRole("heading", { name: "Pick your agents" }),
+	).toBeVisible();
+	await page.getByRole("button", { name: /Continue to workspace/ }).click();
+
+	// 5. Land on workspace detail; capture ID for API calls.
 	await expect(page).toHaveURL(/\/workspaces\/[0-9a-f-]{36}/);
 	const workspaceId = page.url().split("/").pop() as string;
 	await expect(
 		page.getByRole("heading", { name: workspaceName }),
 	).toBeVisible();
 
-	// 5. Create the chunking + embedding services + knowledge base via
+	// 6. Create the chunking + embedding services + knowledge base via
 	//    API. The UI flow for these is a multi-dialog walk that's
 	//    covered by component-level tests; here we just need a
 	//    KB to query against.
@@ -96,7 +106,7 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	const kb = await kbRes.json();
 	const knowledgeBaseId = kb.knowledgeBaseId as string;
 
-	// 6. Drop straight to the data-plane upsert endpoint — direct
+	// 7. Drop straight to the data-plane upsert endpoint — direct
 	//    upsert is the contract we're proving here.
 	const upsert = await request.post(
 		`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/records`,
@@ -115,7 +125,7 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	);
 	expect(upsert.ok()).toBe(true);
 
-	// 7. Navigate to the KB-scoped playground via a fresh load. We
+	// 8. Navigate to the KB-scoped playground via a fresh load. We
 	//    deliberately use `page.goto` instead of clicking through the
 	//    UI: the services + KB were created via the `request` fixture,
 	//    which is invisible to the page's React Query cache until a
@@ -125,16 +135,16 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	);
 	await expect(page.getByRole("heading", { name: "Playground" })).toBeVisible();
 
-	// 8. Switch to the Vector tab and paste a matching vector.
+	// 9. Switch to the Vector tab and paste a matching vector.
 	await page.getByRole("button", { name: "Vector", exact: true }).click();
 	await page.getByLabel(/Vector \(/).fill("[1, 0, 0, 0]");
 
-	// 9. Run the query — both rows visible.
+	// 10. Run the query — both rows visible.
 	await page.getByRole("button", { name: /Run query/ }).click();
 	await expect(page.getByText(/alpha/, { exact: false })).toBeVisible();
 	await expect(page.getByText(/bravo/, { exact: false })).toBeVisible();
 
-	// 10. Cover the text lane. Upsert two records by `text` — the
+	// 11. Cover the text lane. Upsert two records by `text` — the
 	//     runtime client-side embeds them through the mock embedder,
 	//     producing deterministic vectors. Querying with the same text
 	//     deterministically retrieves the matching record at cosine 1.0.
@@ -159,7 +169,7 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	);
 	expect(textUpsert.ok(), `text upsert: ${await textUpsert.text()}`).toBe(true);
 
-	// 11. Switch back to the Text tab (default, but the previous step
+	// 12. Switch back to the Text tab (default, but the previous step
 	//     left us on Vector) and query with one of the upserted texts.
 	//     The mock embedder hashes both the upserted text and the
 	//     query text identically → cosine 1.0 → that record is the top

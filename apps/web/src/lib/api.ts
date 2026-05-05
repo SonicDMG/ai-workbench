@@ -6,6 +6,8 @@ import {
 	AgentPageSchema,
 	type AgentRecord,
 	AgentRecordSchema,
+	type AgentTemplate,
+	AgentTemplateListSchema,
 	ApiKeyPageSchema,
 	type ApiKeyRecord,
 	type AstraCliInfo,
@@ -609,6 +611,25 @@ export const api = {
 			`/workspaces/${workspaceId}/agents/${agentId}`,
 			{ method: "DELETE" },
 			null,
+		),
+
+	/* -------- Agent templates (catalog) -------- */
+
+	listAgentTemplates: (workspaceId: string): Promise<AgentTemplate[]> =>
+		request(
+			`/workspaces/${workspaceId}/agent-templates`,
+			{ method: "GET" },
+			AgentTemplateListSchema,
+		).then((res) => res.items),
+
+	createAgentFromTemplate: (
+		workspaceId: string,
+		templateId: string,
+	): Promise<AgentRecord> =>
+		request(
+			`/workspaces/${workspaceId}/agents/from-template`,
+			{ method: "POST", body: JSON.stringify({ templateId }) },
+			AgentRecordSchema,
 		),
 
 	/* -------- Conversations (agent-scoped) -------- */

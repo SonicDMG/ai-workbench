@@ -19,13 +19,16 @@ vi.mock("sonner", () => ({
 	toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-import { CreateFirstAgent } from "./CreateFirstAgent";
+// We test the custom-form path directly, since the wrapper now defaults
+// to the AgentTemplateGallery view (covered by its own tests). Both
+// paths share the create-agent mutation and toast wiring.
+import { CustomAgentForm as CreateFirstAgent } from "./CreateFirstAgent";
 
 function makeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
 	return {
 		workspaceId: "00000000-0000-4000-8000-000000000001",
 		agentId: "agent-1",
-		name: "Bobbie",
+		name: "Bobby",
 		description: null,
 		systemPrompt: null,
 		userPrompt: null,
@@ -56,7 +59,7 @@ describe("CreateFirstAgent", () => {
 	it("enables the Create button once a non-blank name is entered", async () => {
 		const user = userEvent.setup();
 		render(<CreateFirstAgent workspaceId="ws-1" onCreated={() => {}} />);
-		await user.type(screen.getByLabelText("Name"), "Bobbie");
+		await user.type(screen.getByLabelText("Name"), "Bobby");
 		expect(
 			screen.getByRole("button", { name: /Create agent/ }),
 		).not.toBeDisabled();
@@ -64,18 +67,18 @@ describe("CreateFirstAgent", () => {
 
 	it("submits the trimmed name + system prompt and forwards the new agentId", async () => {
 		const user = userEvent.setup();
-		const created = makeAgent({ agentId: "newly-created", name: "Bobbie" });
+		const created = makeAgent({ agentId: "newly-created", name: "Bobby" });
 		createState.mutateAsync = vi.fn().mockResolvedValue(created);
 		const onCreated = vi.fn();
 
 		render(<CreateFirstAgent workspaceId="ws-1" onCreated={onCreated} />);
-		await user.type(screen.getByLabelText("Name"), "  Bobbie  ");
+		await user.type(screen.getByLabelText("Name"), "  Bobby  ");
 		await user.type(screen.getByLabelText(/System prompt/), "  Be helpful  ");
 		await user.click(screen.getByRole("button", { name: /Create agent/ }));
 
 		await waitFor(() => {
 			expect(createState.mutateAsync).toHaveBeenCalledWith({
-				name: "Bobbie",
+				name: "Bobby",
 				systemPrompt: "Be helpful",
 			});
 		});
@@ -88,11 +91,11 @@ describe("CreateFirstAgent", () => {
 			.fn()
 			.mockResolvedValue(makeAgent({ agentId: "x" }));
 		render(<CreateFirstAgent workspaceId="ws-1" onCreated={() => {}} />);
-		await user.type(screen.getByLabelText("Name"), "Bobbie");
+		await user.type(screen.getByLabelText("Name"), "Bobby");
 		await user.click(screen.getByRole("button", { name: /Create agent/ }));
 		await waitFor(() => {
 			expect(createState.mutateAsync).toHaveBeenCalledWith({
-				name: "Bobbie",
+				name: "Bobby",
 				systemPrompt: null,
 			});
 		});
