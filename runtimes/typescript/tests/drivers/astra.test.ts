@@ -423,3 +423,169 @@ describe("AstraVectorStoreDriver hybrid + rerank", () => {
 		expect("rerank" in driver).toBe(false);
 	});
 });
+
+describe("AstraVectorStoreDriver ANN over-fetch (recall)", () => {
+	// Astra's vector index is approximate. The driver over-fetches a
+	// wider candidate pool and truncates to the caller's `topK` so
+	// small-K queries don't miss the actual nearest neighbor — the
+	// production symptom users observe as "topK=5 didn't include the
+	// highest-score doc, but topK=10 did." These tests pin the
+	// over-fetch limit + the post-fetch defensive sort + the
+	// truncate-to-K contract.
+
+	const workspace: WorkspaceRecord = {
+		uid: "00000000-0000-0000-0000-000000000000",
+		name: "w",
+		url: "https://fake.example",
+		kind: "astra",
+		credentials: { token: "env:TEST_ASTRA_TOKEN" },
+		keyspace: null,
+		createdAt: "2026-04-23T00:00:00.000Z",
+		updatedAt: "2026-04-23T00:00:00.000Z",
+	};
+	const descriptor: VectorStoreRecord = {
+		workspace: workspace.uid,
+		uid: "00000000-0000-0000-0000-000000000001",
+		name: "vs_recall",
+		vectorDimension: 4,
+		vectorSimilarity: "cosine",
+		embedding: {
+			provider: "mock",
+			model: "mock",
+			endpoint: null,
+			dimension: 4,
+			secretRef: null,
+		},
+		lexical: { enabled: false, analyzer: null, options: {} },
+		reranking: {
+			enabled: false,
+			provider: null,
+			model: null,
+			endpoint: null,
+			secretRef: null,
+		},
+		createdAt: "2026-04-23T00:00:00.000Z",
+		updatedAt: "2026-04-23T00:00:00.000Z",
+	};
+
+	function setupDriver() {
+		process.env.TEST_ASTRA_TOKEN = "t";
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const fakeDb = new FakeDb();
+		const driver = new AstraVectorStoreDriver({
+			secrets,
+			dbFactory: () => fakeDb,
+		});
+		return { driver, fakeDb };
+	}
+
+	function findCalls(
+		fakeDb: FakeDb,
+		collection: string,
+	): Array<{ limit?: number }> {
+		const coll = fakeDb.getCollection(collection);
+		return (coll?.findCalls ?? []).map((c) => ({ limit: c.opts?.limit }));
+	}
+
+	function collectionName(descriptor: VectorStoreRecord): string {
+		// Mirror the driver's naming function used inside store.ts.
+		// `descriptor.name` is an Astra-valid identifier here, so the
+		// driver uses it directly instead of falling back to the
+		// `vs_<uid>` form.
+		return descriptor.name;
+	}
+
+	test("search over-fetches with limit ≥ RECALL_FLOOR even for tiny topK", async () => {
+		const { driver, fakeDb } = setupDriver();
+		try {
+			await driver.createCollection({ workspace, descriptor });
+			await driver.upsert({ workspace, descriptor }, [
+				{ id: "a", vector: [1, 0, 0, 0] },
+				{ id: "b", vector: [0, 1, 0, 0] },
+				{ id: "c", vector: [0, 0, 1, 0] },
+			]);
+			await driver.search(
+				{ workspace, descriptor },
+				{ vector: [1, 0, 0, 0], topK: 1 },
+			);
+			const calls = findCalls(fakeDb, collectionName(descriptor));
+			// Last find call is the search itself. Astra-side limit
+			// must exceed the caller's topK to widen ANN recall.
+			const last = calls[calls.length - 1];
+			expect(last?.limit ?? 0).toBeGreaterThanOrEqual(50);
+			expect(last?.limit ?? 0).toBeGreaterThan(1);
+		} finally {
+			delete process.env.TEST_ASTRA_TOKEN;
+		}
+	});
+
+	test("search truncates to topK after over-fetch", async () => {
+		const { driver } = setupDriver();
+		try {
+			await driver.createCollection({ workspace, descriptor });
+			await driver.upsert({ workspace, descriptor }, [
+				{ id: "a", vector: [1, 0, 0, 0] },
+				{ id: "b", vector: [0, 1, 0, 0] },
+				{ id: "c", vector: [0, 0, 1, 0] },
+				{ id: "d", vector: [0, 0, 0, 1] },
+			]);
+			const hits = await driver.search(
+				{ workspace, descriptor },
+				{ vector: [1, 0, 0, 0], topK: 2 },
+			);
+			expect(hits).toHaveLength(2);
+			expect(hits[0]?.id).toBe("a");
+		} finally {
+			delete process.env.TEST_ASTRA_TOKEN;
+		}
+	});
+
+	test("search hits come back in descending similarity order even when input is shuffled", async () => {
+		// Insert in non-monotone order; defensive sort in the driver
+		// should still produce descending-by-score output regardless
+		// of any future SDK ordering quirk.
+		const { driver } = setupDriver();
+		try {
+			await driver.createCollection({ workspace, descriptor });
+			await driver.upsert({ workspace, descriptor }, [
+				{ id: "low", vector: [0, 0, 0, 1] },
+				{ id: "high", vector: [1, 0, 0, 0] },
+				{ id: "mid", vector: [0.7, 0.3, 0, 0] },
+			]);
+			const hits = await driver.search(
+				{ workspace, descriptor },
+				{ vector: [1, 0, 0, 0], topK: 3 },
+			);
+			expect(hits.map((h) => h.id)).toEqual(["high", "mid", "low"]);
+			for (let i = 0; i < hits.length - 1; i++) {
+				const a = hits[i]?.score ?? 0;
+				const b = hits[i + 1]?.score ?? 0;
+				expect(a).toBeGreaterThanOrEqual(b);
+			}
+		} finally {
+			delete process.env.TEST_ASTRA_TOKEN;
+		}
+	});
+
+	test("over-fetch limit caps at the per-page ceiling for very large topK", async () => {
+		const { driver, fakeDb } = setupDriver();
+		try {
+			await driver.createCollection({ workspace, descriptor });
+			await driver.upsert({ workspace, descriptor }, [
+				{ id: "a", vector: [1, 0, 0, 0] },
+			]);
+			// topK well above the ceiling. The driver must clamp the
+			// over-fetch to the per-page ceiling so we don't ask Astra
+			// for more than it'll serve.
+			await driver.search(
+				{ workspace, descriptor },
+				{ vector: [1, 0, 0, 0], topK: 500 },
+			);
+			const calls = findCalls(fakeDb, collectionName(descriptor));
+			const last = calls[calls.length - 1];
+			expect(last?.limit).toBe(1000);
+		} finally {
+			delete process.env.TEST_ASTRA_TOKEN;
+		}
+	});
+});

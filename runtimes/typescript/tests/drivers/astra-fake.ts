@@ -63,8 +63,23 @@ function cosine(a: readonly number[], b: readonly number[]): number {
 	return denom === 0 ? 0 : dot / denom;
 }
 
-class FakeCollection implements AstraCollectionLike {
+export class FakeCollection implements AstraCollectionLike {
 	readonly docs = new Map<string, Record<string, unknown>>();
+	/**
+	 * Call log for `find()`. Tests inspect this to confirm the driver
+	 * over-fetched (passed `limit` > caller's topK) for ANN recall.
+	 */
+	readonly findCalls: Array<{
+		filter: Record<string, unknown>;
+		opts:
+			| {
+					sort?: Record<string, unknown>;
+					limit?: number;
+					includeSimilarity?: boolean;
+					projection?: Record<string, unknown>;
+			  }
+			| undefined;
+	}> = [];
 
 	constructor(
 		readonly name: string,
@@ -103,6 +118,7 @@ class FakeCollection implements AstraCollectionLike {
 			projection?: Record<string, unknown>;
 		},
 	) {
+		this.findCalls.push({ filter, opts });
 		const sortVec = (opts?.sort?.$vector as number[] | undefined) ?? null;
 		const sortText = (opts?.sort?.$vectorize as string | undefined) ?? null;
 		// $vectorize on a non-service collection: refuse the same way
@@ -270,6 +286,14 @@ export class FakeDb implements AstraDbLike {
 		name: string;
 		opts: AstraCollectionHandleOptions | undefined;
 	}> = [];
+
+	/**
+	 * Look up a previously-created collection so tests can read its
+	 * `findCalls` log to assert on `find()` options the driver passed.
+	 */
+	getCollection(name: string): FakeCollection | undefined {
+		return this.collections.get(name);
+	}
 
 	async createCollection(
 		name: string,

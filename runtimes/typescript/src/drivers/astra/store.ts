@@ -75,6 +75,34 @@ function mapAstraMetric(
 	}
 }
 
+/**
+ * ANN over-fetch tuning. Astra's vector index is approximate (HNSW-
+ * style graph), and the candidate-pool size scales with the query
+ * `limit`. Asking for `limit: 5` runs a narrower graph search than
+ * `limit: 50` and can miss the actual top-1 — a real production
+ * symptom users observe as "the highest-score doc shows up at K=10
+ * but not at K=5."
+ *
+ * We over-fetch internally and truncate to the caller's `topK` after
+ * a defensive descending-similarity sort. The multiplier widens the
+ * graph search; the floor protects very small K values from
+ * pathological recall; the cap respects Astra's per-page limit.
+ *
+ * Trade-off: more bytes on the wire and slightly more work on the
+ * Astra side. For chunk-sized payloads this is sub-millisecond and
+ * not user-visible; the recall improvement is the user-visible win.
+ */
+const RECALL_MULTIPLIER = 4;
+const RECALL_FLOOR = 50;
+const RECALL_CEILING = 1000;
+
+function recallFetchLimit(topK: number): number {
+	return Math.min(
+		Math.max(topK * RECALL_MULTIPLIER, RECALL_FLOOR),
+		RECALL_CEILING,
+	);
+}
+
 /** Translate an Astra doc `{ _id, $vector, $similarity, ...payload }`
  *  into a `SearchHit`. Reused by both `search` and `searchByText`. */
 function toHit(
@@ -517,13 +545,22 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 		const coll = (await this.getDb(ctx.workspace)).collection(
 			collectionName(ctx.descriptor),
 		);
+		// Over-fetch + truncate. See RECALL_MULTIPLIER comment above.
 		const cursor = coll.find(req.filter ?? {}, {
 			sort: { $vector: [...req.vector] },
-			limit: topK,
+			limit: recallFetchLimit(topK),
 			includeSimilarity: true,
 		});
 		const docs = await cursor.toArray();
-		return docs.map((doc) => toHit(doc, req.includeEmbeddings));
+		// Defensive descending-similarity sort. astra-db-ts is documented
+		// to return descending; we re-sort here so the contract is
+		// pinned at our layer regardless of any future SDK change.
+		docs.sort((a, b) => {
+			const sa = typeof a.$similarity === "number" ? a.$similarity : 0;
+			const sb = typeof b.$similarity === "number" ? b.$similarity : 0;
+			return sb - sa;
+		});
+		return docs.slice(0, topK).map((doc) => toHit(doc, req.includeEmbeddings));
 	}
 
 	/**
@@ -598,13 +635,21 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 			embeddingApiKey,
 		});
 		try {
+			// Over-fetch + truncate. See RECALL_MULTIPLIER comment above.
 			const cursor = coll.find(req.filter ?? {}, {
 				sort: { $vectorize: req.text },
-				limit: topK,
+				limit: recallFetchLimit(topK),
 				includeSimilarity: true,
 			});
 			const docs = await cursor.toArray();
-			return docs.map((doc) => toHit(doc, req.includeEmbeddings));
+			docs.sort((a, b) => {
+				const sa = typeof a.$similarity === "number" ? a.$similarity : 0;
+				const sb = typeof b.$similarity === "number" ? b.$similarity : 0;
+				return sb - sa;
+			});
+			return docs
+				.slice(0, topK)
+				.map((doc) => toHit(doc, req.includeEmbeddings));
 		} catch (err) {
 			// Some tenants have collections created without the service
 			// block (pre-vectorize, or by a different tool). Translate
