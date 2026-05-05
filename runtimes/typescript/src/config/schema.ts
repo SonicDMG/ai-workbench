@@ -298,7 +298,12 @@ const ControlPlaneSchema = z.discriminatedUnion("driver", [
 		driver: z.literal("astra"),
 		endpoint: z.string().url(),
 		tokenRef: SecretRef,
-		keyspace: z.string().min(1).default("workbench"),
+		// `default_keyspace` is what Astra DB auto-creates on every new
+		// database, so out-of-the-box deployments don't have to pre-
+		// create a keyspace before the runtime can boot. Override per
+		// deployment if you'd rather isolate workbench tables in a
+		// dedicated keyspace.
+		keyspace: z.string().min(1).default("default_keyspace"),
 		jobsResume: JobsResumeSchema.optional(),
 		/**
 		 * Cross-replica job-subscriber poll interval, ms. Each Astra
@@ -398,7 +403,7 @@ function defaultControlPlane(): z.infer<typeof ControlPlaneSchema> {
 			driver: "astra",
 			endpoint,
 			tokenRef: "env:ASTRA_DB_APPLICATION_TOKEN",
-			keyspace: process.env.ASTRA_DB_KEYSPACE ?? "workbench",
+			keyspace: process.env.ASTRA_DB_KEYSPACE ?? "default_keyspace",
 			jobPollIntervalMs: 500,
 		};
 	}

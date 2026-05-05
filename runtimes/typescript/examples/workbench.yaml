@@ -25,7 +25,11 @@
 #     driver: astra
 #     endpoint: https://<id>-<region>.apps.astra.datastax.com
 #     tokenRef: env:ASTRA_DB_APPLICATION_TOKEN
-#     keyspace: workbench
+#     keyspace: default_keyspace   # Astra DB auto-creates this on
+#                                  # every new database; override
+#                                  # with a dedicated keyspace if
+#                                  # you'd rather isolate workbench
+#                                  # tables from other workloads.
 #
 # See docs/configuration.md for the full reference.
 

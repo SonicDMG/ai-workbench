@@ -54,7 +54,10 @@ describe("ConfigSchema", () => {
 				expect(cfg.controlPlane.tokenRef).toBe(
 					"env:ASTRA_DB_APPLICATION_TOKEN",
 				);
-				expect(cfg.controlPlane.keyspace).toBe("workbench");
+				// Astra DB auto-creates `default_keyspace` on every new
+				// database, so the smart default lands somewhere that
+				// already exists out of the box.
+				expect(cfg.controlPlane.keyspace).toBe("default_keyspace");
 			}
 		} finally {
 			if (prevEndpoint !== undefined)
@@ -124,7 +127,11 @@ describe("ConfigSchema", () => {
 		});
 		expect(cfg.controlPlane.driver).toBe("astra");
 		if (cfg.controlPlane.driver === "astra") {
-			expect(cfg.controlPlane.keyspace).toBe("workbench");
+			// Default keyspace falls back to Astra DB's auto-created
+			// `default_keyspace` when the user doesn't specify one,
+			// so the runtime can boot against a fresh database
+			// without a manual keyspace-create step.
+			expect(cfg.controlPlane.keyspace).toBe("default_keyspace");
 		}
 	});
 
