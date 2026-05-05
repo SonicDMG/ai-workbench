@@ -1,12 +1,12 @@
 import { ExternalLink, FileText, Search, Sparkles } from "lucide-react";
-import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { useMemo, useState } from "react";
 import {
 	type ChunkRef,
 	parseChunkMap,
 } from "@/components/chat/MarkdownContent";
-import { useDocumentChunks } from "@/hooks/useDocuments";
-import type { ChatMessage } from "@/lib/schemas";
+import { DocumentDetailDialog } from "@/components/workspaces/DocumentDetailDialog";
+import { useDocumentChunks, useDocuments } from "@/hooks/useDocuments";
+import type { ChatMessage, RagDocumentRecord } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 
 interface RetrievedContextPanelProps {
@@ -14,6 +14,12 @@ interface RetrievedContextPanelProps {
 	/** All persisted messages in the active conversation, ordered oldest-first. */
 	readonly messages: readonly ChatMessage[];
 	readonly className?: string;
+}
+
+interface SelectedChunk {
+	readonly kbId: string;
+	readonly documentId: string;
+	readonly chunkId: string;
 }
 
 /**
@@ -40,6 +46,13 @@ interface RetrievedContextPanelProps {
  *    *why* the panel is empty rather than guessing the panel is
  *    broken.
  *  - **Assistant turn with citations**: grouped per-document cards.
+ *    Clicking a chunk or the "Open" link opens the same
+ *    {@link DocumentDetailDialog} the KB explorer uses, overlaid on
+ *    top of the chat — staying in chat avoids the jarring
+ *    navigation-away the deep-link version produced.
+ *
+ * The chunk list is height-capped with internal overflow scroll so
+ * a heavily-cited turn doesn't push the chat composer off screen.
  */
 export function RetrievedContextPanel({
 	workspaceId,
@@ -68,6 +81,9 @@ export function RetrievedContextPanel({
 		}
 		return out;
 	}, [chunkMap]);
+
+	// Selected chunk → drives the overlay dialog. Cleared on close.
+	const [selected, setSelected] = useState<SelectedChunk | null>(null);
 
 	return (
 		<aside
@@ -103,8 +119,12 @@ export function RetrievedContextPanel({
 					description="The agent answered without retrieving any chunks. RAG runs only on turns that need grounding."
 				/>
 			) : (
+				// Cap the height so a heavily-cited turn (8+ chunks across a few
+				// documents) doesn't bloat the chat surface. Each group card is
+				// roughly 5rem of header + ~2.5rem per chunk row; 22rem fits
+				// roughly 5 chunks before scrolling kicks in.
 				<ul
-					className="flex flex-col gap-2.5"
+					className="flex max-h-[22rem] flex-col gap-2.5 overflow-y-auto pr-0.5"
 					data-testid="context-panel-groups"
 				>
 					{[...groups.entries()].map(([groupKey, refs]) => {
@@ -117,11 +137,20 @@ export function RetrievedContextPanel({
 								kbId={sample.knowledgeBaseId}
 								documentId={sample.documentId}
 								refs={refs}
+								onSelectChunk={setSelected}
 							/>
 						);
 					})}
 				</ul>
 			)}
+
+			{selected ? (
+				<ContextDocumentDialog
+					workspaceId={workspaceId}
+					selected={selected}
+					onClose={() => setSelected(null)}
+				/>
+			) : null}
 		</aside>
 	);
 }
@@ -131,6 +160,7 @@ interface DocumentGroupProps {
 	readonly kbId: string;
 	readonly documentId: string | null;
 	readonly refs: readonly ChunkRef[];
+	readonly onSelectChunk: (selected: SelectedChunk) => void;
 }
 
 function DocumentGroup({
@@ -138,6 +168,7 @@ function DocumentGroup({
 	kbId,
 	documentId,
 	refs,
+	onSelectChunk,
 }: DocumentGroupProps) {
 	// Only fetch when we have a documentId. Legacy citations carry just
 	// the chunk id and have no document to query.
@@ -159,7 +190,6 @@ function DocumentGroup({
 		return out;
 	}, [chunks.data]);
 
-	const linkBase = `/workspaces/${workspaceId}/knowledge-bases/${kbId}`;
 	return (
 		<li className="rounded-md border border-slate-200 bg-slate-50/50 px-3 py-2.5">
 			<div className="flex items-center justify-between gap-2 mb-1.5">
@@ -179,47 +209,73 @@ function DocumentGroup({
 					</span>
 				</div>
 				{documentId ? (
-					<Link
-						to={`${linkBase}?document=${documentId}`}
+					<button
+						type="button"
+						onClick={() =>
+							// Open dialog at the document level — no specific chunk
+							// to highlight; the user just wants the document in view.
+							onSelectChunk({
+								kbId,
+								documentId,
+								chunkId: refs[0]?.chunkId ?? "",
+							})
+						}
 						className="inline-flex items-center gap-0.5 text-[11px] text-[var(--color-brand-700)] hover:underline"
-						aria-label={`Open document ${documentId} in the knowledge base explorer`}
+						aria-label={`Open document ${documentId}`}
 					>
 						Open
 						<ExternalLink className="h-3 w-3" aria-hidden="true" />
-					</Link>
+					</button>
 				) : null}
 			</div>
 			<ul className="flex flex-col gap-1.5">
 				{refs.map((ref) => {
 					const text = chunkTexts.get(ref.chunkId) ?? null;
+					const clickable = Boolean(ref.documentId);
+					const inner = (
+						<>
+							<span className="font-mono text-[10px] text-slate-500">
+								{ref.chunkId.slice(0, 12)}
+								{ref.chunkId.length > 12 ? "…" : ""}
+							</span>
+							{text ? (
+								<p className="mt-0.5 line-clamp-3">{text}</p>
+							) : chunks.isLoading && documentId ? (
+								<p className="mt-0.5 italic text-slate-400">Loading…</p>
+							) : chunks.isError ? (
+								<p className="mt-0.5 italic text-red-600">
+									Couldn't load chunk preview.
+								</p>
+							) : (
+								<p className="mt-0.5 italic text-slate-400">
+									No preview available.
+								</p>
+							)}
+						</>
+					);
 					return (
 						<li key={ref.chunkId} className="min-w-0">
-							<Link
-								to={`${linkBase}?${
-									ref.documentId
-										? `document=${ref.documentId}&chunk=${ref.chunkId}`
-										: `chunk=${ref.chunkId}`
-								}`}
-								className="block rounded border border-slate-200 bg-white px-2 py-1.5 text-[11px] leading-snug text-slate-700 hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
-							>
-								<span className="font-mono text-[10px] text-slate-500">
-									{ref.chunkId.slice(0, 12)}
-									{ref.chunkId.length > 12 ? "…" : ""}
-								</span>
-								{text ? (
-									<p className="mt-0.5 line-clamp-3">{text}</p>
-								) : chunks.isLoading && documentId ? (
-									<p className="mt-0.5 italic text-slate-400">Loading…</p>
-								) : chunks.isError ? (
-									<p className="mt-0.5 italic text-red-600">
-										Couldn't load chunk preview.
-									</p>
-								) : (
-									<p className="mt-0.5 italic text-slate-400">
-										No preview available.
-									</p>
-								)}
-							</Link>
+							{clickable ? (
+								<button
+									type="button"
+									onClick={() =>
+										onSelectChunk({
+											kbId: ref.knowledgeBaseId,
+											documentId: ref.documentId as string,
+											chunkId: ref.chunkId,
+										})
+									}
+									className="block w-full text-left rounded border border-slate-200 bg-white px-2 py-1.5 text-[11px] leading-snug text-slate-700 hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
+								>
+									{inner}
+								</button>
+							) : (
+								// Legacy citation — chunk id only, no document to
+								// open. Render a non-interactive card.
+								<div className="block rounded border border-slate-200 bg-white px-2 py-1.5 text-[11px] leading-snug text-slate-700">
+									{inner}
+								</div>
+							)}
 						</li>
 					);
 				})}
@@ -236,10 +292,11 @@ function DocumentTitle({
 	refsLen: number;
 }) {
 	// We don't have a `getDocument` endpoint; the document name lives
-	// in the workspace-wide listing which the panel doesn't fetch.
-	// Showing the truncated documentId keeps the link semantics honest
-	// without prefetching the whole document list — users who care
-	// about the human name click "Open" and land on the explorer.
+	// in the workspace-wide listing which the panel doesn't fetch
+	// proactively. Showing the truncated documentId keeps the link
+	// semantics honest without prefetching every cited document — the
+	// dialog overlay shows the full filename / size / status once the
+	// user clicks through.
 	return (
 		<>
 			<span className="font-mono text-slate-700">
@@ -250,6 +307,45 @@ function DocumentTitle({
 				· {refsLen} {refsLen === 1 ? "chunk" : "chunks"}
 			</span>
 		</>
+	);
+}
+
+interface ContextDocumentDialogProps {
+	readonly workspaceId: string;
+	readonly selected: SelectedChunk;
+	readonly onClose: () => void;
+}
+
+/**
+ * Wrapper around {@link DocumentDetailDialog} that resolves a
+ * {@link RagDocumentRecord} from the document-list cache before
+ * opening the dialog. Documents are listed per-KB; we fetch lazily
+ * on first open per (workspace, KB) pair, and TanStack Query dedupes
+ * with the KB-explorer's own list so a user who already visited the
+ * explorer pays no extra round trip.
+ *
+ * If the document isn't found in the list (e.g. it was deleted
+ * between the chat turn and the click), the dialog stays closed and
+ * the panel restores its no-selection state.
+ */
+function ContextDocumentDialog({
+	workspaceId,
+	selected,
+	onClose,
+}: ContextDocumentDialogProps) {
+	const docs = useDocuments(workspaceId, selected.kbId);
+	const doc: RagDocumentRecord | null =
+		docs.data?.find((d) => d.documentId === selected.documentId) ?? null;
+	return (
+		<DocumentDetailDialog
+			workspace={workspaceId}
+			knowledgeBaseId={selected.kbId}
+			doc={doc}
+			highlightChunkId={selected.chunkId || null}
+			onOpenChange={(open) => {
+				if (!open) onClose();
+			}}
+		/>
 	);
 }
 

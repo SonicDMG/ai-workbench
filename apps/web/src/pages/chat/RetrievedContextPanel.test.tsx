@@ -1,12 +1,20 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ChatMessage, DocumentChunk } from "@/lib/schemas";
+import type {
+	ChatMessage,
+	DocumentChunk,
+	RagDocumentRecord,
+} from "@/lib/schemas";
 
 vi.mock("@/lib/api", () => ({
-	api: { listKbDocumentChunks: vi.fn() },
+	api: {
+		listKbDocumentChunks: vi.fn(),
+		listKbDocuments: vi.fn(() => Promise.resolve([])),
+	},
 	ApiError: class ApiError extends Error {},
 }));
 
@@ -124,20 +132,67 @@ describe("RetrievedContextPanel", () => {
 		// And the uncited chunk from the same document should NOT show up.
 		expect(screen.queryByText(/unrelated chunk/)).not.toBeInTheDocument();
 
-		// The "Open" link for the document points at the KB explorer.
-		const openLink = screen.getByRole("link", {
-			name: /Open document.*in the knowledge base explorer/i,
-		});
-		expect(openLink).toHaveAttribute(
-			"href",
-			`/workspaces/${WS}/knowledge-bases/${KB}?document=${DOC}`,
-		);
+		// The per-document "Open" affordance is a button now (it opens
+		// the DocumentDetailDialog overlay instead of navigating away).
+		expect(
+			screen.getByRole("button", {
+				name: /Open document/i,
+			}),
+		).toBeInTheDocument();
 
 		// Group count = 1 since both chunks share a document.
 		expect(screen.getByTestId("context-panel-groups").children.length).toBe(1);
 	});
 
-	it("renders chunks with no documentId as a legacy-citation group with no Open link", async () => {
+	it("opens the DocumentDetailDialog overlay when a chunk row is clicked", async () => {
+		vi.mocked(api.listKbDocumentChunks).mockResolvedValueOnce([
+			chunkFixture("chunk-aa", "team-wide policy"),
+		]);
+		const docFixture: RagDocumentRecord = {
+			workspaceId: WS,
+			knowledgeBaseId: KB,
+			documentId: DOC,
+			sourceDocId: null,
+			sourceFilename: "policy.md",
+			fileType: "md",
+			fileSize: 100,
+			contentHash: null,
+			chunkTotal: 1,
+			ingestedAt: "2026-05-04T12:00:00.000Z",
+			updatedAt: "2026-05-04T12:00:00.000Z",
+			status: "ready",
+			errorMessage: null,
+			metadata: {},
+		};
+		vi.mocked(api.listKbDocuments).mockResolvedValue([docFixture]);
+
+		const user = userEvent.setup();
+		render(
+			<RetrievedContextPanel
+				workspaceId={WS}
+				messages={[
+					makeMessage({
+						metadata: {
+							context_chunks: JSON.stringify([["chunk-aa", KB, DOC]]),
+						},
+					}),
+				]}
+			/>,
+			{ wrapper },
+		);
+
+		// Click the chunk row.
+		const row = await screen.findByText(/team-wide policy/);
+		await user.click(row);
+
+		// DocumentDetailDialog should mount overlaid. It always renders
+		// a `dialog` role with the document filename in the title once
+		// `doc` resolves.
+		expect(await screen.findByRole("dialog")).toBeInTheDocument();
+		expect(api.listKbDocuments).toHaveBeenCalledWith(WS, KB);
+	});
+
+	it("renders chunks with no documentId as a legacy-citation group with no Open button", async () => {
 		render(
 			<RetrievedContextPanel
 				workspaceId={WS}
@@ -155,12 +210,14 @@ describe("RetrievedContextPanel", () => {
 		);
 
 		expect(screen.getByText(/Legacy citation/i)).toBeInTheDocument();
-		// No "Open" link for legacy citations.
+		// No "Open" button for legacy citations — there's no document
+		// to open.
 		expect(
-			screen.queryByRole("link", {
-				name: /in the knowledge base explorer/i,
-			}),
+			screen.queryByRole("button", { name: /Open document/i }),
 		).not.toBeInTheDocument();
+		// And no chunk-row link/button either — legacy citations render
+		// as non-interactive cards.
+		expect(screen.queryAllByRole("button", { name: /chunk/i })).toHaveLength(0);
 		// No document fetch fired because there's no documentId to query.
 		expect(api.listKbDocumentChunks).not.toHaveBeenCalled();
 	});
