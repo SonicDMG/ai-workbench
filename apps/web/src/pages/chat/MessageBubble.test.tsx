@@ -106,6 +106,41 @@ describe("MessageBubble", () => {
 		);
 		expect(screen.getByText("You")).toBeInTheDocument();
 	});
+
+	it("constrains the row + bubble with `min-w-0` so wide markdown content can't bust the grid column", () => {
+		// Regression: an agent reply containing a wide fenced code block
+		// (long table row, long single-line code) inflated the chat
+		// column past `1fr` because flex/grid items default to
+		// `min-width: auto`. The visual symptom was the right rail
+		// getting pushed off-screen and the conversation pane visually
+		// breaking. The fix is `min-w-0` on every flex/grid descendant
+		// in the chain, so the bubble's `max-w-[80%]` actually clamps
+		// and the inner `<pre overflow-x-auto>` can scroll horizontally
+		// inside the bubble. Asserting the structural classes is enough
+		// — jsdom doesn't measure layout, so this lives as a class
+		// check rather than a screenshot/visual test.
+		const { container } = renderInRouter(
+			<MessageBubble
+				message={makeMessage({
+					role: "agent",
+					content:
+						"```\n" +
+						"a-very-long-unbreakable-line-of-code-".repeat(20) +
+						"\n```",
+				})}
+				workspaceId="ws-1"
+				agentName="Bobby"
+			/>,
+		);
+		const li = container.querySelector("li");
+		expect(li).not.toBeNull();
+		expect(li?.className).toContain("min-w-0");
+		// The inner bubble (the only div with the max-w cap) must also
+		// be `min-w-0` so its descendants can shrink-and-scroll.
+		const bubble = container.querySelector("div.max-w-\\[80\\%\\]");
+		expect(bubble).not.toBeNull();
+		expect(bubble?.className).toContain("min-w-0");
+	});
 });
 
 describe("SourcesDisclosure", () => {

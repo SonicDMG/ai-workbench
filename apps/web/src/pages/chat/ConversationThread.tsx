@@ -184,7 +184,14 @@ export function ConversationThread({
 	};
 
 	return (
-		<Card className="flex flex-col">
+		// `min-w-0` is critical: this Card is a grid item in the chat
+		// page's `[14rem_minmax(0,1fr)_18rem]` row. Without it, a wide
+		// `<pre>` from a markdown reply (long table row, long code line)
+		// inflates the column past the `1fr` budget via the default
+		// `min-width: auto` on flex/grid items, pushing the right rail
+		// off-screen. The same constraint propagates down the message-
+		// list chain so the bubble's `max-w-[80%]` can actually clamp.
+		<Card className="flex flex-col min-w-0">
 			<header className="flex items-start justify-between gap-3 border-b border-slate-100 p-4">
 				<div className="min-w-0">
 					<h2 className="truncate text-base font-semibold tracking-tight text-slate-900">
@@ -208,10 +215,10 @@ export function ConversationThread({
 				</Button>
 			</header>
 
-			<CardContent className="flex flex-1 flex-col gap-4 p-0">
+			<CardContent className="flex flex-1 flex-col gap-4 p-0 min-w-0">
 				<div
 					ref={messageListRef}
-					className="flex-1 overflow-y-auto px-4 py-4"
+					className="flex-1 overflow-y-auto px-4 py-4 min-w-0"
 					data-testid="chat-message-list"
 				>
 					{messagesQuery.isLoading ? (
@@ -223,7 +230,7 @@ export function ConversationThread({
 					) : (messagesQuery.data?.length ?? 0) === 0 && !stream.pending ? (
 						<EmptyMessages agentName={agent.name} />
 					) : (
-						<ul className="flex flex-col gap-3">
+						<ul className="flex flex-col gap-3 min-w-0">
 							{messagesQuery.data?.map((m) => (
 								<MessageBubble
 									key={m.messageId}

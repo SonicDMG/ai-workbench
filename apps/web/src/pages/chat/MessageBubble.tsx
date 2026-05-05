@@ -31,7 +31,15 @@ export function MessageBubble({
 	return (
 		<li
 			className={cn(
-				"flex flex-col gap-1",
+				// `min-w-0` is critical for wide markdown content (code
+				// blocks, tables) — without it the `<li>` defaults to
+				// `min-width: auto` and is sized by intrinsic content,
+				// inflating the parent column past its grid budget. With
+				// `min-w-0` the `<li>` is constrained, the bubble's
+				// `max-w-[80%]` clamps, and the inner `<pre>` /
+				// `overflow-x-auto` on tables/code can scroll horizontally
+				// inside the bubble instead of bleeding into siblings.
+				"flex flex-col gap-1 min-w-0",
 				isUser ? "items-end" : "items-start",
 			)}
 		>
@@ -46,7 +54,9 @@ export function MessageBubble({
 					// `break-words` (overflow-wrap: anywhere) lets unbreakable
 					// runs like dotted package names / URLs wrap inside the
 					// bubble instead of bleeding past the `max-w-[80%]` cap.
-					"max-w-[80%] break-words rounded-lg px-3 py-2 text-sm",
+					// `min-w-0` lets descendants like `<pre overflow-x-auto>`
+					// shrink-and-scroll instead of forcing the bubble wider.
+					"max-w-[80%] min-w-0 break-words rounded-lg px-3 py-2 text-sm",
 					// User content stays plain (whitespace preserved); the model's
 					// reply is rendered as sanitized markdown so lists, code, and
 					// citations land formatted.
@@ -199,14 +209,14 @@ export function StreamingBubble({
 	if (delta.length === 0) return <AgentThinking agentName={agentName} />;
 	return (
 		<li
-			className="flex flex-col gap-1 items-start"
+			className="flex flex-col gap-1 items-start min-w-0"
 			data-testid="agent-streaming"
 		>
 			<span className="text-xs font-medium text-slate-500">
 				{agentName}
 				<span className="ml-2 font-normal text-slate-400">streaming…</span>
 			</span>
-			<div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-900">
+			<div className="max-w-[80%] min-w-0 whitespace-pre-wrap rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-900">
 				{delta}
 				<span className="ml-0.5 inline-block animate-pulse text-slate-400">
 					▍
