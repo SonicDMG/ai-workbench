@@ -258,7 +258,7 @@ export const DEFAULT_WORKSPACE_SEED_SERVICES: DefaultServices = {
 const OPENAI_GPT_4O_MINI: CreateLlmServiceInput = {
 	name: "openai-gpt-4o-mini",
 	description:
-		"Default. OpenAI `gpt-4o-mini` chat completion with native function calling. Used by Bobby + Heidi to call the workspace tools (search_kb, list_documents, summarize_kb, etc.).",
+		"Default. OpenAI `gpt-4o-mini` chat completion with native function calling. Used by Bobby + Maven to call the workspace tools (search_kb, list_documents, summarize_kb, etc.).",
 	status: "active",
 	provider: "openai",
 	modelName: "gpt-4o-mini",

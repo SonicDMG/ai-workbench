@@ -52,7 +52,7 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	// 4. Workspace POST succeeded; the onboarding flow now stops on
 	//    the "Pick your agents" template-gallery step (ADR 0003,
 	//    PR #174). The user can opt into more templates here, but
-	//    Bobby + Heidi are already auto-seeded, so the golden path
+	//    Bobby + Maven are already auto-seeded, so the golden path
 	//    just clicks straight through to the workspace.
 	await expect(
 		page.getByRole("heading", { name: "Pick your agents" }),

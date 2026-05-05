@@ -123,7 +123,7 @@ describe("SeededDefaultsCallout", () => {
 		]);
 		vi.mocked(api.listAgents).mockResolvedValueOnce([
 			agentFixture("Bobby"),
-			agentFixture("Heidi"),
+			agentFixture("Maven"),
 		]);
 
 		render(<SeededDefaultsCallout workspace={makeWorkspace()} />, {

@@ -5,13 +5,13 @@
  * Templates are not stored records; they are runtime data shipped
  * alongside the binary. `templateId` is the stable slug
  * (lowercase-kebab) the wire surface uses. The catalog is intentionally
- * narrow — five personas in v1 — because the goal is "useful starting
+ * narrow — four personas — because the goal is "useful starting
  * points", not "expressive user-defined templates" (deferred per
  * ADR 0003).
  *
- * Two templates carry `defaultOnNewWorkspace: true` (Bobby, Heidi);
+ * Two templates carry `defaultOnNewWorkspace: true` (Bobby, Maven);
  * those two are seeded automatically when a workspace is created so
- * the chat tab is non-empty out of the box. The other three are
+ * the chat tab is non-empty out of the box. The other two are
  * opt-in — the UI offers them, but they don't appear in fresh
  * workspaces unless the user picks them.
  *
@@ -111,7 +111,7 @@ export const AGENT_TEMPLATES: readonly AgentTemplate[] = Object.freeze([
 			"disagree, name the disagreement plainly. If the data " +
 			"doesn't answer the question, say so and suggest what would.\n\n" +
 			DEFAULT_AGENT_TOOL_GUIDANCE,
-		defaultOnNewWorkspace: false,
+		defaultOnNewWorkspace: true,
 	}),
 	Object.freeze<AgentTemplate>({
 		templateId: "quill",
@@ -154,26 +154,6 @@ export const AGENT_TEMPLATES: readonly AgentTemplate[] = Object.freeze([
 			"supporting chunk inline as `[chunk-uuid]`.\n\n" +
 			DEFAULT_AGENT_TOOL_GUIDANCE,
 		defaultOnNewWorkspace: false,
-	}),
-	Object.freeze<AgentTemplate>({
-		templateId: "heidi",
-		name: "Heidi",
-		description:
-			"A friendly little ghost with a knack for digging up the " +
-			"answers that haunt your data. Warm, playful, and curious.",
-		persona:
-			"Warm and curious, with a light playful streak. Good fit for " +
-			"open-ended exploration where a touch of personality makes " +
-			"the back-and-forth more pleasant.",
-		systemPrompt:
-			"You are Heidi, a cheerful little ghost who loves helping " +
-			"users explore their data. You're warm, curious, and a touch " +
-			"whimsical — feel free to add a gentle 'boo!' or a wispy " +
-			"aside now and then — but you always finish with a clear, " +
-			"useful answer. If a tool turns up no results, fade away " +
-			"politely rather than inventing an answer.\n\n" +
-			DEFAULT_AGENT_TOOL_GUIDANCE,
-		defaultOnNewWorkspace: true,
 	}),
 ]);
 

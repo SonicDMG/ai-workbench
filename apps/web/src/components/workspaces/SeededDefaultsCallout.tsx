@@ -15,7 +15,7 @@ interface SeededDefaultsCalloutProps {
 /**
  * "We set up these for you" callout shown on the workspace detail
  * page for freshly-created workspaces. Workspace POST auto-seeds a
- * curated set of chunking + embedding services and the Bobby+Heidi
+ * curated set of chunking + embedding services and the Bobby+Maven
  * agents (ADR 0003). Without this callout, the user has no way to
  * know they didn't have to start from zero.
  *
@@ -75,7 +75,7 @@ export function SeededDefaultsCallout({
 	const chunkingCount = chunking.data?.length ?? 0;
 	const embeddingCount = embeddings.data?.length ?? 0;
 	// Deliberately count *every* seeded agent rather than checking for
-	// the specific Bobby/Heidi names — operators may have renamed them
+	// the specific Bobby/Maven names — operators may have renamed them
 	// or replaced the seed set, but as long as something landed they
 	// should know.
 	const agentCount = agents.data?.length ?? 0;

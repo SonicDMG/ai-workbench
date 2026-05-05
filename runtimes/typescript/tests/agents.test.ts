@@ -94,7 +94,7 @@ async function createAgent(
 }
 
 describe("agent routes", () => {
-	test("workspace POST auto-seeds the default Bobby + Heidi agents", async () => {
+	test("workspace POST auto-seeds the default Bobby + Maven agents", async () => {
 		const app = makeApp();
 		const ws = await createWorkspace(app);
 
@@ -109,7 +109,7 @@ describe("agent routes", () => {
 
 		expect(items.length).toBe(DEFAULT_WORKSPACE_AGENTS.length);
 		const names = items.map((a) => a.name).sort();
-		expect(names).toEqual(["Bobby", "Heidi"]);
+		expect(names).toEqual(["Bobby", "Maven"]);
 
 		// Both agents are wired to the auto-seeded OpenAI chat LLM
 		// service so the tool-call loop has a function-calling-capable

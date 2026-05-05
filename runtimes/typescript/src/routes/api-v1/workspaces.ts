@@ -314,7 +314,7 @@ async function dropWorkspaceCollections(args: {
 
 /**
  * Seed each freshly created workspace with the {@link DEFAULT_WORKSPACE_AGENTS}
- * starter agents (Bobby + Heidi) so the user lands in a non-empty agent
+ * starter agents (Bobby + Maven) so the user lands in a non-empty agent
  * list and can start chatting immediately. When a default LLM service
  * was successfully seeded by {@link seedDefaultLlmServices}, both
  * agents are wired to it so they get tool calling out of the box;

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 // Coverage for the agent template gallery (PR #174 / ADR 0003) end
-// to end: a fresh workspace lands with Bobby + Heidi auto-seeded,
+// to end: a fresh workspace lands with Bobby + Maven auto-seeded,
 // and the user can opt into a third persona from the onboarding
 // step-3 gallery in a single click.
 //
@@ -26,8 +26,8 @@ test("agent template gallery: onboarding step 3 instantiates an opt-in template"
 	await page.getByLabel("Name").fill(workspaceName);
 	await page.getByRole("button", { name: "Create workspace" }).click();
 
-	// Step 3: the template gallery. Bobby + Heidi were auto-seeded by
-	// the workspace POST so they show as "Added"; Maven is opt-in.
+	// Step 3: the template gallery. Bobby + Maven were auto-seeded by
+	// the workspace POST so they show as "Added"; Quill is opt-in.
 	await expect(
 		page.getByRole("heading", { name: "Pick your agents" }),
 	).toBeVisible();
@@ -36,18 +36,18 @@ test("agent template gallery: onboarding step 3 instantiates an opt-in template"
 	// names (e.g. "A no-nonsense data analyst. … Bobby gets to the
 	// point.") and trip strict-mode getByText.
 	const bobbyAdd = page.getByRole("button", { name: /Add Bobby/ });
-	const heidiAdd = page.getByRole("button", { name: /Add Heidi/ });
 	const mavenAdd = page.getByRole("button", { name: /Add Maven/ });
+	const quillAdd = page.getByRole("button", { name: /Add Quill/ });
 	await expect(bobbyAdd).toBeVisible();
-	await expect(heidiAdd).toBeVisible();
 	await expect(mavenAdd).toBeVisible();
-	// Bobby + Heidi were seeded — their Add buttons are disabled.
+	await expect(quillAdd).toBeVisible();
+	// Bobby + Maven were seeded — their Add buttons are disabled.
 	await expect(bobbyAdd).toBeDisabled();
-	await expect(heidiAdd).toBeDisabled();
-	// Maven (opt-in) is addable. Click flips it to disabled.
-	await expect(mavenAdd).toBeEnabled();
-	await mavenAdd.click();
 	await expect(mavenAdd).toBeDisabled();
+	// Quill (opt-in) is addable. Click flips it to disabled.
+	await expect(quillAdd).toBeEnabled();
+	await quillAdd.click();
+	await expect(quillAdd).toBeDisabled();
 
 	// Continue to the workspace and verify all three agents land in the
 	// agents page.
@@ -59,7 +59,7 @@ test("agent template gallery: onboarding step 3 instantiates an opt-in template"
 		page.getByRole("heading", { level: 1, name: "Agents" }),
 	).toBeVisible();
 	// All three names show up in the agents list.
-	for (const name of ["Bobby", "Heidi", "Maven"]) {
+	for (const name of ["Bobby", "Maven", "Quill"]) {
 		await expect(page.getByText(name).first()).toBeVisible();
 	}
 });

@@ -3,7 +3,7 @@
  * both the chunks the SPA renders as the Sources disclosure and the
  * `AstraQuerySnapshot` envelope that powers the "view client code"
  * affordance. This used to live on the implicit `retrieveContext`
- * branch; tool-using agents (Bobby/Heidi) bypassed it and the chip
+ * branch; tool-using agents (Bobby/Maven) bypassed it and the chip
  * never appeared.
  *
  * These tests pin the new contract: the tool surfaces both side

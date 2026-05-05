@@ -92,7 +92,7 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT =
 /**
  * Derived from the template catalog
  * ([`agent-templates.ts`](./agent-templates.ts)) by filtering on
- * `defaultOnNewWorkspace === true`. Today: Bobby + Heidi. The
+ * `defaultOnNewWorkspace === true`. Today: Bobby + Maven. The
  * dual-source-of-truth lives in the catalog so the catalog can grow
  * (and offer opt-in personas) without changing what every fresh
  * workspace ships with.

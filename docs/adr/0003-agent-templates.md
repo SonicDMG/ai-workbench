@@ -4,6 +4,16 @@
 - **Supersedes:** —
 - **Superseded by:** —
 
+> **Catalog update (2026-05).** The default-on pair shifted from
+> `bobby + heidi` to `bobby + maven` after early product feedback —
+> Maven's research-synthesis persona produced more useful first-turn
+> answers than Heidi's exploratory ghost. Heidi was removed entirely
+> rather than demoted to opt-in. The catalog now ships four entries
+> (`bobby`, `maven`, `quill`, `sage`) instead of five. The mechanism
+> in this ADR is unchanged; only the catalog data moved. See
+> [`docs/agents.md`](../agents.md#template-catalog) for the live
+> table.
+
 ## Context
 
 Every freshly created workspace gets two starter agents — Bobby ("no-

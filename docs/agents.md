@@ -11,7 +11,7 @@ above this layer.
 > a thin alias. The singleton was retired and replaced with the
 > [template catalog](#template-catalog) (ADR 0003). Today's workspaces
 > are seeded with the catalog's `defaultOnNewWorkspace` templates
-> (currently Bobby + Heidi); the rest of the catalog is opt-in via
+> (currently Bobby + Maven); the rest of the catalog is opt-in via
 > the UI gallery or `POST /agents/from-template`.
 
 ## Concepts
@@ -24,7 +24,7 @@ above this layer.
 | **Template** | A static catalog entry the UI can offer as a one-click agent. Identified by stable lowercase-kebab `templateId` slug. Not a record — runtime data shipped with the binary. See [Template catalog](#template-catalog). |
 
 Fresh workspaces are seeded with the catalog's `defaultOnNewWorkspace`
-templates (Bobby + Heidi today). When you delete an agent the cascade
+templates (Bobby + Maven today). When you delete an agent the cascade
 goes agent → its conversations → their messages. Workspace delete
 cascades workspace → agents → conversations → messages.
 
@@ -32,13 +32,12 @@ cascades workspace → agents → conversations → messages.
 
 The catalog ([`agent-templates.ts`](../runtimes/typescript/src/control-plane/agent-templates.ts))
 is a static list of personas the UI can offer as one-click agent
-creation. v1 ships with five entries:
+creation. The catalog ships with four entries:
 
 | `templateId` | Name | Default-on | Use case |
 |---|---|---|---|
 | `bobby` | Bobby | ✓ | Direct, terse data analyst |
-| `heidi` | Heidi | ✓ | Warm, exploratory ghost |
-| `maven` | Maven | — | Multi-source research synthesis |
+| `maven` | Maven | ✓ | Multi-source research synthesis |
 | `quill` | Quill | — | Concise, code-forward technical writer |
 | `sage`  | Sage  | — | Strict-grounding Q&A; declines confidently |
 
@@ -54,9 +53,8 @@ Two HTTP routes are exposed:
   default to the same values as `POST /agents`.
 
 The seed step inside workspace POST uses the same catalog, filtered
-to `defaultOnNewWorkspace === true`. The wire effect of workspace
-POST is unchanged — Bobby and Heidi still appear in the seeded agent
-list — so existing API clients are unaffected.
+to `defaultOnNewWorkspace === true`. Workspace POST seeds Bobby +
+Maven into the new workspace's agent list.
 
 Adding a new template is a one-file change (append to
 [`agent-templates.ts`](../runtimes/typescript/src/control-plane/agent-templates.ts)

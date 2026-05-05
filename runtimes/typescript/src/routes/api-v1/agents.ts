@@ -231,7 +231,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 			// to the runtime's global `chat:` config, which routes through
 			// a path that can't natively invoke tools — the model emits
 			// the tool name as text instead of calling `search_kb`. Bobby
-			// + Heidi worked because the seed path always set this; the
+			// + Maven worked because the seed path always set this; the
 			// from-template path was the only seam where it was missing.
 			const llmServices = await store.listLlmServices(workspaceId);
 			const llmServiceId = llmServices[0]?.llmServiceId ?? null;

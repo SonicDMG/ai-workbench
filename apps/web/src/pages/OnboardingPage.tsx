@@ -49,7 +49,7 @@ export function OnboardingPage() {
 	const [createdWorkspaceId, setCreatedWorkspaceId] = useState<string | null>(
 		null,
 	);
-	// The post-create workspace already has Bobby + Heidi auto-seeded
+	// The post-create workspace already has Bobby + Maven auto-seeded
 	// by the runtime. Surface them in the gallery as "Added" so the
 	// user knows they're not starting from zero.
 	const seededAgents = useAgents(createdWorkspaceId ?? undefined);
@@ -203,7 +203,7 @@ export function OnboardingPage() {
 						</div>
 						<CardDescription>
 							We've added <span className="font-medium">Bobby</span> and{" "}
-							<span className="font-medium">Heidi</span> to get you started.
+							<span className="font-medium">Maven</span> to get you started.
 							Want any of these other personas too? You can always add more
 							later from the workspace's Agents page.
 						</CardDescription>

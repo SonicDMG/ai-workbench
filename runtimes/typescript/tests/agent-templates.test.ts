@@ -67,10 +67,10 @@ async function createWorkspace(app: AppHandle): Promise<string> {
 }
 
 describe("agent-template catalog (in-process)", () => {
-	test("the catalog ships at least Bobby + Heidi as default-on", () => {
+	test("the catalog ships at least Bobby + Maven as default-on", () => {
 		const defaults = defaultOnNewWorkspaceTemplates();
 		const ids = defaults.map((t) => t.templateId).sort();
-		expect(ids).toEqual(expect.arrayContaining(["bobby", "heidi"]));
+		expect(ids).toEqual(expect.arrayContaining(["bobby", "maven"]));
 		// Default-on templates must all set the flag truthfully.
 		for (const t of defaults) {
 			expect(t.defaultOnNewWorkspace).toBe(true);
@@ -128,13 +128,12 @@ describe("GET /workspaces/{w}/agent-templates", () => {
 			);
 		}
 
-		// Catalog ordering is stable. Bobby anchors the front of the
-		// list; Heidi anchors the back so opt-in personas (Maven,
-		// Quill, Sage) read as a group between the two recommended
-		// agents. The UI relies on this to render its "recommended"
-		// rail without re-sorting.
+		// Catalog ordering is stable. The two default-on templates lead
+		// (Bobby, then Maven) so the UI can render the "recommended"
+		// rail without re-sorting; opt-in personas (Quill, Sage)
+		// follow.
 		expect(body.items[0].templateId).toBe("bobby");
-		expect(body.items[body.items.length - 1].templateId).toBe("heidi");
+		expect(body.items[1].templateId).toBe("maven");
 	});
 
 	test("404 when the workspace doesn't exist", async () => {
@@ -169,7 +168,7 @@ describe("POST /workspaces/{w}/agents/from-template", () => {
 	});
 
 	test("binds the new agent to the workspace's first LLM service so tool calling works", async () => {
-		// Bobby + Heidi (auto-seeded on workspace POST) get the seeded
+		// Bobby + Maven (auto-seeded on workspace POST) get the seeded
 		// gpt-4o-mini service wired in. Until this fix, from-template
 		// agents had llmServiceId: null and fell back to the runtime's
 		// global chat config — which routes through a path that can't
