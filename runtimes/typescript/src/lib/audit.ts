@@ -52,6 +52,8 @@ export type AuditAction =
 	| "agent.delete"
 	| "job.claim"
 	| "mcp.invoke"
+	| "auth.api_denied"
+	| "auth.bootstrap_use"
 	| "auth.login"
 	| "auth.logout"
 	| "auth.refresh";

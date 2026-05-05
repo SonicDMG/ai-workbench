@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { ApiKeyVerifier } from "../src/auth/apiKey/verifier.js";
 import { BootstrapTokenVerifier } from "../src/auth/bootstrap.js";
@@ -11,6 +11,7 @@ import type { ControlPlaneStore } from "../src/control-plane/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
 import { MAX_API_JSON_BODY_BYTES } from "../src/lib/limits.js";
+import { logger } from "../src/lib/logger.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
 import { SecretResolver } from "../src/secrets/provider.js";
 import { makeFakeEmbedderFactory } from "./helpers/embedder.js";
@@ -20,6 +21,20 @@ import { makeFakeEmbedderFactory } from "./helpers/embedder.js";
 async function json(res: Response): Promise<any> {
 	// biome-ignore lint/suspicious/noExplicitAny: test helper returns untyped JSON
 	return (await res.json()) as any;
+}
+
+function auditEvents(
+	spy: ReturnType<typeof vi.spyOn>,
+): Record<string, unknown>[] {
+	const calls: unknown[][] = spy.mock.calls;
+	return calls
+		.map((call) => call[0])
+		.filter(
+			(envelope): envelope is Record<string, unknown> =>
+				typeof envelope === "object" &&
+				envelope !== null &&
+				(envelope as { audit?: unknown }).audit === true,
+		);
 }
 
 type OpenApiTestOperation = {
@@ -1329,6 +1344,73 @@ describe("bootstrap operator token", () => {
 		});
 		expect(authed.status).toBe(201);
 	});
+
+	test("audits rejected API auth and bootstrap-token use", async () => {
+		const store = new MemoryControlPlaneStore();
+		const driver = new MockVectorStoreDriver();
+		const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const token = "wb_bootstrap_test_token_1234567890abcdef";
+		const auth = new AuthResolver({
+			mode: "apiKey",
+			anonymousPolicy: "reject",
+			verifiers: [new BootstrapTokenVerifier({ token })],
+		});
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory(),
+		});
+		const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+
+		try {
+			const anonymous = await app.request("/api/v1/workspaces", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ name: "blocked", kind: "mock" }),
+			});
+			expect(anonymous.status).toBe(401);
+
+			const authed = await app.request("/api/v1/workspaces", {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					authorization: `Bearer ${token}`,
+				},
+				body: JSON.stringify({ name: "created", kind: "mock" }),
+			});
+			expect(authed.status).toBe(201);
+
+			const events = auditEvents(infoSpy);
+			expect(events).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						action: "auth.api_denied",
+						outcome: "denied",
+						subject: null,
+						details: expect.objectContaining({
+							scheme: "Bearer",
+							reason: "Authorization header is required",
+						}),
+					}),
+					expect.objectContaining({
+						action: "auth.bootstrap_use",
+						outcome: "success",
+						subject: expect.objectContaining({
+							type: "bootstrap",
+							id: "bootstrap",
+						}),
+						details: { scheme: "bootstrap" },
+					}),
+				]),
+			);
+			expect(JSON.stringify(events)).not.toContain(token);
+		} finally {
+			infoSpy.mockRestore();
+		}
+	});
 });
 
 describe("workspace-scoped authorization (cross-workspace)", () => {
@@ -1362,6 +1444,34 @@ describe("workspace-scoped authorization (cross-workspace)", () => {
 		expect(res.status).toBe(403);
 		const body = await json(res);
 		expect(body.error.code).toBe("forbidden");
+	});
+
+	test("audits forbidden workspace-scope decisions", async () => {
+		const { app, b, token } = await seedTwoWithKey();
+		const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+
+		try {
+			const res = await app.request(`/api/v1/workspaces/${b.uid}`, {
+				headers: { authorization: `Bearer ${token}` },
+			});
+			expect(res.status).toBe(403);
+
+			expect(auditEvents(infoSpy)).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						action: "auth.api_denied",
+						outcome: "denied",
+						workspaceId: b.uid,
+						subject: expect.objectContaining({ type: "apiKey" }),
+						details: expect.objectContaining({
+							reason: expect.stringContaining(b.uid),
+						}),
+					}),
+				]),
+			);
+		} finally {
+			infoSpy.mockRestore();
+		}
 	});
 
 	test("a key scoped to A cannot list B's api-keys", async () => {

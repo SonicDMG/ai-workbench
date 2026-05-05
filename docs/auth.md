@@ -241,10 +241,11 @@ Out of scope for now:
   plus request-size limits, but buckets are per replica. Multi-replica
   deployments still need a WAF/API gateway for global ceilings and
   workspace/user quotas.
-- **Complete auth-decision audit coverage.** Sensitive operations and
-  OIDC login/refresh/logout emit structured audit events today, but
-  failed `/api/v1/*` auth decisions and bootstrap-token use are still
-  tracked as audit gaps.
+- **Complete rate-limit / mutation audit coverage.** Sensitive
+  operations, OIDC login/refresh/logout, failed `/api/v1/*` auth
+  decisions, and bootstrap-token use emit structured audit events
+  today. Rate-limit denials and high-volume document/chunk mutation
+  are still tracked as audit gaps.
 
 ## Rollout plan
 

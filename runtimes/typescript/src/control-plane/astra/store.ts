@@ -64,7 +64,6 @@ import {
 import {
 	ControlPlaneConflictError,
 	ControlPlaneNotFoundError,
-	IN_USE_CODES,
 } from "../errors.js";
 import {
 	applyPatch,
@@ -75,6 +74,12 @@ import {
 	freezeStringSet,
 	mergeMetadata as mergeMessageMetadata,
 } from "../shared/records.js";
+import {
+	type AgentServiceReferenceField,
+	type KnowledgeBaseServiceReferenceField,
+	serviceReferencedByAgent,
+	serviceReferencedByKnowledgeBase,
+} from "../shared/service-references.js";
 import { assertNoWorkspaceConflict } from "../shared/workspaces.js";
 import type {
 	AppendChatMessageInput,
@@ -1829,7 +1834,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 
 	private async assertServiceNotReferenced(
 		workspace: string,
-		field: "embeddingServiceId" | "chunkingServiceId" | "rerankingServiceId",
+		field: KnowledgeBaseServiceReferenceField,
 		serviceId: string,
 	): Promise<void> {
 		const rows = await this.tables.knowledgeBases
@@ -1843,9 +1848,10 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 					: "reranking_service_id";
 		const ref = rows.find((kb) => kb[fieldOnRow] === serviceId);
 		if (ref) {
-			throw new ControlPlaneConflictError(
-				`service '${serviceId}' is referenced by knowledge base '${ref.knowledge_base_id}' (${field})`,
-				IN_USE_CODES[field],
+			throw serviceReferencedByKnowledgeBase(
+				serviceId,
+				ref.knowledge_base_id,
+				field,
 			);
 		}
 	}
@@ -1860,7 +1866,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 	 */
 	private async assertAgentServiceNotReferenced(
 		workspace: string,
-		field: "llmServiceId" | "rerankingServiceId",
+		field: AgentServiceReferenceField,
 		serviceId: string,
 	): Promise<void> {
 		const rows = await this.tables.agents
@@ -1870,10 +1876,7 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			field === "llmServiceId" ? "llm_service_id" : "reranking_service_id";
 		const ref = rows.find((agent) => agent[fieldOnRow] === serviceId);
 		if (ref) {
-			throw new ControlPlaneConflictError(
-				`service '${serviceId}' is referenced by agent '${ref.agent_id}' (${field})`,
-				IN_USE_CODES[field],
-			);
+			throw serviceReferencedByAgent(serviceId, ref.agent_id, field);
 		}
 	}
 }

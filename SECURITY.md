@@ -79,17 +79,20 @@ Chunking, embedding, reranking, and LLM services accept an
   `metadata.goog`, `metadata.azure.com`, `fd00:ec2::254`).
 - Link-local IPv4 (`169.254.0.0/16`) and IPv6 (`fe80::/10`) ranges.
 
-The runtime **does not block** RFC1918 private ranges
-(`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) or loopback
-(`127.0.0.0/8`, `::1`). This is intentional: the most common
+In production (`runtime.environment: production`), the runtime also
+blocks RFC1918 private ranges (`10.0.0.0/8`, `172.16.0.0/12`,
+`192.168.0.0/16`), loopback (`127.0.0.0/8`, `::1`), and IPv6
+unique-local (`fc00::/7`) endpoints. Development mode leaves private
+network endpoints available by default because the most common
 self-hosted setup is a local Ollama or vLLM instance reached over a
-private network. Blocking those ranges at the runtime layer would
-break that workflow.
+private network. Operators can opt into the production posture in any
+environment with `runtime.blockPrivateNetworkEndpoints: true`.
 
 For cloud deployments where the runtime is reachable by untrusted
-operators (multi-tenant hosting, shared dev environments) this means
-a misconfigured `endpointBaseUrl` could reach internal services on
-the same VPC. Operators in that posture should:
+operators (multi-tenant hosting, shared dev environments), keep
+`runtime.environment: production` or explicitly enable
+`runtime.blockPrivateNetworkEndpoints`. Operators in that posture
+should also:
 
 - Enforce egress controls at the network layer (NetworkPolicy,
   security group, NAT gateway with allowlist) so the runtime can
@@ -99,7 +102,9 @@ the same VPC. Operators in that posture should:
 
 See
 [`runtimes/typescript/src/openapi/schemas.ts`](./runtimes/typescript/src/openapi/schemas.ts)
-(`isAllowedEndpointBaseUrl`) for the exact validator.
+(`isAllowedEndpointBaseUrl`) for the exact validator and
+[`runtimes/typescript/src/root.ts`](./runtimes/typescript/src/root.ts)
+for the production-mode default.
 
 ## Browser security headers
 

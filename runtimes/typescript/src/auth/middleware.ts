@@ -18,6 +18,7 @@
  */
 
 import type { MiddlewareHandler } from "hono";
+import { audit } from "../lib/audit.js";
 import type { AppEnv } from "../lib/types.js";
 import type { CookieSigner } from "./oidc/login/cookie.js";
 import { parseCookie } from "./oidc/login/cookie.js";
@@ -53,6 +54,13 @@ export function authMiddleware(
 		}
 		const auth = await resolved.resolver.authenticate(req);
 		c.set("auth", auth);
+		if (auth.subject?.type === "bootstrap") {
+			audit(c, {
+				action: "auth.bootstrap_use",
+				outcome: "success",
+				details: { scheme: "bootstrap" },
+			});
+		}
 		await next();
 	};
 }

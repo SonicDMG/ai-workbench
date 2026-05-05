@@ -21,6 +21,7 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
+import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { workspaceRouteAuthz } from "./auth/authz.js";
 import { ForbiddenError, UnauthorizedError } from "./auth/errors.js";
@@ -38,6 +39,7 @@ import type { EmbedderFactory } from "./embeddings/factory.js";
 import { IngestSemaphore } from "./jobs/ingest-semaphore.js";
 import { MemoryJobStore } from "./jobs/memory-store.js";
 import type { JobStore } from "./jobs/store.js";
+import { audit } from "./lib/audit.js";
 import { ApiError, errorEnvelope } from "./lib/errors.js";
 import {
 	MAX_API_JSON_BODY_BYTES,
@@ -456,10 +458,12 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 
 	app.onError((err, c) => {
 		if (err instanceof UnauthorizedError) {
+			auditApiAuthDenied(c, err);
 			c.header("WWW-Authenticate", err.scheme);
 			return c.json(errorEnvelope(c, err.code, err.message), err.status);
 		}
 		if (err instanceof ForbiddenError) {
+			auditApiAuthDenied(c, err);
 			return c.json(errorEnvelope(c, err.code, err.message), err.status);
 		}
 		const mapped = mapControlPlaneError(err);
@@ -496,6 +500,27 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	});
 
 	return app;
+}
+
+function auditApiAuthDenied(
+	c: Context<AppEnv>,
+	err: UnauthorizedError | ForbiddenError,
+): void {
+	if (!c.req.path.startsWith("/api/v1/")) return;
+	audit(c, {
+		action: "auth.api_denied",
+		outcome: "denied",
+		workspaceId:
+			c.req.param("workspaceId") ?? apiWorkspaceIdFromPath(c.req.path),
+		details: {
+			...(err instanceof UnauthorizedError ? { scheme: err.scheme } : {}),
+			reason: err.message,
+		},
+	});
+}
+
+function apiWorkspaceIdFromPath(path: string): string | null {
+	return /^\/api\/v1\/workspaces\/([^/]+)/.exec(path)?.[1] ?? null;
 }
 
 function errorResponse(description: string) {

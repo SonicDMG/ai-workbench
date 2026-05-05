@@ -40,6 +40,8 @@ by filter.
 | `agent.delete` | `DELETE /api/v1/workspaces/{w}/agents/{a}` | Cascades conversations + chat messages owned by the agent. Emitted **after** the cascade. |
 | `job.claim` | Cross-replica orphan reclaim in `jobs/sweeper.ts` | Emitted when a replica successfully CAS-claims an orphaned job. Includes `jobId` + `jobKind`. Subject is the replica id (synthetic), not a user. |
 | `mcp.invoke` | Any tool call into `/api/v1/workspaces/{w}/mcp` | Includes the `toolName`. Argument payloads are not logged. |
+| `auth.api_denied` | 401/403 auth decisions on `/api/v1/*` | `outcome: "denied"` with `reason`; unauthenticated 401s have `subject: null`, while scoped 403s include the resolved subject when available. |
+| `auth.bootstrap_use` | Any request authenticated with the bootstrap operator token | Includes `scheme: "bootstrap"`. The plaintext bootstrap token is **never** logged. |
 | `auth.login` | OIDC `/auth/callback` | `outcome: "success"` once the access token passes the runtime's own verifier; `outcome: "failure"` with `reason` on token-validation errors. |
 | `auth.refresh` | OIDC `/auth/refresh` | `outcome: "success"` on a clean rotate. `outcome: "failure"` with `reason` ∈ `{ "no_refresh_token", "idp_rejected", "token_validation_failed" }` covers the three failure paths (missing cookie, IdP refused the refresh_token, freshly-issued access token failed self-verification). |
 | `auth.logout` | OIDC `/auth/logout` | Emitted on every cookie clear, even when no session was present. |
@@ -192,12 +194,8 @@ external systems:
 
 These are tracked as gaps:
 
-- Bootstrap-token use (`auth.bootstrap_use`).
-- Knowledge-base create/delete (`knowledge_base.create` /
-  `knowledge_base.delete`).
-- Failed auth attempts on `/api/v1/*` (the middleware short-circuits
-  before reaching a handler). Rate-limit denials are visible from
-  the limiter's existing log lines but are not audit events yet.
+- Rate-limit denials. They are visible from the limiter's existing log
+  lines but are not audit events yet.
 - Document and chunk mutation. Volume-sensitive; needs a sampling /
   batching strategy first.
 

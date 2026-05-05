@@ -2,6 +2,8 @@ import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
+const nodeMajor = Number(process.versions.node.split(".")[0] ?? "0");
+
 // Vitest config for apps/web. Kept separate from vite.config.ts so we
 // don't pull the production manualChunks splitting (or the dev proxy
 // targets) into the test environment. The `@/*` alias is reproduced
@@ -16,6 +18,11 @@ export default defineConfig({
 	},
 	test: {
 		environment: "jsdom",
+		// Node 25's experimental Web Storage binding emits one warning per
+		// worker unless a localStorage file is configured. jsdom supplies
+		// the browser storage we need, so disable Node's native binding in
+		// Vitest workers on affected runtimes.
+		execArgv: nodeMajor >= 25 ? ["--no-experimental-webstorage"] : [],
 		globals: false,
 		setupFiles: ["./src/test/setup.ts"],
 		include: ["src/**/*.{test,spec}.{ts,tsx}"],
@@ -26,9 +33,10 @@ export default defineConfig({
 			provider: "v8",
 			reporter: ["text", "html", "json-summary"],
 			// Coverage gates ratchet upward only — never lower a number
-			// without a comment explaining why. The `api.ts` client is
-			// excluded from gates until it has its own focused contract
-			// tests; pages are exercised through Playwright today and
+			// without a comment explaining why. The large `api.ts`
+			// endpoint surface has focused contract tests now, but stays
+			// outside the ratchet until coverage spans the bulk of its
+			// endpoints; pages are exercised through Playwright today and
 			// will be gated once we have unit-level tests for them.
 			thresholds: {
 				"src/lib/{authToken,files,schemas,utils,session}.ts": {

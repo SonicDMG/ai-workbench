@@ -39,7 +39,6 @@ import {
 import {
 	ControlPlaneConflictError,
 	ControlPlaneNotFoundError,
-	IN_USE_CODES,
 } from "../errors.js";
 import {
 	applyPatch,
@@ -50,6 +49,12 @@ import {
 	freezeStringSet,
 	mergeMetadata as mergeMessageMetadata,
 } from "../shared/records.js";
+import {
+	type AgentServiceReferenceField,
+	type KnowledgeBaseServiceReferenceField,
+	serviceReferencedByAgent,
+	serviceReferencedByKnowledgeBase,
+} from "../shared/service-references.js";
 import { assertNoWorkspaceConflict } from "../shared/workspaces.js";
 import type {
 	AppendChatMessageInput,
@@ -1887,7 +1892,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 
 	private async assertServiceNotReferenced(
 		workspace: string,
-		field: "embeddingServiceId" | "chunkingServiceId" | "rerankingServiceId",
+		field: KnowledgeBaseServiceReferenceField,
 		serviceId: string,
 	): Promise<void> {
 		const kbs = await this.readAll<KnowledgeBaseRecord>("knowledge-bases");
@@ -1895,16 +1900,17 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			(kb) => kb.workspaceId === workspace && kb[field] === serviceId,
 		);
 		if (ref) {
-			throw new ControlPlaneConflictError(
-				`service '${serviceId}' is referenced by knowledge base '${ref.knowledgeBaseId}' (${field})`,
-				IN_USE_CODES[field],
+			throw serviceReferencedByKnowledgeBase(
+				serviceId,
+				ref.knowledgeBaseId,
+				field,
 			);
 		}
 	}
 
 	private async assertAgentServiceNotReferenced(
 		workspace: string,
-		field: "llmServiceId" | "rerankingServiceId",
+		field: AgentServiceReferenceField,
 		serviceId: string,
 	): Promise<void> {
 		const agents = await this.readAll<AgentRecord>("agents");
@@ -1912,10 +1918,7 @@ export class FileControlPlaneStore implements ControlPlaneStore {
 			(agent) => agent.workspaceId === workspace && agent[field] === serviceId,
 		);
 		if (ref) {
-			throw new ControlPlaneConflictError(
-				`service '${serviceId}' is referenced by agent '${ref.agentId}' (${field})`,
-				IN_USE_CODES[field],
-			);
+			throw serviceReferencedByAgent(serviceId, ref.agentId, field);
 		}
 	}
 }
