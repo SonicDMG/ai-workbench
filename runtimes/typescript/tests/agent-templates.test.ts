@@ -128,11 +128,13 @@ describe("GET /workspaces/{w}/agent-templates", () => {
 			);
 		}
 
-		// Catalog ordering is stable — first two are the default-on
-		// pair so the UI's "recommended" rail can render them first
-		// without re-sorting.
+		// Catalog ordering is stable. Bobby anchors the front of the
+		// list; Heidi anchors the back so opt-in personas (Maven,
+		// Quill, Sage) read as a group between the two recommended
+		// agents. The UI relies on this to render its "recommended"
+		// rail without re-sorting.
 		expect(body.items[0].templateId).toBe("bobby");
-		expect(body.items[1].templateId).toBe("heidi");
+		expect(body.items[body.items.length - 1].templateId).toBe("heidi");
 	});
 
 	test("404 when the workspace doesn't exist", async () => {
