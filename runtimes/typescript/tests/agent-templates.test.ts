@@ -166,6 +166,82 @@ describe("POST /workspaces/{w}/agents/from-template", () => {
 		expect(created.agentId).toMatch(/^[0-9a-f-]{36}$/);
 	});
 
+	test("binds the new agent to the workspace's first LLM service so tool calling works", async () => {
+		// Bobby + Heidi (auto-seeded on workspace POST) get the seeded
+		// gpt-4o-mini service wired in. Until this fix, from-template
+		// agents had llmServiceId: null and fell back to the runtime's
+		// global chat config — which routes through a path that can't
+		// natively invoke tools, so search_kb came out as plain text.
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+
+		const llmList = await app.request(`/api/v1/workspaces/${ws}/llm-services`);
+		const llmItems = (await json(llmList)).items as Array<{
+			llmServiceId: string;
+		}>;
+		expect(llmItems.length).toBeGreaterThan(0);
+		const expectedLlmServiceId = llmItems[0]?.llmServiceId;
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/agents/from-template`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ templateId: "sage" }),
+			},
+		);
+		expect(res.status).toBe(201);
+		const created = await json(res);
+		expect(created.llmServiceId).toBe(expectedLlmServiceId);
+	});
+
+	test("leaves llmServiceId null when the workspace has no LLM services", async () => {
+		// Edge case: an operator who deleted every seeded LLM service
+		// before clicking 'from template' should still get an agent —
+		// just one that falls back to the runtime's global chat config,
+		// matching the prior behavior. Don't synthesise an llmServiceId
+		// out of thin air.
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		// Delete the seeded agents first — they reference the seeded
+		// LLM service, so the LLM-service deletion would 409 with
+		// `llm_service_in_use` otherwise.
+		const agentList = await app.request(`/api/v1/workspaces/${ws}/agents`);
+		const seededAgents = (await json(agentList)).items as Array<{
+			agentId: string;
+		}>;
+		for (const a of seededAgents) {
+			await app.request(`/api/v1/workspaces/${ws}/agents/${a.agentId}`, {
+				method: "DELETE",
+			});
+		}
+		const llmList = await app.request(`/api/v1/workspaces/${ws}/llm-services`);
+		const seededLlms = (await json(llmList)).items as Array<{
+			llmServiceId: string;
+		}>;
+		for (const svc of seededLlms) {
+			const del = await app.request(
+				`/api/v1/workspaces/${ws}/llm-services/${svc.llmServiceId}`,
+				{ method: "DELETE" },
+			);
+			expect(del.ok, `delete llm-service: ${await del.clone().text()}`).toBe(
+				true,
+			);
+		}
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/agents/from-template`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ templateId: "quill" }),
+			},
+		);
+		expect(res.status, await res.clone().text()).toBe(201);
+		const created = await json(res);
+		expect(created.llmServiceId).toBeNull();
+	});
+
 	test("the new agent shows up in the workspace's agent list", async () => {
 		const app = makeApp();
 		const ws = await createWorkspace(app);

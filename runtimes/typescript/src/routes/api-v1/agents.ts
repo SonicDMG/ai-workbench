@@ -225,10 +225,21 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 				throw new ControlPlaneNotFoundError("agent_template", templateId);
 			}
 
-			const record = await store.createAgent(
-				workspaceId,
-				templateToCreateAgentInput(template),
-			);
+			// Mirror what `seedDefaultAgents` does on workspace POST: bind
+			// the new agent to the workspace's first LLM service so tool
+			// calling works out of the box. Without this, agents fall back
+			// to the runtime's global `chat:` config, which routes through
+			// a path that can't natively invoke tools — the model emits
+			// the tool name as text instead of calling `search_kb`. Bobby
+			// + Heidi worked because the seed path always set this; the
+			// from-template path was the only seam where it was missing.
+			const llmServices = await store.listLlmServices(workspaceId);
+			const llmServiceId = llmServices[0]?.llmServiceId ?? null;
+
+			const record = await store.createAgent(workspaceId, {
+				...templateToCreateAgentInput(template),
+				...(llmServiceId && { llmServiceId }),
+			});
 			audit(c, {
 				action: "agent.create",
 				outcome: "success",
