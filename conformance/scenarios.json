@@ -226,6 +226,177 @@
 		]
 	},
 	{
+		"slug": "chunking-service-crud-lifecycle",
+		"description": "Workspace-scoped chunking service CRUD: create explicit (independent of the default seed), list, get, patch, delete. Pins the chunking-service record wire shape including engine/strategy/maxChunkSize and the immutable `chunkingServiceId`. The list step paginates over (default + created) so every runtime that auto-seeds a default service still emits a list envelope with both records.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/chunking-services",
+				"body": {
+					"name": "fixed-1024",
+					"description": "1024-token splitter",
+					"engine": "fixed",
+					"strategy": "by-tokens",
+					"maxChunkSize": 1024,
+					"minChunkSize": 64,
+					"chunkUnit": "tokens",
+					"overlapSize": 64,
+					"overlapUnit": "tokens",
+					"preserveStructure": true,
+					"language": "en"
+				}
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/chunking-services/$2.chunkingServiceId"
+			},
+			{
+				"method": "PATCH",
+				"path": "/api/v1/workspaces/$1.workspaceId/chunking-services/$2.chunkingServiceId",
+				"body": { "description": "1024-token splitter (revised)" }
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.workspaceId/chunking-services/$2.chunkingServiceId"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/chunking-services/$2.chunkingServiceId"
+			}
+		]
+	},
+	{
+		"slug": "embedding-service-crud-lifecycle",
+		"description": "Workspace-scoped embedding service CRUD. Pins the embedding-service record wire shape including provider/modelName/embeddingDimension/distanceMetric. The 'mock' provider lets every runtime exercise the path without real embedding credentials.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/embedding-services",
+				"body": {
+					"name": "mock-d4",
+					"description": "deterministic 4-dim embedder for tests",
+					"provider": "mock",
+					"modelName": "mock-d4",
+					"embeddingDimension": 4,
+					"distanceMetric": "cosine"
+				}
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/embedding-services/$2.embeddingServiceId"
+			},
+			{
+				"method": "PATCH",
+				"path": "/api/v1/workspaces/$1.workspaceId/embedding-services/$2.embeddingServiceId",
+				"body": { "description": "deterministic 4-dim embedder (revised)" }
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.workspaceId/embedding-services/$2.embeddingServiceId"
+			}
+		]
+	},
+	{
+		"slug": "knowledge-filter-crud-lifecycle",
+		"description": "Knowledge-filter CRUD on a knowledge base. Filters are stored as opaque `Record<string, unknown>` predicates the search route can apply at query time. This pins the wire shape (filter object preserved verbatim) and the workspaceId/knowledgeBaseId/knowledgeFilterId triple identity.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/embedding-services"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/chunking-services"
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/knowledge-bases",
+				"body": {
+					"name": "kb",
+					"embeddingServiceId": "$2.items.0.embeddingServiceId",
+					"chunkingServiceId": "$3.items.0.chunkingServiceId"
+				}
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/knowledge-bases/$4.knowledgeBaseId/filters",
+				"body": {
+					"name": "internal-only",
+					"description": "scope to internal docs",
+					"filter": { "tag": "internal" }
+				}
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/knowledge-bases/$4.knowledgeBaseId/filters/$5.knowledgeFilterId"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/knowledge-bases/$4.knowledgeBaseId/filters"
+			},
+			{
+				"method": "PATCH",
+				"path": "/api/v1/workspaces/$1.workspaceId/knowledge-bases/$4.knowledgeBaseId/filters/$5.knowledgeFilterId",
+				"body": { "filter": { "tag": "internal", "audience": "engineering" } }
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.workspaceId/knowledge-bases/$4.knowledgeBaseId/filters/$5.knowledgeFilterId"
+			}
+		]
+	},
+	{
+		"slug": "agent-error-envelopes",
+		"description": "Pins the canonical error envelopes on the agent surface. Caller-supplied agentId is honored on first POST and rejected with `409 conflict` on the second. GET on an unknown agent returns `404 agent_not_found`. PATCH with an empty body is treated as a no-op and returns `200` with the unchanged record (the API doesn't gate empty-patch validation). Each runtime must emit `{ error: { code, message, requestId } }` envelopes for the failure paths.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents",
+				"body": {
+					"agentId": "a1aaaaaa-1aaa-4aaa-8aaa-aaaaaaaaaaaa",
+					"name": "alpha"
+				}
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents",
+				"body": {
+					"agentId": "a1aaaaaa-1aaa-4aaa-8aaa-aaaaaaaaaaaa",
+					"name": "alpha-dup"
+				}
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/b9bbbbbb-2bbb-4bbb-8bbb-bbbbbbbbbbbb"
+			},
+			{
+				"method": "PATCH",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId",
+				"body": {}
+			}
+		]
+	},
+	{
 		"slug": "agent-crud-basic",
 		"description": "Agent + conversation CRUD lifecycle WITHOUT triggering chat sends. Workspace POST auto-seeds the default LLM service; we bind an agent to it, open a conversation, and tear down. The GET /agents list step is intentionally omitted because workspace POST also auto-seeds two default agents (Bobby + Maven) whose createdAt timestamps frequently collide at millisecond resolution and sort nondeterministically — the per-agent GET below already pins the wire shape every runtime must produce. Sending messages is excluded from conformance because chat completion depends on the upstream LLM API that's not part of the runtime contract.",
 		"steps": [

@@ -1,0 +1,150 @@
+{
+	"slug": "embedding-service-crud-lifecycle",
+	"description": "Workspace-scoped embedding service CRUD. Pins the embedding-service record wire shape including provider/modelName/embeddingDimension/distanceMetric. The 'mock' provider lets every runtime exercise the path without real embedding credentials.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentials": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"updatedAt": "{{TS}}",
+					"url": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"description": "deterministic 4-dim embedder for tests",
+					"distanceMetric": "cosine",
+					"embeddingDimension": 4,
+					"modelName": "mock-d4",
+					"name": "mock-d4",
+					"provider": "mock"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/embedding-services"
+			},
+			"response": {
+				"body": {
+					"authType": "none",
+					"createdAt": "{{TS}}",
+					"credentialRef": null,
+					"description": "deterministic 4-dim embedder for tests",
+					"distanceMetric": "cosine",
+					"embeddingDimension": 4,
+					"embeddingServiceId": "{{UUID_2}}",
+					"endpointBaseUrl": null,
+					"endpointPath": null,
+					"maxBatchSize": null,
+					"maxInputTokens": null,
+					"modelName": "mock-d4",
+					"name": "mock-d4",
+					"provider": "mock",
+					"requestTimeoutMs": null,
+					"status": "active",
+					"supportedContent": [],
+					"supportedLanguages": [],
+					"updatedAt": "{{TS}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/embedding-services/{{UUID_2}}"
+			},
+			"response": {
+				"body": {
+					"authType": "none",
+					"createdAt": "{{TS}}",
+					"credentialRef": null,
+					"description": "deterministic 4-dim embedder for tests",
+					"distanceMetric": "cosine",
+					"embeddingDimension": 4,
+					"embeddingServiceId": "{{UUID_2}}",
+					"endpointBaseUrl": null,
+					"endpointPath": null,
+					"maxBatchSize": null,
+					"maxInputTokens": null,
+					"modelName": "mock-d4",
+					"name": "mock-d4",
+					"provider": "mock",
+					"requestTimeoutMs": null,
+					"status": "active",
+					"supportedContent": [],
+					"supportedLanguages": [],
+					"updatedAt": "{{TS}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"description": "deterministic 4-dim embedder (revised)"
+				},
+				"method": "PATCH",
+				"path": "/api/v1/workspaces/{{UUID_1}}/embedding-services/{{UUID_2}}"
+			},
+			"response": {
+				"body": {
+					"authType": "none",
+					"createdAt": "{{TS}}",
+					"credentialRef": null,
+					"description": "deterministic 4-dim embedder (revised)",
+					"distanceMetric": "cosine",
+					"embeddingDimension": 4,
+					"embeddingServiceId": "{{UUID_2}}",
+					"endpointBaseUrl": null,
+					"endpointPath": null,
+					"maxBatchSize": null,
+					"maxInputTokens": null,
+					"modelName": "mock-d4",
+					"name": "mock-d4",
+					"provider": "mock",
+					"requestTimeoutMs": null,
+					"status": "active",
+					"supportedContent": [],
+					"supportedLanguages": [],
+					"updatedAt": "{{TS}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}/embedding-services/{{UUID_2}}"
+			},
+			"response": {
+				"body": null,
+				"status": 204
+			},
+			"step": 5
+		}
+	]
+}

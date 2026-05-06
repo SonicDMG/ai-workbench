@@ -1,0 +1,124 @@
+{
+	"slug": "agent-error-envelopes",
+	"description": "Pins the canonical error envelopes on the agent surface. Caller-supplied agentId is honored on first POST and rejected with `409 conflict` on the second. GET on an unknown agent returns `404 agent_not_found`. PATCH with an empty body is treated as a no-op and returns `200` with the unchanged record (the API doesn't gate empty-patch validation). Each runtime must emit `{ error: { code, message, requestId } }` envelopes for the failure paths.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentials": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"updatedAt": "{{TS}}",
+					"url": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"agentId": "{{UUID_2}}",
+					"name": "alpha"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents"
+			},
+			"response": {
+				"body": {
+					"agentId": "{{UUID_2}}",
+					"createdAt": "{{TS}}",
+					"description": null,
+					"knowledgeBaseIds": [],
+					"llmServiceId": null,
+					"name": "alpha",
+					"rerankEnabled": false,
+					"rerankMaxResults": null,
+					"rerankingServiceId": null,
+					"systemPrompt": null,
+					"updatedAt": "{{TS}}",
+					"userPrompt": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"agentId": "{{UUID_2}}",
+					"name": "alpha-dup"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "conflict",
+						"message": "agent with id '{{UUID_2}}' already exists",
+						"requestId": "{{REQID_1}}"
+					}
+				},
+				"status": 409
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents/{{UUID_3}}"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "agent_not_found",
+						"message": "agent '{{UUID_3}}' not found",
+						"requestId": "{{REQID_2}}"
+					}
+				},
+				"status": 404
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": {},
+				"method": "PATCH",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents/{{UUID_2}}"
+			},
+			"response": {
+				"body": {
+					"agentId": "{{UUID_2}}",
+					"createdAt": "{{TS}}",
+					"description": null,
+					"knowledgeBaseIds": [],
+					"llmServiceId": null,
+					"name": "alpha",
+					"rerankEnabled": false,
+					"rerankMaxResults": null,
+					"rerankingServiceId": null,
+					"systemPrompt": null,
+					"updatedAt": "{{TS}}",
+					"userPrompt": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 5
+		}
+	]
+}

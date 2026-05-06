@@ -21,3 +21,8 @@ runtimes/typescript/workbench.yaml
 # Local-only Claude Code settings (per-developer)
 .claude/settings.local.json
 .claude/launch.json
+# Claude Code worktrees spawned by background sub-agents — these are
+# full git clones inside the repo tree; ignore them so they don't
+# get accidentally added and so repo-wide tools (biome, etc.) skip
+# the nested config they contain.
+.claude/worktrees/

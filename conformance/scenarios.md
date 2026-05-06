@@ -116,3 +116,54 @@ from conformance because chat completion depends on the upstream LLM
 API that's not part of the runtime contract.
 
 Fixture: `fixtures/agent-crud-basic.json`.
+
+---
+
+## Scenario 10 — `chunking-service-crud-lifecycle`
+
+Workspace-scoped chunking service CRUD: create explicit (independent
+of the default seed), GET, PATCH, DELETE, GET-after-delete (404 with
+`chunking_service_not_found`). Pins the chunking-service record wire
+shape and the per-aggregate `chunkingServiceId` identity column.
+
+Fixture: `fixtures/chunking-service-crud-lifecycle.json`.
+
+---
+
+## Scenario 11 — `embedding-service-crud-lifecycle`
+
+Workspace-scoped embedding service CRUD with the `mock` provider so
+every runtime can exercise the path without real embedding
+credentials. Pins `provider`, `modelName`, `embeddingDimension`, and
+`distanceMetric`.
+
+Fixture: `fixtures/embedding-service-crud-lifecycle.json`.
+
+---
+
+## Scenario 12 — `knowledge-filter-crud-lifecycle`
+
+Knowledge-filter CRUD on a freshly-created KB. Filters are
+opaque `Record<string, unknown>` predicates the search route applies
+at query time; the conformance pin is that the predicate is preserved
+verbatim across create / get / patch / delete.
+
+Fixture: `fixtures/knowledge-filter-crud-lifecycle.json`.
+
+---
+
+## Scenario 13 — `agent-error-envelopes`
+
+Pins canonical error envelopes on the agent surface:
+
+- Caller-supplied `agentId` honored on first POST.
+- Same `agentId` re-POST → `409 conflict`.
+- GET unknown `agentId` → `404 agent_not_found`.
+- PATCH with an empty body is a no-op and returns `200` with the
+  unchanged record. Pinning this matters: it documents that empty-
+  patch validation is NOT gated, so cross-runtime parity doesn't
+  drift on the easy case.
+
+Every error envelope must be `{ error: { code, message, requestId } }`.
+
+Fixture: `fixtures/agent-error-envelopes.json`.

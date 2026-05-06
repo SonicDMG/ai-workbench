@@ -1,0 +1,194 @@
+{
+	"slug": "chunking-service-crud-lifecycle",
+	"description": "Workspace-scoped chunking service CRUD: create explicit (independent of the default seed), list, get, patch, delete. Pins the chunking-service record wire shape including engine/strategy/maxChunkSize and the immutable `chunkingServiceId`. The list step paginates over (default + created) so every runtime that auto-seeds a default service still emits a list envelope with both records.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentials": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"updatedAt": "{{TS}}",
+					"url": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"chunkUnit": "tokens",
+					"description": "1024-token splitter",
+					"engine": "fixed",
+					"language": "en",
+					"maxChunkSize": 1024,
+					"minChunkSize": 64,
+					"name": "fixed-1024",
+					"overlapSize": 64,
+					"overlapUnit": "tokens",
+					"preserveStructure": true,
+					"strategy": "by-tokens"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/chunking-services"
+			},
+			"response": {
+				"body": {
+					"authType": "none",
+					"chunkUnit": "tokens",
+					"chunkingServiceId": "{{UUID_2}}",
+					"createdAt": "{{TS}}",
+					"credentialRef": null,
+					"description": "1024-token splitter",
+					"enableOcr": null,
+					"endpointBaseUrl": null,
+					"endpointPath": null,
+					"engine": "fixed",
+					"engineVersion": null,
+					"extractFigures": null,
+					"extractTables": null,
+					"language": "en",
+					"maxChunkSize": 1024,
+					"maxPayloadSizeKb": null,
+					"minChunkSize": 64,
+					"name": "fixed-1024",
+					"overlapSize": 64,
+					"overlapUnit": "tokens",
+					"preserveStructure": true,
+					"readingOrder": null,
+					"requestTimeoutMs": null,
+					"status": "active",
+					"strategy": "by-tokens",
+					"updatedAt": "{{TS}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/chunking-services/{{UUID_2}}"
+			},
+			"response": {
+				"body": {
+					"authType": "none",
+					"chunkUnit": "tokens",
+					"chunkingServiceId": "{{UUID_2}}",
+					"createdAt": "{{TS}}",
+					"credentialRef": null,
+					"description": "1024-token splitter",
+					"enableOcr": null,
+					"endpointBaseUrl": null,
+					"endpointPath": null,
+					"engine": "fixed",
+					"engineVersion": null,
+					"extractFigures": null,
+					"extractTables": null,
+					"language": "en",
+					"maxChunkSize": 1024,
+					"maxPayloadSizeKb": null,
+					"minChunkSize": 64,
+					"name": "fixed-1024",
+					"overlapSize": 64,
+					"overlapUnit": "tokens",
+					"preserveStructure": true,
+					"readingOrder": null,
+					"requestTimeoutMs": null,
+					"status": "active",
+					"strategy": "by-tokens",
+					"updatedAt": "{{TS}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"description": "1024-token splitter (revised)"
+				},
+				"method": "PATCH",
+				"path": "/api/v1/workspaces/{{UUID_1}}/chunking-services/{{UUID_2}}"
+			},
+			"response": {
+				"body": {
+					"authType": "none",
+					"chunkUnit": "tokens",
+					"chunkingServiceId": "{{UUID_2}}",
+					"createdAt": "{{TS}}",
+					"credentialRef": null,
+					"description": "1024-token splitter (revised)",
+					"enableOcr": null,
+					"endpointBaseUrl": null,
+					"endpointPath": null,
+					"engine": "fixed",
+					"engineVersion": null,
+					"extractFigures": null,
+					"extractTables": null,
+					"language": "en",
+					"maxChunkSize": 1024,
+					"maxPayloadSizeKb": null,
+					"minChunkSize": 64,
+					"name": "fixed-1024",
+					"overlapSize": 64,
+					"overlapUnit": "tokens",
+					"preserveStructure": true,
+					"readingOrder": null,
+					"requestTimeoutMs": null,
+					"status": "active",
+					"strategy": "by-tokens",
+					"updatedAt": "{{TS}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}/chunking-services/{{UUID_2}}"
+			},
+			"response": {
+				"body": null,
+				"status": 204
+			},
+			"step": 5
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/chunking-services/{{UUID_2}}"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "chunking_service_not_found",
+						"message": "chunking service '{{UUID_2}}' not found",
+						"requestId": "{{REQID_1}}"
+					}
+				},
+				"status": 404
+			},
+			"step": 6
+		}
+	]
+}
