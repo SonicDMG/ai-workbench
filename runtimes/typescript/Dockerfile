@@ -7,9 +7,17 @@
 #
 # Build context is expected to be the repo root so both
 # `runtimes/typescript/` and `apps/web/` are reachable.
+#
+# The base image is pinned by digest so a re-tagged `node:22-alpine`
+# upstream cannot silently change the build. Refresh the digest with:
+#   docker pull node:22-alpine
+#   docker images --digests node:22-alpine
+# and update all three FROM lines below in lockstep.
+
+ARG NODE_BASE=node:22-alpine@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f
 
 # ---------- UI build ----------
-FROM node:22-alpine AS ui-build
+FROM ${NODE_BASE} AS ui-build
 WORKDIR /ui
 # `.npmrc` carries `legacy-peer-deps=true` to satisfy the
 # openapi-typescript@7 → typescript@^5 peer constraint on a
@@ -26,7 +34,7 @@ COPY apps/web/. ./
 RUN npm run build
 
 # ---------- Runtime build ----------
-FROM node:22-alpine AS rt-build
+FROM ${NODE_BASE} AS rt-build
 WORKDIR /app
 COPY runtimes/typescript/package.json runtimes/typescript/package-lock.json* ./
 RUN if [ -f package-lock.json ]; then \
@@ -39,7 +47,7 @@ COPY runtimes/typescript/src ./src
 RUN npx tsc -p tsconfig.build.json
 
 # ---------- Runtime image ----------
-FROM node:22-alpine AS runtime
+FROM ${NODE_BASE} AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
