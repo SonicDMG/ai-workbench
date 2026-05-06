@@ -54,6 +54,7 @@ export type AuditAction =
 	| "mcp.invoke"
 	| "auth.api_denied"
 	| "auth.bootstrap_use"
+	| "auth.csrf_rejected"
 	| "auth.login"
 	| "auth.logout"
 	| "auth.refresh";

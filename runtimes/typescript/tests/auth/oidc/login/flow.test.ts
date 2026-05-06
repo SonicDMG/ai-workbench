@@ -331,8 +331,14 @@ describe("/auth/* flow", () => {
 			);
 			expect(apiRes.status).toBe(200);
 
-			// 6. POST /auth/logout → clears the cookie.
-			const outRes = await fx.app.request("/auth/logout", { method: "POST" });
+			// 6. POST /auth/logout → clears the cookie. The CSRF Origin
+			// gate is active because a cookie session is configured;
+			// `http://localhost` is the effective origin Hono synthesizes
+			// for `app.request("/...")` calls.
+			const outRes = await fx.app.request("/auth/logout", {
+				method: "POST",
+				headers: { origin: "http://localhost" },
+			});
 			expect(outRes.status).toBe(200);
 			expect(outRes.headers.get("set-cookie")).toMatch(/Max-Age=0/);
 		} finally {
@@ -462,7 +468,10 @@ describe("/auth/* flow", () => {
 
 			const refreshRes = await fx.app.request("/auth/refresh", {
 				method: "POST",
-				headers: { cookie: `wb_session=${cookie1}` },
+				headers: {
+					cookie: `wb_session=${cookie1}`,
+					origin: "http://localhost",
+				},
 			});
 			expect(refreshRes.status).toBe(200);
 			const body = (await refreshRes.json()) as {
@@ -489,7 +498,10 @@ describe("/auth/* flow", () => {
 	test("/auth/refresh without a session cookie → 401 no_refresh_token", async () => {
 		const fx = await buildAppWithLogin(privateKey, imported);
 		try {
-			const res = await fx.app.request("/auth/refresh", { method: "POST" });
+			const res = await fx.app.request("/auth/refresh", {
+				method: "POST",
+				headers: { origin: "http://localhost" },
+			});
 			expect(res.status).toBe(401);
 			const body = (await res.json()) as { error: { code: string } };
 			expect(body.error.code).toBe("no_refresh_token");
@@ -512,6 +524,7 @@ describe("/auth/* flow", () => {
 				method: "POST",
 				headers: {
 					cookie: `wb_session=${encodeURIComponent(handcrafted)}`,
+					origin: "http://localhost",
 				},
 			});
 			expect(res.status).toBe(401);

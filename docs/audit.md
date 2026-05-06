@@ -42,6 +42,7 @@ by filter.
 | `mcp.invoke` | Any tool call into `/api/v1/workspaces/{w}/mcp` | Includes the `toolName`. Argument payloads are not logged. |
 | `auth.api_denied` | 401/403 auth decisions on `/api/v1/*` | `outcome: "denied"` with `reason`; unauthenticated 401s have `subject: null`, while scoped 403s include the resolved subject when available. |
 | `auth.bootstrap_use` | Any request authenticated with the bootstrap operator token | Includes `scheme: "bootstrap"`. The plaintext bootstrap token is **never** logged. |
+| `auth.csrf_rejected` | A state-changing request to a cookie-protected route was rejected by the Origin/Referer check | `outcome: "failure"` with `reason` ∈ `{ "no allowed origin available", "missing Origin and Referer on state-changing request", "origin mismatch (got <claimed>)" }`. The HTTP response is `403 forbidden_origin`. Bearer-token requests bypass the check and never emit this event. |
 | `auth.login` | OIDC `/auth/callback` | `outcome: "success"` once the access token passes the runtime's own verifier; `outcome: "failure"` with `reason` on token-validation errors. |
 | `auth.refresh` | OIDC `/auth/refresh` | `outcome: "success"` on a clean rotate. `outcome: "failure"` with `reason` ∈ `{ "no_refresh_token", "idp_rejected", "token_validation_failed" }` covers the three failure paths (missing cookie, IdP refused the refresh_token, freshly-issued access token failed self-verification). |
 | `auth.logout` | OIDC `/auth/logout` | Emitted on every cookie clear, even when no session was present. |

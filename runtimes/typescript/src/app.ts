@@ -25,6 +25,7 @@ import { Scalar } from "@scalar/hono-api-reference";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { workspaceRouteAuthz } from "./auth/authz.js";
+import { csrfOriginCheck } from "./auth/csrf.js";
 import { ForbiddenError, UnauthorizedError } from "./auth/errors.js";
 import { authMiddleware } from "./auth/middleware.js";
 import type { CookieSigner } from "./auth/oidc/login/cookie.js";
@@ -105,6 +106,28 @@ export interface AppOptions {
 	 * so tests get the dev posture out of the box.
 	 */
 	readonly environment?: "development" | "production";
+	/**
+	 * Public origin (`scheme://host[:port]`) the browser uses to reach
+	 * the runtime. Used by the CSRF Origin/Referer check on
+	 * cookie-protected routes; falls back to the request's effective
+	 * origin when null. Mirror this from `runtime.publicOrigin`.
+	 */
+	readonly publicOrigin?: string | null;
+	/**
+	 * Mirror of `runtime.trustProxyHeaders`. When true, CSRF and rate
+	 * limiting honor `X-Forwarded-Proto` / `X-Forwarded-Host` /
+	 * `X-Forwarded-For`. Keep false unless the runtime sits behind a
+	 * trusted reverse proxy.
+	 */
+	readonly trustProxyHeaders?: boolean;
+	/**
+	 * Toggle the CSRF Origin/Referer check on `/api/v1/workspaces/*`
+	 * (state-changing methods) and on `/auth/refresh` + `/auth/logout`.
+	 * Defaults to `true`. Only disable if you have a non-browser client
+	 * that submits state-changing requests using cookies and cannot send
+	 * `Origin` — in that case prefer Bearer-token auth instead.
+	 */
+	readonly csrfOriginCheck?: boolean;
 	/** Optional — a {@link MemoryJobStore} is constructed if absent. */
 	readonly jobs?: JobStore;
 	/**
@@ -345,6 +368,28 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	// Router can take over for unknown non-API paths.
 	if (opts.ui) {
 		app.use("*", opts.ui.staticMiddleware);
+	}
+
+	// CSRF Origin/Referer check, layered on top of the session cookie's
+	// `SameSite=Strict` posture. Mounts only when a cookie session is
+	// actually configured (`opts.login.cookie`) — without a cookie path,
+	// there is no automatically-attached credential for an attacker to
+	// CSRF, so the gate is moot. The flag still exists so a deployment
+	// can force-disable the check even with login on (default `true`).
+	// Wired before the auth middleware so a CSRF-failing browser
+	// request can never see the resolved subject. Bearer-token
+	// requests are skipped inside the middleware itself (programmatic
+	// clients aren't in the CSRF surface).
+	const csrfEnabled =
+		(opts.csrfOriginCheck ?? true) && opts.login?.cookie != null;
+	if (csrfEnabled) {
+		const csrf = csrfOriginCheck({
+			publicOrigin: opts.publicOrigin ?? null,
+			trustProxyHeaders: opts.trustProxyHeaders ?? false,
+		});
+		app.use("/api/v1/workspaces/*", csrf);
+		app.use("/auth/refresh", csrf);
+		app.use("/auth/logout", csrf);
 	}
 
 	// Auth scoped to the actual resource tree at /api/v1/workspaces/*.

@@ -84,6 +84,15 @@ const RuntimeSchema = z
 		// and secure-cookie decisions. Keep false unless the runtime sits
 		// behind a trusted reverse proxy that overwrites these headers.
 		trustProxyHeaders: z.boolean().default(false),
+		// CSRF Origin/Referer check on cookie-protected routes. When
+		// true (the default) state-changing requests to
+		// `/api/v1/workspaces/*` and `/auth/refresh|logout` must carry
+		// an `Origin` (or `Referer`) header matching `publicOrigin` —
+		// otherwise the runtime falls back to the request's effective
+		// origin. Bearer-token requests always bypass the check. Disable
+		// only if you have a non-browser client that uses cookies and
+		// cannot send `Origin` (in which case prefer Bearer instead).
+		csrfOriginCheck: z.boolean().default(true),
 		// In-process rate limiter for `/api/v1/*` and `/auth/*`. On by
 		// default; tune capacity/windowMs or disable entirely.
 		rateLimit: RateLimitSchema,
@@ -112,6 +121,7 @@ const RuntimeSchema = z
 		replicaId: null,
 		publicOrigin: null,
 		trustProxyHeaders: false,
+		csrfOriginCheck: true,
 		rateLimit: { enabled: true, capacity: 600, windowMs: 60_000 },
 		blockPrivateNetworkEndpoints: false,
 		maxConcurrentIngestJobs: 4,
