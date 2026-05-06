@@ -58,6 +58,7 @@ import { requestLogger } from "./lib/request-logger.js";
 import { buildRuntimeMetrics, requestMetrics } from "./lib/runtime-metrics.js";
 import { safeErrorMessage } from "./lib/safe-error.js";
 import { SCALAR_CDN_PINNED, securityHeaders } from "./lib/security-headers.js";
+import { requestTracing } from "./lib/tracing.js";
 import type { AppEnv } from "./lib/types.js";
 import { buildDefaultRoutePlugins } from "./plugins/default-plugins.js";
 import type { RoutePluginRegistry } from "./plugins/registry.js";
@@ -241,6 +242,13 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const replicaId = opts.replicaId ?? generateReplicaId();
 
 	app.use("*", requestId(opts.requestIdHeader));
+	// Per-request OpenTelemetry server span. Mounts AFTER `requestId`
+	// so the request id is available as `wb.request_id` on the span,
+	// and BEFORE the access log + metrics so those wrappers see the
+	// span context (and thus emit logs with the active trace id when
+	// an SDK is registered). When no SDK is registered the spans are
+	// no-ops via `@opentelemetry/api`.
+	app.use("*", requestTracing());
 	// Per-request access log. Runs after `requestId` so the log line
 	// includes the assigned request id; runs as the outermost wrapper
 	// so it sees the final status code regardless of which route

@@ -94,6 +94,7 @@ async function main(): Promise<void> {
 			rateLimit: { enabled: false, capacity: 600, windowMs: 60_000 },
 			blockPrivateNetworkEndpoints: false,
 			maxConcurrentIngestJobs: 4,
+			tracing: { enabled: false, serviceName: null, exporterUrl: null },
 		},
 		controlPlane: {
 			driver: "astra" as const,

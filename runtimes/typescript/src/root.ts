@@ -26,6 +26,7 @@ import { runKbIngestJob } from "./jobs/ingest-worker.js";
 import { JobOrphanSweeper } from "./jobs/sweeper.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
 import { generateReplicaId } from "./lib/replica-id.js";
+import { initOtelFromConfig, type OtelHandle } from "./lib/tracing.js";
 import { setEndpointEgressPolicy } from "./openapi/schemas.js";
 import { AstraCliSecretProvider } from "./secrets/astra-cli.js";
 import { EnvSecretProvider } from "./secrets/env.js";
@@ -76,6 +77,17 @@ async function main(): Promise<void> {
 	logger.info(
 		{ level: logLevel.level, source: logLevel.source },
 		"log level set",
+	);
+
+	// Optional OpenTelemetry SDK init. When `runtime.tracing.enabled`
+	// is true we start a NodeSDK + OTLP HTTP trace exporter + the
+	// auto-instrumentations bundle. When false (the default), the
+	// runtime still creates manual server spans through
+	// `@opentelemetry/api`, but they are no-ops without a registered
+	// SDK. For full HTTP/fetch auto-instrumentation, operators can
+	// preload the SDK via `node --import ./dist/lib/tracing-preload.js`.
+	const otel: OtelHandle | null = await initOtelFromConfig(
+		config.runtime.tracing,
 	);
 
 	// Layered SSRF defense. Production environments always block
@@ -296,6 +308,16 @@ async function main(): Promise<void> {
 				logger.error(
 					{ err: stopErr instanceof Error ? stopErr.message : "unknown" },
 					"job store stop failed",
+				);
+			}
+			// Flush in-flight spans before exit. No-op when tracing is
+			// disabled.
+			try {
+				await otel?.shutdown();
+			} catch (otelErr) {
+				logger.error(
+					{ err: otelErr instanceof Error ? otelErr.message : "unknown" },
+					"otel shutdown failed",
 				);
 			}
 			clearTimeout(forceKill);

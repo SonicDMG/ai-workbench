@@ -70,6 +70,30 @@ runtime beyond a trusted loopback or private admin network.
   Inbound `traceparent` headers are honored when valid (the trace id
   becomes the request id) and a fresh W3C `traceparent` is emitted on
   every response so service meshes can correlate.
+- **Enable OpenTelemetry tracing** when the deployment has a
+  collector. The runtime always creates manual SERVER spans through
+  `@opentelemetry/api` (no-op when no SDK is registered), so flipping
+  tracing on is a config change, not a code change:
+
+  ```yaml
+  runtime:
+    tracing:
+      enabled: true
+      serviceName: ai-workbench-runtime  # optional override
+      exporterUrl: https://otel-collector.example.com/v1/traces  # or use OTEL_EXPORTER_OTLP_ENDPOINT
+  ```
+
+  Standard `OTEL_*` env vars (`OTEL_EXPORTER_OTLP_HEADERS`,
+  `OTEL_TRACES_SAMPLER`, …) work as documented by the SDK. For full
+  HTTP / fetch / pino auto-instrumentation, preload the SDK at
+  process launch:
+
+  ```sh
+  node --import ./dist/lib/tracing-preload.js dist/root.js
+  ```
+
+  Without `--import`, manual server spans cover every request but
+  outbound HTTP / fetch / DB clients won't emit child spans.
 - **Apply rate limiting in front of the runtime.** The in-process
   limiter defaults to 600 req/min/IP for `/api/v1/*` and 30 req/min/IP
   for `/auth/*`; tune via `runtime.rateLimit` or set

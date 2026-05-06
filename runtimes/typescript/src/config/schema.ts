@@ -53,6 +53,30 @@ const RateLimitSchema = z
 	})
 	.default({ enabled: true, capacity: 600, windowMs: 60_000 });
 
+/**
+ * OpenTelemetry tracing knobs. Disabled by default — flipping
+ * `enabled: true` starts a NodeSDK with the OTLP HTTP trace exporter
+ * and the standard auto-instrumentations bundle. When disabled, the
+ * runtime still creates manual server spans through `@opentelemetry/api`
+ * but they are no-ops without a registered SDK.
+ *
+ * Endpoint / headers / sampling fall back to the standard `OTEL_*` env
+ * vars if not specified here. Set `serviceName` to override the default
+ * `"ai-workbench-runtime"`.
+ */
+const TracingSchema = z
+	.object({
+		enabled: z.boolean().default(false),
+		serviceName: z.string().min(1).nullable().default(null),
+		// Override for the OTLP HTTP traces endpoint, e.g.
+		// "https://otel-collector.example.com/v1/traces". Leave null to
+		// pick up `OTEL_EXPORTER_OTLP_ENDPOINT` / the OTel default.
+		exporterUrl: z.string().url().nullable().default(null),
+	})
+	.default({ enabled: false, serviceName: null, exporterUrl: null });
+
+export type TracingConfig = z.infer<typeof TracingSchema>;
+
 const RuntimeSchema = z
 	.object({
 		// `development` preserves the local-friendly defaults. Set
@@ -111,6 +135,8 @@ const RuntimeSchema = z
 		// reasonable for shared embedding endpoints; set higher for
 		// dedicated provisioned-throughput deployments.
 		maxConcurrentIngestJobs: z.number().int().positive().default(4),
+		// OpenTelemetry tracing — see TracingSchema above.
+		tracing: TracingSchema,
 	})
 	.default({
 		environment: "development",
@@ -125,6 +151,7 @@ const RuntimeSchema = z
 		rateLimit: { enabled: true, capacity: 600, windowMs: 60_000 },
 		blockPrivateNetworkEndpoints: false,
 		maxConcurrentIngestJobs: 4,
+		tracing: { enabled: false, serviceName: null, exporterUrl: null },
 	});
 
 /**
