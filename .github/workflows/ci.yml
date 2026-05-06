@@ -88,10 +88,14 @@ jobs:
           tags: ai-workbench:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # SLSA-style provenance is recorded on the local image; when
-          # this workflow grows a registry push it is the first step
-          # in the cosign sign-and-attest chain.
-          provenance: mode=max
+          # `provenance` is intentionally OFF here. Buildx's provenance
+          # attestation produces a multi-platform manifest list, which
+          # the local docker daemon cannot accept via `--load` without
+          # the containerd image store. The SBOM step below still
+          # records the bill of materials for this image; SLSA
+          # provenance + cosign signing land alongside the registry
+          # push in a follow-up PR.
+          provenance: false
           build-args: |
             APP_VERSION=ci
             APP_COMMIT=${{ github.sha }}
