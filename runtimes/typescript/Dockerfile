@@ -57,7 +57,13 @@ RUN if [ -f package-lock.json ]; then \
     else \
       npm install --omit=dev --no-audit --no-fund; \
     fi && \
-    npm cache clean --force
+    npm cache clean --force && \
+    # The runtime CMD is `node dist/root.js`; npm/npx aren't used at
+    # runtime. Drop the global npm install so its vendored deps
+    # (picomatch / brace-expansion / ip-address / etc.) don't get
+    # picked up by image SBOM / vulnerability scans.
+    rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
 COPY --from=rt-build /app/dist ./dist
 COPY --from=ui-build /ui/dist ./public
