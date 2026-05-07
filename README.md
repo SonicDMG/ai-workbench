@@ -153,7 +153,12 @@ All routes documented at `/docs` (Scalar UI) and
 | `GET` | `/healthz` | Liveness probe |
 | `GET` | `/readyz` | Readiness + workspace count |
 | `GET` | `/version` | Build metadata |
+| `GET` | `/features` | Runtime feature flags (chat, MCP, auth posture) |
+| `GET` | `/metrics` | Prometheus exposition (request counters + duration histogram, ingest semaphore gauges, rate-limit rejections) |
+| `GET` | `/astra-cli` | Auto-detected `astra` CLI defaults the UI uses to pre-fill workspace onboarding |
+| `GET` | `/astra-cli/profiles` | Available `astra` CLI profiles + databases (live shellout) |
 | `GET` | `/docs` | Scalar-rendered API reference |
+| `GET` | `/api/v1/openapi.json` | Generated OpenAPI 3.1 document |
 
 ### `/api/v1/*`
 
@@ -164,28 +169,34 @@ All routes documented at `/docs` (Scalar UI) and
 | `GET / POST` | `workspaces` | List / create workspaces |
 | `GET / PATCH / DELETE` | `workspaces/{w}` | Workspace CRUD (DELETE cascades) |
 | `POST` | `workspaces/{w}/test-connection` | Run a live workspace connection check |
-| `GET / POST` | `workspaces/{w}/knowledge-bases` | List / create knowledge bases (POST auto-provisions the underlying vector collection) |
+| `GET` | `workspaces/{w}/adoptable-collections` | Discover Astra collections in the workspace's keyspace that aren't yet bound to a KB (drives the "attach existing collection" path in the UI) |
+| `GET / POST` | `workspaces/{w}/knowledge-bases` | List / create knowledge bases (POST auto-provisions the underlying vector collection, or attaches a pre-existing one when `attach: true`) |
 | `GET / PATCH / DELETE` | `workspaces/{w}/knowledge-bases/{kb}` | KB CRUD (DELETE drops the collection + cascades RAG documents) |
 | `GET / POST` | `workspaces/{w}/knowledge-bases/{kb}/documents` | List / register a document in a KB |
 | `GET / PATCH / DELETE` | `workspaces/{w}/knowledge-bases/{kb}/documents/{d}` | Document metadata CRUD (DELETE cascades chunks in the KB's collection) |
 | `GET` | `workspaces/{w}/knowledge-bases/{kb}/documents/{d}/chunks` | List the chunks under a document |
-| `POST` | `workspaces/{w}/knowledge-bases/{kb}/ingest` | Sync ingest (chunk → embed → upsert → register Document) |
+| `GET / POST` | `workspaces/{w}/knowledge-bases/{kb}/filters` | List / create knowledge filters scoped to a KB |
+| `GET / PATCH / DELETE` | `workspaces/{w}/knowledge-bases/{kb}/filters/{filterId}` | Knowledge-filter CRUD |
+| `POST` | `workspaces/{w}/knowledge-bases/{kb}/ingest` | Sync ingest (chunk → embed → upsert → register Document); JSON body |
 | `POST` | `workspaces/{w}/knowledge-bases/{kb}/ingest?async=true` | Same pipeline, returns 202 + job pointer |
+| `POST` | `workspaces/{w}/knowledge-bases/{kb}/ingest/file` | Multipart ingest (PDF / DOCX / XLSX / text); accepts `?async=true` and a `parser=native\|docling\|auto` form field |
 | `POST` | `workspaces/{w}/knowledge-bases/{kb}/records` | Upsert vector or text records (text → server-side `$vectorize` when supported, otherwise client-side embed) |
 | `DELETE` | `workspaces/{w}/knowledge-bases/{kb}/records/{rid}` | Delete one |
 | `POST` | `workspaces/{w}/knowledge-bases/{kb}/search` | KB-scoped search (vector / text, optional hybrid + rerank) |
-| `GET / POST / DELETE` | `workspaces/{w}/chunking-services` | Chunking-service CRUD |
-| `GET / POST / DELETE` | `workspaces/{w}/embedding-services` | Embedding-service CRUD |
-| `GET / POST / DELETE` | `workspaces/{w}/reranking-services` | Reranking-service CRUD |
+| `GET / POST / PATCH / DELETE` | `workspaces/{w}/chunking-services` | Chunking-service CRUD |
+| `GET / POST / PATCH / DELETE` | `workspaces/{w}/embedding-services` | Embedding-service CRUD |
+| `GET / POST / PATCH / DELETE` | `workspaces/{w}/reranking-services` | Reranking-service CRUD |
 | `GET` | `workspaces/{w}/jobs/{jobId}` | Poll an async-ingest job |
 | `GET` | `workspaces/{w}/jobs/{jobId}/events` | SSE stream of job updates until terminal state |
 | `GET / POST / PATCH / DELETE` | `workspaces/{w}/llm-services` | LLM-service CRUD (workspace-scoped chat-completion executors) |
 | `GET / POST / PATCH / DELETE` | `workspaces/{w}/agents` | User-defined agent CRUD — each carries persona, RAG defaults, and an optional `llmServiceId` |
+| `GET` | `workspaces/{w}/agent-templates` | Catalog of one-click agent templates (Bobby / Maven / Quill / Sage) |
+| `POST` | `workspaces/{w}/agents/from-template` | Instantiate a catalog template as a new agent in the workspace |
 | `GET / POST / PATCH / DELETE` | `workspaces/{w}/agents/{a}/conversations` | Per-agent conversation CRUD |
 | `GET` | `workspaces/{w}/agents/{a}/conversations/{c}/messages` | Conversation history, oldest-first |
 | `POST` | `workspaces/{w}/agents/{a}/conversations/{c}/messages` | Send a message; sync reply with retrieval-grounded chat-completion |
-| `POST` | `workspaces/{w}/agents/{a}/conversations/{c}/messages/stream` | Same flow as SSE — `user-message` + `token` deltas + terminal `done`/`error` |
-| `POST` | `workspaces/{w}/mcp` | Model Context Protocol façade (optional, `mcp.enabled: true`) — exposes the workspace as MCP tools for external agents |
+| `POST` | `workspaces/{w}/agents/{a}/conversations/{c}/messages/stream` | Same flow as SSE — emits `user-message`, `token` deltas, optional `token-reset` + `tool-call` + `tool-result` per tool-use iteration, and terminal `done` / `error` |
+| `GET / POST / DELETE / OPTIONS` | `workspaces/{w}/mcp` | Model Context Protocol Streamable-HTTP façade (optional, `mcp.enabled: true`) — exposes the workspace as MCP tools for external agents |
 | `GET / POST` | `workspaces/{w}/api-keys` | List / issue workspace API keys |
 | `DELETE` | `workspaces/{w}/api-keys/{keyId}` | Revoke a workspace API key |
 

@@ -15,8 +15,9 @@ to flag what's coming.
 ### Base URL and versioning
 
 - Functional routes live under `/api/v1/…`.
-- Operational routes (`/`, `/healthz`, `/readyz`, `/version`, `/docs`)
-  are unversioned.
+- Operational routes (`/`, `/healthz`, `/readyz`, `/version`,
+  `/features`, `/metrics`, `/astra-cli`, `/astra-cli/profiles`,
+  `/docs`, `/api/v1/openapi.json`) are unversioned.
 - Breaking changes bump the prefix to `/api/v2/…`; `/api/v1/…` stays
   until deprecated.
 
@@ -129,6 +130,7 @@ canonical error envelope:
 ```
 
 Operational routes (`/`, `/healthz`, `/readyz`, `/version`,
+`/features`, `/metrics`, `/astra-cli`, `/astra-cli/profiles`,
 `/docs`, `/api/v1/openapi.json`) bypass the middleware so
 load balancers and ops tooling can always reach them.
 
@@ -202,6 +204,36 @@ Build metadata.
   "node": "v22.11.0"
 }
 ```
+
+### `GET /features`
+
+Runtime feature flags the bundled web UI reads to decide which
+surfaces to render. Reflects the active config (chat enabled, MCP
+enabled, auth posture, astra-cli inventory available, etc.). Never
+echoes secrets.
+
+### `GET /metrics`
+
+Prometheus exposition (`text/plain; version=0.0.4`). HTTP request
+counter + duration histogram labeled by method, matched route
+pattern, and status family (`2xx`/`4xx`/`5xx`); ingest semaphore
+gauges (`workbench_ingest_workers_{active,queued}`); rate-limit
+rejections by key type. No auth — same precedent as
+`/healthz` / `/readyz`.
+
+### `GET /astra-cli`
+
+Auto-detected `astra` CLI defaults the runtime resolved at boot
+(active profile, default org, default DB id + name + endpoint, etc.).
+The web UI reads this to pre-fill the workspace onboarding form.
+Returns an empty payload when no CLI / profile is configured.
+
+### `GET /astra-cli/profiles`
+
+Live shellout: lists every configured `astra` CLI profile and the
+databases visible to each. Drives the profile picker in the
+onboarding wizard. May take seconds depending on Astra API latency;
+not part of the hot path.
 
 ### `GET /docs`
 
@@ -604,6 +636,37 @@ collection first for owned KBs, then the KB row, then cascades RAG
 document rows. Attached KBs detach without dropping the external
 collection.
 
+### `GET /api/v1/workspaces/{workspaceId}/adoptable-collections`
+
+Discover Astra collections in the workspace's keyspace that aren't
+already bound to a knowledge base. The web UI uses this to populate
+the "attach an existing collection" picker on the create-KB flow.
+
+- **200** — `{ "items": [ { "name": string, "vectorDimension": number | null, "vectorMetric": string | null } ] }`
+- **404** `workspace_not_found`
+- **422** `workspace_misconfigured` — workspace driver missing required config
+- **503** `driver_unavailable`
+
+### Knowledge filters — `…/knowledge-bases/{kb}/filters`
+
+Workspace-scoped, KB-scoped saved retrieval filters. They are
+shallow-equal payload constraints applied at search time without
+requiring the caller to remember the exact JSON. Used by the
+playground's filter dropdown and by agents that want pre-defined
+narrowings.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/{kb}/filters` | List filters in the KB (paginated) |
+| `POST` | `/{kb}/filters` | Create. Body: `{ knowledgeFilterId?, name, description?, filter }`. `409` on duplicate explicit ID. |
+| `GET` | `/{kb}/filters/{filterId}` | Fetch one |
+| `PATCH` | `/{kb}/filters/{filterId}` | Mutate `name`, `description`, or `filter` |
+| `DELETE` | `/{kb}/filters/{filterId}` | 204 |
+
+`filter` is the same shape as `POST /search`'s `filter` body — a
+shallow-equal map over payload keys. Filters are seeded from the
+workspace's configured defaults at KB-create time.
+
 ### `POST /{knowledgeBaseId}/records` — upsert records
 
 **Request** — each record carries exactly one of `vector` or `text`:
@@ -882,6 +945,33 @@ Once the job is running, failures are captured into the job record
 The `runKbIngestJob` worker resolves the KB descriptor on every
 call so renames or service swaps mid-flight don't drift.
 
+### `POST /{knowledgeBaseId}/ingest/file`
+
+Multipart counterpart to `/ingest`. Accepts a binary upload (PDF,
+DOCX, XLSX, or text) plus optional metadata, dispatches an
+extractor based on the file's MIME type / extension, then runs the
+same chunk → embed → upsert pipeline.
+
+Form fields:
+
+| Field | Required | Notes |
+|---|---|---|
+| `file` | yes | The document bytes. Must be a `File` part in `multipart/form-data`. |
+| `metadata` | no | JSON object string merged onto every chunk's payload (same semantics as the JSON `/ingest` `metadata` field). |
+| `chunker` | no | JSON object string overriding the runtime's chunker defaults for this call only. |
+| `parser` | no | `native` \| `docling` \| `auto` (default). When `DOCLING_URL` is unset, `native` is the only option. See [Configuration § Document extraction](configuration.md#document-extraction-optional). |
+
+Query: `?async=true` → 202 + job pointer (same response shape as
+the JSON variant). Body cap is 50 MB.
+
+- **201** — `{ document, chunks }`
+- **202** — `{ job, document }` (when `async=true`)
+- **400** `invalid_multipart` / `missing_file` — body wasn't multipart, or the `file` field was missing
+- **400** `validation_error` — bad `metadata` / `chunker` JSON
+- **400** `extractor_unsupported` — file type the runtime can't extract
+- **413** `payload_too_large` — body exceeded 50 MB
+- **503** `docling_unavailable` — `parser=docling` (or `auto`) couldn't reach the configured docling-serve
+
 ---
 
 ## `/api/v1/workspaces/{workspaceId}/jobs/{jobId}`
@@ -1097,18 +1187,48 @@ When unset it falls back to the runtime's global `chat:` block.
 
 Same body. Returns `text/event-stream`:
 
-| Event | Payload |
-|---|---|
-| `user-message` | The persisted user `ChatMessage` |
-| `token` | `{ delta: string }` — one per model emission |
-| `done` | The persisted assistant `ChatMessage` (terminal on success) |
-| `error` | The persisted assistant `ChatMessage` with `metadata.finish_reason: "error"` (terminal on failure) |
+| Event | Payload | When |
+|---|---|---|
+| `user-message` | The persisted user `ChatMessage` | Once, after the user turn is persisted |
+| `token` | `{ delta: string }` | Per model emission |
+| `token-reset` | `{}` | After a tool-call iteration so the UI can clear pre-tool narration before iteration N+1 streams in |
+| `tool-call` | `{ toolName, args, callId }` | The model requested a tool invocation (only on providers with native function calling — today OpenAI; HuggingFace skips this lane) |
+| `tool-result` | `{ toolName, callId, result }` | Each tool result fed back into the next iteration |
+| `done` | The persisted assistant `ChatMessage` (`metadata.finish_reason: "stop"` / `"length"`) | Terminal on success |
+| `error` | The persisted assistant `ChatMessage` with `metadata.finish_reason: "error"` | Terminal on failure |
 
-The stream emits exactly one of `done` / `error`. Client disconnect
-is treated as a clean stop — whatever was already streamed gets
-persisted with `finish_reason: "stop"`. Status codes are the same
-as the synchronous variant (404 / 422 / 503 surface as `error`
-events when they occur after the response has already started).
+The stream emits exactly one of `done` / `error`. Tool-use loops
+are capped at 6 iterations per turn. Client disconnect is treated
+as a clean stop — whatever was already streamed gets persisted
+with `finish_reason: "stop"`. Status codes are the same as the
+synchronous variant (404 / 422 / 503 surface as `error` events when
+they occur after the response has already started).
+
+### `GET /agent-templates`
+
+Catalog of one-click agent templates the UI offers in the agent
+gallery. Workspace-scoped for authz, but the body is workspace-
+independent and ships with the binary. Returns the four entries
+(Bobby, Maven, Quill, Sage) with their `templateId`, `name`,
+`description`, persona prompt, and `defaultOnNewWorkspace` flag.
+See [`agents.md` § Template catalog](agents.md#template-catalog).
+
+### `POST /agents/from-template`
+
+Instantiate a catalog template as a new agent in the workspace.
+
+```json
+{ "templateId": "bobby" }
+```
+
+The new agent's `name`, `description`, and `systemPrompt` are
+copied from the template; other fields default to the same values
+as `POST /agents`. Audit event `agent.create` carries the
+`templateId` slug.
+
+- **201** — `Agent`
+- **400** — unknown `templateId`
+- **404** — workspace not found
 
 ### `Agent` record
 
@@ -1166,7 +1286,7 @@ the full walkthrough.
 
 | Method | Status | Body |
 |---|---|---|
-| `POST` (any) | 200 | JSON-RPC response (or SSE stream for long-running tool calls) |
+| `GET` / `POST` / `DELETE` / `OPTIONS` | 200 | JSON-RPC response (or SSE stream for long-running tool calls). The four methods map to the Streamable-HTTP spec — `POST` for client→server messages, `GET` for the long-lived event stream, `DELETE` for session teardown, `OPTIONS` for CORS preflight. |
 | any | 404 `not_found` | When `mcp.enabled` is false |
 | any | 404 `workspace_not_found` | When the path workspace doesn't exist |
 
@@ -1191,11 +1311,14 @@ These do not exist yet. Shapes may shift before they land.
 
 ### Multi-provider LLM execution
 
-LLM services other than `huggingface` (OpenAI, Cohere, Anthropic,
-…) can be created and stored today, but agent send returns
-`422 llm_provider_unsupported` until the provider is wired into
-the chat-service factory. Adding a provider is mostly a one-case
-addition to the dispatcher.
+`huggingface` and `openai` are wired end-to-end today; `openai` is
+the only provider with native function calling, so the agent
+tool-use loop only fires for OpenAI-bound agents (HuggingFace
+agents still answer, just without tool dispatch). Other providers
+(Cohere, Anthropic, Bedrock, …) can be created and stored, but
+agent send returns `422 llm_provider_unsupported` until the
+provider is wired into the chat-service factory. Adding a provider
+is mostly a one-case addition to the dispatcher.
 
 ### MCP tool execution
 

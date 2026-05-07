@@ -99,10 +99,17 @@ KnowledgeBaseRepo, ChatMessageRepo, etc.). Three backend implementations:
 | `file` | [`file/store.ts`](../runtimes/typescript/src/control-plane/file/store.ts) | Single-node self-hosted. Per-table mutex + atomic rename. |
 | `astra` | [`astra/store.ts`](../runtimes/typescript/src/control-plane/astra/store.ts) | Production. Data API Tables via `astra-db-ts`. |
 
-Each backend still implements all twelve repos in a single class (PR #156 split the interface layer;
-per-aggregate impl extraction is queued). All three pass the same shared contract suite in
+PR #156 split the interface layer into per-aggregate repos; PR #199
+followed up by extracting the memory backend's implementation into
+per-aggregate slices under
+[`runtimes/typescript/src/control-plane/memory/`](../runtimes/typescript/src/control-plane/memory/)
+(`workspaces.ts`, `agents.ts`, `knowledge-bases.ts`, …) that close
+over a shared `MemoryStoreState`. The `file` and `astra` backends
+remain single-class implementations today — splitting them is the
+queued follow-through. All three pass the same shared contract suite
+in
 [`runtimes/typescript/tests/control-plane/contract.ts`](../runtimes/typescript/tests/control-plane/contract.ts)
-(24 assertions today; grows as routes ship).
+(grows as routes ship).
 
 ### Vector-store drivers (`runtimes/typescript/src/drivers/`)
 
@@ -175,17 +182,27 @@ talking to workspace-scoped backends.
 
 | Module | Prefix | Contents |
 |---|---|---|
-| [`operational.ts`](../runtimes/typescript/src/routes/operational.ts) | (unversioned) | `/`, `/healthz`, `/readyz`, `/version` |
-| [`api-v1/workspaces.ts`](../runtimes/typescript/src/routes/api-v1/workspaces.ts) | `/api/v1/workspaces` | Workspace CRUD |
-| [`api-v1/knowledge-bases.ts`](../runtimes/typescript/src/routes/api-v1/knowledge-bases.ts) | `/api/v1/workspaces/{w}/knowledge-bases` | KB CRUD (POST auto-provisions collection) |
+| [`operational.ts`](../runtimes/typescript/src/routes/operational.ts) | (unversioned) | `/`, `/healthz`, `/readyz`, `/version`, `/features`, `/metrics`, `/astra-cli`, `/astra-cli/profiles` |
+| [`auth.ts`](../runtimes/typescript/src/routes/auth.ts) | `/auth` | OIDC login + silent refresh — `/auth/{config,login,callback,me,refresh,logout}` (mounted only when `auth.oidc.client` is configured) |
+| [`api-v1/workspaces.ts`](../runtimes/typescript/src/routes/api-v1/workspaces.ts) | `/api/v1/workspaces` | Workspace CRUD + `POST {w}/test-connection` |
+| [`api-v1/knowledge-bases.ts`](../runtimes/typescript/src/routes/api-v1/knowledge-bases.ts) | `/api/v1/workspaces/{w}/knowledge-bases` | KB CRUD (POST auto-provisions collection); also serves `GET {w}/adoptable-collections` |
 | [`api-v1/kb-data-plane.ts`](../runtimes/typescript/src/routes/api-v1/kb-data-plane.ts) | `…/knowledge-bases/{kb}/{records,search}` | Upsert / delete record / search |
-| [`api-v1/kb-documents.ts`](../runtimes/typescript/src/routes/api-v1/kb-documents.ts) | `…/knowledge-bases/{kb}/{documents,ingest}` | Document metadata, sync + async ingest, chunk listing |
+| [`api-v1/kb-documents.ts`](../runtimes/typescript/src/routes/api-v1/kb-documents.ts) | `…/knowledge-bases/{kb}/{documents,ingest,ingest/file}` | Document metadata, sync + async JSON ingest, multipart `/ingest/file` (PDF / DOCX / XLSX / text), chunk listing |
 | [`api-v1/kb-descriptor.ts`](../runtimes/typescript/src/routes/api-v1/kb-descriptor.ts) | — | `resolveKb()` — synthesises a driver-facing descriptor from a KB + bound services |
-| [`api-v1/{chunking,embedding,reranking}-services.ts`](../runtimes/typescript/src/routes/api-v1/) | `…/{chunking,embedding,reranking}-services` | Service CRUD |
-| [`api-v1/agents.ts`](../runtimes/typescript/src/routes/api-v1/agents.ts) | `/api/v1/workspaces/{w}/agents` | Agent + conversation CRUD, chat send + SSE stream |
+| [`api-v1/knowledge-filters.ts`](../runtimes/typescript/src/routes/api-v1/knowledge-filters.ts) | `…/knowledge-bases/{kb}/filters` | KB-scoped saved retrieval filters |
+| [`api-v1/{chunking,embedding,reranking}-services.ts`](../runtimes/typescript/src/routes/api-v1/) | `…/{chunking,embedding,reranking}-services` | Service CRUD (incl. `PATCH`) |
+| [`api-v1/llm-services.ts`](../runtimes/typescript/src/routes/api-v1/llm-services.ts) | `…/llm-services` | Workspace-scoped chat-completion executor CRUD |
+| [`api-v1/agents.ts`](../runtimes/typescript/src/routes/api-v1/agents.ts) | `/api/v1/workspaces/{w}/agents` | Agent + conversation CRUD, chat send + SSE stream, `agent-templates` catalog, `agents/from-template` |
 | [`api-v1/jobs.ts`](../runtimes/typescript/src/routes/api-v1/jobs.ts) | `/api/v1/workspaces/{w}/jobs` | Job poll + SSE stream |
-| [`api-v1/api-keys.ts`](../runtimes/typescript/src/routes/api-v1/api-keys.ts) | `/api/v1/workspaces/{w}/api-keys` | Per-workspace API-key management |
+| [`api-v1/api-keys.ts`](../runtimes/typescript/src/routes/api-v1/api-keys.ts) | `/api/v1/workspaces/{w}/api-keys` | Per-workspace API-key management (list / issue / revoke) |
+| [`api-v1/mcp.ts`](../runtimes/typescript/src/routes/api-v1/mcp.ts) | `/api/v1/workspaces/{w}/mcp` | Model Context Protocol Streamable-HTTP façade — `app.all` over GET / POST / DELETE / OPTIONS, gated by `mcp.enabled` |
 | [`api-v1/helpers.ts`](../runtimes/typescript/src/routes/api-v1/helpers.ts) | — | Error mapping (invoked from app-level `onError`) |
+
+Workspace-scoped routes are mounted via the in-tree
+[route-plugin registry](../runtimes/typescript/src/plugins/) — every
+module above except `operational.ts` and `auth.ts` is wrapped as a
+`RoutePlugin` and iterated in `app.ts`. See
+[`route-plugins.md`](route-plugins.md).
 
 Route handlers validate with Zod (via `@hono/zod-openapi`) and
 delegate to the `ControlPlaneStore`. Typed errors (`ControlPlaneNot

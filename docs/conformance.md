@@ -31,7 +31,11 @@ conformance/
 │   ├── knowledge-base-crud-basic.json
 │   ├── kb-document-crud-basic.json
 │   ├── kb-search-empty.json
-│   └── agent-crud-basic.json
+│   ├── chunking-service-crud-lifecycle.json
+│   ├── embedding-service-crud-lifecycle.json
+│   ├── knowledge-filter-crud-lifecycle.json
+│   ├── agent-crud-basic.json
+│   └── agent-error-envelopes.json
 ├── mock-astra/
 │   └── server.ts               ← stand-in Astra endpoint (Node)
 ├── normalize.mjs               ← shape-agnostic placeholder scrubber
@@ -85,7 +89,11 @@ this list changes):
 | `knowledge-base-crud-basic` | Knowledge-base POST / GET / PATCH / DELETE with bound services |
 | `kb-document-crud-basic` | Sync document upsert + retrieval shape |
 | `kb-search-empty` | Search response envelope when the KB has no records |
+| `chunking-service-crud-lifecycle` | Chunking-service POST / GET / PATCH / DELETE shape |
+| `embedding-service-crud-lifecycle` | Embedding-service POST / GET / PATCH / DELETE shape |
+| `knowledge-filter-crud-lifecycle` | KB-scoped knowledge-filter POST / GET / PATCH / DELETE shape |
 | `agent-crud-basic` | Agent POST / GET / PATCH / DELETE lifecycle |
+| `agent-error-envelopes` | Stable error envelopes on the agent surface (404 / 422 / etc.) |
 
 The KB / agent fixtures pin the wire shape; routes that stay
 runtime-only by design (timing- or driver-method-dependent) remain

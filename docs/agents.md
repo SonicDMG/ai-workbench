@@ -200,6 +200,24 @@ body manually (`EventSource` only supports `GET`). The runtime helper
 the web UI uses lives at
 [`apps/web/src/lib/chatStream.ts`](../apps/web/src/lib/chatStream.ts).
 
+The dispatcher emits the following SSE events in order:
+
+| Event | When | Payload |
+|---|---|---|
+| `user-message` | Once, after the user turn is persisted | The persisted user `ChatMessage` |
+| `token` | Per model emission | `{ delta: string }` |
+| `token-reset` | Optional — fires after each tool-call iteration so clients can clear pre-tool narration from the live preview | `{}` |
+| `tool-call` | When the model requests a tool invocation (only on providers with native function calling, today OpenAI) | `{ toolName, args, callId }` |
+| `tool-result` | Each tool result fed back into the next iteration | `{ toolName, callId, result }` |
+| `done` | Terminal on success | The persisted assistant `ChatMessage` (`metadata.finish_reason: "stop"` / `"length"`) |
+| `error` | Terminal on failure | The persisted assistant `ChatMessage` with `metadata.finish_reason: "error"` and a human-readable `content` |
+
+Each turn ends with exactly one of `done` or `error`. The
+dispatcher caps tool-use iterations at `MAX_TOOL_ITERATIONS = 6` per
+turn. HuggingFace-bound conversations never emit `tool-call` /
+`tool-result` (no native function calling) — the assistant streams a
+single answer pass.
+
 ```text
 event: user-message
 data: {"workspaceId":"…","conversationId":"…","role":"user","content":"hi","messageId":"…","messageTs":"…","metadata":{}}
@@ -213,10 +231,6 @@ data: {"delta":" there"}
 event: done
 data: {"workspaceId":"…","conversationId":"…","role":"agent","content":"Hello there","messageId":"…","messageTs":"…","metadata":{"model":"…","finish_reason":"stop","context_document_ids":"…"}}
 ```
-
-On model failure the terminal event is `error` with the same shape,
-where `metadata.finish_reason === "error"` and the body carries the
-human-readable failure.
 
 ## Cascade rules
 

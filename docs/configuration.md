@@ -77,8 +77,11 @@ unknown version.
 | `replicaId` | string \| null | `null` | Identifier this replica writes into job leases (used by the cross-replica orphan sweeper to tell whose lease is whose). `null` auto-generates `${HOSTNAME or "wb"}-<short-uuid>` at boot — fine for single-replica deployments and tests; set explicitly for clustered runs if you want the lease holder to be deterministic. |
 | `publicOrigin` | URL \| null | `null` | Externally visible browser origin, e.g. `https://workbench.example.com`. Used for OIDC redirect URI construction and secure-cookie decisions. Required for production OIDC browser login. |
 | `trustProxyHeaders` | boolean | `false` | Trust `X-Forwarded-Proto` / `X-Forwarded-Host` when `publicOrigin` is not set. Also extends to the rate limiter (`X-Forwarded-For` / `X-Real-IP`). Enable only behind a trusted proxy that overwrites those headers. |
+| `csrfOriginCheck` | boolean | `true` | CSRF Origin/Referer check on cookie-protected routes (`/api/v1/workspaces/*` state-changing methods, plus `/auth/refresh` and `/auth/logout`). Bearer-token requests bypass the check. Disable only for non-browser clients that authenticate with cookies but cannot send `Origin` — prefer Bearer auth instead. |
 | `rateLimit` | object | (defaults below) | In-process per-IP rate limiter. See [§ Rate limiting](#rate-limiting). |
 | `blockPrivateNetworkEndpoints` | boolean | `false` | Layered SSRF defense: when `true`, operator-supplied `endpointBaseUrl` values on chunking / embedding / reranking / LLM services are rejected if they resolve to RFC1918 (`10/8`, `172.16/12`, `192.168/16`), loopback, or IPv6 unique-local hosts. Auto-flipped to `true` when `runtime.environment: production`. Default `false` so the local-Ollama / local-vLLM dev workflow keeps working; production deployments should still pair this with VPC-level egress controls. |
+| `maxConcurrentIngestJobs` | int (≥1) | `4` | Per-replica cap on in-flight ingest workers. Beyond the cap, queued jobs wait in-process for a slot rather than slamming the embedding provider's quota. Persisted job state is unaffected; raise for dedicated provisioned-throughput deployments. Surfaced as `workbench_ingest_workers_{active,queued}` on `/metrics`. |
+| `tracing` | object | (off) | OpenTelemetry tracing knobs. See [§ Tracing](#tracing). |
 
 Production deployments should start from
 [`runtimes/typescript/examples/workbench.production.yaml`](../runtimes/typescript/examples/workbench.production.yaml).
@@ -113,12 +116,52 @@ Client IP is derived from the socket; set
 `runtime.trustProxyHeaders: true` to honor `X-Forwarded-For` /
 `X-Real-IP` instead.
 
+#### Tracing
+
+OpenTelemetry tracing knobs. Off by default — flipping
+`enabled: true` starts a NodeSDK with the OTLP HTTP trace exporter
+and the standard auto-instrumentations bundle. When disabled, the
+runtime still creates manual server spans through
+`@opentelemetry/api` so flipping tracing on later does not require
+code changes — the spans are just no-ops without a registered SDK.
+
+```yaml
+runtime:
+  tracing:
+    enabled: false
+    serviceName: null         # null → "ai-workbench-runtime"
+    exporterUrl: null         # null → OTEL_EXPORTER_OTLP_ENDPOINT / SDK default
+```
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `enabled` | bool | `false` | Start the NodeSDK + auto-instrumentations bundle. |
+| `serviceName` | string \| null | `null` | Override the `service.name` resource attribute. `null` keeps the default `ai-workbench-runtime`. |
+| `exporterUrl` | URL \| null | `null` | OTLP HTTP traces endpoint, e.g. `https://otel-collector.example.com/v1/traces`. `null` falls back to `OTEL_EXPORTER_OTLP_ENDPOINT` and the SDK default. |
+
+For full HTTP / fetch / pino auto-instrumentation, preload the SDK
+at process launch (`node --import ./dist/lib/tracing-preload.js
+dist/root.js`). Without `--import`, manual server spans cover every
+request but outbound HTTP / fetch / DB clients won't emit child
+spans. See [`production.md`](production.md) for the deploy-side
+walkthrough.
+
 ### `controlPlane`
 
 Picks where workspaces, knowledge bases, execution services, and RAG
 documents are persisted. Discriminated on `driver`.
 
-#### `memory` (default)
+When `controlPlane:` is omitted entirely, the runtime infers a
+default: if both `ASTRA_DB_API_ENDPOINT` and
+`ASTRA_DB_APPLICATION_TOKEN` are populated (the
+[astra-cli auto-detection](astra-cli.md) on boot fills these for any
+developer with a working profile), the runtime selects the `astra`
+driver against `ASTRA_DB_KEYSPACE` (or `default_keyspace`).
+Otherwise it falls back to a `file` backend rooted at
+`./.workbench-data`. Set `controlPlane.driver: memory` explicitly if
+you want pure in-process state without the on-disk fallback.
+
+#### `memory`
 
 ```yaml
 controlPlane:
@@ -126,9 +169,10 @@ controlPlane:
 ```
 
 In-process `Map`s. State is lost when the runtime exits. Best for CI,
-tests, ephemeral demos, and `docker run` with no external
-dependencies. If you don't specify a `controlPlane` block at all,
-this is what you get.
+tests, and ephemeral demos. Note that omitting `controlPlane`
+entirely no longer falls through to `memory` — the runtime's default
+prefers Astra (when env vars are present) or a file backend. Set
+`driver: memory` explicitly to opt in.
 
 #### `file`
 
@@ -154,7 +198,7 @@ controlPlane:
   driver: astra
   endpoint: https://<db-id>-<region>.apps.astra.datastax.com
   tokenRef: env:ASTRA_DB_APPLICATION_TOKEN
-  keyspace: workbench
+  keyspace: default_keyspace
 ```
 
 Astra Data API Tables via `@datastax/astra-db-ts`. Production-grade,
@@ -172,7 +216,7 @@ multi-writer-safe.
 |-------|------|----------|-------|
 | `endpoint` | URL | yes | Astra Data API endpoint |
 | `tokenRef` | SecretRef | yes | Pointer to the application token (`env:…` / `file:…`) |
-| `keyspace` | string | no (default `workbench`) | Keyspace hosting the `wb_*` control-plane tables |
+| `keyspace` | string | no (default `default_keyspace`) | Keyspace hosting the `wb_*` control-plane tables. Defaults to `default_keyspace` — the keyspace Astra DB auto-creates on every new database — so out-of-the-box deployments boot without pre-creating one. |
 | `jobPollIntervalMs` | int (50–60000) | `500` | Cross-replica job-subscriber poll interval in ms. Each subscribed `(workspace, jobId)` pair is re-read at this cadence so SSE clients on a different replica from the worker still see updates. Same-replica updates fan out instantly; the poller is a no-op when no one is subscribed. Raise for cost-sensitive deployments where second-scale staleness is fine; lower for hot SSE paths. Astra-only — `memory` and `file` are single-replica by definition. |
 | `jobsResume` | object | off | Cross-replica orphan-sweeper config. See below. |
 
@@ -180,7 +224,7 @@ The runtime creates the `wb_*` tables at startup if they don't exist
 (using `createTable(..., { ifNotExists: true })`). The keyspace
 itself must already exist.
 
-#### `controlPlane.jobsResume` (memory / file / astra)
+#### `controlPlane.jobsResume` (file / astra)
 
 Off by default — only useful for clustered deployments where one
 replica can crash mid-ingest while another stays up. Single-replica
@@ -192,6 +236,11 @@ snapshot replay the pipeline idempotently; older rows without a
 snapshot still become terminal `failed` records so SSE clients do
 not hang forever. See
 [`cross-replica-jobs.md`](cross-replica-jobs.md).
+
+`jobsResume.enabled: true` with `controlPlane.driver: memory` is
+rejected at validation time — there is no shared store for sibling
+replicas to scan when the leases live in another replica's process
+memory.
 
 ```yaml
 controlPlane:
@@ -383,6 +432,7 @@ auth:
 | `mode` | enum | `disabled` | Which verifiers are active. |
 | `anonymousPolicy` | enum | `allow` | `allow` lets tokenless requests through as anonymous; `reject` returns `401 unauthorized`. |
 | `bootstrapTokenRef` | SecretRef \| null | `null` | Optional 32+ character break-glass bearer token. Accepted as an unscoped operator subject when `mode` is `apiKey`, `oidc`, or `any`; invalid with `mode: disabled`. |
+| `acknowledgeOpenAccess` | boolean | `true` | Controls how the deployment guard reacts when a durable control plane (`file` / `astra`) is paired with open auth (`mode: disabled` or `anonymousPolicy: allow`). Default `true` keeps that pairing as a loud startup *warning* so the dev loop (file CP + open auth) keeps booting. Flip to `false` in CI / shared environments to convert the warning into a hard fatal. Production deployments should set `runtime.environment: production` instead — that forces `apiKey`/`oidc`/`any` + `anonymousPolicy: reject` at the schema layer regardless of this flag. |
 | `oidc` | object | — | Required when `mode` is `oidc` or `any`. See table below. |
 
 The default (`disabled` + `allow`) matches pre-auth behavior: the
