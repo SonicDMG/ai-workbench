@@ -62,13 +62,30 @@ class FakeTable<Row extends SomeRow> implements TableLike<Row> {
 	private rows: Row[] = [];
 
 	/**
-	 * Partition-key columns for the table this fake stands in for. The
-	 * real Astra Data API rejects `deleteMany` filters that don't pin
-	 * every partition column, so the fake mirrors that — otherwise
-	 * tests pass while production 500s (the same kind of mismatch that
-	 * shipped the workspace-delete regression).
+	 * Schema constraints the fake enforces to mirror Astra's Data API
+	 * rules:
+	 *
+	 *   - `deleteMany` requires every partition column to be pinned —
+	 *     Astra rejects partition-spanning bulk deletes.
+	 *   - `deleteOne` and `updateOne` require the **full** primary key
+	 *     (partition + clustering). Astra's "fully specify the primary
+	 *     key" error is exactly this case; a permissive fake makes
+	 *     tests pass while production 500s.
+	 *
+	 * `partitionKey` lists partition columns only. `clusteringKey`
+	 * lists the additional sort columns; `[...partitionKey,
+	 * ...clusteringKey]` is the full PK enforced on deleteOne /
+	 * updateOne. Tables with single-column PKs leave clusteringKey
+	 * empty.
 	 */
-	constructor(private readonly partitionKey: readonly string[] = []) {}
+	constructor(
+		private readonly partitionKey: readonly string[] = [],
+		private readonly clusteringKey: readonly string[] = [],
+	) {}
+
+	private get primaryKey(): readonly string[] {
+		return [...this.partitionKey, ...this.clusteringKey];
+	}
 
 	async insertOne(row: Row): Promise<unknown> {
 		this.rows.push({ ...row });
@@ -97,6 +114,7 @@ class FakeTable<Row extends SomeRow> implements TableLike<Row> {
 		filter: TableFilter<Row>,
 		update: TableUpdateFilter<Row>,
 	): Promise<void> {
+		this.assertFullPrimaryKey("updateOne", filter);
 		const idx = this.rows.findIndex((r) => matches(r, filter));
 		if (idx < 0) return;
 		const set = (update as { $set?: Record<string, unknown> }).$set ?? {};
@@ -105,6 +123,7 @@ class FakeTable<Row extends SomeRow> implements TableLike<Row> {
 	}
 
 	async deleteOne(filter: TableFilter<Row>): Promise<void> {
+		this.assertFullPrimaryKey("deleteOne", filter);
 		const idx = this.rows.findIndex((r) => matches(r, filter));
 		if (idx >= 0) this.rows.splice(idx, 1);
 	}
@@ -124,40 +143,76 @@ class FakeTable<Row extends SomeRow> implements TableLike<Row> {
 		}
 		this.rows = this.rows.filter((r) => !matches(r, filter));
 	}
+
+	private assertFullPrimaryKey(
+		op: "updateOne" | "deleteOne",
+		filter: TableFilter<Row>,
+	): void {
+		const pk = this.primaryKey;
+		if (pk.length === 0) return;
+		const f = filter as Record<string, unknown>;
+		const missing = pk.filter((k) => !(k in f));
+		if (missing.length > 0) {
+			throw new Error(
+				`${op} filter is missing primary key column(s): ${missing.join(", ")}`,
+			);
+		}
+	}
 }
 
 export function createFakeTablesBundle(): TablesBundle {
 	return {
 		workspaces: new FakeTable<WorkspaceRow>(["uid"]),
-		jobs: new FakeTable<JobRow>(["workspace"]),
-		apiKeys: new FakeTable<ApiKeyRow>(["workspace"]),
+		jobs: new FakeTable<JobRow>(["workspace"], ["job_id"]),
+		apiKeys: new FakeTable<ApiKeyRow>(["workspace"], ["key_id"]),
 		apiKeyLookup: new FakeTable<ApiKeyLookupRow>(["prefix"]),
 		// Knowledge-base schema (issue #98).
 		configWorkspaces: new FakeTable<ConfigWorkspaceRow>(["uid"]),
-		knowledgeBases: new FakeTable<KnowledgeBaseRow>(["workspace_id"]),
-		knowledgeFilters: new FakeTable<KnowledgeFilterRow>([
-			"workspace_id",
-			"knowledge_base_id",
-		]),
-		chunkingServices: new FakeTable<ChunkingServiceRow>(["workspace_id"]),
-		embeddingServices: new FakeTable<EmbeddingServiceRow>(["workspace_id"]),
-		rerankingServices: new FakeTable<RerankingServiceRow>(["workspace_id"]),
-		llmServices: new FakeTable<LlmServiceRow>(["workspace_id"]),
-		mcpTools: new FakeTable<McpToolRow>(["workspace_id"]),
-		ragDocuments: new FakeTable<RagDocumentRow>([
-			"workspace_id",
-			"knowledge_base_id",
-		]),
-		ragDocumentsByStatus: new FakeTable<RagDocumentByStatusRow>([
-			"workspace_id",
-			"knowledge_base_id",
-			"status",
-		]),
-		ragDocumentsByHash: new FakeTable<RagDocumentByContentHashRow>([
-			"content_hash",
-		]),
-		agents: new FakeTable<AgentRow>(["workspace_id"]),
-		conversations: new FakeTable<ConversationRow>(["workspace_id", "agent_id"]),
-		messages: new FakeTable<MessageRow>(["workspace_id", "conversation_id"]),
+		knowledgeBases: new FakeTable<KnowledgeBaseRow>(
+			["workspace_id"],
+			["knowledge_base_id"],
+		),
+		knowledgeFilters: new FakeTable<KnowledgeFilterRow>(
+			["workspace_id", "knowledge_base_id"],
+			["knowledge_filter_id"],
+		),
+		chunkingServices: new FakeTable<ChunkingServiceRow>(
+			["workspace_id"],
+			["chunking_service_id"],
+		),
+		embeddingServices: new FakeTable<EmbeddingServiceRow>(
+			["workspace_id"],
+			["embedding_service_id"],
+		),
+		rerankingServices: new FakeTable<RerankingServiceRow>(
+			["workspace_id"],
+			["reranking_service_id"],
+		),
+		llmServices: new FakeTable<LlmServiceRow>(
+			["workspace_id"],
+			["llm_service_id"],
+		),
+		mcpTools: new FakeTable<McpToolRow>(["workspace_id"], ["tool_id"]),
+		ragDocuments: new FakeTable<RagDocumentRow>(
+			["workspace_id", "knowledge_base_id"],
+			["document_id"],
+		),
+		ragDocumentsByStatus: new FakeTable<RagDocumentByStatusRow>(
+			["workspace_id", "knowledge_base_id", "status"],
+			["document_id"],
+		),
+		ragDocumentsByHash: new FakeTable<RagDocumentByContentHashRow>(
+			["content_hash"],
+			["workspace_id", "knowledge_base_id", "document_id"],
+		),
+		agents: new FakeTable<AgentRow>(["workspace_id"], ["agent_id"]),
+		conversations: new FakeTable<ConversationRow>(
+			["workspace_id", "agent_id"],
+			["created_at", "conversation_id"],
+		),
+		messages: new FakeTable<MessageRow>(
+			["workspace_id", "conversation_id"],
+			["message_ts"],
+		),
 	};
 }

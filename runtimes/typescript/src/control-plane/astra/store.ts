@@ -866,8 +866,18 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		// Hash index updates only when content_hash changed.
 		if (base.contentHash !== next.contentHash) {
 			if (base.contentHash) {
+				// `wb_rag_documents_by_content_hash` has the full
+				// `(content_hash, workspace_id, knowledge_base_id, document_id)`
+				// composite primary key — Astra Tables rejects deleteOne
+				// without every PK column. The same physical content can
+				// legitimately appear under multiple (workspace, KB, doc)
+				// tuples; we only want to drop the row that corresponds to
+				// this specific document.
 				await this.tables.ragDocumentsByHash.deleteOne({
 					content_hash: base.contentHash,
+					workspace_id: workspace,
+					knowledge_base_id: knowledgeBase,
+					document_id: uid,
 				});
 			}
 			if (next.contentHash) {
@@ -912,6 +922,9 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 			base.contentHash
 				? this.tables.ragDocumentsByHash.deleteOne({
 						content_hash: base.contentHash,
+						workspace_id: workspace,
+						knowledge_base_id: knowledgeBase,
+						document_id: uid,
 					})
 				: Promise.resolve(),
 		]);
