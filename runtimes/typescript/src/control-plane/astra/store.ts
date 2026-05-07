@@ -107,6 +107,7 @@ import type {
 	UpdateRerankingServiceInput,
 	UpdateWorkspaceInput,
 } from "../store.js";
+import { DOCUMENT_STATUSES } from "../types.js";
 import type {
 	AgentRecord,
 	ApiKeyRecord,
@@ -219,22 +220,73 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		for (const row of keyRows) {
 			await this.tables.apiKeyLookup.deleteOne({ prefix: row.prefix });
 		}
+		// Astra Data API requires the *full* partition key on
+		// `deleteMany`, so for tables partitioned by (workspace_id, X)
+		// we enumerate the dependent rows up front and issue one
+		// deleteMany per partition. Read the dependents *before*
+		// removing the workspace row — purely defensive; the dependent
+		// tables don't FK back to the workspace row, but it keeps the
+		// "everything we need to delete" snapshot consistent.
+		const [kbs, agents, conversations] = await Promise.all([
+			this.tables.knowledgeBases.find({ workspace_id: uid }).toArray(),
+			this.tables.agents.find({ workspace_id: uid }).toArray(),
+			this.tables.conversations.find({ workspace_id: uid }).toArray(),
+		]);
 		await this.tables.workspaces.deleteOne({ uid });
-		await Promise.all([
+		const deletes: Promise<unknown>[] = [
 			this.tables.apiKeys.deleteMany({ workspace: uid }),
+			// Single-column partitions — workspace_id alone is the full PK.
 			this.tables.knowledgeBases.deleteMany({ workspace_id: uid }),
-			this.tables.knowledgeFilters.deleteMany({ workspace_id: uid }),
 			this.tables.chunkingServices.deleteMany({ workspace_id: uid }),
 			this.tables.embeddingServices.deleteMany({ workspace_id: uid }),
 			this.tables.rerankingServices.deleteMany({ workspace_id: uid }),
 			this.tables.llmServices.deleteMany({ workspace_id: uid }),
-			this.tables.ragDocuments.deleteMany({ workspace_id: uid }),
-			this.tables.ragDocumentsByStatus.deleteMany({ workspace_id: uid }),
-			// Chat cascade: agents → conversations → messages.
 			this.tables.agents.deleteMany({ workspace_id: uid }),
-			this.tables.conversations.deleteMany({ workspace_id: uid }),
-			this.tables.messages.deleteMany({ workspace_id: uid }),
-		]);
+		];
+		// (workspace_id, knowledge_base_id) partitions.
+		for (const kb of kbs) {
+			deletes.push(
+				this.tables.knowledgeFilters.deleteMany({
+					workspace_id: uid,
+					knowledge_base_id: kb.knowledge_base_id,
+				}),
+				this.tables.ragDocuments.deleteMany({
+					workspace_id: uid,
+					knowledge_base_id: kb.knowledge_base_id,
+				}),
+			);
+			// (workspace_id, knowledge_base_id, status) partitions —
+			// fan out across the closed DocumentStatus enum so we don't
+			// have to scan the index first.
+			for (const status of DOCUMENT_STATUSES) {
+				deletes.push(
+					this.tables.ragDocumentsByStatus.deleteMany({
+						workspace_id: uid,
+						knowledge_base_id: kb.knowledge_base_id,
+						status,
+					}),
+				);
+			}
+		}
+		// Chat cascade: (workspace_id, agent_id) for conversations,
+		// (workspace_id, conversation_id) for messages.
+		for (const agent of agents) {
+			deletes.push(
+				this.tables.conversations.deleteMany({
+					workspace_id: uid,
+					agent_id: agent.agent_id,
+				}),
+			);
+		}
+		for (const conv of conversations) {
+			deletes.push(
+				this.tables.messages.deleteMany({
+					workspace_id: uid,
+					conversation_id: conv.conversation_id,
+				}),
+			);
+		}
+		await Promise.all(deletes);
 		return { deleted: true };
 	}
 
@@ -455,13 +507,13 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 		});
 		// Cascade RAG document rows + secondary indexes. Underlying vector
 		// collection cleanup is the caller's responsibility (KB delete
-		// route handles it).
-		await Promise.all([
+		// route handles it). `wb_rag_documents_by_status` partitions by
+		// `(workspace_id, knowledge_base_id, status)`, so the Data API
+		// requires us to fan out one `deleteMany` per status rather
+		// than letting `(workspace_id, knowledge_base_id)` alone
+		// match the entire partition family.
+		const cascade: Promise<unknown>[] = [
 			this.tables.ragDocuments.deleteMany({
-				workspace_id: workspace,
-				knowledge_base_id: uid,
-			}),
-			this.tables.ragDocumentsByStatus.deleteMany({
 				workspace_id: workspace,
 				knowledge_base_id: uid,
 			}),
@@ -469,7 +521,17 @@ export class AstraControlPlaneStore implements ControlPlaneStore {
 				workspace_id: workspace,
 				knowledge_base_id: uid,
 			}),
-		]);
+		];
+		for (const status of DOCUMENT_STATUSES) {
+			cascade.push(
+				this.tables.ragDocumentsByStatus.deleteMany({
+					workspace_id: workspace,
+					knowledge_base_id: uid,
+					status,
+				}),
+			);
+		}
+		await Promise.all(cascade);
 		// Eager cascade into chat: rewrite any conversation row whose
 		// `knowledge_base_ids` set contained the deleted KB. We can't
 		// do this server-side (no SET-element delete on the wire), so

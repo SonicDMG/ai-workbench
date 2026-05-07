@@ -25,14 +25,23 @@ export type WorkspaceKind = "astra" | "hcd" | "openrag" | "mock";
 /** Distance function used for vector similarity search. */
 export type VectorSimilarity = "cosine" | "dot" | "euclidean";
 
+/**
+ * Closed enum of every value {@link DocumentStatus} can take. Kept as a
+ * `readonly` tuple so callers can iterate (e.g. fan-out deletes across
+ * the partitioned `wb_rag_documents_by_status` index in
+ * `astra/store.ts#deleteWorkspace`).
+ */
+export const DOCUMENT_STATUSES = [
+	"pending",
+	"chunking",
+	"embedding",
+	"writing",
+	"ready",
+	"failed",
+] as const;
+
 /** Lifecycle state of an ingested document. */
-export type DocumentStatus =
-	| "pending"
-	| "chunking"
-	| "embedding"
-	| "writing"
-	| "ready"
-	| "failed";
+export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
 
 /** A workspace — the top-level tenant boundary. */
 export interface WorkspaceRecord {
