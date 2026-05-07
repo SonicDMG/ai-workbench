@@ -107,7 +107,6 @@ import type {
 	UpdateRerankingServiceInput,
 	UpdateWorkspaceInput,
 } from "../store.js";
-import { DOCUMENT_STATUSES } from "../types.js";
 import type {
 	AgentRecord,
 	ApiKeyRecord,
@@ -122,6 +121,7 @@ import type {
 	RerankingServiceRecord,
 	WorkspaceRecord,
 } from "../types.js";
+import { DOCUMENT_STATUSES } from "../types.js";
 
 // Pure record helpers (sort comparators, normalisation, agent
 // construction, metadata merge) live in `../shared/records.ts` so all

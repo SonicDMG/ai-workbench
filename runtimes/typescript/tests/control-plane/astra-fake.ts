@@ -157,10 +157,7 @@ export function createFakeTablesBundle(): TablesBundle {
 			"content_hash",
 		]),
 		agents: new FakeTable<AgentRow>(["workspace_id"]),
-		conversations: new FakeTable<ConversationRow>([
-			"workspace_id",
-			"agent_id",
-		]),
+		conversations: new FakeTable<ConversationRow>(["workspace_id", "agent_id"]),
 		messages: new FakeTable<MessageRow>(["workspace_id", "conversation_id"]),
 	};
 }
