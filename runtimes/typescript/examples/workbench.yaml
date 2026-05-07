@@ -47,17 +47,22 @@ runtime:
 #   - name: demo
 #     kind: mock
 
-# Optional — wires up the chat-with-Bobbie surface. Set
-# HUGGINGFACE_API_KEY in your .env (https://huggingface.co/settings/tokens)
-# and uncomment the block below. Without `chat`, POST .../messages
-# returns 503 chat_disabled (the rest of the runtime works fine).
+# Optional — runtime-wide default chat-completion executor used by
+# agents that have no per-agent `llmServiceId` of their own. Set
+# HUGGINGFACE_API_KEY in your .env
+# (https://huggingface.co/settings/tokens) and uncomment the block
+# below. Without `chat:` AND with no LLM service bound on the agent,
+# POST .../messages returns 503 chat_disabled (the rest of the
+# runtime works fine).
 #
 # chat:
 #   tokenRef: env:HUGGINGFACE_API_KEY
 #   model: Qwen/Qwen2.5-7B-Instruct
 #   maxOutputTokens: 1024
 #   retrievalK: 6
-#   # Override Bobbie's persona (null = built-in default):
+#   # Override the runtime's default agent system prompt
+#   # (null = DEFAULT_AGENT_SYSTEM_PROMPT). Per-agent
+#   # `agent.systemPrompt` always takes precedence over this.
 #   # systemPrompt: null
 
 # Optional — exposes the workspace's read surface as a Model Context
@@ -68,6 +73,7 @@ runtime:
 #
 # mcp:
 #   enabled: true
-#   # Also expose `chat_send`, which routes a message through Bobbie.
+#   # Also expose `chat_send`, which appends a turn to an agent-owned
+#   # conversation through the runtime's global chat service.
 #   # Requires the `chat:` block above.
 #   exposeChat: false

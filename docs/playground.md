@@ -18,7 +18,8 @@ repeatable run, script it against the same HTTP API the UI uses.
 3. **Text tab** — type a query. The runtime embeds it (see
    [Dispatch](#dispatch) below) and runs an ANN search. Useful
    when the KB's bound embedding service points at a provider the
-   runtime can reach (OpenAI today).
+   runtime can reach (OpenAI and Cohere today, plus Astra
+   `$vectorize` when the KB's collection has it configured).
 4. **Vector tab** — paste a raw vector. The runtime sends it
    straight through to the driver. Useful for debugging, for
    KBs whose embedding service the runtime can't currently reach,

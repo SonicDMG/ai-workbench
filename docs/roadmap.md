@@ -472,7 +472,11 @@ implementation yet. Add a fixture set covering the CRUD surface
 These run continuously rather than as discrete phases:
 
 - **Observability.** Structured logs with `workspaceId`, request
-  IDs, and OpenTelemetry traces. Logs today; OTel in Phase 2+.
+  IDs, and OpenTelemetry traces. Both shipped — pino logs out of the
+  box, manual server spans through `@opentelemetry/api` (no-op
+  without an SDK), and a NodeSDK + auto-instrumentations bundle
+  behind `runtime.tracing.enabled: true`. Prometheus exposition at
+  `/metrics`. See [`production.md`](production.md).
 - **Conformance.** Every route added lands with a scenario and
   regenerated fixtures. Every language runtime updates in the same
   PR. Enforced by the drift-guard test.

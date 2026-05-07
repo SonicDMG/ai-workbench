@@ -22,11 +22,18 @@ runtime:
 
 # ---------- Control plane ----------
 #
-# Pick ONE of the three driver stanzas below.
+# Omitting `controlPlane:` entirely makes the runtime auto-pick:
+#   - if `ASTRA_DB_API_ENDPOINT` + `ASTRA_DB_APPLICATION_TOKEN` are set
+#     in the environment (the astra-cli auto-detection on boot fills
+#     these for any developer with a working profile), the runtime
+#     selects the `astra` driver.
+#   - otherwise it falls back to a `file` driver rooted at
+#     `./.workbench-data`.
+# Pick ONE of the three driver stanzas below to override that.
 
-# 1) `memory` — default; workspaces live in process memory.
-#    Great for CI, tests, and `docker run` demos. Optional seeds below
-#    populate the in-memory store at startup.
+# 1) `memory` — workspaces live in process memory only.
+#    Great for CI, tests, and one-shot `docker run` demos. Optional
+#    seeds below populate the in-memory store at startup.
 controlPlane:
   driver: memory
 
@@ -41,9 +48,12 @@ controlPlane:
 #   driver: astra
 #   endpoint: https://<db-id>-<region>.apps.astra.datastax.com
 #   tokenRef: env:ASTRA_DB_APPLICATION_TOKEN
-#   keyspace: workbench
-#   # jobPollIntervalMs: 500   # cross-replica subscriber poll cadence
-#   # jobsResume:              # opt in for clustered deployments only
+#   keyspace: default_keyspace   # default; Astra DB auto-creates this
+#                                # on every new database. Override with
+#                                # a dedicated keyspace if you'd rather
+#                                # isolate workbench tables.
+#   # jobPollIntervalMs: 500     # cross-replica subscriber poll cadence
+#   # jobsResume:                # opt in for clustered deployments only
 #   #   enabled: true
 #   #   graceMs: 60000
 #   #   intervalMs: 60000
@@ -60,9 +70,10 @@ controlPlane:
 #     kind: mock
 #   - name: prod-astra
 #     kind: astra
-#     credentialsRef:
+#     url: env:ASTRA_DB_API_ENDPOINT
+#     credentials:
 #       token: env:ASTRA_DB_APPLICATION_TOKEN
-#     keyspace: workbench
+#     keyspace: default_keyspace
 
 # ---------- Auth ----------
 #
