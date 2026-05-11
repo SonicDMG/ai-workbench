@@ -54,8 +54,10 @@ contract first, then the runtime architecture behind them.
 
 ## Samples
 
-- [`examples/workbench.yaml`](examples/workbench.yaml) — annotated
-  sample config covering all three control-plane drivers.
+- [`runtimes/typescript/examples/workbench.yaml`](../runtimes/typescript/examples/workbench.yaml)
+  — annotated dev config covering all three control-plane drivers,
+  plus `workbench.production.yaml` and `workbench.memory.yaml` variants
+  in the same directory.
 
 ## Contributing to the contract
 

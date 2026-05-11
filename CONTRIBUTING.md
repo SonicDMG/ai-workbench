@@ -118,9 +118,10 @@ satisfy. Adding or changing a route is a contract change.
 - Document the migration in
   [`docs/configuration.md`](./docs/configuration.md). Include a
   before/after example.
-- Keep [`docs/examples/workbench.yaml`](./docs/examples/workbench.yaml)
+- Keep [`runtimes/typescript/examples/workbench.yaml`](./runtimes/typescript/examples/workbench.yaml)
   current — it's referenced from multiple docs as the canonical
-  sample.
+  sample (alongside the `production` / `memory` variants in the same
+  directory).
 
 ## When you add a language runtime
 

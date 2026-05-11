@@ -46,6 +46,38 @@ runtime:
 # seedWorkspaces:
 #   - name: demo
 #     kind: mock
+#   - name: prod-astra
+#     kind: astra
+#     url: env:ASTRA_DB_API_ENDPOINT
+#     credentials:
+#       token: env:ASTRA_DB_APPLICATION_TOKEN
+#     keyspace: default_keyspace
+
+# Optional — auth enforcement. Default is `disabled` + `allow`, which
+# matches pre-auth behavior (everything anonymous, routes don't
+# enforce). Uncomment ONE stanza to turn enforcement on. See
+# docs/auth.md for the full matrix.
+#
+# Workspace-scoped API keys (Phase 2):
+# auth:
+#   mode: apiKey
+#   anonymousPolicy: reject
+#   # bootstrapTokenRef: env:WB_BOOTSTRAP_TOKEN  # rotate after setup
+#
+# OIDC bearer tokens (Phase 3) — JWT signatures verified against the
+# issuer's JWKS at request time. Use `mode: any` to accept apiKey AND
+# oidc simultaneously.
+# auth:
+#   mode: oidc
+#   anonymousPolicy: reject
+#   oidc:
+#     issuer: https://login.example.com/realms/workbench
+#     audience: ai-workbench
+#     # Optional — enables the browser login flow so the web UI stops
+#     # requiring paste-a-token. Mounts /auth/{login,callback,me,logout}.
+#     # client:
+#     #   clientId: ai-workbench-ui
+#     #   sessionSecretRef: env:WB_SESSION_SECRET  # 32+ bytes
 
 # Optional — runtime-wide default chat-completion executor used by
 # agents that have no per-agent `llmServiceId` of their own. Set

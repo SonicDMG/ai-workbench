@@ -236,7 +236,7 @@ phases.
 | [`docs/route-plugins.md`](docs/route-plugins.md) | Design note for the in-runtime route-plugin registry (scaffold shipped) |
 | [`docs/roadmap.md`](docs/roadmap.md) | Phased delivery plan and open questions |
 | [`docs/adr/`](docs/adr/) | Architecture Decision Records — the *why* behind structural choices |
-| [`docs/examples/workbench.yaml`](docs/examples/workbench.yaml) | Annotated sample config |
+| [`runtimes/typescript/examples/workbench.yaml`](runtimes/typescript/examples/workbench.yaml) | Annotated sample config (plus `workbench.production.yaml`, `workbench.memory.yaml` variants) |
 | [`apps/web/README.md`](apps/web/README.md) | Web UI quickstart, bundle layout, test commands |
 | [`runtimes/README.md`](runtimes/README.md) | Index of language-native runtimes |
 | [`conformance/README.md`](conformance/README.md) | Conformance harness overview |

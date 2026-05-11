@@ -41,7 +41,7 @@ Configuration is layered:
 
 1. `workbench.yaml` (canonical) — see
    [`docs/configuration.md`](../../docs/configuration.md) and the
-   examples in [`docs/examples/`](../../docs/examples/).
+   examples in [`examples/`](./examples/).
 2. `.env` (repo root) — secrets and select runtime overrides. See
    [`.env.example`](../../.env.example) for the supported keys.
 3. Process environment — wins over `.env` for matching keys.

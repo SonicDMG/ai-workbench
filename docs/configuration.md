@@ -572,8 +572,14 @@ usually means no `.env` is present and the loader silently skips.
 
 ## Examples
 
-- [`runtimes/typescript/examples/workbench.yaml`](../runtimes/typescript/examples/workbench.yaml) —
-  the minimal default config the Docker image ships with.
-- [`docs/examples/workbench.yaml`](examples/workbench.yaml) — an
-  annotated sample showing all three backend shapes and
-  `seedWorkspaces` usage.
+All canonical examples live under
+[`runtimes/typescript/examples/`](../runtimes/typescript/examples/):
+
+- [`workbench.yaml`](../runtimes/typescript/examples/workbench.yaml) —
+  the default dev config the Docker image ships with, with annotated
+  comments covering all three backends, `seedWorkspaces`, and auth
+  stanzas.
+- [`workbench.production.yaml`](../runtimes/typescript/examples/workbench.production.yaml) —
+  hardened production preset (astra backend, OIDC, security headers).
+- [`workbench.memory.yaml`](../runtimes/typescript/examples/workbench.memory.yaml) —
+  CI / smoke-test preset (in-memory only, no persistence).

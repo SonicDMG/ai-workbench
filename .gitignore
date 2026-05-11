@@ -18,6 +18,12 @@ coverage/
 test-results/
 runtimes/typescript/workbench.yaml
 
+# Playwright MCP transcript dumps from local browser-driven test runs.
+# Currently only `*.log` rules catch the directory's contents; ignore it
+# explicitly so a future non-log artifact (HAR, har.json, screenshots,
+# etc.) can't be added by accident.
+.playwright-mcp/
+
 # Local-only Claude Code settings (per-developer)
 .claude/settings.local.json
 .claude/launch.json

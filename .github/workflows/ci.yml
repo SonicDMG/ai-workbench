@@ -63,6 +63,22 @@ jobs:
       - name: Build (web)
         run: npm --prefix apps/web run build
 
+      # The web client's typed API surface
+      # (`apps/web/src/lib/api-types.generated.ts`) is generated from
+      # the runtime's OpenAPI document and committed. Schema drift —
+      # e.g. a new route added in the runtime without regenerating —
+      # is silent because the file is committed. Re-run the generator
+      # and fail if the working tree changes.
+      - name: Verify generated API types match OpenAPI
+        run: |
+          npm --prefix apps/web run gen:types
+          if ! git diff --quiet apps/web/src/lib/api-types.generated.ts; then
+            echo "::error::apps/web/src/lib/api-types.generated.ts is out of date."
+            echo "Run 'npm --prefix apps/web run gen:types' and commit the result."
+            git --no-pager diff apps/web/src/lib/api-types.generated.ts | head -120
+            exit 1
+          fi
+
   docker:
     name: Docker Build
     runs-on: ubuntu-latest

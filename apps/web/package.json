@@ -16,7 +16,7 @@
 		"test:e2e": "playwright test",
 		"test:e2e:ui": "playwright test --ui",
 		"e2e:install": "playwright install chromium --with-deps",
-		"gen:types": "npm --prefix ../../runtimes/typescript run dump:openapi && openapi-typescript ../../runtimes/typescript/dist/openapi.json -o src/lib/api-types.generated.ts"
+		"gen:types": "npm --prefix ../../runtimes/typescript run dump:openapi && openapi-typescript ../../runtimes/typescript/dist/openapi.json -o src/lib/api-types.generated.ts && ../../node_modules/.bin/biome format --write src/lib/api-types.generated.ts"
 	},
 	"dependencies": {
 		"@hookform/resolvers": "^5.2.2",
