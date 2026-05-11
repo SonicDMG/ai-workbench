@@ -166,6 +166,7 @@ export function IngestQueueDialog({
 				total: null,
 				errorMessage: null,
 				chunkCount: null,
+				snapshots: [],
 			});
 		}
 		if (accepted.length > 0) {
@@ -263,6 +264,7 @@ export function IngestQueueDialog({
 			updateItem(itemId, {
 				status: "running",
 				jobId: res.job.jobId,
+				snapshots: res.astraQueries,
 			});
 			setActiveId(itemId);
 			return "running";

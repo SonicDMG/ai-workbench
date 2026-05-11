@@ -4734,10 +4734,12 @@ export interface components {
 		KbIngestResponse: {
 			document: components["schemas"]["RagDocument"];
 			chunks: number;
+			astraQueries: components["schemas"]["AstraQuerySnapshot"][];
 		};
 		KbAsyncIngestResponse: {
 			job: components["schemas"]["Job"];
 			document: components["schemas"]["RagDocument"];
+			astraQueries: components["schemas"]["AstraQuerySnapshot"][];
 		};
 		KbIngestRequest: {
 			text: string;

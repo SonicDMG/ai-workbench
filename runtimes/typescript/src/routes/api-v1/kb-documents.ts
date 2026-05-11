@@ -217,12 +217,20 @@ export function kbDocumentRoutes(
 					`/api/v1/workspaces/${workspaceId}/jobs/${outcome.job.jobId}`,
 				);
 				return c.json(
-					{ job: toWireJob(outcome.job), document: outcome.document },
+					{
+						job: toWireJob(outcome.job),
+						document: outcome.document,
+						astraQueries: [...outcome.astraQueries],
+					},
 					202,
 				);
 			}
 			return c.json(
-				{ document: outcome.document, chunks: outcome.chunks },
+				{
+					document: outcome.document,
+					chunks: outcome.chunks,
+					astraQueries: [...outcome.astraQueries],
+				},
 				201,
 			);
 		},
@@ -417,12 +425,20 @@ export function kbDocumentRoutes(
 					`/api/v1/workspaces/${workspaceId}/jobs/${outcome.job.jobId}`,
 				);
 				return c.json(
-					{ job: toWireJob(outcome.job), document: outcome.document },
+					{
+						job: toWireJob(outcome.job),
+						document: outcome.document,
+						astraQueries: [...outcome.astraQueries],
+					},
 					202,
 				);
 			}
 			return c.json(
-				{ document: outcome.document, chunks: outcome.chunks },
+				{
+					document: outcome.document,
+					chunks: outcome.chunks,
+					astraQueries: [...outcome.astraQueries],
+				},
 				201,
 			);
 		},

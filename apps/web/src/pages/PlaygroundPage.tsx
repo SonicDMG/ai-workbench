@@ -11,7 +11,11 @@ import { usePlaygroundSearch } from "@/hooks/usePlaygroundSearch";
 import { useEmbeddingServices } from "@/hooks/useServices";
 import { useWorkspace } from "@/hooks/useWorkspaces";
 import { formatApiError, type PlaygroundSearchInput } from "@/lib/api";
-import type { EmbeddingServiceRecord, SearchHit } from "@/lib/schemas";
+import type {
+	EmbeddingServiceRecord,
+	SearchHit,
+	Workspace,
+} from "@/lib/schemas";
 
 /**
  * The playground.
@@ -95,6 +99,9 @@ export function PlaygroundPage() {
 			<SearchPanel
 				workspaceId={workspaceId}
 				knowledgeBaseId={knowledgeBaseId}
+				workspaceRecord={workspace.data ?? null}
+				knowledgeBaseName={knowledgeBase.data.name}
+				vectorCollection={knowledgeBase.data.vectorCollection}
 				embeddingServiceId={knowledgeBase.data.embeddingServiceId}
 				lexicalSupported={knowledgeBase.data.lexical.enabled}
 				rerankSupported={knowledgeBase.data.rerankingServiceId !== null}
@@ -108,6 +115,9 @@ export function PlaygroundPage() {
 function SearchPanel({
 	workspaceId,
 	knowledgeBaseId,
+	workspaceRecord,
+	knowledgeBaseName,
+	vectorCollection,
 	embeddingServiceId,
 	lexicalSupported,
 	rerankSupported,
@@ -116,6 +126,9 @@ function SearchPanel({
 }: {
 	workspaceId: string;
 	knowledgeBaseId: string;
+	workspaceRecord: Workspace | null;
+	knowledgeBaseName: string;
+	vectorCollection: string | null;
 	embeddingServiceId: string;
 	lexicalSupported: boolean;
 	rerankSupported: boolean;
@@ -160,6 +173,9 @@ function SearchPanel({
 					embeddingProvider: `${embedding.provider}:${embedding.modelName}`,
 					lexicalSupported,
 					rerankSupported,
+					workspace: workspaceRecord,
+					knowledgeBaseName,
+					vectorCollection,
 				}}
 				workspaceId={workspaceId}
 				knowledgeBaseId={knowledgeBaseId}

@@ -89,6 +89,7 @@ function ingestResponse(jobId: string): KbAsyncIngestResponse {
 			errorMessage: null,
 			metadata: {},
 		},
+		astraQueries: [],
 	};
 }
 

@@ -1,12 +1,14 @@
 import { Copy, Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { AstraCodeChip } from "@/components/astra/AstraCodeChip";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
 import type { PlaygroundSearchInput } from "@/lib/api";
 import { getAuthToken } from "@/lib/authToken";
 import { formatCurl } from "@/lib/curl";
+import type { AstraQuerySnapshot, Workspace } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 
 type Tab = "text" | "vector";
@@ -16,6 +18,12 @@ export interface QueryFormTarget {
 	readonly embeddingProvider: string;
 	readonly lexicalSupported: boolean;
 	readonly rerankSupported: boolean;
+	/** Workspace + KB metadata used by the preview chip. `null` when
+	 * the workspace info hasn't loaded yet — the chip simply doesn't
+	 * render until the data is ready. */
+	readonly workspace: Workspace | null;
+	readonly knowledgeBaseName: string;
+	readonly vectorCollection: string | null;
 }
 
 /**
@@ -319,6 +327,16 @@ export function QueryForm({
 			) : null}
 
 			<div className="flex items-center justify-end gap-2">
+				{tab === "text" && text.trim().length > 0 ? (
+					<PlaygroundVectorSearchPreview
+						workspace={target.workspace}
+						knowledgeBaseId={knowledgeBaseId}
+						knowledgeBaseName={target.knowledgeBaseName}
+						vectorCollection={target.vectorCollection}
+						text={text}
+						topK={topK}
+					/>
+				) : null}
 				<Button
 					variant="secondary"
 					onClick={() => {
@@ -336,6 +354,59 @@ export function QueryForm({
 				</Button>
 			</div>
 		</div>
+	);
+}
+
+/**
+ * Preview chip rendered in the playground's action row alongside
+ * `Copy as cURL` and `Run query`. Builds the `vector_search` snapshot
+ * locally from form state — the call shape is deterministic, so a
+ * server round-trip isn't required to know exactly what will run.
+ *
+ * Hidden when:
+ *   - the workspace isn't Astra/HCD (no Data API call to render)
+ *   - the KB has no bound `vectorCollection` (attach-mode KB whose
+ *     collection field hasn't been backfilled, or pre-create state)
+ *   - the workspace data hasn't loaded yet
+ *
+ * The chip's `preview` variant changes the trigger icon + dialog
+ * copy so users understand they're inspecting the upcoming call,
+ * not a record of a past one.
+ */
+function PlaygroundVectorSearchPreview({
+	workspace,
+	knowledgeBaseId,
+	knowledgeBaseName,
+	vectorCollection,
+	text,
+	topK,
+}: {
+	workspace: Workspace | null;
+	knowledgeBaseId: string;
+	knowledgeBaseName: string;
+	vectorCollection: string | null;
+	text: string;
+	topK: number;
+}) {
+	if (!workspace) return null;
+	if (workspace.kind !== "astra" && workspace.kind !== "hcd") return null;
+	if (!vectorCollection) return null;
+	const snapshot: AstraQuerySnapshot = {
+		kind: "vector_search",
+		knowledgeBaseId,
+		kbName: knowledgeBaseName,
+		collection: vectorCollection,
+		keyspace: workspace.keyspace,
+		query: { text, topK },
+	};
+	return (
+		<AstraCodeChip
+			snapshots={[snapshot]}
+			variant="preview"
+			dialogTitle="Astra vector_search call (preview)"
+			dialogDescription={`The exact $vectorize-sorted find AI Workbench will run against ${vectorCollection} when you hit Run. Tokens and endpoint URLs are read from $ASTRA_DB_* env vars in the snippet.`}
+			testId="playground-vector-search-preview-chip"
+		/>
 	);
 }
 

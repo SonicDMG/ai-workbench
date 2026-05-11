@@ -12,7 +12,12 @@
 import { createHash } from "node:crypto";
 import type { z } from "@hono/zod-openapi";
 import type { ControlPlaneStore } from "../control-plane/store.js";
-import type { RagDocumentRecord } from "../control-plane/types.js";
+import type {
+	KnowledgeBaseRecord,
+	RagDocumentRecord,
+	VectorStoreRecord,
+	WorkspaceRecord,
+} from "../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
 import { runKbIngest } from "../ingest/pipeline.js";
@@ -22,6 +27,11 @@ import type { JobStore } from "../jobs/store.js";
 import type { IngestInputSnapshot, JobRecord } from "../jobs/types.js";
 import type { KbIngestRequestSchema } from "../openapi/schemas.js";
 import { resolveKb } from "../routes/api-v1/kb-descriptor.js";
+import {
+	type AstraInsertChunksSnapshot,
+	type AstraQuerySnapshot,
+	buildInsertChunksSnapshot,
+} from "../snapshots/types.js";
 import { cascadeDeleteRagDocument } from "./document-cascade.js";
 
 export type KbIngestRequest = z.infer<typeof KbIngestRequestSchema>;
@@ -53,11 +63,13 @@ export type IngestOutcome =
 			readonly kind: "completed";
 			readonly document: RagDocumentRecord;
 			readonly chunks: number;
+			readonly astraQueries: readonly AstraQuerySnapshot[];
 	  }
 	| {
 			readonly kind: "queued";
 			readonly document: RagDocumentRecord;
 			readonly job: JobRecord;
+			readonly astraQueries: readonly AstraQuerySnapshot[];
 	  }
 	| {
 			readonly kind: "duplicate";
@@ -179,6 +191,17 @@ export function createIngestService(deps: IngestServiceDeps): IngestService {
 				},
 			);
 
+			// Build the representative `insert_chunks` snapshot eagerly,
+			// independent of sync vs. async — describes the call the
+			// ingest pipeline will make against the data plane. Empty
+			// for non-Astra workspaces.
+			const astraQueries = maybeInsertChunksSnapshots({
+				workspace: resolved.workspace,
+				knowledgeBase: resolved.knowledgeBase,
+				descriptor: resolved.descriptor,
+				documentId: document.documentId,
+			});
+
 			if (opts.async) {
 				const ingestSnapshot: IngestInputSnapshot = {
 					text: input.text,
@@ -203,7 +226,7 @@ export function createIngestService(deps: IngestServiceDeps): IngestService {
 						input,
 					}),
 				);
-				return { kind: "queued", document, job };
+				return { kind: "queued", document, job, astraQueries };
 			}
 
 			const result = await runKbIngest(
@@ -228,7 +251,54 @@ export function createIngestService(deps: IngestServiceDeps): IngestService {
 				kind: "completed",
 				document: ready ?? document,
 				chunks: result.chunks,
+				astraQueries,
 			};
 		},
 	};
+}
+
+/**
+ * Representative batch size for the captured `insertMany` call. The
+ * actual pipeline runs `coll.insertMany` once per chunk batch (the
+ * driver internally chooses the batch shape); this is the number the
+ * snippet shows as a comment so users understand the call repeats.
+ *
+ * 50 mirrors the order of magnitude astrapy / astra-db-ts use in
+ * their own examples for vectorize-on-insert. It's documentation, not
+ * a runtime invariant — bumping it just changes the displayed number
+ * in the generated snippet.
+ */
+const REPRESENTATIVE_INSERT_BATCH_SIZE = 50;
+
+/**
+ * Build a one-element `insert_chunks` snapshot list for Astra/HCD
+ * workspaces, or `[]` for mock/file backends. Returned as a list (not
+ * a singleton) so the caller's response shape matches the
+ * `astraQueries: AstraQuerySnapshot[]` envelope every other surface
+ * uses — and so future variants can append additional snapshots
+ * (e.g. a pre-ingest `delete_by_document` when overwriting) without
+ * changing the field's type.
+ *
+ * Exported only for unit testing.
+ */
+export function maybeInsertChunksSnapshots(args: {
+	readonly workspace: WorkspaceRecord;
+	readonly knowledgeBase: KnowledgeBaseRecord;
+	readonly descriptor: VectorStoreRecord;
+	readonly documentId: string;
+}): AstraInsertChunksSnapshot[] {
+	const { workspace, knowledgeBase, descriptor, documentId } = args;
+	if (workspace.kind !== "astra" && workspace.kind !== "hcd") return [];
+	return [
+		buildInsertChunksSnapshot({
+			envelope: {
+				knowledgeBaseId: knowledgeBase.knowledgeBaseId,
+				kbName: knowledgeBase.name,
+				collection: descriptor.name,
+				keyspace: workspace.keyspace,
+			},
+			documentId,
+			batchSize: REPRESENTATIVE_INSERT_BATCH_SIZE,
+		}),
+	];
 }

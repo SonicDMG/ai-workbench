@@ -2,6 +2,7 @@ import { ArrowLeft, Database, RefreshCw, Sparkles, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { AstraCodeChip } from "@/components/astra/AstraCodeChip";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +29,12 @@ import { useKnowledgeBase } from "@/hooks/useKnowledgeBases";
 import { useWorkspace } from "@/hooks/useWorkspaces";
 import { formatApiError } from "@/lib/api";
 import { formatFileSize } from "@/lib/files";
-import type { RagDocumentRecord } from "@/lib/schemas";
+import type {
+	AstraQuerySnapshot,
+	KnowledgeBaseRecord,
+	RagDocumentRecord,
+	Workspace,
+} from "@/lib/schemas";
 
 /**
  * Knowledge-base explorer — `/workspaces/:wid/knowledge-bases/:kbid`.
@@ -230,6 +236,8 @@ export function KnowledgeBaseExplorerPage() {
 
 			<DeleteDocumentDialog
 				doc={toDelete}
+				workspace={ws.data ?? null}
+				knowledgeBase={kb.data ?? null}
 				submitting={deleteDoc.isPending}
 				onOpenChange={(o) => !o && setToDelete(null)}
 				onConfirm={async () => {
@@ -255,19 +263,59 @@ export function KnowledgeBaseExplorerPage() {
 	);
 }
 
+/**
+ * Build the preview snapshot for the `deleteMany({ documentId })`
+ * call the runtime will execute when the user confirms. Returns
+ * `[]` for non-Astra workspaces (no Data API call to render), for
+ * KBs without a bound collection name, and when any required input
+ * is missing — the chip simply doesn't render in those cases.
+ *
+ * Preview-mode: the snapshot is built client-side from data the
+ * page already has, before the DELETE endpoint is called. The
+ * server doesn't echo back the actual call (the endpoint returns
+ * 204 No Content) because preview-on-confirm is the highest-leverage
+ * placement for destructive ops — users get to see what's about to
+ * happen, not what happened.
+ */
+function previewDeleteSnapshots(args: {
+	readonly workspace: Workspace | null;
+	readonly knowledgeBase: KnowledgeBaseRecord | null;
+	readonly doc: RagDocumentRecord | null;
+}): AstraQuerySnapshot[] {
+	const { workspace, knowledgeBase, doc } = args;
+	if (!workspace || !knowledgeBase || !doc) return [];
+	if (workspace.kind !== "astra" && workspace.kind !== "hcd") return [];
+	if (!knowledgeBase.vectorCollection) return [];
+	return [
+		{
+			kind: "delete_by_document",
+			knowledgeBaseId: knowledgeBase.knowledgeBaseId,
+			kbName: knowledgeBase.name,
+			collection: knowledgeBase.vectorCollection,
+			keyspace: workspace.keyspace,
+			filter: { documentId: doc.documentId },
+		},
+	];
+}
+
 function DeleteDocumentDialog({
 	doc,
+	workspace,
+	knowledgeBase,
 	submitting,
 	onOpenChange,
 	onConfirm,
 }: {
 	doc: RagDocumentRecord | null;
+	workspace: Workspace | null;
+	knowledgeBase: KnowledgeBaseRecord | null;
 	submitting: boolean;
 	onOpenChange: (open: boolean) => void;
 	onConfirm: () => void;
 }) {
 	const open = doc !== null;
 	const chunkCount = doc?.chunkTotal ?? 0;
+	const snapshots = previewDeleteSnapshots({ workspace, knowledgeBase, doc });
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent>
@@ -298,6 +346,19 @@ function DeleteDocumentDialog({
 						<span className="ml-auto text-xs text-slate-500 tabular-nums dark:text-slate-400">
 							{formatFileSize(doc.fileSize)}
 						</span>
+					</div>
+				) : null}
+
+				{snapshots.length > 0 ? (
+					<div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+						<span>See the Data API call this will run:</span>
+						<AstraCodeChip
+							snapshots={snapshots}
+							variant="preview"
+							dialogTitle="Astra deleteMany call (preview)"
+							dialogDescription={`The cascade delete AI Workbench will run against ${knowledgeBase?.vectorCollection ?? "this collection"} when you confirm. Tokens and endpoint URLs are read from $ASTRA_DB_* env vars in the snippet.`}
+							testId="document-delete-preview-chip"
+						/>
 					</div>
 				) : null}
 

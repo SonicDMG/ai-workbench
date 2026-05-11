@@ -5,7 +5,9 @@ import {
 	Loader2,
 	X,
 } from "lucide-react";
+import { AstraCodeChip } from "@/components/astra/AstraCodeChip";
 import { formatFileSize } from "@/lib/files";
+import type { AstraQuerySnapshot } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 import { FileTypeBadge } from "./FileTypeBadge";
 
@@ -37,6 +39,13 @@ export interface QueueItem {
 	total: number | null;
 	errorMessage: string | null;
 	chunkCount: number | null;
+	/** Astra Data API calls the runtime made (or is about to make)
+	 * for this row. Populated when the ingest call returns —
+	 * representative `insert_chunks` snapshot for Astra/HCD
+	 * workspaces. Empty for non-Astra workspaces and for rows that
+	 * short-circuited to `duplicate` (no pipeline ran). The chip is
+	 * rendered inline in the row when the list is non-empty. */
+	snapshots: readonly AstraQuerySnapshot[];
 }
 
 export function QueueRow({
@@ -83,6 +92,16 @@ export function QueueRow({
 						<span className="text-red-700 truncate dark:text-red-300">
 							{item.errorMessage}
 						</span>
+					) : null}
+					{item.snapshots.length > 0 &&
+					(item.status === "running" || item.status === "succeeded") ? (
+						<AstraCodeChip
+							snapshots={item.snapshots}
+							dialogTitle="Astra insertMany call"
+							dialogDescription="The representative chunk-batch insert AI Workbench runs during ingest. The actual pipeline repeats this call once per chunk batch until the document is fully written."
+							footer={`This call repeats for each batch of chunks the pipeline writes for '${item.relativePath}'.`}
+							testId="ingest-queue-code-chip"
+						/>
 					) : null}
 				</div>
 				{percent !== null && item.status === "running" ? (

@@ -22,6 +22,9 @@ function makeTarget(overrides: Partial<QueryFormTarget> = {}): QueryFormTarget {
 		embeddingProvider: "mock:mock-embedder",
 		lexicalSupported: false,
 		rerankSupported: false,
+		workspace: null,
+		knowledgeBaseName: "test-kb",
+		vectorCollection: null,
 		...overrides,
 	};
 }
