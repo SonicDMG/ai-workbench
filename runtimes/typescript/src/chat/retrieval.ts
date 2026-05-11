@@ -20,59 +20,21 @@ import { CHUNK_TEXT_KEY } from "../ingest/payload-keys.js";
 import type { Logger } from "../lib/logger.js";
 import { resolveKb } from "../routes/api-v1/kb-descriptor.js";
 import { dispatchSearch } from "../routes/api-v1/search-dispatch.js";
+import {
+	type AstraQuerySnapshot,
+	type AstraVectorSearchSnapshot,
+	buildVectorSearchSnapshot,
+} from "../snapshots/types.js";
 import type { RetrievedChunk } from "./prompt.js";
 
-/**
- * Per-tool-call envelope captured during chat retrieval, suitable
- * for persistence on the assistant message and rendering as runnable
- * client code snippets in the SPA. Tokens and vectors are NOT
- * captured — only what the user needs to read or run the same query
- * themselves. Emitted only for Astra-kind workspaces; mock/file
- * workspaces don't carry a meaningful Data API call to render.
- *
- * Discriminated union keyed by `kind`:
- *
- *   - `vector_search` — what `search_kb` runs: a `find` with
- *     `$vectorize` sort and a top-K limit. Server-side embedding via
- *     Astra's vectorize endpoint.
- *
- *   - `list_chunks`   — what `list_chunks` runs: a `find` filtered by
- *     `documentId`, sorted by `chunkIndex`, with limit + skip for
- *     paging. No vector math.
- *
- * Legacy persisted rows (pre-discriminator, written before this PR)
- * had no `kind` field and matched the `vector_search` shape exactly.
- * The SPA's parser falls back to `kind: "vector_search"` when `kind`
- * is missing — see `apps/web/src/components/chat/AstraQueryCodeButton.tsx`.
- */
-interface AstraQuerySnapshotBase {
-	readonly knowledgeBaseId: string;
-	readonly kbName: string;
-	/** Astra Data API collection name (the actual table). */
-	readonly collection: string;
-	readonly keyspace: string | null;
-}
-
-export interface AstraVectorSearchSnapshot extends AstraQuerySnapshotBase {
-	readonly kind: "vector_search";
-	readonly query: {
-		readonly text: string;
-		readonly topK: number;
-	};
-}
-
-export interface AstraListChunksSnapshot extends AstraQuerySnapshotBase {
-	readonly kind: "list_chunks";
-	readonly query: {
-		readonly documentId: string;
-		readonly limit: number;
-		readonly offset: number;
-	};
-}
-
-export type AstraQuerySnapshot =
-	| AstraVectorSearchSnapshot
-	| AstraListChunksSnapshot;
+// Re-export so existing imports from `chat/retrieval.js` keep working
+// while the SPA and other call sites migrate to `snapshots/types.js`.
+// New code should import directly from `../snapshots/types.js`.
+export type {
+	AstraListChunksSnapshot,
+	AstraQuerySnapshot,
+	AstraVectorSearchSnapshot,
+} from "../snapshots/types.js";
 
 export interface RetrieveContextResult {
 	readonly chunks: readonly RetrievedChunk[];
@@ -133,11 +95,13 @@ export async function retrieveContext(
 				});
 				const snapshot =
 					ctx.workspace.kind === "astra" || ctx.workspace.kind === "hcd"
-						? buildAstraSnapshot({
-								knowledgeBaseId: kbId,
-								kbName: ctx.knowledgeBase.name,
-								collection: ctx.descriptor.name,
-								keyspace: ctx.workspace.keyspace,
+						? buildVectorSearchSnapshot({
+								envelope: {
+									knowledgeBaseId: kbId,
+									kbName: ctx.knowledgeBase.name,
+									collection: ctx.descriptor.name,
+									keyspace: ctx.workspace.keyspace,
+								},
 								text: request.query,
 								topK: request.retrievalK,
 							})
@@ -169,24 +133,6 @@ export async function retrieveContext(
 		.map((r) => r.snapshot)
 		.filter((s): s is AstraVectorSearchSnapshot => s !== null);
 	return { chunks, astraQueries };
-}
-
-function buildAstraSnapshot(args: {
-	readonly knowledgeBaseId: string;
-	readonly kbName: string;
-	readonly collection: string;
-	readonly keyspace: string | null;
-	readonly text: string;
-	readonly topK: number;
-}): AstraVectorSearchSnapshot {
-	return {
-		kind: "vector_search",
-		knowledgeBaseId: args.knowledgeBaseId,
-		kbName: args.kbName,
-		collection: args.collection,
-		keyspace: args.keyspace,
-		query: { text: args.text, topK: args.topK },
-	};
 }
 
 /**

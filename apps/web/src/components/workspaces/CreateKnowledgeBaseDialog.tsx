@@ -1,8 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+import { AstraCodeChip } from "@/components/astra/AstraCodeChip";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -34,6 +35,7 @@ import { formatApiError } from "@/lib/api";
 import type {
 	AdoptableCollection,
 	EmbeddingServiceRecord,
+	KnowledgeBaseCreateResponse,
 } from "@/lib/schemas";
 
 type Mode = "create" | "attach";
@@ -134,6 +136,13 @@ export function CreateKnowledgeBaseDialog({
 	const chunkings = useChunkingServices(open ? workspace : undefined);
 	const rerankings = useRerankingServices(open ? workspace : undefined);
 	const adoptable = useAdoptableCollections(open ? workspace : undefined);
+	// On successful create, swap the dialog from form-mode to
+	// success-mode (showing the actual Data API call the runtime made +
+	// a Done button) instead of auto-closing. Cleared when the dialog
+	// closes via `handleOpenChange`.
+	const [created, setCreated] = useState<KnowledgeBaseCreateResponse | null>(
+		null,
+	);
 	const form = useForm<FormInput>({
 		resolver: zodResolver(FormSchema),
 		defaultValues: {
@@ -167,6 +176,7 @@ export function CreateKnowledgeBaseDialog({
 		if (!next) {
 			form.reset();
 			create.reset();
+			setCreated(null);
 		}
 		onOpenChange(next);
 	}
@@ -199,7 +209,7 @@ export function CreateKnowledgeBaseDialog({
 				values.mode === "attach"
 					? (values.vectorCollection ?? "")
 					: (values.name ?? "");
-			const record = await create.mutateAsync({
+			const response = await create.mutateAsync({
 				name: resolvedName,
 				description: values.description?.trim() || null,
 				embeddingServiceId: values.embeddingServiceId,
@@ -214,10 +224,14 @@ export function CreateKnowledgeBaseDialog({
 			});
 			toast.success(
 				values.mode === "attach"
-					? `Attached to '${record.vectorCollection}'`
-					: `Knowledge base '${record.name}' created`,
+					? `Attached to '${response.vectorCollection}'`
+					: `Knowledge base '${response.name}' created`,
 			);
-			handleOpenChange(false);
+			// Swap to the success state so the user can inspect the Data
+			// API call before the dialog goes away. For attach mode and
+			// non-Astra workspaces `astraQueries` is empty, in which case
+			// the success state still renders but the chip is hidden.
+			setCreated(response);
 		} catch (err) {
 			toast.error(
 				values.mode === "attach"
@@ -253,6 +267,57 @@ export function CreateKnowledgeBaseDialog({
 					? "No compatible embedding service for this collection"
 					: "No embedding services yet"
 				: "Pick an embedding service";
+
+	if (created) {
+		return (
+			<Dialog open={open} onOpenChange={handleOpenChange}>
+				<DialogContent className="max-w-lg">
+					<DialogHeader>
+						<DialogTitle>
+							{created.owned
+								? `Knowledge base '${created.name}' created`
+								: `Attached to '${created.vectorCollection}'`}
+						</DialogTitle>
+						<DialogDescription>
+							{created.owned
+								? "The runtime provisioned a fresh Astra collection and bound it to this KB. The exact Data API call is available below."
+								: "The KB now reads from the existing collection. No data-plane writes were made."}
+						</DialogDescription>
+					</DialogHeader>
+
+					<div className="flex flex-col gap-3">
+						<dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
+							<dt className="font-medium">Collection</dt>
+							<dd className="font-mono">{created.vectorCollection}</dd>
+							<dt className="font-medium">Owned</dt>
+							<dd>{created.owned ? "yes" : "no (attached)"}</dd>
+						</dl>
+						{created.astraQueries.length > 0 ? (
+							<div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+								<span>View the call AI Workbench made:</span>
+								<AstraCodeChip
+									snapshots={created.astraQueries}
+									dialogTitle="Astra createCollection call"
+									dialogDescription={`The exact Data API call the runtime made to provision '${created.vectorCollection}'.`}
+									testId="kb-create-result-code-chip"
+								/>
+							</div>
+						) : null}
+					</div>
+
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="brand"
+							onClick={() => handleOpenChange(false)}
+						>
+							Done
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+		);
+	}
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>

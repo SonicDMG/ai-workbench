@@ -77,7 +77,7 @@ describe("AstraQueryCodeButton", () => {
 			/>,
 		);
 		await user.click(screen.getByTestId("astra-query-code-button"));
-		const tabs = await screen.findAllByTestId("astra-query-code-lang-tab");
+		const tabs = await screen.findAllByTestId("astra-code-chip-lang-tab");
 		expect(tabs).toHaveLength(4);
 		expect(tabs.map((t) => t.textContent)).toEqual([
 			"TypeScript",
@@ -98,7 +98,7 @@ describe("AstraQueryCodeButton", () => {
 			/>,
 		);
 		await user.click(screen.getByTestId("astra-query-code-button"));
-		const block = await screen.findByTestId("astra-query-code-block");
+		const block = await screen.findByTestId("astra-code-chip-block");
 		expect(block.textContent ?? "").not.toContain("AstraCS:");
 	});
 
@@ -113,7 +113,7 @@ describe("AstraQueryCodeButton", () => {
 			/>,
 		);
 		await user.click(screen.getByTestId("astra-query-code-button"));
-		const block = await screen.findByTestId("astra-query-code-block");
+		const block = await screen.findByTestId("astra-code-chip-block");
 		const innerCode = block.querySelector("code");
 		expect(innerCode).not.toBeNull();
 		// The hljs root class anchors the theme; per-token spans
@@ -152,7 +152,7 @@ describe("AstraQueryCodeButton", () => {
 			/>,
 		);
 		await user.click(screen.getByTestId("astra-query-code-button"));
-		const block = await screen.findByTestId("astra-query-code-block");
+		const block = await screen.findByTestId("astra-code-chip-block");
 		// `list_chunks` is a positional read: filter by documentId,
 		// sort by chunkIndex. Must NOT contain $vectorize, which is the
 		// vector_search marker.

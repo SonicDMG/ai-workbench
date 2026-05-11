@@ -277,6 +277,11 @@ describe("knowledge-base routes", () => {
 		// so the user can recognize / address it directly in the data plane.
 		expect(kb.vectorCollection).toBe("products");
 		expect(kb.lexical.enabled).toBe(false);
+		// Non-Astra (mock) workspaces don't emit a `create_collection`
+		// snapshot — there's no Data API call to render. The field is
+		// always present on the response so clients don't need to
+		// branch on its existence.
+		expect(kb.astraQueries).toEqual([]);
 
 		const get = await app.request(
 			`/api/v1/workspaces/${ws}/knowledge-bases/${kb.knowledgeBaseId}`,
@@ -564,6 +569,11 @@ describe("knowledge-base routes", () => {
 		const kb = await json(res);
 		expect(kb.vectorCollection).toBe("preexisting");
 		expect(kb.owned).toBe(false);
+		// Attach mode never calls createCollection, so the response
+		// carries no `create_collection` snapshot regardless of
+		// workspace kind. (Mock workspace here, but the rule is
+		// identical for Astra.)
+		expect(kb.astraQueries).toEqual([]);
 
 		// adoptable list now flags this collection as attached.
 		const adoptable = await json(

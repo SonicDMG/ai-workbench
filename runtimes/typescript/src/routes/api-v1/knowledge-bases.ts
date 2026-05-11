@@ -20,6 +20,7 @@ import type { AppEnv } from "../../lib/types.js";
 import {
 	AdoptableCollectionListSchema,
 	CreateKnowledgeBaseInputSchema,
+	KnowledgeBaseCreateResponseSchema,
 	KnowledgeBaseIdParamSchema,
 	KnowledgeBasePageSchema,
 	KnowledgeBaseRecordSchema,
@@ -88,9 +89,10 @@ export function knowledgeBaseRoutes(
 			responses: {
 				201: {
 					content: {
-						"application/json": { schema: KnowledgeBaseRecordSchema },
+						"application/json": { schema: KnowledgeBaseCreateResponseSchema },
 					},
-					description: "Knowledge base created",
+					description:
+						"Knowledge base created. `astraQueries` carries any Data API calls the runtime made on the user's behalf — one `create_collection` snapshot for owned KBs on Astra workspaces, empty array for attach mode and non-Astra workspaces.",
 				},
 				...errorResponse(
 					400,
@@ -106,7 +108,7 @@ export function knowledgeBaseRoutes(
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
 			const body = c.req.valid("json");
-			const record = await service.create(workspaceId, body);
+			const { record, astraQueries } = await service.create(workspaceId, body);
 			audit(c, {
 				action: "kb.create",
 				outcome: "success",
@@ -116,7 +118,10 @@ export function knowledgeBaseRoutes(
 					label: record.name,
 				},
 			});
-			return c.json(record, 201);
+			// Flat envelope — `astraQueries` is a sibling field on the
+			// record so existing clients that ignore it keep working
+			// (the field defaults to `[]` for non-Astra / attach paths).
+			return c.json({ ...record, astraQueries: [...astraQueries] }, 201);
 		},
 	);
 

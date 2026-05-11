@@ -721,18 +721,34 @@ export const ChatMessagePageSchema = paginatedSchema(ChatMessageRecordSchema);
  *     top-K limit). Server-side embedding via Astra's vectorize.
  *   - `list_chunks`   — `list_chunks` calls (find by `documentId`,
  *     sort by `chunkIndex`, limit + skip).
+ *   - `create_collection` — KB-create against the data plane
+ *     (`db.createCollection`). May be a preview snapshot built
+ *     client-side from form state, or the actual call returned in
+ *     the create-KB response.
+ *   - `insert_chunks` — ingest writes a chunk batch to the
+ *     collection. Captured per representative batch (the actual
+ *     pipeline repeats this call N times per document).
+ *   - `delete_by_document` — document delete cascade dropping every
+ *     chunk for the document (`deleteMany({ documentId })`).
+ *   - `delete_chunk` — single-chunk delete by `_id`
+ *     (`deleteOne({ _id })`); fallback path for drivers without
+ *     bulk delete.
  *
  * Legacy persisted rows (pre-discriminator) lacked `kind` and matched
- * the `vector_search` shape exactly. The parser in
- * `AstraQueryCodeButton.tsx` defaults missing `kind` to
- * `"vector_search"` so old conversations keep rendering.
+ * the `vector_search` shape exactly. The parser in `AstraCodeChip`
+ * defaults missing `kind` to `"vector_search"` so old conversations
+ * keep rendering.
  */
-const AstraVectorSearchSnapshotSchema = z.object({
-	kind: z.literal("vector_search"),
+const AstraSnapshotEnvelopeShape = {
 	knowledgeBaseId: z.string(),
 	kbName: z.string(),
 	collection: z.string(),
 	keyspace: z.string().nullable(),
+} as const;
+
+const AstraVectorSearchSnapshotSchema = z.object({
+	kind: z.literal("vector_search"),
+	...AstraSnapshotEnvelopeShape,
 	query: z.object({
 		text: z.string(),
 		topK: z.number().int().positive(),
@@ -741,10 +757,7 @@ const AstraVectorSearchSnapshotSchema = z.object({
 
 const AstraListChunksSnapshotSchema = z.object({
 	kind: z.literal("list_chunks"),
-	knowledgeBaseId: z.string(),
-	kbName: z.string(),
-	collection: z.string(),
-	keyspace: z.string().nullable(),
+	...AstraSnapshotEnvelopeShape,
 	query: z.object({
 		documentId: z.string(),
 		limit: z.number().int().positive(),
@@ -752,9 +765,66 @@ const AstraListChunksSnapshotSchema = z.object({
 	}),
 });
 
+const AstraCreateCollectionSnapshotSchema = z.object({
+	kind: z.literal("create_collection"),
+	...AstraSnapshotEnvelopeShape,
+	options: z.object({
+		vectorDimension: z.number().int().positive(),
+		vectorMetric: z.enum(["cosine", "dot_product", "euclidean"]),
+		vectorize: z
+			.object({
+				provider: z.string(),
+				modelName: z.string(),
+			})
+			.nullable(),
+		lexical: z
+			.object({
+				enabled: z.literal(true),
+				analyzer: z.string(),
+			})
+			.nullable(),
+		rerank: z
+			.object({
+				enabled: z.literal(true),
+				provider: z.string(),
+				modelName: z.string(),
+			})
+			.nullable(),
+	}),
+});
+
+const AstraInsertChunksSnapshotSchema = z.object({
+	kind: z.literal("insert_chunks"),
+	...AstraSnapshotEnvelopeShape,
+	batch: z.object({
+		documentId: z.string(),
+		batchSize: z.number().int().positive(),
+	}),
+});
+
+const AstraDeleteByDocumentSnapshotSchema = z.object({
+	kind: z.literal("delete_by_document"),
+	...AstraSnapshotEnvelopeShape,
+	filter: z.object({
+		documentId: z.string(),
+	}),
+});
+
+const AstraDeleteChunkSnapshotSchema = z.object({
+	kind: z.literal("delete_chunk"),
+	...AstraSnapshotEnvelopeShape,
+	filter: z.object({
+		chunkId: z.string(),
+	}),
+});
+
 export const AstraQuerySnapshotSchema = z.discriminatedUnion("kind", [
 	AstraVectorSearchSnapshotSchema,
 	AstraListChunksSnapshotSchema,
+	AstraCreateCollectionSnapshotSchema,
+	AstraInsertChunksSnapshotSchema,
+	AstraDeleteByDocumentSnapshotSchema,
+	AstraDeleteChunkSnapshotSchema,
 ]);
 export type AstraQuerySnapshot = z.infer<typeof AstraQuerySnapshotSchema>;
 export type AstraVectorSearchSnapshot = z.infer<
@@ -762,6 +832,37 @@ export type AstraVectorSearchSnapshot = z.infer<
 >;
 export type AstraListChunksSnapshot = z.infer<
 	typeof AstraListChunksSnapshotSchema
+>;
+export type AstraCreateCollectionSnapshot = z.infer<
+	typeof AstraCreateCollectionSnapshotSchema
+>;
+export type AstraInsertChunksSnapshot = z.infer<
+	typeof AstraInsertChunksSnapshotSchema
+>;
+export type AstraDeleteByDocumentSnapshot = z.infer<
+	typeof AstraDeleteByDocumentSnapshotSchema
+>;
+export type AstraDeleteChunkSnapshot = z.infer<
+	typeof AstraDeleteChunkSnapshotSchema
+>;
+
+/**
+ * KB-create response. Sibling `astraQueries` field carries the
+ * `create_collection` snapshot the runtime made on the user's behalf
+ * (empty for attach mode and non-Astra workspaces). The dialog
+ * surfaces it on the post-create success state so the user can copy
+ * the actual Data API call.
+ *
+ * Defined here (rather than next to `KnowledgeBaseRecordSchema`)
+ * because it composes the snapshot union declared above; Zod schema
+ * declarations are eagerly evaluated, so the order matters.
+ */
+export const KnowledgeBaseCreateResponseSchema =
+	KnowledgeBaseRecordSchema.extend({
+		astraQueries: z.array(AstraQuerySnapshotSchema),
+	});
+export type KnowledgeBaseCreateResponse = z.infer<
+	typeof KnowledgeBaseCreateResponseSchema
 >;
 
 export const SendChatMessageSchema = z.object({

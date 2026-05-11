@@ -181,4 +181,13 @@ describe("CreateKnowledgeBaseDialog", () => {
 			screen.getByRole("button", { name: /Attach knowledge base/ }),
 		).toBeDisabled();
 	});
+
+	// Note: a full form-submission test for the post-create success
+	// state was attempted but trips on a Radix Select / jsdom
+	// incompatibility (`target.hasPointerCapture is not a function`).
+	// The chip itself is covered by `AstraCodeChip.test.tsx`, and the
+	// success-state branch is mechanical enough (no business logic)
+	// that the chip's own tests cover the rendering risk. End-to-end
+	// coverage of the full submit → success → chip flow lives in the
+	// Playwright suite.
 });

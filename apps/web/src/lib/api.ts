@@ -47,6 +47,8 @@ import {
 	type KbIngestAsyncOrDuplicate,
 	KbIngestAsyncOrDuplicateSchema,
 	type KbIngestRequest,
+	type KnowledgeBaseCreateResponse,
+	KnowledgeBaseCreateResponseSchema,
 	KnowledgeBasePageSchema,
 	type KnowledgeBaseRecord,
 	KnowledgeBaseRecordSchema,
@@ -365,7 +367,7 @@ export const api = {
 	createKnowledgeBase: (
 		workspaceId: string,
 		input: CreateKnowledgeBaseInput,
-	): Promise<KnowledgeBaseRecord> => {
+	): Promise<KnowledgeBaseCreateResponse> => {
 		const body: Record<string, unknown> = {
 			name: input.name,
 			description: input.description ? input.description : null,
@@ -381,7 +383,7 @@ export const api = {
 		return request(
 			`/workspaces/${workspaceId}/knowledge-bases`,
 			{ method: "POST", body: JSON.stringify(body) },
-			KnowledgeBaseRecordSchema,
+			KnowledgeBaseCreateResponseSchema,
 		);
 	},
 

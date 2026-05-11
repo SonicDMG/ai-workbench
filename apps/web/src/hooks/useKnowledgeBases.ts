@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import type {
 	AdoptableCollection,
 	CreateKnowledgeBaseInput,
+	KnowledgeBaseCreateResponse,
 	KnowledgeBaseRecord,
 	UpdateKnowledgeBaseInput,
 } from "@/lib/schemas";
@@ -69,7 +70,11 @@ export function useKnowledgeBase(
 
 export function useCreateKnowledgeBase(
 	workspaceId: string,
-): UseMutationResult<KnowledgeBaseRecord, Error, CreateKnowledgeBaseInput> {
+): UseMutationResult<
+	KnowledgeBaseCreateResponse,
+	Error,
+	CreateKnowledgeBaseInput
+> {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (input) => api.createKnowledgeBase(workspaceId, input),

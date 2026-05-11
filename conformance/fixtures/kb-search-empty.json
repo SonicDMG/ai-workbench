@@ -172,6 +172,7 @@
 			},
 			"response": {
 				"body": {
+					"astraQueries": [],
 					"chunkingServiceId": "{{UUID_4}}",
 					"createdAt": "{{TS}}",
 					"description": null,

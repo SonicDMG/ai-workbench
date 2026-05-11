@@ -840,13 +840,13 @@ export interface paths {
 				};
 			};
 			responses: {
-				/** @description Knowledge base created */
+				/** @description Knowledge base created. `astraQueries` carries any Data API calls the runtime made on the user's behalf — one `create_collection` snapshot for owned KBs on Astra workspaces, empty array for attach mode and non-Astra workspaces. */
 				201: {
 					headers: {
 						[name: string]: unknown;
 					};
 					content: {
-						"application/json": components["schemas"]["KnowledgeBase"];
+						"application/json": components["schemas"]["KnowledgeBaseCreateResponse"];
 					};
 				};
 				400: components["responses"]["BadRequest"];
@@ -3896,6 +3896,121 @@ export interface components {
 			analyzer: string | null;
 			options: {
 				[key: string]: string;
+			};
+		};
+		KnowledgeBaseCreateResponse: components["schemas"]["KnowledgeBase"] & {
+			astraQueries: components["schemas"]["AstraQuerySnapshot"][];
+		};
+		AstraQuerySnapshot:
+			| components["schemas"]["AstraVectorSearchSnapshot"]
+			| components["schemas"]["AstraListChunksSnapshot"]
+			| components["schemas"]["AstraCreateCollectionSnapshot"]
+			| components["schemas"]["AstraInsertChunksSnapshot"]
+			| components["schemas"]["AstraDeleteByDocumentSnapshot"]
+			| components["schemas"]["AstraDeleteChunkSnapshot"];
+		AstraVectorSearchSnapshot: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			kind: "vector_search";
+			knowledgeBaseId: string;
+			kbName: string;
+			collection: string;
+			keyspace: string | null;
+			query: {
+				text: string;
+				topK: number;
+			};
+		};
+		AstraListChunksSnapshot: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			kind: "list_chunks";
+			knowledgeBaseId: string;
+			kbName: string;
+			collection: string;
+			keyspace: string | null;
+			query: {
+				documentId: string;
+				limit: number;
+				offset: number;
+			};
+		};
+		AstraCreateCollectionSnapshot: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			kind: "create_collection";
+			knowledgeBaseId: string;
+			kbName: string;
+			collection: string;
+			keyspace: string | null;
+			options: {
+				vectorDimension: number;
+				/** @enum {string} */
+				vectorMetric: "cosine" | "dot_product" | "euclidean";
+				vectorize: {
+					provider: string;
+					modelName: string;
+				} | null;
+				lexical: {
+					/** @enum {boolean} */
+					enabled: true;
+					analyzer: string;
+				} | null;
+				rerank: {
+					/** @enum {boolean} */
+					enabled: true;
+					provider: string;
+					modelName: string;
+				} | null;
+			};
+		};
+		AstraInsertChunksSnapshot: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			kind: "insert_chunks";
+			knowledgeBaseId: string;
+			kbName: string;
+			collection: string;
+			keyspace: string | null;
+			batch: {
+				documentId: string;
+				batchSize: number;
+			};
+		};
+		AstraDeleteByDocumentSnapshot: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			kind: "delete_by_document";
+			knowledgeBaseId: string;
+			kbName: string;
+			collection: string;
+			keyspace: string | null;
+			filter: {
+				documentId: string;
+			};
+		};
+		AstraDeleteChunkSnapshot: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			kind: "delete_chunk";
+			knowledgeBaseId: string;
+			kbName: string;
+			collection: string;
+			keyspace: string | null;
+			filter: {
+				chunkId: string;
 			};
 		};
 		CreateKnowledgeBaseInput: {

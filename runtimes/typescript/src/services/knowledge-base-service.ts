@@ -18,12 +18,22 @@ import type {
 	RerankingServiceRepo,
 	WorkspaceRepo,
 } from "../control-plane/store.js";
-import type { KnowledgeBaseRecord } from "../control-plane/types.js";
+import type {
+	KnowledgeBaseRecord,
+	VectorStoreRecord,
+	WorkspaceRecord,
+} from "../control-plane/types.js";
+import { resolveVectorizeService } from "../drivers/astra/vectorize.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import { DimensionMismatchError } from "../drivers/vector-store.js";
 import { ApiError } from "../lib/errors.js";
 import type { CreateKnowledgeBaseInputSchema } from "../openapi/schemas.js";
 import { resolveKb } from "../routes/api-v1/kb-descriptor.js";
+import {
+	type AstraCreateCollectionSnapshot,
+	type AstraQuerySnapshot,
+	buildCreateCollectionSnapshot,
+} from "../snapshots/types.js";
 
 export type CreateKnowledgeBaseRequest = z.infer<
 	typeof CreateKnowledgeBaseInputSchema
@@ -64,12 +74,25 @@ export interface KnowledgeBaseServiceDeps {
 	readonly drivers: VectorStoreDriverRegistry;
 }
 
+/**
+ * Outcome of a KB-create. `astraQueries` carries any Data API calls
+ * the service made on behalf of the request — empty for attach-mode
+ * (the collection already existed) and for non-Astra workspaces.
+ * Owned-mode KB-create on an Astra workspace returns one
+ * `create_collection` snapshot; the SPA surfaces this on the new KB
+ * row so the user can see + copy the actual call that ran.
+ */
+export interface CreateKnowledgeBaseOutcome {
+	readonly record: KnowledgeBaseRecord;
+	readonly astraQueries: readonly AstraQuerySnapshot[];
+}
+
 export interface KnowledgeBaseService {
 	listAdoptable(workspaceId: string): Promise<AdoptableCollection[]>;
 	create(
 		workspaceId: string,
 		input: CreateKnowledgeBaseRequest,
-	): Promise<KnowledgeBaseRecord>;
+	): Promise<CreateKnowledgeBaseOutcome>;
 	delete(workspaceId: string, knowledgeBaseId: string): Promise<void>;
 }
 
@@ -235,6 +258,7 @@ export function createKnowledgeBaseService(
 			// On failure roll back the KB row so the control plane
 			// and data plane don't drift. Attach mode skips this:
 			// the collection already exists and we don't touch it.
+			const astraQueries: AstraQuerySnapshot[] = [];
 			if (!attach) {
 				try {
 					const { workspace, descriptor } = await resolveKb(
@@ -244,15 +268,21 @@ export function createKnowledgeBaseService(
 					);
 					const driver = drivers.for(workspace);
 					await driver.createCollection({ workspace, descriptor });
+					const snapshot = maybeCreateCollectionSnapshot({
+						workspace,
+						knowledgeBase: record,
+						descriptor,
+					});
+					if (snapshot) astraQueries.push(snapshot);
 				} catch (err) {
 					await store.deleteKnowledgeBase(workspaceId, record.knowledgeBaseId);
 					throw err;
 				}
 			}
-			return record;
+			return { record, astraQueries };
 		},
 
-		async delete(workspaceId, knowledgeBaseId) {
+		async delete(workspaceId, knowledgeBaseId): Promise<void> {
 			// Drop the underlying collection first when the runtime owns
 			// it; if the driver call fails the KB row survives so the
 			// operator can inspect. Attached KBs (owned: false) are
@@ -284,4 +314,76 @@ export function createKnowledgeBaseService(
 			}
 		},
 	};
+}
+
+/**
+ * Build a `create_collection` snapshot mirroring the `createCollection`
+ * call the Astra driver just made, so the route can surface it on the
+ * create response. Returns `null` for non-Astra workspaces (mock /
+ * file backends don't have a Data API call to render).
+ *
+ * The mapping is the inverse of {@link drivers/astra/store.ts}'s
+ * `createCollection` logic — keep them in lockstep so the snapshot
+ * reflects exactly what ran against the Data API.
+ *
+ * Exported only for unit testing.
+ */
+export function maybeCreateCollectionSnapshot(args: {
+	readonly workspace: WorkspaceRecord;
+	readonly knowledgeBase: KnowledgeBaseRecord;
+	readonly descriptor: VectorStoreRecord;
+}): AstraCreateCollectionSnapshot | null {
+	const { workspace, knowledgeBase, descriptor } = args;
+	if (workspace.kind !== "astra" && workspace.kind !== "hcd") return null;
+	const vectorize = resolveVectorizeService(descriptor.embedding);
+	const lexical =
+		descriptor.lexical.enabled && descriptor.lexical.analyzer
+			? {
+					enabled: true as const,
+					analyzer: descriptor.lexical.analyzer,
+				}
+			: null;
+	const rerank =
+		descriptor.reranking.enabled &&
+		descriptor.reranking.provider &&
+		descriptor.reranking.model
+			? {
+					enabled: true as const,
+					provider: descriptor.reranking.provider,
+					modelName: descriptor.reranking.model,
+				}
+			: null;
+	return buildCreateCollectionSnapshot({
+		envelope: {
+			knowledgeBaseId: knowledgeBase.knowledgeBaseId,
+			kbName: knowledgeBase.name,
+			collection: descriptor.name,
+			keyspace: workspace.keyspace,
+		},
+		vectorDimension: descriptor.vectorDimension,
+		vectorMetric: mapSimilarityToAstra(descriptor.vectorSimilarity),
+		vectorize: vectorize
+			? { provider: vectorize.provider, modelName: vectorize.modelName }
+			: null,
+		lexical,
+		rerank,
+	});
+}
+
+/**
+ * Project workbench's `VectorSimilarity` onto Astra's native metric
+ * enum. Mirrors `drivers/astra/store.ts#mapMetric` — the snapshot
+ * has to match the actual wire value, not the internal name.
+ */
+function mapSimilarityToAstra(
+	m: VectorStoreRecord["vectorSimilarity"],
+): "cosine" | "dot_product" | "euclidean" {
+	switch (m) {
+		case "cosine":
+			return "cosine";
+		case "dot":
+			return "dot_product";
+		case "euclidean":
+			return "euclidean";
+	}
 }
