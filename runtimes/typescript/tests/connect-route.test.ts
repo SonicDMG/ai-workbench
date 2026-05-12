@@ -13,6 +13,7 @@ import { AuthResolver } from "../src/auth/resolver.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
+import { mcpTrafficBuffer } from "../src/lib/mcp-traffic-buffer.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
 import { SecretResolver } from "../src/secrets/provider.js";
 import { makeFakeEmbedderFactory } from "./helpers/embedder.js";
@@ -222,5 +223,115 @@ describe("connect verify route", () => {
 		// MCP-off is a legitimate "not wired" state, not a failure —
 		// the UI should render an amber warning, not a red one.
 		expect(body.error).toBeNull();
+	});
+});
+
+describe("connect traffic route", () => {
+	test("404 when the workspace does not exist", async () => {
+		const { app } = makeApp({ mcpEnabled: true });
+		const res = await app.request(
+			"/api/v1/workspaces/00000000-0000-0000-0000-000000000000/connect/traffic",
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("workspace_not_found");
+	});
+
+	test("starts empty for a fresh workspace", async () => {
+		mcpTrafficBuffer.reset();
+		const { app } = makeApp({ mcpEnabled: true });
+		const ws = await createWorkspace(app);
+		const res = await app.request(`/api/v1/workspaces/${ws}/connect/traffic`);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.workspaceId).toBe(ws);
+		expect(body.mcpEnabled).toBe(true);
+		expect(body.entries).toEqual([]);
+		expect(body.summary).toEqual({ total: 0, successes: 0, failures: 0 });
+	});
+
+	test("captures MCP tool calls from the audit pipeline", async () => {
+		mcpTrafficBuffer.reset();
+		const { app } = makeApp({ mcpEnabled: true });
+		const ws = await createWorkspace(app);
+
+		// Drive the MCP route over HTTP to exercise the full audit
+		// path — `mcpRoutes` calls `audit(..., { action: "mcp.invoke" })`
+		// in the `onToolInvoke` hook, which in turn pushes into the
+		// traffic buffer.
+		const mcp = await app.request(`/api/v1/workspaces/${ws}/mcp`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				accept: "application/json, text/event-stream",
+			},
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				id: 1,
+				method: "tools/call",
+				params: {
+					name: "list_knowledge_bases",
+					arguments: {},
+				},
+			}),
+		});
+		expect(mcp.status).toBe(200);
+
+		const res = await app.request(`/api/v1/workspaces/${ws}/connect/traffic`);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.entries).toHaveLength(1);
+		expect(body.entries[0].toolName).toBe("list_knowledge_bases");
+		expect(body.entries[0].outcome).toBe("success");
+		expect(body.summary.total).toBe(1);
+		expect(body.summary.successes).toBe(1);
+		expect(body.summary.failures).toBe(0);
+		// No-store so the strip stays live in the UI.
+		expect(res.headers.get("cache-control")).toMatch(/no-store/);
+	});
+
+	test("honours ?limit= and caps it server-side", async () => {
+		mcpTrafficBuffer.reset();
+		const { app } = makeApp({ mcpEnabled: true });
+		const ws = await createWorkspace(app);
+
+		// Seed the buffer directly to avoid the per-call MCP HTTP
+		// overhead for this assertion.
+		for (let i = 0; i < 5; i += 1) {
+			mcpTrafficBuffer.record({
+				workspaceId: ws,
+				action: "mcp.invoke",
+				outcome: "success",
+				toolName: `tool-${i}`,
+				subjectType: "anonymous",
+				subjectLabel: null,
+				reason: null,
+			});
+		}
+
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/connect/traffic?limit=2`,
+		);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.entries).toHaveLength(2);
+		expect(body.entries[0].toolName).toBe("tool-4");
+		expect(body.entries[1].toolName).toBe("tool-3");
+
+		// summary still counts the whole window, not the limited
+		// page — the UI's header counter should not collapse to
+		// `limit` artificially.
+		expect(body.summary.total).toBe(5);
+	});
+
+	test("rejects limit above the server-side cap with 400", async () => {
+		const { app } = makeApp({ mcpEnabled: true });
+		const ws = await createWorkspace(app);
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/connect/traffic?limit=9999`,
+		);
+		expect(res.status).toBe(400);
+		const body = await json(res);
+		expect(body.error.code).toBe("validation_error");
 	});
 });

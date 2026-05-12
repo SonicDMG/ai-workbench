@@ -39,6 +39,7 @@ import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
 import { ApiError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
+import { mcpTrafficBuffer } from "../../lib/mcp-traffic-buffer.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { resolvePublicBaseUrl } from "../../lib/public-url.js";
 import type { AppEnv } from "../../lib/types.js";
@@ -46,6 +47,8 @@ import { buildMcpServer } from "../../mcp/server.js";
 import {
 	ConnectSnippetsQuerySchema,
 	ConnectSnippetsResponseSchema,
+	ConnectTrafficQuerySchema,
+	ConnectTrafficResponseSchema,
 	ConnectVerifyResponseSchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
@@ -278,6 +281,62 @@ export function connectRoutes(deps: ConnectRouteDeps): OpenAPIHono<AppEnv> {
 				await client.close().catch(() => {});
 				await server.close().catch(() => {});
 			}
+		},
+	);
+
+	app.openapi(
+		createRoute({
+			method: "get",
+			path: "/{workspaceId}/connect/traffic",
+			tags: ["connect"],
+			summary: "Recent MCP traffic for the workspace",
+			description:
+				"Returns the in-memory ring buffer of recent MCP tool invocations for the workspace — drives the Connect tab's **Recent integration traffic** strip. Buffer is process-local and lossy on restart; the pino audit log remains the authoritative trail. Payload bodies are deliberately omitted (potential user-prompt / KB-id content).",
+			request: {
+				params: z.object({ workspaceId: WorkspaceIdParamSchema }),
+				query: ConnectTrafficQuerySchema,
+			},
+			responses: {
+				200: {
+					content: {
+						"application/json": { schema: ConnectTrafficResponseSchema },
+					},
+					description:
+						"Newest-first list of recent MCP invocations plus a 24h summary.",
+				},
+				...errorResponse(404, "Workspace not found"),
+			},
+		}),
+		async (c) => {
+			const { workspaceId } = c.req.valid("param");
+			const { limit } = c.req.valid("query");
+
+			const workspace = await deps.store.getWorkspace(workspaceId);
+			if (!workspace) {
+				throw new ApiError(
+					"workspace_not_found",
+					`workspace '${workspaceId}' not found`,
+					404,
+				);
+			}
+
+			const entries = mcpTrafficBuffer.recent(workspaceId, { limit });
+			const summary = mcpTrafficBuffer.summary(workspaceId);
+
+			// No long cache here — clients poll this for "live" feel.
+			// Cache-Control: no-store keeps a brief 304 cache from a
+			// reverse proxy from making the strip look frozen.
+			c.header("Cache-Control", "no-store");
+
+			return c.json(
+				{
+					workspaceId,
+					mcpEnabled: deps.mcpConfig.enabled,
+					entries: [...entries],
+					summary,
+				},
+				200,
+			);
 		},
 	);
 

@@ -1076,6 +1076,30 @@ export const ConnectVerifyResponseSchema = z.object({
 });
 export type ConnectVerifyResponse = z.infer<typeof ConnectVerifyResponseSchema>;
 
+export const ConnectTrafficEntrySchema = z.object({
+	at: z.string(),
+	toolName: z.string(),
+	outcome: z.enum(["success", "failure", "denied"]),
+	subjectType: z.enum(["apiKey", "oidc", "bootstrap", "anonymous", "system"]),
+	subjectLabel: z.string().nullable(),
+	reason: z.string().nullable(),
+});
+export type ConnectTrafficEntry = z.infer<typeof ConnectTrafficEntrySchema>;
+
+export const ConnectTrafficResponseSchema = z.object({
+	workspaceId: z.string(),
+	mcpEnabled: z.boolean(),
+	entries: z.array(ConnectTrafficEntrySchema),
+	summary: z.object({
+		total: z.number().int().nonnegative(),
+		successes: z.number().int().nonnegative(),
+		failures: z.number().int().nonnegative(),
+	}),
+});
+export type ConnectTrafficResponse = z.infer<
+	typeof ConnectTrafficResponseSchema
+>;
+
 export const KIND_LABELS: Record<WorkspaceKind, string> = {
 	astra: "Astra DB",
 	hcd: "Hyper-Converged Database",

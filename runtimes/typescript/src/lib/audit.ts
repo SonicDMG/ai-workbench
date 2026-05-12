@@ -31,6 +31,7 @@
 import type { Context } from "hono";
 import type { AuthContext, AuthSubject } from "../auth/types.js";
 import { logger } from "./logger.js";
+import { mcpTrafficBuffer } from "./mcp-traffic-buffer.js";
 import type { AppEnv } from "./types.js";
 
 /**
@@ -144,6 +145,7 @@ export function audit(c: Context<AppEnv>, event: AuditEventInput): void {
 			details: event.details ?? null,
 		};
 		logger.info(envelope, `audit ${event.action} ${event.outcome}`);
+		recordMcpTraffic(envelope);
 	} catch {
 		// Audit logging is best-effort; never break the request path.
 	}
@@ -187,4 +189,29 @@ function toSubjectEnvelope(auth: AuthContext): AuditSubjectEnvelope {
 		id: auth.subject.id,
 		label: auth.subject.label,
 	};
+}
+
+/**
+ * Side-effect side-store. Drops anything that isn't an MCP invocation;
+ * the in-memory buffer is for the Connect tab's "Recent integration
+ * traffic" strip and only renders MCP calls today. Other audit actions
+ * still hit the pino logger via the caller — see {@link audit}.
+ *
+ * Workspace id MUST be present for an MCP invoke (the route layer
+ * always passes it) — drop quietly if it isn't.
+ */
+function recordMcpTraffic(envelope: AuditEnvelope): void {
+	if (envelope.action !== "mcp.invoke") return;
+	if (!envelope.workspaceId) return;
+	const toolName = envelope.details?.toolName;
+	if (!toolName) return;
+	mcpTrafficBuffer.record({
+		workspaceId: envelope.workspaceId,
+		action: envelope.action,
+		outcome: envelope.outcome,
+		toolName,
+		subjectType: envelope.subject?.type ?? "anonymous",
+		subjectLabel: envelope.subject?.label ?? null,
+		reason: envelope.details?.reason ?? null,
+	});
 }

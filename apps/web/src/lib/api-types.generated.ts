@@ -3737,6 +3737,65 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/api/v1/workspaces/{workspaceId}/connect/traffic": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Recent MCP traffic for the workspace
+		 * @description Returns the in-memory ring buffer of recent MCP tool invocations for the workspace — drives the Connect tab's **Recent integration traffic** strip. Buffer is process-local and lossy on restart; the pino audit log remains the authoritative trail. Payload bodies are deliberately omitted (potential user-prompt / KB-id content).
+		 */
+		get: {
+			parameters: {
+				query?: {
+					limit?: number;
+				};
+				header?: never;
+				path: {
+					workspaceId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description Newest-first list of recent MCP invocations plus a 24h summary. */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ConnectTrafficResponse"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4957,6 +5016,27 @@ export interface components {
 				code: string;
 				message: string;
 			} | null;
+		};
+		ConnectTrafficResponse: {
+			/** Format: uuid */
+			workspaceId: string;
+			mcpEnabled: boolean;
+			entries: components["schemas"]["ConnectTrafficEntry"][];
+			summary: {
+				total: number;
+				successes: number;
+				failures: number;
+			};
+		};
+		ConnectTrafficEntry: {
+			at: string;
+			toolName: string;
+			/** @enum {string} */
+			outcome: "success" | "failure" | "denied";
+			/** @enum {string} */
+			subjectType: "apiKey" | "oidc" | "bootstrap" | "anonymous" | "system";
+			subjectLabel: string | null;
+			reason: string | null;
 		};
 	};
 	responses: {

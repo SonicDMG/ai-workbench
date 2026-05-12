@@ -21,6 +21,8 @@ import {
 	ChunkingServiceRecordSchema,
 	type ConnectSnippetsResponse,
 	ConnectSnippetsResponseSchema,
+	type ConnectTrafficResponse,
+	ConnectTrafficResponseSchema,
 	type ConnectVerifyResponse,
 	ConnectVerifyResponseSchema,
 	ConversationPageSchema,
@@ -382,6 +384,22 @@ export const api = {
 			{ method: "POST" },
 			ConnectVerifyResponseSchema,
 		),
+
+	getConnectTraffic: (
+		workspaceId: string,
+		opts: { limit?: number } = {},
+	): Promise<ConnectTrafficResponse> => {
+		const params = new URLSearchParams();
+		if (opts.limit !== undefined) {
+			params.set("limit", String(opts.limit));
+		}
+		const qs = params.toString();
+		return request(
+			`/workspaces/${workspaceId}/connect/traffic${qs ? `?${qs}` : ""}`,
+			{ method: "GET" },
+			ConnectTrafficResponseSchema,
+		);
+	},
 
 	/* -------- Knowledge bases -------- */
 

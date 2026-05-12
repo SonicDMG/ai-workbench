@@ -1,4 +1,5 @@
 import {
+	Activity,
 	AlertTriangle,
 	ArrowLeft,
 	BookOpen,
@@ -25,11 +26,16 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { useConnectSnippets } from "@/hooks/useConnectSnippets";
+import { useConnectTraffic } from "@/hooks/useConnectTraffic";
 import { useConnectVerify } from "@/hooks/useConnectVerify";
 import { useKnowledgeBases } from "@/hooks/useKnowledgeBases";
 import { useWorkspace } from "@/hooks/useWorkspaces";
 import { ApiError, formatApiError } from "@/lib/api";
-import type { ConnectSnippet, ConnectVerifyResponse } from "@/lib/schemas";
+import type {
+	ConnectSnippet,
+	ConnectTrafficEntry,
+	ConnectVerifyResponse,
+} from "@/lib/schemas";
 
 const ALL_KBS_SENTINEL = "__all__";
 
@@ -126,6 +132,10 @@ export function ConnectPage() {
 						active={activeTab}
 						onChange={setActiveTab}
 						snippets={snippets.data.targets}
+					/>
+					<TrafficStrip
+						workspaceId={workspaceId}
+						mcpEnabled={snippets.data.mcpEnabled}
 					/>
 				</>
 			)}
@@ -479,4 +489,200 @@ function SnippetView({ snippet }: { snippet: ConnectSnippet }) {
 			) : null}
 		</div>
 	);
+}
+
+/* ----------------------- Traffic strip ----------------------- */
+
+/**
+ * The "Recent integration traffic" strip — a live feed of MCP tool
+ * invocations for this workspace. Polls every 5s; backed by the
+ * in-memory ring buffer the runtime keeps on the audit stream.
+ *
+ * The strip is the demo's living proof that the wire is up. When the
+ * user pastes a snippet into a notebook and runs it, this list
+ * lights up in seconds — no scrolling logs, no separate dashboard.
+ *
+ * Two states are interesting:
+ *
+ *   - **empty** — show an instructional placeholder pointing the
+ *     user at the snippets above ("Run one of the recipes above to
+ *     see calls land here").
+ *   - **populated** — show the newest ~10 entries with relative
+ *     timestamps, tool name, outcome icon, and (if known) the
+ *     subject label.
+ *
+ * Errors from the poll are surfaced as a small inline warning rather
+ * than a card-replacing error state — the strip is a "nice to have"
+ * surface, and a transient failure shouldn't blank out the live feed
+ * once it's been populated.
+ */
+function TrafficStrip({
+	workspaceId,
+	mcpEnabled,
+}: {
+	workspaceId: string;
+	mcpEnabled: boolean;
+}) {
+	const traffic = useConnectTraffic(workspaceId, { enabled: mcpEnabled });
+
+	return (
+		<Card>
+			<CardHeader className="flex-row items-center justify-between gap-3 pb-3">
+				<div className="flex items-center gap-3">
+					<Activity className="h-4 w-4 text-slate-500" />
+					<CardTitle>Recent integration traffic</CardTitle>
+				</div>
+				<TrafficSummary
+					data={traffic.data}
+					mcpEnabled={mcpEnabled}
+					isLoading={traffic.isLoading}
+				/>
+			</CardHeader>
+			<CardContent>
+				{!mcpEnabled ? (
+					<div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+						<AlertTriangle className="h-4 w-4" />
+						<span>Disabled while MCP is off.</span>
+					</div>
+				) : traffic.isLoading && !traffic.data ? (
+					<div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+						<Loader2 className="h-4 w-4 animate-spin" />
+						<span>Loading…</span>
+					</div>
+				) : !traffic.data || traffic.data.entries.length === 0 ? (
+					<TrafficEmpty />
+				) : (
+					<TrafficList entries={traffic.data.entries.slice(0, 10)} />
+				)}
+			</CardContent>
+		</Card>
+	);
+}
+
+function TrafficSummary({
+	data,
+	mcpEnabled,
+	isLoading,
+}: {
+	data: import("@/lib/schemas").ConnectTrafficResponse | undefined;
+	mcpEnabled: boolean;
+	isLoading: boolean;
+}) {
+	if (!mcpEnabled) return null;
+	if (!data) {
+		return isLoading ? (
+			<span className="text-xs text-slate-500 dark:text-slate-400">
+				Polling…
+			</span>
+		) : null;
+	}
+	const { total, successes, failures } = data.summary;
+	if (total === 0) {
+		return (
+			<span className="text-xs text-slate-500 dark:text-slate-400">
+				No traffic yet · polling every 5s
+			</span>
+		);
+	}
+	return (
+		<span className="text-xs text-slate-600 dark:text-slate-300">
+			<span className="font-medium text-slate-900 dark:text-slate-100">
+				{total}
+			</span>{" "}
+			call{total === 1 ? "" : "s"} ·{" "}
+			<span className="text-emerald-700 dark:text-emerald-300">
+				{successes} ok
+			</span>
+			{failures > 0 ? (
+				<>
+					{" "}
+					·{" "}
+					<span className="text-red-700 dark:text-red-300">
+						{failures} failed
+					</span>
+				</>
+			) : null}
+			<span className="ml-2 text-slate-400 dark:text-slate-500">
+				(last 24h)
+			</span>
+		</span>
+	);
+}
+
+function TrafficEmpty() {
+	return (
+		<div className="rounded-md border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+			<p>No traffic yet.</p>
+			<p className="mt-1 text-xs">
+				Paste one of the recipes above into your agent and run it — calls will
+				appear here within a few seconds.
+			</p>
+		</div>
+	);
+}
+
+function TrafficList({ entries }: { entries: readonly ConnectTrafficEntry[] }) {
+	return (
+		<ul className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+			{entries.map((entry) => (
+				<li
+					key={`${entry.at}-${entry.toolName}`}
+					className="flex items-center gap-3 py-2"
+				>
+					<OutcomeDot outcome={entry.outcome} />
+					<code className="font-mono text-xs text-slate-800 dark:text-slate-100">
+						{entry.toolName}
+					</code>
+					<span className="text-xs text-slate-500 dark:text-slate-400">
+						{relativeTime(entry.at)}
+					</span>
+					{entry.subjectLabel ? (
+						<span className="ml-auto text-xs text-slate-400 dark:text-slate-500">
+							{entry.subjectLabel}
+						</span>
+					) : entry.subjectType === "anonymous" ? (
+						<span className="ml-auto text-xs italic text-slate-400 dark:text-slate-500">
+							anonymous
+						</span>
+					) : null}
+				</li>
+			))}
+		</ul>
+	);
+}
+
+function OutcomeDot({ outcome }: { outcome: ConnectTrafficEntry["outcome"] }) {
+	const color =
+		outcome === "success"
+			? "bg-emerald-500"
+			: outcome === "denied"
+				? "bg-amber-500"
+				: "bg-red-500";
+	return (
+		<span
+			role="img"
+			aria-label={outcome}
+			className={`inline-block h-2 w-2 shrink-0 rounded-full ${color}`}
+		/>
+	);
+}
+
+/**
+ * Cheap relative time formatter. Pure function so we don't pull a
+ * larger date lib in just for "12s ago". Resolution is 1s up to a
+ * minute, 1m up to an hour, then 1h up to a day, then date.
+ */
+function relativeTime(isoTimestamp: string): string {
+	const then = Date.parse(isoTimestamp);
+	if (Number.isNaN(then)) return isoTimestamp;
+	const now = Date.now();
+	const seconds = Math.max(0, Math.floor((now - then) / 1000));
+	if (seconds < 5) return "just now";
+	if (seconds < 60) return `${seconds}s ago`;
+	const minutes = Math.floor(seconds / 60);
+	if (minutes < 60) return `${minutes}m ago`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours}h ago`;
+	const days = Math.floor(hours / 24);
+	return `${days}d ago`;
 }
