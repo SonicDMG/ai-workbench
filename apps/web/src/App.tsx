@@ -40,6 +40,9 @@ const ChatPage = lazy(() =>
 const AgentsPage = lazy(() =>
 	import("@/pages/AgentsPage").then((m) => ({ default: m.AgentsPage })),
 );
+const ConnectPage = lazy(() =>
+	import("@/pages/ConnectPage").then((m) => ({ default: m.ConnectPage })),
+);
 
 export function App() {
 	return (
@@ -91,6 +94,10 @@ function RoutedView() {
 					<Route
 						path="/workspaces/:workspaceId/agents"
 						element={<AgentsPage />}
+					/>
+					<Route
+						path="/workspaces/:workspaceId/connect"
+						element={<ConnectPage />}
 					/>
 					<Route
 						path="/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId"

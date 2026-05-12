@@ -990,6 +990,65 @@ export const FeaturesSchema = z.object({
 });
 export type Features = z.infer<typeof FeaturesSchema>;
 
+/* ---------------- Connect (pluggability) ---------------- */
+
+// Order MUST stay in sync with the server registry in
+// `runtimes/typescript/src/connect/snippets/index.ts`. Customers
+// screenshot the tab order into slide decks; reordering is a
+// wire-break.
+export const ConnectTargetIdSchema = z.enum([
+	"langgraph",
+	"crewai",
+	"google-adk",
+	"microsoft-agent-framework",
+	"watsonx",
+	"mcp-raw",
+]);
+export type ConnectTargetId = z.infer<typeof ConnectTargetIdSchema>;
+
+export const ConnectSnippetLanguageSchema = z.enum([
+	"python",
+	"typescript",
+	"bash",
+	"text",
+]);
+export type ConnectSnippetLanguage = z.infer<
+	typeof ConnectSnippetLanguageSchema
+>;
+
+export const ConnectSnippetTransportSchema = z.enum(["mcp", "rest", "manual"]);
+export type ConnectSnippetTransport = z.infer<
+	typeof ConnectSnippetTransportSchema
+>;
+
+export const ConnectSnippetSchema = z.object({
+	id: ConnectTargetIdSchema,
+	displayName: z.string(),
+	tagline: z.string(),
+	language: ConnectSnippetLanguageSchema,
+	transport: ConnectSnippetTransportSchema,
+	install: z.string().nullable(),
+	code: z.string(),
+	requiresMcp: z.boolean(),
+	docsUrl: z.string().url(),
+	notes: z.string().nullable(),
+});
+export type ConnectSnippet = z.infer<typeof ConnectSnippetSchema>;
+
+export const ConnectSnippetsResponseSchema = z.object({
+	workspaceId: z.string(),
+	knowledgeBaseId: z.string().nullable(),
+	publicBaseUrl: z.string().url(),
+	mcpUrl: z.string().url(),
+	restBaseUrl: z.string().url(),
+	mcpEnabled: z.boolean(),
+	apiKeyEnvVar: z.string(),
+	targets: z.array(ConnectSnippetSchema),
+});
+export type ConnectSnippetsResponse = z.infer<
+	typeof ConnectSnippetsResponseSchema
+>;
+
 export const KIND_LABELS: Record<WorkspaceKind, string> = {
 	astra: "Astra DB",
 	hcd: "Hyper-Converged Database",

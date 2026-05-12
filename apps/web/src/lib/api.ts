@@ -19,6 +19,8 @@ import {
 	ChunkingServicePageSchema,
 	type ChunkingServiceRecord,
 	ChunkingServiceRecordSchema,
+	type ConnectSnippetsResponse,
+	ConnectSnippetsResponseSchema,
 	ConversationPageSchema,
 	type ConversationRecord,
 	ConversationRecordSchema,
@@ -344,6 +346,27 @@ export const api = {
 			{ method: "DELETE" },
 			null,
 		),
+
+	/* -------- Connect (pluggability) -------- */
+
+	getConnectSnippets: (
+		workspaceId: string,
+		opts: { knowledgeBaseId?: string | null; apiKeyEnvVar?: string } = {},
+	): Promise<ConnectSnippetsResponse> => {
+		const params = new URLSearchParams();
+		if (opts.knowledgeBaseId) {
+			params.set("knowledgeBaseId", opts.knowledgeBaseId);
+		}
+		if (opts.apiKeyEnvVar) {
+			params.set("apiKeyEnvVar", opts.apiKeyEnvVar);
+		}
+		const qs = params.toString();
+		return request(
+			`/workspaces/${workspaceId}/connect/snippets${qs ? `?${qs}` : ""}`,
+			{ method: "GET" },
+			ConnectSnippetsResponseSchema,
+		);
+	},
 
 	/* -------- Knowledge bases -------- */
 

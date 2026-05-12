@@ -3620,6 +3620,66 @@ export interface paths {
 		};
 		trace?: never;
 	};
+	"/api/v1/workspaces/{workspaceId}/connect/snippets": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Render per-framework integration recipes
+		 * @description Returns a copy-pasteable snippet per supported agent framework (LangGraph, CrewAI, Google ADK, Microsoft Agent Framework, IBM watsonx Agent Builder, plus a raw curl smoke test). Pure read; no secrets are ever embedded in the rendered code — snippets read the API key from the env var named by `apiKeyEnvVar`.
+		 */
+		get: {
+			parameters: {
+				query?: {
+					knowledgeBaseId?: string;
+					apiKeyEnvVar?: string;
+				};
+				header?: never;
+				path: {
+					workspaceId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description Rendered snippets plus the resolved endpoint URLs for the workspace. */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ConnectSnippetsResponse"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4784,6 +4844,46 @@ export interface components {
 				[key: string]: string;
 			};
 		};
+		ConnectSnippetsResponse: {
+			/** Format: uuid */
+			workspaceId: string;
+			/** Format: uuid */
+			knowledgeBaseId: string | null;
+			/** Format: uri */
+			publicBaseUrl: string;
+			/** Format: uri */
+			mcpUrl: string;
+			/** Format: uri */
+			restBaseUrl: string;
+			mcpEnabled: boolean;
+			apiKeyEnvVar: string;
+			targets: components["schemas"]["ConnectSnippet"][];
+		};
+		ConnectSnippet: {
+			id: components["schemas"]["ConnectTargetId"];
+			displayName: string;
+			tagline: string;
+			language: components["schemas"]["ConnectSnippetLanguage"];
+			transport: components["schemas"]["ConnectSnippetTransport"];
+			install: string | null;
+			code: string;
+			requiresMcp: boolean;
+			/** Format: uri */
+			docsUrl: string;
+			notes: string | null;
+		};
+		/** @enum {string} */
+		ConnectTargetId:
+			| "langgraph"
+			| "crewai"
+			| "google-adk"
+			| "microsoft-agent-framework"
+			| "watsonx"
+			| "mcp-raw";
+		/** @enum {string} */
+		ConnectSnippetLanguage: "python" | "typescript" | "bash" | "text";
+		/** @enum {string} */
+		ConnectSnippetTransport: "mcp" | "rest" | "manual";
 	};
 	responses: {
 		/** @description Malformed request or validation failure */

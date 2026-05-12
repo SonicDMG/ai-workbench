@@ -20,6 +20,7 @@
 import { agentRoutes } from "../routes/api-v1/agents.js";
 import { apiKeyRoutes } from "../routes/api-v1/api-keys.js";
 import { chunkingServiceRoutes } from "../routes/api-v1/chunking-services.js";
+import { connectRoutes } from "../routes/api-v1/connect.js";
 import { embeddingServiceRoutes } from "../routes/api-v1/embedding-services.js";
 import { jobRoutes } from "../routes/api-v1/jobs.js";
 import { kbDataPlaneRoutes } from "../routes/api-v1/kb-data-plane.js";
@@ -152,6 +153,15 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					embedders: ctx.embedders,
 					chatService: ctx.chatService,
 					chatConfig: ctx.chatConfig,
+					mcpConfig: ctx.mcpConfig,
+				}),
+		},
+		{
+			id: "connect",
+			mountPath: WORKSPACE_MOUNT,
+			build: () =>
+				connectRoutes({
+					store: ctx.store,
 					mcpConfig: ctx.mcpConfig,
 				}),
 		},

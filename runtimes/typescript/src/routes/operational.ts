@@ -8,6 +8,7 @@ import type { McpConfig } from "../config/schema.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import { errorEnvelope } from "../lib/errors.js";
 import { makeOpenApi } from "../lib/openapi.js";
+import { resolvePublicBaseUrl } from "../lib/public-url.js";
 import type { RuntimeMetrics } from "../lib/runtime-metrics.js";
 import type { AppEnv } from "../lib/types.js";
 import {
@@ -259,36 +260,4 @@ export function operationalRoutes(
 	);
 
 	return app;
-}
-
-/**
- * Reconstruct the URL the request reached the runtime through, so the
- * UI can display an MCP endpoint that's actually reachable from
- * outside the browser (Claude Code, Cursor, etc. don't go through the
- * Vite dev proxy). Honors the standard reverse-proxy headers so a
- * TLS-terminating load balancer in front of an HTTP runtime still
- * gets the public `https://` form.
- *
- * Order of precedence: `Forwarded` (RFC 7239) > `X-Forwarded-*` >
- * the inbound URL itself.
- */
-function resolvePublicBaseUrl(req: Request): string {
-	const headers = req.headers;
-	const forwarded = headers.get("forwarded");
-	if (forwarded) {
-		const parts = forwarded.split(";").map((p) => p.trim());
-		const protoPart = parts.find((p) => /^proto=/i.test(p));
-		const hostPart = parts.find((p) => /^host=/i.test(p));
-		const proto = protoPart?.split("=")[1]?.replace(/"/g, "");
-		const host = hostPart?.split("=")[1]?.replace(/"/g, "");
-		if (proto && host) return `${proto}://${host}`;
-	}
-	const xfHost = headers.get("x-forwarded-host");
-	const xfProto = headers.get("x-forwarded-proto");
-	if (xfHost) {
-		const proto = xfProto?.split(",")[0]?.trim() || "https";
-		return `${proto}://${xfHost.split(",")[0]?.trim()}`;
-	}
-	const url = new URL(req.url);
-	return `${url.protocol}//${url.host}`;
 }

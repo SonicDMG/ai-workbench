@@ -5,6 +5,7 @@ import {
 	ExternalLink,
 	KeyRound,
 	Pencil,
+	Plug,
 	Sparkles,
 	Trash2,
 	X,
@@ -101,6 +102,12 @@ export function WorkspaceDetailPage() {
 									<Link to={`/workspaces/${data.workspaceId}/agents`}>
 										<Sparkles className="h-4 w-4" />
 										Agents
+									</Link>
+								</Button>
+								<Button variant="secondary" asChild>
+									<Link to={`/workspaces/${data.workspaceId}/connect`}>
+										<Plug className="h-4 w-4" />
+										Connect
 									</Link>
 								</Button>
 								{mcpBaseUrl ? (

@@ -48,6 +48,10 @@ const ALLOWLIST = new Set([
 	// state instead of the generic error. Moved out of ChatPage.tsx as
 	// part of the per-component split.
 	resolve(WEB_SRC, "pages/chat/ConversationThread.tsx"),
+	// ConnectPage uses the same `workspace_not_found` short-circuit as
+	// the other workspace-scoped pages so deep links to a deleted
+	// workspace's Connect tab surface a friendly empty state.
+	resolve(WEB_SRC, "pages/ConnectPage.tsx"),
 ]);
 
 const PATTERN = /instanceof\s+ApiError\b/;
