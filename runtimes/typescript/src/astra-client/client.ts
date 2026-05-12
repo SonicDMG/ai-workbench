@@ -7,7 +7,11 @@
  * never touches the raw `Db` object.
  */
 
-import { DataAPIClient, type Db } from "@datastax/astra-db-ts";
+import {
+	DataAPIClient,
+	DataAPIResponseError,
+	type Db,
+} from "@datastax/astra-db-ts";
 import type {
 	AgentRow,
 	ApiKeyLookupRow,
@@ -203,11 +207,14 @@ async function ensureTables(db: Db): Promise<void> {
  * the boot path is uniform.
  *
  * Data API's `alterTable.add` is a single-column command and fails
- * with a "column already exists" error when the column is present.
- * We catch that one error and continue; any other failure surfaces
- * because it implies a real schema problem (permissions, partition
- * mismatch, etc.) the operator should see at boot, not at first
- * write.
+ * with `CANNOT_ADD_EXISTING_COLUMNS` (a `DataAPIResponseError`) when
+ * the column is already present. We catch that one error and
+ * continue; any other failure surfaces because it implies a real
+ * schema problem (permissions, partition mismatch, etc.) the
+ * operator should see at boot, not at first write.
+ *
+ * Structured-code match first (stable contract); message fallback
+ * second so a minor SDK-side phrasing change doesn't blow up boot.
  */
 async function ensureApiKeyScopesColumn(db: Db): Promise<void> {
 	try {
@@ -221,16 +228,25 @@ async function ensureApiKeyScopesColumn(db: Db): Promise<void> {
 			},
 		});
 	} catch (err) {
-		const message = err instanceof Error ? err.message.toLowerCase() : "";
-		// Data API surfaces "column already exists" / "already defined"
-		// in the message string. Match permissively so a minor
-		// upstream phrasing change doesn't blow up boot.
-		if (
-			message.includes("already exists") ||
-			message.includes("already defined")
-		) {
-			return;
-		}
+		if (isAlreadyHasColumnError(err)) return;
 		throw err;
 	}
+}
+
+/**
+ * Exported for unit testing. Not part of the bundle's public surface.
+ */
+export function isAlreadyHasColumnError(err: unknown): boolean {
+	if (err instanceof DataAPIResponseError) {
+		for (const descriptor of err.errorDescriptors) {
+			if (descriptor.errorCode === "CANNOT_ADD_EXISTING_COLUMNS") return true;
+		}
+	}
+	const message = err instanceof Error ? err.message.toLowerCase() : "";
+	return (
+		message.includes("already exists") ||
+		message.includes("already defined") ||
+		message.includes("duplicate columns") ||
+		message.includes("must be unique")
+	);
 }
