@@ -31,6 +31,14 @@ export interface AuthSubject {
 	 * operator tokens).
 	 */
 	readonly workspaceScopes: readonly string[] | null;
+	/**
+	 * Privilege tiers this subject carries. Used by `requireScope()`
+	 * route gates to differentiate read-only from write-capable
+	 * callers. `null` means "all scopes" — used for OIDC users and
+	 * bootstrap tokens that don't have a scope picker yet. API-key
+	 * subjects always set this to a concrete (possibly empty) array.
+	 */
+	readonly scopes: readonly string[] | null;
 }
 
 /** What the middleware writes into `c.set("auth", ...)` on every request. */

@@ -109,12 +109,23 @@ export function apiKeyRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 				hash: minted.hash,
 				label: body.label,
 				expiresAt: body.expiresAt ?? null,
+				// Forward the requested scope set; the store-level
+				// normalizer applies the back-compat default
+				// (`['read', 'write']`) when undefined / empty.
+				...(body.scopes !== undefined ? { scopes: body.scopes } : {}),
 			});
 			audit(c, {
 				action: "api_key.create",
 				outcome: "success",
 				workspaceId,
-				details: { keyId, label: body.label ?? undefined },
+				details: {
+					keyId,
+					label: body.label ?? undefined,
+					// Stamp the resolved scope set on the audit envelope
+					// so compliance trails record exactly what got minted,
+					// not just what was requested.
+					scopes: record.scopes.join(","),
+				},
 			});
 			return c.json(
 				{ plaintext: minted.plaintext, key: toWireApiKey(record) },

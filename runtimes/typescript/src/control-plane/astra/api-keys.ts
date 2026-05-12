@@ -10,7 +10,7 @@ import { apiKeyFromRow, apiKeyToRow } from "../../astra-client/converters.js";
 import { byCreatedAtThenKeyId, nowIso } from "../defaults.js";
 import { ControlPlaneConflictError } from "../errors.js";
 import type { ApiKeyRepo, PersistApiKeyInput } from "../store.js";
-import type { ApiKeyRecord } from "../types.js";
+import { type ApiKeyRecord, normalizeApiKeyScopes } from "../types.js";
 import { type AstraStoreState, assertWorkspace } from "./state.js";
 
 export function makeApiKeyMethods(state: AstraStoreState): ApiKeyRepo {
@@ -57,6 +57,7 @@ export function makeApiKeyMethods(state: AstraStoreState): ApiKeyRepo {
 				prefix: input.prefix,
 				hash: input.hash,
 				label: input.label,
+				scopes: normalizeApiKeyScopes(input.scopes),
 				createdAt: now,
 				lastUsedAt: null,
 				revokedAt: null,

@@ -187,4 +187,50 @@ async function ensureTables(db: Db): Promise<void> {
 			ifNotExists: true,
 		}),
 	]);
+
+	// Additive column migrations on existing tables. `createTable
+	// (ifNotExists)` is a no-op when the table already exists, so a
+	// new column added to `API_KEYS_DEFINITION` does NOT land on a
+	// pre-existing deployment without an explicit alter. Each
+	// migration here is idempotent — safe to re-run on every boot.
+	await ensureApiKeyScopesColumn(db);
+}
+
+/**
+ * Add the `scopes set<text>` column to `wb_api_key_by_workspace` on
+ * existing deployments. Fresh deployments already have it from the
+ * table definition; the alter here is a no-op-on-duplicate handler so
+ * the boot path is uniform.
+ *
+ * Data API's `alterTable.add` is a single-column command and fails
+ * with a "column already exists" error when the column is present.
+ * We catch that one error and continue; any other failure surfaces
+ * because it implies a real schema problem (permissions, partition
+ * mismatch, etc.) the operator should see at boot, not at first
+ * write.
+ */
+async function ensureApiKeyScopesColumn(db: Db): Promise<void> {
+	try {
+		await db.table<ApiKeyRow>(API_KEYS_TABLE).alter({
+			operation: {
+				add: {
+					columns: {
+						scopes: { type: "set", valueType: "text" },
+					},
+				},
+			},
+		});
+	} catch (err) {
+		const message = err instanceof Error ? err.message.toLowerCase() : "";
+		// Data API surfaces "column already exists" / "already defined"
+		// in the message string. Match permissively so a minor
+		// upstream phrasing change doesn't blow up boot.
+		if (
+			message.includes("already exists") ||
+			message.includes("already defined")
+		) {
+			return;
+		}
+		throw err;
+	}
 }

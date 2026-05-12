@@ -93,6 +93,7 @@ describe("OidcVerifier.verify", () => {
 			id: "user-1",
 			label: "alice@example.com",
 			workspaceScopes: ["wa"],
+			scopes: null,
 		});
 	});
 

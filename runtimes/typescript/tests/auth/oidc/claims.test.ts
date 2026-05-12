@@ -31,6 +31,7 @@ describe("subjectFromClaims", () => {
 			id: "user-1",
 			label: "alice@example.com",
 			workspaceScopes: ["wa", "wb"],
+			scopes: null,
 		});
 	});
 

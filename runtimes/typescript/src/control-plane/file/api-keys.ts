@@ -8,8 +8,20 @@
 import { byCreatedAtThenKeyId, nowIso } from "../defaults.js";
 import { ControlPlaneConflictError } from "../errors.js";
 import type { ApiKeyRepo, PersistApiKeyInput } from "../store.js";
-import type { ApiKeyRecord } from "../types.js";
+import { type ApiKeyRecord, normalizeApiKeyScopes } from "../types.js";
 import { assertWorkspace, type FileStoreState } from "./state.js";
+
+/**
+ * Patch a row read from disk with the back-compat `scopes` default
+ * when older snapshots predate the column. Cheap to run on every
+ * read — `normalizeApiKeyScopes` is allocation-free on the
+ * already-set case (returns the same array reference would require
+ * more work; the default-only path constructs once).
+ */
+function withScopesDefault(row: ApiKeyRecord): ApiKeyRecord {
+	if (Array.isArray(row.scopes) && row.scopes.length > 0) return row;
+	return { ...row, scopes: normalizeApiKeyScopes(row.scopes) };
+}
 
 export function makeApiKeyMethods(state: FileStoreState): ApiKeyRepo {
 	return {
@@ -18,6 +30,7 @@ export function makeApiKeyMethods(state: FileStoreState): ApiKeyRepo {
 			const all = await state.readAll("api-keys");
 			return all
 				.filter((k) => k.workspace === workspace)
+				.map(withScopesDefault)
 				.sort(byCreatedAtThenKeyId);
 		},
 
@@ -27,9 +40,10 @@ export function makeApiKeyMethods(state: FileStoreState): ApiKeyRepo {
 		): Promise<ApiKeyRecord | null> {
 			await assertWorkspace(state, workspace);
 			const all = await state.readAll("api-keys");
-			return (
-				all.find((k) => k.workspace === workspace && k.keyId === keyId) ?? null
+			const found = all.find(
+				(k) => k.workspace === workspace && k.keyId === keyId,
 			);
+			return found ? withScopesDefault(found) : null;
 		},
 
 		async persistApiKey(
@@ -56,6 +70,7 @@ export function makeApiKeyMethods(state: FileStoreState): ApiKeyRepo {
 					prefix: input.prefix,
 					hash: input.hash,
 					label: input.label,
+					scopes: normalizeApiKeyScopes(input.scopes),
 					createdAt: nowIso(),
 					lastUsedAt: null,
 					revokedAt: null,
@@ -90,7 +105,8 @@ export function makeApiKeyMethods(state: FileStoreState): ApiKeyRepo {
 
 		async findApiKeyByPrefix(prefix: string): Promise<ApiKeyRecord | null> {
 			const all = await state.readAll("api-keys");
-			return all.find((k) => k.prefix === prefix) ?? null;
+			const found = all.find((k) => k.prefix === prefix);
+			return found ? withScopesDefault(found) : null;
 		},
 
 		async touchApiKey(workspace: string, keyId: string): Promise<void> {

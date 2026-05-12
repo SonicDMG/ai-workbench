@@ -113,11 +113,17 @@ export const TestConnectionResultSchema = z.object({
 });
 export type TestConnectionResult = z.infer<typeof TestConnectionResultSchema>;
 
+export const ApiKeyScopeSchema = z.enum(["read", "write"]);
+export type ApiKeyScope = z.infer<typeof ApiKeyScopeSchema>;
+
 export const ApiKeyRecordSchema = z.object({
 	workspaceId: z.string().uuid(),
 	keyId: z.string().uuid(),
 	prefix: z.string(),
 	label: z.string(),
+	// Server back-compats older rows to `["read","write"]`, so this is
+	// always populated on the wire. UI renders one badge per entry.
+	scopes: z.array(ApiKeyScopeSchema).default(["read", "write"]),
 	createdAt: z.string(),
 	lastUsedAt: z.string().nullable(),
 	revokedAt: z.string().nullable(),
@@ -132,6 +138,10 @@ export const CreateApiKeyInputSchema = z.object({
 		.min(1, "Label is required")
 		.max(120, "Label must be at most 120 characters"),
 	expiresAt: z.string().datetime().nullable().optional(),
+	scopes: z
+		.array(ApiKeyScopeSchema)
+		.min(1, "Pick at least one scope when supplying the field")
+		.optional(),
 });
 export type CreateApiKeyInput = z.infer<typeof CreateApiKeyInputSchema>;
 

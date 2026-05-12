@@ -337,6 +337,10 @@ export const api = {
 				body: JSON.stringify({
 					label: input.label.trim(),
 					expiresAt: input.expiresAt ?? null,
+					// Forward the picker's choice when present; the
+					// server defaults to `['read', 'write']` if absent so
+					// existing callers stay back-compat.
+					...(input.scopes ? { scopes: input.scopes } : {}),
 				}),
 			},
 			CreatedApiKeyResponseSchema,

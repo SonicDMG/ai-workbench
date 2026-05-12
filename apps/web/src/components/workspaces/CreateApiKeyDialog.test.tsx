@@ -53,7 +53,12 @@ describe("CreateApiKeyDialog", () => {
 		await user.click(screen.getByRole("button", { name: "Create key" }));
 
 		await waitFor(() =>
-			expect(mutateAsync).toHaveBeenCalledWith({ label: "ci" }),
+			expect(mutateAsync).toHaveBeenCalledWith({
+				label: "ci",
+				// Default-selected preset is "Read + Write" — matches the
+				// behavior of keys minted before this picker existed.
+				scopes: ["read", "write"],
+			}),
 		);
 		expect(await screen.findByText("Copy your key now")).toBeInTheDocument();
 		expect(

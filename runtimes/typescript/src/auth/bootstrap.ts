@@ -27,6 +27,10 @@ export class BootstrapTokenVerifier implements TokenVerifier {
 			id: "bootstrap",
 			label: "Bootstrap operator token",
 			workspaceScopes: null,
+			// Bootstrap is an unrestricted operator credential — every
+			// scope gate is implicitly satisfied. `null` matches the
+			// OIDC subject convention.
+			scopes: null,
 		};
 	}
 }

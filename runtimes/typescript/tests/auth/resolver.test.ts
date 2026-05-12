@@ -62,6 +62,7 @@ describe("AuthResolver", () => {
 			id: "key-1",
 			label: "ci",
 			workspaceScopes: ["00000000-0000-0000-0000-000000000000"],
+			scopes: ["read", "write"],
 		};
 		const verifier: TokenVerifier = {
 			scheme: "apiKey",
@@ -102,6 +103,7 @@ describe("AuthResolver", () => {
 					id: "user-1",
 					label: null,
 					workspaceScopes: [],
+					scopes: null,
 				};
 			},
 		};

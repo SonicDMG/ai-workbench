@@ -41,6 +41,18 @@ export interface ApiKeyRow {
 	prefix: string;
 	hash: string;
 	label: string;
+	/**
+	 * Cassandra `set<text>` of privilege tiers. Read-side null-safe:
+	 * older rows persisted before the column existed return `null`
+	 * (or are missing entirely from the result row); the converter
+	 * defaults those to `["read", "write"]` to preserve legacy
+	 * behavior. New writes always include the column.
+	 *
+	 * The Data API serializes Cassandra `set<...>` as a JS `Set` on
+	 * read and accepts an array on write — type the field as the
+	 * permissive union to keep both directions clean.
+	 */
+	scopes?: Set<string> | readonly string[] | null;
 	created_at: Iso;
 	last_used_at: Iso | null;
 	revoked_at: Iso | null;

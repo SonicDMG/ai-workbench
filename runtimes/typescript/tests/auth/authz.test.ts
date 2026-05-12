@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
 	assertPlatformAccess,
+	assertScope,
 	assertWorkspaceAccess,
 	filterToAccessibleWorkspaces,
 	workspaceRouteAuthz,
@@ -41,7 +42,10 @@ function anonymous(): AuthContext {
 	};
 }
 
-function authed(workspaceScopes: AuthSubject["workspaceScopes"]): AuthContext {
+function authed(
+	workspaceScopes: AuthSubject["workspaceScopes"],
+	scopes: AuthSubject["scopes"] = ["read", "write"],
+): AuthContext {
 	return {
 		mode: "apiKey",
 		authenticated: true,
@@ -51,6 +55,7 @@ function authed(workspaceScopes: AuthSubject["workspaceScopes"]): AuthContext {
 			id: "key-1",
 			label: "ci",
 			workspaceScopes,
+			scopes,
 		},
 	};
 }
@@ -158,5 +163,37 @@ describe("assertPlatformAccess", () => {
 
 	test("scoped subject with an empty scope list is still forbidden", () => {
 		expect(() => assertPlatformAccess(ctx(authed([])))).toThrow(ForbiddenError);
+	});
+});
+
+describe("assertScope", () => {
+	test("anonymous passes through — anonymousPolicy has already vetted", () => {
+		expect(() => assertScope(ctx(anonymous()), "write")).not.toThrow();
+	});
+
+	test("subject with `scopes: null` (OIDC / bootstrap) implicitly carries every scope", () => {
+		// `authed([])` gives scopes ["read","write"] by default; override
+		// to null to model the OIDC case.
+		const oidcLike = authed(null, null);
+		expect(() => assertScope(ctx(oidcLike), "write")).not.toThrow();
+		expect(() => assertScope(ctx(oidcLike), "read")).not.toThrow();
+	});
+
+	test("scoped subject with the required scope passes", () => {
+		expect(() =>
+			assertScope(ctx(authed(null, ["read", "write"])), "write"),
+		).not.toThrow();
+	});
+
+	test("scoped subject missing the required scope is forbidden", () => {
+		expect(() => assertScope(ctx(authed(null, ["read"])), "write")).toThrow(
+			ForbiddenError,
+		);
+	});
+
+	test("scoped subject with empty scopes is forbidden on any scope", () => {
+		expect(() => assertScope(ctx(authed(null, [])), "read")).toThrow(
+			ForbiddenError,
+		);
 	});
 });

@@ -37,6 +37,11 @@ export function subjectFromClaims(
 		id,
 		label,
 		workspaceScopes,
+		// OIDC subjects implicitly carry every scope today. When/if
+		// we surface a scope claim in the JWT, swap this for a parsed
+		// list. `null` means "no scope gate applies to this caller" —
+		// downstream `requireScope()` short-circuits to allow.
+		scopes: null,
 	};
 }
 

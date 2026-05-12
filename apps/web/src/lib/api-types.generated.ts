@@ -3960,6 +3960,8 @@ export interface components {
 			/** @description Non-secret lookup prefix of the wire token */
 			prefix: string;
 			label: string;
+			/** @description Privilege tiers this key carries. Existing keys minted before the scopes column existed back-compat to `['read', 'write']`. */
+			scopes: components["schemas"]["ApiKeyScope"][];
 			/** Format: date-time */
 			createdAt: string;
 			/** Format: date-time */
@@ -3969,6 +3971,8 @@ export interface components {
 			/** Format: date-time */
 			expiresAt: string | null;
 		};
+		/** @enum {string} */
+		ApiKeyScope: "read" | "write";
 		CreatedApiKeyResponse: {
 			/** @example wb_live_abc123xyz789_… */
 			plaintext: string;
@@ -3978,6 +3982,8 @@ export interface components {
 			label: string;
 			/** Format: date-time */
 			expiresAt?: string | null;
+			/** @description Privilege tiers to mint. Omit to default to `['read', 'write']` — keeps callers that don't care about scopes back-compat. */
+			scopes?: components["schemas"]["ApiKeyScope"][];
 		};
 		KnowledgeBasePage: {
 			items: components["schemas"]["KnowledgeBase"][];

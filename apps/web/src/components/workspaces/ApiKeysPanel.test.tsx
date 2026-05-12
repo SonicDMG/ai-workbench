@@ -43,6 +43,7 @@ function key(overrides: Partial<ApiKeyRecord> = {}): ApiKeyRecord {
 		keyId: "00000000-0000-4000-8000-000000000002",
 		prefix: "abcdefghijkl",
 		label: "ci",
+		scopes: ["read", "write"],
 		createdAt: "2026-04-25T00:00:00.000Z",
 		lastUsedAt: null,
 		revokedAt: null,

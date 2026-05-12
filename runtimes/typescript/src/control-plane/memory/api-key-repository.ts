@@ -18,7 +18,7 @@
 import { byCreatedAtThenKeyId, nowIso } from "../defaults.js";
 import { ControlPlaneConflictError } from "../errors.js";
 import type { PersistApiKeyInput } from "../store.js";
-import type { ApiKeyRecord } from "../types.js";
+import { type ApiKeyRecord, normalizeApiKeyScopes } from "../types.js";
 
 export class MemoryApiKeyRepository {
 	private readonly apiKeys = new Map<string, Map<string, ApiKeyRecord>>();
@@ -63,6 +63,7 @@ export class MemoryApiKeyRepository {
 			prefix: input.prefix,
 			hash: input.hash,
 			label: input.label,
+			scopes: normalizeApiKeyScopes(input.scopes),
 			createdAt: now,
 			lastUsedAt: null,
 			revokedAt: null,

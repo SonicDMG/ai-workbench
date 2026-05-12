@@ -98,10 +98,58 @@ export interface ApiKeyRecord {
 	readonly hash: string;
 	/** Human-readable name shown in the workspace's key list. */
 	readonly label: string;
+	/**
+	 * Privilege tiers this key carries. Empty array means the key can
+	 * authenticate but cannot pass any `requireScope(...)` gate — the
+	 * verifier still resolves it to a subject so the audit trail is
+	 * intact. Persisted rows missing this field back-compat to
+	 * {@link DEFAULT_API_KEY_SCOPES} so existing keys keep working.
+	 */
+	readonly scopes: readonly ApiKeyScope[];
 	readonly createdAt: string;
 	readonly lastUsedAt: string | null;
 	readonly revokedAt: string | null;
 	readonly expiresAt: string | null;
+}
+
+/**
+ * Privilege tiers an issued API key can carry. Two-tier today;
+ * splitting `write` into more granular slices (e.g. `write:ingest`
+ * vs `write:admin`) is intentionally deferred until the surface that
+ * needs the split actually lands. Existing rows persisted before this
+ * column was added back-compat to `["read", "write"]` so behavior
+ * doesn't change for already-minted keys.
+ */
+export type ApiKeyScope = "read" | "write";
+
+/**
+ * Default for newly-minted keys when the caller omits `scopes`. Keeps
+ * the legacy "key grants everything the workspace allows" behavior
+ * for callers that don't opt into the picker.
+ */
+export const DEFAULT_API_KEY_SCOPES: readonly ApiKeyScope[] = ["read", "write"];
+
+/** Type guard for runtime parsing of arbitrary input shapes. */
+export function isApiKeyScope(value: unknown): value is ApiKeyScope {
+	return value === "read" || value === "write";
+}
+
+/**
+ * Coerce arbitrary input to a normalized scope set. Filters unknown
+ * values silently — the schema validator at the route layer rejects
+ * those up front; this helper exists for the store layer where the
+ * input is already trusted but may be missing entirely (back-compat
+ * read of an old row).
+ */
+export function normalizeApiKeyScopes(
+	input: readonly unknown[] | null | undefined,
+): readonly ApiKeyScope[] {
+	if (!input || input.length === 0) return DEFAULT_API_KEY_SCOPES;
+	const seen = new Set<ApiKeyScope>();
+	for (const v of input) if (isApiKeyScope(v)) seen.add(v);
+	if (seen.size === 0) return DEFAULT_API_KEY_SCOPES;
+	// Deterministic order for stable comparisons + wire shape.
+	return (["read", "write"] as const).filter((s) => seen.has(s));
 }
 
 /** Embedding configuration for a vector store. */

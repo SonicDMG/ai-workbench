@@ -6,22 +6,23 @@
  * happens in the backing store, not here.
  */
 
-import type {
-	AgentRecord,
-	ApiKeyRecord,
-	ChunkingServiceRecord,
-	ConversationRecord,
-	EmbeddingServiceRecord,
-	KnowledgeBaseRecord,
-	KnowledgeFilterRecord,
-	LlmServiceRecord,
-	McpToolRecord,
-	MessageRecord,
-	RagDocumentHashEntry,
-	RagDocumentRecord,
-	RagDocumentStatusEntry,
-	RerankingServiceRecord,
-	WorkspaceRecord,
+import {
+	type AgentRecord,
+	type ApiKeyRecord,
+	type ChunkingServiceRecord,
+	type ConversationRecord,
+	type EmbeddingServiceRecord,
+	type KnowledgeBaseRecord,
+	type KnowledgeFilterRecord,
+	type LlmServiceRecord,
+	type McpToolRecord,
+	type MessageRecord,
+	normalizeApiKeyScopes,
+	type RagDocumentHashEntry,
+	type RagDocumentRecord,
+	type RagDocumentStatusEntry,
+	type RerankingServiceRecord,
+	type WorkspaceRecord,
 } from "../control-plane/types.js";
 import type {
 	AgentRow,
@@ -185,6 +186,8 @@ export function apiKeyToRow(r: ApiKeyRecord): ApiKeyRow {
 		prefix: r.prefix,
 		hash: r.hash,
 		label: r.label,
+		// Cassandra `set<text>` accepts a plain array on insert.
+		scopes: [...r.scopes],
 		created_at: r.createdAt,
 		last_used_at: r.lastUsedAt,
 		revoked_at: r.revokedAt,
@@ -199,11 +202,31 @@ export function apiKeyFromRow(row: ApiKeyRow): ApiKeyRecord {
 		prefix: row.prefix,
 		hash: row.hash,
 		label: row.label,
+		// `set<text>` round-trips as a JS Set; older rows that predate
+		// the column return null. The store-level normalizer downstream
+		// would also default this, but we resolve it here so the
+		// `ApiKeyRecord` shape is always concrete from the store
+		// boundary down.
+		scopes: normalizeApiKeyScopes(scopesFromColumn(row.scopes)),
 		createdAt: row.created_at,
 		lastUsedAt: row.last_used_at,
 		revokedAt: row.revoked_at,
 		expiresAt: row.expires_at,
 	};
+}
+
+/**
+ * Coerce a Data-API `set<text>` value into a plain array. The SDK
+ * returns a `Set<string>` when the column is present; older rows
+ * (predating the additive `scopes` column) hand back `null` or
+ * `undefined`.
+ */
+function scopesFromColumn(
+	value: ApiKeyRow["scopes"],
+): readonly string[] | null {
+	if (value == null) return null;
+	if (value instanceof Set) return [...value];
+	return value as readonly string[];
 }
 
 /* ================================================================== */

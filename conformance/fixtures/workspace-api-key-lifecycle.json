@@ -44,6 +44,7 @@
 						"lastUsedAt": null,
 						"prefix": "{{WB_PREFIX_1}}",
 						"revokedAt": null,
+						"scopes": ["read", "write"],
 						"workspaceId": "{{UUID_1}}"
 					},
 					"plaintext": "{{WB_TOKEN_1}}"
@@ -69,6 +70,7 @@
 							"lastUsedAt": null,
 							"prefix": "{{WB_PREFIX_1}}",
 							"revokedAt": null,
+							"scopes": ["read", "write"],
 							"workspaceId": "{{UUID_1}}"
 						}
 					],
@@ -113,6 +115,7 @@
 							"lastUsedAt": null,
 							"prefix": "{{WB_PREFIX_1}}",
 							"revokedAt": null,
+							"scopes": ["read", "write"],
 							"workspaceId": "{{UUID_1}}"
 						}
 					],

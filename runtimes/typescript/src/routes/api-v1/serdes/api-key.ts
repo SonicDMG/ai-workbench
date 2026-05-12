@@ -16,8 +16,19 @@ function stripHash<T extends { readonly hash: string }>(
 }
 
 export function toWireApiKey<
-	T extends { readonly hash: string; readonly workspace: string },
+	T extends {
+		readonly hash: string;
+		readonly workspace: string;
+		readonly scopes?: readonly string[];
+	},
 >(rec: T) {
 	const { workspace, ...rest } = stripHash(rec);
-	return { workspaceId: workspace, ...rest };
+	// Materialize `scopes` as a mutable array so the Zod-inferred wire
+	// type matches. The persistence-side `readonly` invariant doesn't
+	// extend across the wire — the response is JSON.
+	return {
+		workspaceId: workspace,
+		...rest,
+		...(rest.scopes ? { scopes: [...rest.scopes] } : {}),
+	};
 }

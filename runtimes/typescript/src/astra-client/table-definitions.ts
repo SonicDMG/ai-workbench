@@ -42,6 +42,11 @@ export const API_KEYS_DEFINITION = {
 		prefix: "text",
 		hash: "text",
 		label: "text",
+		// `scopes` is additive in the API-key-scopes work — fresh
+		// deployments get the column from createTable; existing
+		// deployments pick it up via the idempotent
+		// `ensureApiKeyScopesColumn` migration in `client.ts`.
+		scopes: { type: "set", valueType: "text" },
 		created_at: "timestamp",
 		last_used_at: "timestamp",
 		revoked_at: "timestamp",

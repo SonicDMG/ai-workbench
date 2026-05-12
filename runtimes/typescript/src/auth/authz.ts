@@ -100,3 +100,47 @@ export function assertPlatformAccess(c: Context<AppEnv>): void {
 		"scoped subjects cannot perform platform-level operations (create workspace)",
 	);
 }
+
+/**
+ * Require the authenticated subject to carry a given privilege scope
+ * (e.g. `"read"`, `"write"`). Used by route handlers that need finer
+ * gating than the workspace-membership check above — typically MCP
+ * write tools and other mutating endpoints once scope-aware keys are
+ * in flight.
+ *
+ * Semantics:
+ *
+ *   - **anonymous** → pass through. `anonymousPolicy` decided whether
+ *     anonymous gets here at all; once it does, scope gates don't
+ *     re-litigate.
+ *   - **subject with `scopes: null`** → pass through. OIDC and
+ *     bootstrap subjects implicitly carry every scope.
+ *   - **subject with explicit `scopes: []` or missing the required
+ *     scope** → throw `ForbiddenError` (403 `forbidden`).
+ *
+ * Phase 2 of the API-key scopes work wires this onto specific routes;
+ * Phase 1 (this PR) ships the helper without enforcement so existing
+ * behavior is unchanged.
+ */
+export function assertScope(c: Context<AppEnv>, scope: string): void {
+	const auth = c.get("auth");
+	if (!auth || auth.anonymous) return;
+	const scopes = auth.subject?.scopes;
+	if (scopes === null || scopes === undefined) return;
+	if (scopes.includes(scope)) return;
+	throw new ForbiddenError(
+		`authenticated subject is missing required scope '${scope}'`,
+	);
+}
+
+/**
+ * Hono middleware adapter for {@link assertScope}. Convenience so a
+ * route module can `app.use("...", requireScope("write"))` instead of
+ * sprinkling assertions inside handlers.
+ */
+export function requireScope(scope: string): MiddlewareHandler<AppEnv> {
+	return async (c, next) => {
+		assertScope(c, scope);
+		await next();
+	};
+}

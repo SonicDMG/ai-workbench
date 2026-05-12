@@ -96,6 +96,7 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 							<tr>
 								<th className="px-4 py-2 font-medium">Label</th>
 								<th className="px-4 py-2 font-medium">Prefix</th>
+								<th className="px-4 py-2 font-medium">Scopes</th>
 								<th className="px-4 py-2 font-medium">Status</th>
 								<th className="px-4 py-2 font-medium">Last used</th>
 								<th className="px-4 py-2 font-medium">Created</th>
@@ -111,6 +112,9 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 									<td className="px-4 py-2 font-medium">{row.label}</td>
 									<td className="px-4 py-2 font-mono text-xs text-slate-600 dark:text-slate-400">
 										wb_live_{row.prefix}_…
+									</td>
+									<td className="px-4 py-2">
+										<ScopeBadges scopes={row.scopes} />
 									</td>
 									<td className="px-4 py-2">
 										<StatusBadge row={row} />
@@ -151,6 +155,28 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 				onClose={() => setToRevoke(null)}
 			/>
 		</div>
+	);
+}
+
+/**
+ * Renders the key's privilege tiers as small badges, color-coded by
+ * tier. Keep the visual subdued — the row's primary affordance is
+ * Label / Status, not Scopes. Used in the API-keys table.
+ */
+function ScopeBadges({ scopes }: { scopes: readonly string[] }) {
+	if (scopes.length === 0) {
+		// Defensive — should not happen given the route's min(1) gate,
+		// but rendering "—" is friendlier than blank if it ever does.
+		return <span className="text-xs text-slate-400">—</span>;
+	}
+	return (
+		<span className="flex flex-wrap gap-1">
+			{scopes.map((scope) => (
+				<Badge key={scope} tone={scope === "write" ? "amber" : "green"}>
+					{scope}
+				</Badge>
+			))}
+		</span>
 	);
 }
 

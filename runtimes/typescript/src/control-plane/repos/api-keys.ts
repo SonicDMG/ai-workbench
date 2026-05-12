@@ -3,7 +3,7 @@
  * prefix-lookup the verifier uses on every authenticated request.
  */
 
-import type { ApiKeyRecord } from "../types.js";
+import type { ApiKeyRecord, ApiKeyScope } from "../types.js";
 
 /**
  * Parameters needed to persist an {@link ApiKeyRecord}. The
@@ -16,6 +16,12 @@ export interface PersistApiKeyInput {
 	readonly hash: string;
 	readonly label: string;
 	readonly expiresAt?: string | null;
+	/**
+	 * Privilege tiers the persisted key should carry. Omit / empty
+	 * to default to {@link DEFAULT_API_KEY_SCOPES} — keeps callers
+	 * that don't care about scopes back-compat.
+	 */
+	readonly scopes?: readonly ApiKeyScope[];
 }
 
 export interface ApiKeyRepo {

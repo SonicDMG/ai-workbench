@@ -89,6 +89,12 @@ export interface AuditDetails {
 	readonly reason?: string;
 	/** Caller-supplied label (workspace name, kb name, key label). */
 	readonly label?: string;
+	/**
+	 * Comma-separated privilege scopes attached to an API key on
+	 * mint. Recorded on `api_key.create` so compliance trails capture
+	 * the exact scope set, not just whether scopes were requested.
+	 */
+	readonly scopes?: string;
 }
 
 export interface AuditEventInput {

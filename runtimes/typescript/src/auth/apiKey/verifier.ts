@@ -72,6 +72,12 @@ export class ApiKeyVerifier implements TokenVerifier {
 			id: record.keyId,
 			label: record.label,
 			workspaceScopes: [record.workspace],
+			// Project the key's privilege tiers onto the subject so
+			// `requireScope()` middleware (and audit consumers) don't
+			// have to look up the record again. Array (not null) even
+			// when empty — null means "all scopes" and would be a
+			// surprising upgrade for an API-key path.
+			scopes: [...record.scopes],
 		};
 	}
 }

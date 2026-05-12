@@ -179,4 +179,77 @@ describe("api-keys routes", () => {
 		});
 		expect(res.status).toBe(400);
 	});
+
+	test("POST without scopes defaults the key to ['read', 'write']", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const res = await app.request(`/api/v1/workspaces/${ws}/api-keys`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ label: "default-scopes" }),
+		});
+		expect(res.status).toBe(201);
+		const body = await json(res);
+		// Back-compat: keys minted without an explicit `scopes` field
+		// carry full privilege so existing callers don't change
+		// behavior when the column lands.
+		expect(body.key.scopes).toEqual(["read", "write"]);
+	});
+
+	test("POST honours an explicit scope picker (e.g. read-only)", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const res = await app.request(`/api/v1/workspaces/${ws}/api-keys`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ label: "read-only", scopes: ["read"] }),
+		});
+		expect(res.status).toBe(201);
+		const body = await json(res);
+		expect(body.key.scopes).toEqual(["read"]);
+	});
+
+	test("POST rejects an unknown scope with 400 validation_error", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const res = await app.request(`/api/v1/workspaces/${ws}/api-keys`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ label: "bad", scopes: ["root"] }),
+		});
+		expect(res.status).toBe(400);
+		const body = await json(res);
+		expect(body.error.code).toBe("validation_error");
+	});
+
+	test("POST rejects an empty scopes array with 400 validation_error", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const res = await app.request(`/api/v1/workspaces/${ws}/api-keys`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ label: "empty", scopes: [] }),
+		});
+		// Empty scopes via the API is almost certainly a mistake; the
+		// schema requires at least one tier when the field is provided
+		// (omit the field entirely to get the default).
+		expect(res.status).toBe(400);
+	});
+
+	test("listed keys surface the scopes field for the UI", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		await app.request(`/api/v1/workspaces/${ws}/api-keys`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ label: "first", scopes: ["read"] }),
+		});
+		const list = await json(
+			await app.request(`/api/v1/workspaces/${ws}/api-keys`, {
+				method: "GET",
+			}),
+		);
+		expect(list.items).toHaveLength(1);
+		expect(list.items[0].scopes).toEqual(["read"]);
+	});
 });
