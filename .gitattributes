@@ -1,0 +1,43 @@
+# Force text-mode handling on source extensions that should never be
+# classified as binary.
+#
+# Why: git's auto-detection samples the first few KB of a file and
+# flags it as binary on the presence of certain byte patterns. TS
+# files with non-ASCII characters in doc comments — em dashes, curly
+# quotes, the kind of typography pino-pretty / docs editors emit —
+# can trip that heuristic. The visible failure mode is a squash-merge
+# that silently produces a 0-byte file because GitHub falls back to
+# "take theirs" on a "binary" file rather than performing the
+# expected per-line merge.
+#
+# We hit this on `runtimes/typescript/src/openapi/schemas.ts` when
+# the squash of #223 zeroed the file in main. The hotfix in #224
+# reconstructed the file; this entry stops it from happening again
+# (on any file matched below).
+#
+# Scope is intentionally narrow: only the source extensions we
+# actually edit. We deliberately do NOT use `* text=auto` here — that
+# would normalize line endings across the whole repo on next
+# checkout, which is too broad a change for the problem we're
+# solving. Adding extensions is fine; just append below.
+
+*.ts text
+*.tsx text
+*.js text
+*.jsx text
+*.mjs text
+*.cjs text
+*.json text
+*.md text
+*.mdx text
+*.yaml text
+*.yml text
+*.css text
+*.html text
+*.toml text
+*.sh text
+*.py text
+*.java text
+*.kt text
+*.gradle text
+*.kts text
