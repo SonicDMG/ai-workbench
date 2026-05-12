@@ -24,6 +24,7 @@ import { audit } from "../../lib/audit.js";
 import { ApiError } from "../../lib/errors.js";
 import type { AppEnv } from "../../lib/types.js";
 import { handleMcpRequest } from "../../mcp/server.js";
+import type { IngestService } from "../../services/ingest-service.js";
 
 export interface McpRouteDeps {
 	readonly store: ControlPlaneStore;
@@ -32,6 +33,13 @@ export interface McpRouteDeps {
 	readonly chatService: ChatService | null;
 	readonly chatConfig: ChatConfig | null;
 	readonly mcpConfig: McpConfig;
+	/**
+	 * Shared ingest service. Drives the `ingest_text` MCP write tool —
+	 * passed through verbatim so the MCP and REST ingest paths run the
+	 * exact same dedup + chunk + embed pipeline. Null disables the
+	 * write tool (read tools still register normally).
+	 */
+	readonly ingestService: IngestService | null;
 }
 
 /**
@@ -78,6 +86,7 @@ export function mcpRoutes(deps: McpRouteDeps): OpenAPIHono<AppEnv> {
 				chatService: deps.chatService,
 				chatConfig: deps.chatConfig,
 				exposeChat: deps.mcpConfig.exposeChat,
+				ingestService: deps.ingestService,
 				onToolInvoke: (info) => {
 					audit(c, {
 						action: "mcp.invoke",

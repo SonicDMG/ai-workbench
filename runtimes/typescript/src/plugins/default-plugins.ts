@@ -31,6 +31,7 @@ import { llmServiceRoutes } from "../routes/api-v1/llm-services.js";
 import { mcpRoutes } from "../routes/api-v1/mcp.js";
 import { rerankingServiceRoutes } from "../routes/api-v1/reranking-services.js";
 import { workspaceRoutes } from "../routes/api-v1/workspaces.js";
+import { createIngestService } from "../services/ingest-service.js";
 import { RoutePluginRegistry } from "./registry.js";
 import type { RoutePlugin, RoutePluginContext } from "./types.js";
 
@@ -154,6 +155,21 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					chatService: ctx.chatService,
 					chatConfig: ctx.chatConfig,
 					mcpConfig: ctx.mcpConfig,
+					// Construct the ingest service here so the MCP write
+					// tool (`ingest_text`) runs the same pipeline as the
+					// REST `POST /ingest` route. IngestService is
+					// stateless above the shared deps; the kb_documents
+					// plugin builds its own instance — both safe, they
+					// only delegate to the underlying store / drivers /
+					// jobs / semaphore which ARE shared.
+					ingestService: createIngestService({
+						store: ctx.store,
+						drivers: ctx.drivers,
+						embedders: ctx.embedders,
+						jobs: ctx.jobs,
+						replicaId: ctx.replicaId,
+						ingestSemaphore: ctx.ingestSemaphore,
+					}),
 				}),
 		},
 		{

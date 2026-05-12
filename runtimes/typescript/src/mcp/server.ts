@@ -13,6 +13,14 @@
  *   - `search_kb`              vector / hybrid / rerank search
  *   - `list_chats`             agent-scoped conversation metadata
  *   - `list_chat_messages`     turn-by-turn message history
+ *   - `ingest_text`            write — append a document to a KB.
+ *                              Synchronous; runs through the same
+ *                              dedup + chunk + embed + upsert pipeline
+ *                              as the public REST `POST /ingest`
+ *                              route, so MCP and REST ingests are
+ *                              indistinguishable downstream. Disabled
+ *                              when `ingestService` is null on the
+ *                              server deps.
  *   - `chat_send`              optional, gated on `mcp.exposeChat`
  *                              + `chat` config; appends a user turn
  *                              to an agent's conversation, runs the
@@ -44,6 +52,7 @@ import { logger } from "../lib/logger.js";
 import { resolveKb } from "../routes/api-v1/kb-descriptor.js";
 import { dispatchSearch } from "../routes/api-v1/search-dispatch.js";
 import { isUserVisibleMessage } from "../routes/api-v1/serdes/index.js";
+import type { IngestService } from "../services/ingest-service.js";
 import { VERSION } from "../version.js";
 
 export interface McpServerDeps {
@@ -53,6 +62,18 @@ export interface McpServerDeps {
 	readonly chatService: ChatService | null;
 	readonly chatConfig: ChatConfig | null;
 	readonly exposeChat: boolean;
+	/**
+	 * Optional ingest service. When supplied, the MCP server registers
+	 * the `ingest_text` write tool so external agents can put new
+	 * material into a KB without leaving the protocol. Constructed once
+	 * by `app.ts` and shared with the REST ingest routes — same dedup,
+	 * name-conflict, and chunk pipeline.
+	 *
+	 * Null disables the tool (older runtimes / fixtures that don't wire
+	 * an ingest service still load the read tools cleanly). The wire
+	 * footprint is identical to the public REST `POST /ingest` body.
+	 */
+	readonly ingestService: IngestService | null;
 	/**
 	 * Optional hook fired around every tool invocation. Used by the
 	 * route layer to emit `mcp.invoke` audit events without coupling
@@ -360,6 +381,10 @@ export function buildMcpServer(
 		},
 	);
 
+	if (deps.ingestService) {
+		registerIngestTextTool(server, workspaceId, deps.ingestService);
+	}
+
 	if (deps.exposeChat && deps.chatService && deps.chatConfig) {
 		registerChatTool(server, workspaceId, {
 			...deps,
@@ -369,6 +394,157 @@ export function buildMcpServer(
 	}
 
 	return server;
+}
+
+/**
+ * Wire `ingest_text` onto the MCP server. Kept as a free function so
+ * the read tools and the write tool register through the same
+ * `server.registerTool` audit wrapper but their bodies stay in
+ * different parts of the file — write semantics (dedup, name
+ * collisions, sync-only restriction) are non-trivial enough to
+ * deserve their own block.
+ *
+ * Three outcomes mirror the REST route's `IngestOutcome` discriminant:
+ *
+ *   - **completed** — new document created and chunks upserted; the
+ *     tool returns the document id, chunk count, and content hash.
+ *   - **duplicate** — content-hash matches an existing document in
+ *     this KB; the pipeline did NOT run and the tool returns the
+ *     existing document's id with `outcome: "duplicate"`.
+ *   - **name_conflict** — the source filename matches a different
+ *     document. The tool returns `isError: true` and tells the caller
+ *     to retry with `overwriteOnNameConflict: true` or pick a fresh
+ *     filename; the pipeline did not run.
+ *
+ * Always synchronous from the MCP caller's POV — `async: false` is
+ * passed through, so the JSON-RPC reply contains the final outcome.
+ * Async ingest stays a REST-only path because MCP clients usually
+ * inline tool calls into agent loops where the model needs the result
+ * before continuing.
+ */
+function registerIngestTextTool(
+	server: McpServer,
+	workspaceId: string,
+	ingestService: IngestService,
+): void {
+	server.registerTool(
+		"ingest_text",
+		{
+			title: "Ingest plain text into a knowledge base",
+			description:
+				"Append a new document to a knowledge base by passing raw text. Runs the same dedup + chunk + embed + upsert pipeline as the REST `POST /ingest` route. Use this to let an agent record material it has just gathered (notes, transcripts, summaries) without leaving the MCP session. Returns the resulting documentId + chunk count, or signals duplicate / name_conflict when the pipeline short-circuits.",
+			inputSchema: {
+				knowledgeBaseId: z.string().uuid(),
+				text: z.string().min(1),
+				sourceFilename: z.string().min(1).optional(),
+				sourceDocId: z.string().min(1).optional(),
+				metadata: z.record(z.string(), z.string()).optional(),
+				overwriteOnNameConflict: z.boolean().optional(),
+			},
+		},
+		async ({
+			knowledgeBaseId,
+			text,
+			sourceFilename,
+			sourceDocId,
+			metadata,
+			overwriteOnNameConflict,
+		}) => {
+			// IngestService.ingest takes the wire `KbIngestRequest`
+			// shape. We forward what MCP gave us and let the service do
+			// its own hash + collision pre-checks; no duplication of
+			// dedup logic at this layer.
+			const outcome = await ingestService.ingest(
+				workspaceId,
+				knowledgeBaseId,
+				{
+					text,
+					sourceFilename,
+					sourceDocId,
+					metadata,
+					overwriteOnNameConflict,
+				},
+				{ async: false },
+			);
+
+			if (outcome.kind === "name_conflict") {
+				return {
+					isError: true,
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(
+								{
+									outcome: "name_conflict",
+									documentId: outcome.document.documentId,
+									sourceFilename: outcome.document.sourceFilename,
+									message:
+										"A different document with this filename already exists. Retry with `overwriteOnNameConflict: true` to replace it, or pick a new filename.",
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			}
+
+			if (outcome.kind === "duplicate") {
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(
+								{
+									outcome: "duplicate",
+									documentId: outcome.document.documentId,
+									sourceFilename: outcome.document.sourceFilename,
+									contentHash: outcome.document.contentHash,
+									message:
+										"Identical content already ingested; the existing document was returned without re-running the pipeline.",
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			}
+
+			// The completed branch carries the new document and the
+			// chunk count from the pipeline run. The pipeline shape is
+			// the same for sync MCP and async REST; we just don't
+			// surface `job` / `astraQueries` here because they are
+			// REST-flow affordances (job polling, code-view previews)
+			// that don't apply when the call returns inline. The
+			// explicit narrow lets the compiler eliminate the "queued"
+			// branch, which can't happen here because we passed
+			// `async: false`.
+			if (outcome.kind !== "completed") {
+				throw new Error(
+					`unexpected ingest outcome '${outcome.kind}' from sync MCP path`,
+				);
+			}
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								outcome: "completed",
+								documentId: outcome.document.documentId,
+								sourceFilename: outcome.document.sourceFilename,
+								contentHash: outcome.document.contentHash,
+								chunks: outcome.chunks,
+							},
+							null,
+							2,
+						),
+					},
+				],
+			};
+		},
+	);
 }
 
 interface ChatToolDeps extends McpServerDeps {

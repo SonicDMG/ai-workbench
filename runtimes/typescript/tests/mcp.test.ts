@@ -19,9 +19,13 @@ import { AuthResolver } from "../src/auth/resolver.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
+import { IngestSemaphore } from "../src/jobs/ingest-semaphore.js";
+import { MemoryJobStore } from "../src/jobs/memory-store.js";
 import { buildMcpServer } from "../src/mcp/server.js";
+import { resolveKb } from "../src/routes/api-v1/kb-descriptor.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
 import { SecretResolver } from "../src/secrets/provider.js";
+import { createIngestService } from "../src/services/ingest-service.js";
 import {
 	type FakeChatService,
 	makeFakeChatService,
@@ -32,6 +36,7 @@ import { makeFakeEmbedderFactory } from "./helpers/embedder.js";
 interface McpHarness {
 	readonly client: Client;
 	readonly store: MemoryControlPlaneStore;
+	readonly driver: MockVectorStoreDriver;
 	readonly chatService: FakeChatService;
 	readonly workspaceId: string;
 	readonly cleanup: () => Promise<void>;
@@ -39,6 +44,12 @@ interface McpHarness {
 
 async function makeMcpHarness(opts?: {
 	exposeChat?: boolean;
+	/**
+	 * Wire a real ingest service so `ingest_text` is registered. When
+	 * false (default), pass `null` and the write tool is absent from
+	 * `tools/list` — the existing read-only test still passes.
+	 */
+	withIngest?: boolean;
 }): Promise<McpHarness> {
 	const store = new MemoryControlPlaneStore();
 	const driver = new MockVectorStoreDriver();
@@ -48,6 +59,17 @@ async function makeMcpHarness(opts?: {
 
 	const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
 
+	const ingestService = opts?.withIngest
+		? createIngestService({
+				store,
+				drivers,
+				embedders,
+				jobs: new MemoryJobStore(),
+				replicaId: "test",
+				ingestSemaphore: new IngestSemaphore(4),
+			})
+		: null;
+
 	const server = buildMcpServer(ws.uid, {
 		store,
 		drivers,
@@ -55,6 +77,7 @@ async function makeMcpHarness(opts?: {
 		chatService,
 		chatConfig: TEST_CHAT_CONFIG,
 		exposeChat: opts?.exposeChat ?? false,
+		ingestService,
 	});
 
 	const [serverTransport, clientTransport] =
@@ -68,6 +91,7 @@ async function makeMcpHarness(opts?: {
 	return {
 		client,
 		store,
+		driver,
 		chatService,
 		workspaceId: ws.uid,
 		cleanup: async () => {
@@ -83,6 +107,48 @@ function textContent(result: {
 	const item = result.content.find((c) => c.type === "text");
 	if (!item?.text) throw new Error("expected a text content item");
 	return item.text;
+}
+
+/**
+ * Create a KB plus its three bound services AND provision the
+ * underlying mock collection — the same chain the HTTP
+ * `POST /knowledge-bases` route runs.
+ *
+ * Direct `store.createKnowledgeBase` calls (used by the read-tool
+ * tests above) only patch the control plane; ingest needs the data
+ * plane to exist too. Factored out so the three ingest tests below
+ * read top-down without redoing the chain inline.
+ */
+async function makeKbForIngest(
+	store: MemoryControlPlaneStore,
+	driver: MockVectorStoreDriver,
+	workspaceId: string,
+): Promise<{ knowledgeBaseId: string }> {
+	const chunk = await store.createChunkingService(workspaceId, {
+		name: "c",
+		engine: "langchain_ts",
+	});
+	const embed = await store.createEmbeddingService(workspaceId, {
+		name: "e",
+		provider: "fake",
+		modelName: "m",
+		embeddingDimension: 4,
+	});
+	const kb = await store.createKnowledgeBase(workspaceId, {
+		name: "Docs",
+		chunkingServiceId: chunk.chunkingServiceId,
+		embeddingServiceId: embed.embeddingServiceId,
+	});
+	// Mirror the `KnowledgeBaseService.create` provisioning step so
+	// the data plane has a collection to upsert into. Use the same
+	// `resolveKb` helper the runtime calls — keeps the descriptor
+	// shape in lockstep with production.
+	const resolved = await resolveKb(store, workspaceId, kb.knowledgeBaseId);
+	await driver.createCollection({
+		workspace: resolved.workspace,
+		descriptor: resolved.descriptor,
+	});
+	return { knowledgeBaseId: kb.knowledgeBaseId };
 }
 
 describe("MCP server tools", () => {
@@ -214,6 +280,145 @@ describe("MCP server tools", () => {
 				"user:hi",
 				"agent:hi back",
 			]);
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("ingest_text is registered only when ingestService is provided", async () => {
+		const off = await makeMcpHarness();
+		try {
+			const names = (await off.client.listTools()).tools.map((t) => t.name);
+			expect(names).not.toContain("ingest_text");
+		} finally {
+			await off.cleanup();
+		}
+
+		const on = await makeMcpHarness({ withIngest: true });
+		try {
+			const names = (await on.client.listTools()).tools.map((t) => t.name);
+			expect(names).toContain("ingest_text");
+		} finally {
+			await on.cleanup();
+		}
+	});
+
+	test("ingest_text appends a document and returns the completed outcome", async () => {
+		const h = await makeMcpHarness({ withIngest: true });
+		try {
+			const { knowledgeBaseId } = await makeKbForIngest(
+				h.store,
+				h.driver,
+				h.workspaceId,
+			);
+
+			const result = await h.client.callTool({
+				name: "ingest_text",
+				arguments: {
+					knowledgeBaseId,
+					text: "MCP-ingested doc body — should round-trip through the chunker.",
+					sourceFilename: "from-mcp.txt",
+					metadata: { source: "mcp-test" },
+				},
+			});
+			const payload = JSON.parse(textContent(result as never)) as {
+				outcome: string;
+				documentId: string;
+				chunks: number;
+				sourceFilename: string | null;
+				contentHash: string;
+			};
+			expect(payload.outcome).toBe("completed");
+			expect(typeof payload.documentId).toBe("string");
+			expect(payload.documentId).toMatch(/[0-9a-f-]{36}/);
+			expect(payload.sourceFilename).toBe("from-mcp.txt");
+			expect(payload.chunks).toBeGreaterThan(0);
+			expect(typeof payload.contentHash).toBe("string");
+
+			// The document should be visible via the existing read tool.
+			const docs = JSON.parse(
+				textContent(
+					(await h.client.callTool({
+						name: "list_documents",
+						arguments: { knowledgeBaseId },
+					})) as never,
+				),
+			) as Array<{ documentId: string; status: string }>;
+			expect(docs).toHaveLength(1);
+			expect(docs[0]?.documentId).toBe(payload.documentId);
+			expect(docs[0]?.status).toBe("ready");
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("ingest_text short-circuits on identical content (duplicate outcome)", async () => {
+		const h = await makeMcpHarness({ withIngest: true });
+		try {
+			const { knowledgeBaseId } = await makeKbForIngest(
+				h.store,
+				h.driver,
+				h.workspaceId,
+			);
+
+			const args = {
+				knowledgeBaseId,
+				text: "identical content — second call must dedup",
+			};
+			const first = JSON.parse(
+				textContent(
+					(await h.client.callTool({
+						name: "ingest_text",
+						arguments: args,
+					})) as never,
+				),
+			) as { outcome: string; documentId: string };
+			const second = JSON.parse(
+				textContent(
+					(await h.client.callTool({
+						name: "ingest_text",
+						arguments: args,
+					})) as never,
+				),
+			) as { outcome: string; documentId: string };
+			expect(first.outcome).toBe("completed");
+			expect(second.outcome).toBe("duplicate");
+			expect(second.documentId).toBe(first.documentId);
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("ingest_text signals name_conflict for a different body under the same filename", async () => {
+		const h = await makeMcpHarness({ withIngest: true });
+		try {
+			const { knowledgeBaseId } = await makeKbForIngest(
+				h.store,
+				h.driver,
+				h.workspaceId,
+			);
+
+			await h.client.callTool({
+				name: "ingest_text",
+				arguments: {
+					knowledgeBaseId,
+					text: "v1",
+					sourceFilename: "policy.md",
+				},
+			});
+			const second = (await h.client.callTool({
+				name: "ingest_text",
+				arguments: {
+					knowledgeBaseId,
+					text: "v2 different bytes",
+					sourceFilename: "policy.md",
+				},
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+			expect(second.isError).toBe(true);
+			const payload = JSON.parse(second.content[0]?.text ?? "{}") as {
+				outcome: string;
+			};
+			expect(payload.outcome).toBe("name_conflict");
 		} finally {
 			await h.cleanup();
 		}

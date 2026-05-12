@@ -68,6 +68,7 @@ API key per agent.**
 | `search_kb` | `{ knowledgeBaseId, text? \| vector?, topK?, hybrid?, rerank? }` | JSON array of search hits (`chunkId`, `score`, `documentId`, `content`) |
 | `list_chats` | none | JSON array of chat summaries (`chatId`, `title`, `knowledgeBaseIds`, `createdAt`) |
 | `list_chat_messages` | `{ chatId }` | Oldest-first message log (`messageId`, `role`, `content`, `messageTs`, `metadata`) |
+| `ingest_text` | `{ knowledgeBaseId, text, sourceFilename?, sourceDocId?, metadata?, overwriteOnNameConflict? }` | JSON envelope with one of three `outcome` values: `completed` (new document — `documentId`, `sourceFilename`, `contentHash`, `chunks`), `duplicate` (content-hash match — pipeline did not run; returns the existing `documentId`), or `name_conflict` (`isError: true` — filename matched but bytes differ; retry with `overwriteOnNameConflict: true` or pick a new name). Runs the same dedup + chunk + embed + upsert pipeline as the REST `POST /ingest`. Always synchronous from the MCP caller's POV. |
 | `chat_send` *(opt-in)* | `{ chatId, content }` | The assistant's reply as a single text block. Persists both turns through the runtime's global chat service; the system prompt falls back to `DEFAULT_AGENT_SYSTEM_PROMPT` when `chat.systemPrompt` is unset. |
 
 All tool results are returned as a single MCP `text` content item
@@ -77,22 +78,33 @@ content differently.
 
 ## Why these tools and not others
 
-The façade is intentionally **read-mostly**. We expose retrieval
-and discovery (`search_kb`, `list_*`) so external agents can
-ground their reasoning in the workspace, but we don't expose
-ingest, KB CRUD, or workspace mutation. Reasons:
+The façade is mostly retrieval-shaped (`search_kb`, `list_*`) so
+external agents can ground their reasoning in the workspace. The
+single write tool — `ingest_text` — was added once the LangGraph /
+CrewAI / ADK story made it clear that *recording* what an agent
+gathers is half the value of the integration. Other mutations
+(KB CRUD, workspace mutation, document delete) stay off the surface.
+Reasons:
 
 - **Blast radius.** A misbehaving agent that can `search_kb` is a
   performance / cost concern; one that can `delete_kb` is a data-
-  loss concern.
-- **Auth semantics aren't there yet.** The current scoped API key
-  is per-workspace; we have no per-tool scope. Once we do, write
-  tools become a flag on the key.
-- **Most useful surface first.** Retrieval is the killer feature
-  for an MCP integration; everything else is incremental.
+  loss concern. `ingest_text` falls in the middle — its only
+  observable effect is more KB content, which is reversible by
+  deleting the resulting document.
+- **Auth semantics aren't fully there yet.** The current scoped API
+  key is per-workspace; we have no per-tool scope. Until that lands
+  (planned, see the roadmap), any key with workspace access can call
+  any exposed tool. The write surface is intentionally bounded —
+  `ingest_text` plus the opt-in `chat_send` — so the upper bound is
+  predictable.
+- **Most useful surface first.** Retrieval is the killer feature for
+  an MCP integration; ingestion is the most-asked-for write tool;
+  everything else is incremental.
 
 `chat_send` is exposed under a separate flag because it's the only
-tool that costs HuggingFace tokens.
+tool that costs HuggingFace tokens. `ingest_text` is unflagged: its
+cost is bounded by the chunker + embedder on the workspace, which
+the operator already controls through the regular ingest config.
 
 ## Streaming
 
