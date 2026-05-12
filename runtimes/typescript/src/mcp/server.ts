@@ -21,6 +21,16 @@
  *                              indistinguishable downstream. Disabled
  *                              when `ingestService` is null on the
  *                              server deps.
+ *   - `delete_document`        write — remove a document and cascade
+ *                              its chunks from the KB's vector
+ *                              collection. Wraps the same
+ *                              `cascadeDeleteRagDocument` helper the
+ *                              REST `DELETE /documents/{id}` route
+ *                              uses, so behavior is identical across
+ *                              the two front doors. Co-gated with
+ *                              `ingest_text` on `ingestService` —
+ *                              both write tools are present or
+ *                              absent together.
  *   - `chat_send`              optional, gated on `mcp.exposeChat`
  *                              + `chat` config; appends a user turn
  *                              to an agent's conversation, runs the
@@ -52,6 +62,7 @@ import { logger } from "../lib/logger.js";
 import { resolveKb } from "../routes/api-v1/kb-descriptor.js";
 import { dispatchSearch } from "../routes/api-v1/search-dispatch.js";
 import { isUserVisibleMessage } from "../routes/api-v1/serdes/index.js";
+import { cascadeDeleteRagDocument } from "../services/document-cascade.js";
 import type { IngestService } from "../services/ingest-service.js";
 import { VERSION } from "../version.js";
 
@@ -383,6 +394,7 @@ export function buildMcpServer(
 
 	if (deps.ingestService) {
 		registerIngestTextTool(server, workspaceId, deps.ingestService);
+		registerDeleteDocumentTool(server, workspaceId, deps);
 	}
 
 	if (deps.exposeChat && deps.chatService && deps.chatConfig) {
@@ -536,6 +548,75 @@ function registerIngestTextTool(
 								sourceFilename: outcome.document.sourceFilename,
 								contentHash: outcome.document.contentHash,
 								chunks: outcome.chunks,
+							},
+							null,
+							2,
+						),
+					},
+				],
+			};
+		},
+	);
+}
+
+/**
+ * Wire `delete_document` onto the MCP server. Mirrors the REST hard-
+ * delete (`DELETE /workspaces/{w}/knowledge-bases/{kb}/documents/{d}`)
+ * by going through the same `cascadeDeleteRagDocument` helper — the
+ * vector chunks come down first, then the control-plane row.
+ *
+ * Outcome envelope:
+ *
+ *   - **deleted**  — the row existed and is gone; returns
+ *                    `documentId` and `chunksDropped` (or `null` when
+ *                    the driver doesn't support chunk cleanup).
+ *   - **not_found** — no row matched the id. Returned as a non-error
+ *                    text content so an agent that ran a speculative
+ *                    delete can see "this was already gone" without
+ *                    branching on `isError`. A racing tab that won
+ *                    the delete first is the common cause.
+ *
+ * Co-gated with `ingest_text` on `McpServerDeps.ingestService`. The
+ * gate is logical, not technical — `cascadeDeleteRagDocument` only
+ * needs `store` + `drivers` which are always there — but treating
+ * the two write tools as a single feature keeps test surfaces aligned
+ * and signals that "write surface is wired" through one flag.
+ */
+function registerDeleteDocumentTool(
+	server: McpServer,
+	workspaceId: string,
+	deps: McpServerDeps,
+): void {
+	server.registerTool(
+		"delete_document",
+		{
+			title: "Delete a document from a knowledge base",
+			description:
+				'Remove a document and cascade its chunks from the KB\'s vector collection. Idempotent — re-deleting a missing document returns `outcome: "not_found"` rather than erroring, so an agent can run speculative deletes without branching. Wraps the same cascade helper the REST `DELETE /documents/{id}` route uses, so behavior is identical across the two front doors.',
+			inputSchema: {
+				knowledgeBaseId: z.string().uuid(),
+				documentId: z.string().uuid(),
+			},
+		},
+		async ({ knowledgeBaseId, documentId }) => {
+			const ctx = await resolveKb(deps.store, workspaceId, knowledgeBaseId);
+			const { deleted, chunksDropped } = await cascadeDeleteRagDocument({
+				store: deps.store,
+				drivers: deps.drivers,
+				workspace: ctx.workspace,
+				knowledgeBase: ctx.knowledgeBase,
+				descriptor: ctx.descriptor,
+				documentId,
+			});
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								outcome: deleted ? "deleted" : "not_found",
+								documentId,
+								chunksDropped,
 							},
 							null,
 							2,

@@ -424,6 +424,127 @@ describe("MCP server tools", () => {
 		}
 	});
 
+	test("delete_document is co-gated with ingest_text on the ingest service", async () => {
+		const off = await makeMcpHarness();
+		try {
+			const names = (await off.client.listTools()).tools.map((t) => t.name);
+			expect(names).not.toContain("delete_document");
+		} finally {
+			await off.cleanup();
+		}
+
+		const on = await makeMcpHarness({ withIngest: true });
+		try {
+			const names = (await on.client.listTools()).tools.map((t) => t.name);
+			expect(names).toContain("delete_document");
+		} finally {
+			await on.cleanup();
+		}
+	});
+
+	test("delete_document removes a previously-ingested document and cascades chunks", async () => {
+		const h = await makeMcpHarness({ withIngest: true });
+		try {
+			const { knowledgeBaseId } = await makeKbForIngest(
+				h.store,
+				h.driver,
+				h.workspaceId,
+			);
+
+			// Ingest first so there's something to delete.
+			const created = JSON.parse(
+				textContent(
+					(await h.client.callTool({
+						name: "ingest_text",
+						arguments: {
+							knowledgeBaseId,
+							text: "doc to be deleted",
+							sourceFilename: "tmp.txt",
+						},
+					})) as never,
+				),
+			) as { documentId: string; chunks: number };
+
+			const result = (await h.client.callTool({
+				name: "delete_document",
+				arguments: {
+					knowledgeBaseId,
+					documentId: created.documentId,
+				},
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+
+			expect(result.isError).toBeFalsy();
+			const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+				outcome: string;
+				documentId: string;
+				chunksDropped: number | null;
+			};
+			expect(payload.outcome).toBe("deleted");
+			expect(payload.documentId).toBe(created.documentId);
+			// Mock driver implements `deleteRecords`, so we expect a
+			// number rather than null. The exact value equals the chunk
+			// count from the prior ingest.
+			expect(payload.chunksDropped).toBe(created.chunks);
+
+			// list_documents now shows an empty KB.
+			const docs = JSON.parse(
+				textContent(
+					(await h.client.callTool({
+						name: "list_documents",
+						arguments: { knowledgeBaseId },
+					})) as never,
+				),
+			) as Array<unknown>;
+			expect(docs).toHaveLength(0);
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("delete_document is idempotent — re-deleting reports not_found, not isError", async () => {
+		const h = await makeMcpHarness({ withIngest: true });
+		try {
+			const { knowledgeBaseId } = await makeKbForIngest(
+				h.store,
+				h.driver,
+				h.workspaceId,
+			);
+
+			const created = JSON.parse(
+				textContent(
+					(await h.client.callTool({
+						name: "ingest_text",
+						arguments: {
+							knowledgeBaseId,
+							text: "ephemeral",
+						},
+					})) as never,
+				),
+			) as { documentId: string };
+
+			// First delete succeeds.
+			await h.client.callTool({
+				name: "delete_document",
+				arguments: { knowledgeBaseId, documentId: created.documentId },
+			});
+			// Second delete returns not_found (without isError) so an
+			// agent doing speculative cleanup doesn't have to branch.
+			const second = (await h.client.callTool({
+				name: "delete_document",
+				arguments: { knowledgeBaseId, documentId: created.documentId },
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+			expect(second.isError).toBeFalsy();
+			const payload = JSON.parse(second.content[0]?.text ?? "{}") as {
+				outcome: string;
+				documentId: string;
+			};
+			expect(payload.outcome).toBe("not_found");
+			expect(payload.documentId).toBe(created.documentId);
+		} finally {
+			await h.cleanup();
+		}
+	});
+
 	test("search_kb requires text or vector", async () => {
 		const h = await makeMcpHarness();
 		try {

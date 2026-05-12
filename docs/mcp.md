@@ -69,6 +69,7 @@ API key per agent.**
 | `list_chats` | none | JSON array of chat summaries (`chatId`, `title`, `knowledgeBaseIds`, `createdAt`) |
 | `list_chat_messages` | `{ chatId }` | Oldest-first message log (`messageId`, `role`, `content`, `messageTs`, `metadata`) |
 | `ingest_text` | `{ knowledgeBaseId, text, sourceFilename?, sourceDocId?, metadata?, overwriteOnNameConflict? }` | JSON envelope with one of three `outcome` values: `completed` (new document — `documentId`, `sourceFilename`, `contentHash`, `chunks`), `duplicate` (content-hash match — pipeline did not run; returns the existing `documentId`), or `name_conflict` (`isError: true` — filename matched but bytes differ; retry with `overwriteOnNameConflict: true` or pick a new name). Runs the same dedup + chunk + embed + upsert pipeline as the REST `POST /ingest`. Always synchronous from the MCP caller's POV. |
+| `delete_document` | `{ knowledgeBaseId, documentId }` | JSON object with `outcome`: `deleted` (`documentId`, `chunksDropped`) or `not_found` (no row matched the id — returned without `isError` so speculative cleanup doesn't need to branch). Wraps the same cascade helper the REST `DELETE /documents/{id}` route uses; vector chunks come down first, then the control-plane row. |
 | `chat_send` *(opt-in)* | `{ chatId, content }` | The assistant's reply as a single text block. Persists both turns through the runtime's global chat service; the system prompt falls back to `DEFAULT_AGENT_SYSTEM_PROMPT` when `chat.systemPrompt` is unset. |
 
 All tool results are returned as a single MCP `text` content item
@@ -79,32 +80,36 @@ content differently.
 ## Why these tools and not others
 
 The façade is mostly retrieval-shaped (`search_kb`, `list_*`) so
-external agents can ground their reasoning in the workspace. The
-single write tool — `ingest_text` — was added once the LangGraph /
-CrewAI / ADK story made it clear that *recording* what an agent
-gathers is half the value of the integration. Other mutations
-(KB CRUD, workspace mutation, document delete) stay off the surface.
-Reasons:
+external agents can ground their reasoning in the workspace. Two
+write tools — `ingest_text` and `delete_document` — were added once
+the LangGraph / CrewAI / ADK story made it clear that *recording*
+what an agent gathers (and cleaning up afterward) is half the value
+of the integration. Larger mutations (KB CRUD, workspace mutation,
+service CRUD) stay off the surface. Reasons:
 
 - **Blast radius.** A misbehaving agent that can `search_kb` is a
-  performance / cost concern; one that can `delete_kb` is a data-
-  loss concern. `ingest_text` falls in the middle — its only
+  performance / cost concern; one that can `delete_kb` is a
+  data-loss concern. `ingest_text` falls in the middle — its only
   observable effect is more KB content, which is reversible by
-  deleting the resulting document.
+  `delete_document`. `delete_document` itself is scoped to a single
+  document at a time (no "delete by filter" surface) so the radius
+  stays predictable.
 - **Auth semantics aren't fully there yet.** The current scoped API
   key is per-workspace; we have no per-tool scope. Until that lands
   (planned, see the roadmap), any key with workspace access can call
   any exposed tool. The write surface is intentionally bounded —
-  `ingest_text` plus the opt-in `chat_send` — so the upper bound is
-  predictable.
+  `ingest_text`, `delete_document`, and the opt-in `chat_send` — so
+  the upper bound is predictable.
 - **Most useful surface first.** Retrieval is the killer feature for
   an MCP integration; ingestion is the most-asked-for write tool;
-  everything else is incremental.
+  delete pairs naturally with ingest for agents that maintain their
+  own KB; everything else is incremental.
 
 `chat_send` is exposed under a separate flag because it's the only
-tool that costs HuggingFace tokens. `ingest_text` is unflagged: its
-cost is bounded by the chunker + embedder on the workspace, which
-the operator already controls through the regular ingest config.
+tool that costs HuggingFace tokens. `ingest_text` and
+`delete_document` are unflagged: their cost is bounded by the
+chunker + embedder on the workspace, which the operator already
+controls through the regular ingest config.
 
 ## Streaming
 
