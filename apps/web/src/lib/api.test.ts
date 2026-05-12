@@ -40,6 +40,35 @@ describe("formatApiError", () => {
 		expect(formatApiError("string thrown")).toBe("Unknown error");
 		expect(formatApiError({ shape: "object" })).toBe("Unknown error");
 	});
+
+	it("rewrites the 403 'missing write scope' error into a user-friendly toast", () => {
+		// Mirrors the literal string produced by
+		// `runtimes/typescript/src/auth/authz.ts:assertScope` when a
+		// read-only key tries to mutate. Detecting it on the client
+		// side keeps engineering jargon ("authenticated subject is
+		// missing required scope 'write'") out of the toaster.
+		const err = new ApiError(
+			403,
+			"forbidden",
+			"authenticated subject is missing required scope 'write'",
+			"rid-2",
+		);
+		expect(formatApiError(err)).toBe(
+			"This API key is read-only. Mint a key with the Read + Write scope to make changes.",
+		);
+	});
+
+	it("does NOT rewrite a generic 403 — only the missing-scope shape", () => {
+		const err = new ApiError(
+			403,
+			"forbidden",
+			"authenticated subject is not authorized for workspace 'foo'",
+			"rid-3",
+		);
+		expect(formatApiError(err)).toBe(
+			"forbidden: authenticated subject is not authorized for workspace 'foo'",
+		);
+	});
 });
 
 describe("api client request contract", () => {

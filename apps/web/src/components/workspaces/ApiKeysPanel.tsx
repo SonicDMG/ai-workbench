@@ -159,9 +159,20 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 }
 
 /**
- * Renders the key's privilege tiers as small badges, color-coded by
- * tier. Keep the visual subdued — the row's primary affordance is
- * Label / Status, not Scopes. Used in the API-keys table.
+ * Renders the key's privilege tier as a single human-readable badge.
+ * The wire format is an array (`["read"]` or `["read", "write"]`)
+ * but the UI's mental model is the same two-preset toggle the create
+ * dialog exposes — so we collapse to the same labels here. Keeps the
+ * picker → table read consistent for a demo viewer.
+ *
+ * Three branches:
+ *   - `["read", "write"]` (or any superset of write) → "Read + Write"
+ *     amber; write keys carry more risk and should feel visually
+ *     louder than read-only ones.
+ *   - exactly `["read"]`        → "Read only", subdued green.
+ *   - anything else (legacy / future preset) → fall back to a chip
+ *     per literal scope. Defensive; happens to render e.g.
+ *     `write:admin` without us having to revisit this.
  */
 function ScopeBadges({ scopes }: { scopes: readonly string[] }) {
 	if (scopes.length === 0) {
@@ -169,10 +180,21 @@ function ScopeBadges({ scopes }: { scopes: readonly string[] }) {
 		// but rendering "—" is friendlier than blank if it ever does.
 		return <span className="text-xs text-slate-400">—</span>;
 	}
+	const hasWrite = scopes.includes("write");
+	const isReadOnly = scopes.length === 1 && scopes[0] === "read" && !hasWrite;
+	const isReadWrite =
+		scopes.length === 2 && scopes.includes("read") && scopes.includes("write");
+
+	if (isReadWrite) {
+		return <Badge tone="amber">Read + Write</Badge>;
+	}
+	if (isReadOnly) {
+		return <Badge tone="green">Read only</Badge>;
+	}
 	return (
 		<span className="flex flex-wrap gap-1">
 			{scopes.map((scope) => (
-				<Badge key={scope} tone={scope === "write" ? "amber" : "green"}>
+				<Badge key={scope} tone={scope.startsWith("write") ? "amber" : "green"}>
 					{scope}
 				</Badge>
 			))}

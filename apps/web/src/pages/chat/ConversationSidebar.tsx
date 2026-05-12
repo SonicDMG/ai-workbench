@@ -87,7 +87,7 @@ export function ConversationSidebar({
 									)}
 								>
 									<span className="truncate font-medium text-slate-800 max-w-full dark:text-slate-100">
-										{conv.title ?? "Untitled"}
+										{conv.title ?? "Untitled conversation"}
 									</span>
 									<span className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
 										<MessageSquare className="h-3 w-3" />

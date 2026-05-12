@@ -33,9 +33,14 @@ import { useWorkspace } from "@/hooks/useWorkspaces";
 import { ApiError, formatApiError } from "@/lib/api";
 import type {
 	ConnectSnippet,
+	ConnectSnippetLanguage,
 	ConnectTrafficEntry,
 	ConnectVerifyResponse,
 } from "@/lib/schemas";
+import {
+	HighlightedCode,
+	type SupportedLanguage,
+} from "@/lib/syntax-highlight";
 
 const ALL_KBS_SENTINEL = "__all__";
 
@@ -288,13 +293,30 @@ function VerifyButton({
 			) : status === "failed" ? (
 				<XCircle className="h-4 w-4 text-red-600" />
 			) : null}
-			{running
-				? "Testing…"
-				: result?.ok
-					? `Reachable · ${result.toolCount} tool${result.toolCount === 1 ? "" : "s"}`
-					: "Test"}
+			{verifyButtonLabel({ running, result, transportError })}
 		</Button>
 	);
+}
+
+/**
+ * Label text for the Verify button across all four states. Pulled
+ * out so the failure case has a real label ("Failed — retry") rather
+ * than reverting silently to "Test", which used to read as if the
+ * button hadn't been clicked yet.
+ */
+function verifyButtonLabel(args: {
+	running: boolean;
+	result: ConnectVerifyResponse | undefined;
+	transportError: unknown;
+}): string {
+	if (args.running) return "Testing…";
+	if (args.transportError) return "Failed — retry";
+	if (!args.result) return "Test";
+	if (args.result.ok) {
+		return `Reachable · ${args.result.toolCount} tool${args.result.toolCount === 1 ? "" : "s"}`;
+	}
+	if (!args.result.mcpEnabled) return "MCP disabled";
+	return "Failed — retry";
 }
 
 type VerifyStatus = "idle" | "running" | "ok" | "failed";
@@ -323,7 +345,7 @@ function VerifyOutcome({ result }: { result: ConnectVerifyResponse }) {
 		return (
 			<div className="flex items-start gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">
 				<CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-				<div>
+				<div className="min-w-0">
 					<p className="font-medium">
 						MCP endpoint is reachable — {result.toolCount} tool
 						{result.toolCount === 1 ? "" : "s"} registered
@@ -331,9 +353,16 @@ function VerifyOutcome({ result }: { result: ConnectVerifyResponse }) {
 							({result.latencyMs}ms)
 						</span>
 					</p>
-					<p className="mt-0.5 break-words font-mono text-xs text-emerald-800 dark:text-emerald-300">
-						{result.tools.join(", ")}
-					</p>
+					<ul className="mt-1.5 flex flex-wrap gap-1">
+						{result.tools.map((name) => (
+							<li
+								key={name}
+								className="inline-flex items-center rounded-md bg-emerald-100 px-1.5 py-0.5 font-mono text-[11px] text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200"
+							>
+								{name}
+							</li>
+						))}
+					</ul>
 				</div>
 			</div>
 		);
@@ -445,6 +474,32 @@ function FrameworkTabs({
 	);
 }
 
+/**
+ * `ConnectSnippetLanguage` and `SupportedLanguage` happen to share
+ * the same string union today, but they live in different schemas
+ * (one is the server response, one is the highlighter's input). A
+ * tiny mapping function keeps the call site explicit and gives us a
+ * safe fallback to `"text"` if a future server adds a language the
+ * highlighter doesn't know about yet.
+ */
+function mapSnippetLanguage(lang: ConnectSnippetLanguage): SupportedLanguage {
+	switch (lang) {
+		case "python":
+		case "typescript":
+		case "bash":
+		case "text":
+			return lang;
+		default: {
+			// Exhaustiveness check — TS will flag this if a new union
+			// member is added to ConnectSnippetLanguage without a case
+			// here. Falling back to "text" is the safe runtime move.
+			const _exhaustive: never = lang;
+			void _exhaustive;
+			return "text";
+		}
+	}
+}
+
 function SnippetView({ snippet }: { snippet: ConnectSnippet }) {
 	return (
 		<div className="flex flex-col gap-4">
@@ -472,8 +527,11 @@ function SnippetView({ snippet }: { snippet: ConnectSnippet }) {
 			</div>
 
 			<div className="relative">
-				<pre className="max-h-[480px] overflow-auto rounded-md border bg-slate-950 px-4 py-3 font-mono text-xs leading-relaxed text-slate-100 dark:border-slate-700">
-					<code>{snippet.code}</code>
+				<pre className="hljs max-h-[480px] overflow-auto rounded-md border bg-slate-950 px-4 py-3 font-mono text-xs leading-relaxed text-slate-100 dark:border-slate-700">
+					<HighlightedCode
+						code={snippet.code}
+						language={mapSnippetLanguage(snippet.language)}
+					/>
 				</pre>
 				<CopyButton
 					value={snippet.code}

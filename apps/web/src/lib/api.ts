@@ -108,8 +108,37 @@ export class ApiError extends Error {
 	}
 }
 
+/**
+ * Detect the "your key is read-only" failure mode and rewrite the
+ * server's literal message into something a non-engineer can act on.
+ *
+ * The runtime's `ForbiddenError` for a missing privilege scope
+ * produces `"authenticated subject is missing required scope
+ * 'write'"` — accurate, but every word of it is an internal term.
+ * For the UI we'd rather say "your key is read-only" and point the
+ * user at the API-keys panel.
+ *
+ * Match is narrow on purpose: only fires when the server confirms
+ * `code === "forbidden"` AND the message mentions scope, so a
+ * generic 403 (workspace not authorized, etc.) still surfaces its
+ * own message.
+ */
+function looksLikeMissingWriteScope(err: ApiError): boolean {
+	return (
+		err.status === 403 &&
+		err.code === "forbidden" &&
+		/missing required scope|scope_required/i.test(err.message) &&
+		/['"`]?write['"`]?/i.test(err.message)
+	);
+}
+
 export function formatApiError(err: unknown): string {
-	if (err instanceof ApiError) return `${err.code}: ${err.message}`;
+	if (err instanceof ApiError) {
+		if (looksLikeMissingWriteScope(err)) {
+			return "This API key is read-only. Mint a key with the Read + Write scope to make changes.";
+		}
+		return `${err.code}: ${err.message}`;
+	}
 	if (err instanceof Error) return err.message;
 	return "Unknown error";
 }

@@ -26,10 +26,8 @@
  * (the ingest chip uses this to note "repeated for each batch").
  */
 
-import type { ElementContent, Root, RootContent } from "hast";
-import { common, createLowlight } from "lowlight";
 import { Check, Code2, Copy, Eye } from "lucide-react";
-import { Fragment, type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import {
 	Dialog,
 	DialogContent,
@@ -44,17 +42,18 @@ import {
 	generateCode,
 } from "@/lib/astra-codegen";
 import type { AstraQuerySnapshot } from "@/lib/schemas";
+import {
+	HighlightedCode,
+	type SupportedLanguage,
+} from "@/lib/syntax-highlight";
 import { cn } from "@/lib/utils";
 
 /**
- * Lowlight registry preloaded with the languages this dialog renders
- * (tabs map TS / Python / Java / cURL onto hljs language ids). Built
- * once at module load — the registry is mutable and reusable.
+ * Map this dialog's `CodeLanguage` discriminator onto the shared
+ * highlighter's language set. `curl` snippets are shell text, so
+ * they ride the `bash` grammar.
  */
-const lowlight = createLowlight(common);
-
-/** Map our `CodeLanguage` discriminator onto an hljs language id. */
-const HLJS_LANGUAGE: Readonly<Record<CodeLanguage, string>> = {
+const HIGHLIGHT_LANGUAGE: Readonly<Record<CodeLanguage, SupportedLanguage>> = {
 	typescript: "typescript",
 	python: "python",
 	java: "java",
@@ -297,43 +296,6 @@ function tabLabel(s: AstraQuerySnapshot): string {
  * Tiny by design — pulling in `hast-util-to-jsx-runtime` would add a
  * dependency for a tree shape that's known and finite here.
  */
-function renderHastChildren(
-	children: readonly (RootContent | ElementContent)[] | undefined,
-): ReactNode {
-	if (!children) return null;
-	// Index keys are safe here: lowlight rebuilds the entire token tree
-	// whenever the input code or language changes, so siblings are
-	// never reordered between renders — they're either re-emitted from
-	// the same source position or replaced wholesale.
-	return children.map((child, idx) => {
-		if (child.type === "text") {
-			// biome-ignore lint/suspicious/noArrayIndexKey: see comment above on `children.map`.
-			return <Fragment key={idx}>{child.value}</Fragment>;
-		}
-		if (child.type === "element") {
-			const className = child.properties?.className;
-			const cn = Array.isArray(className) ? className.join(" ") : undefined;
-			return (
-				// biome-ignore lint/suspicious/noArrayIndexKey: see comment above on `children.map`.
-				<span key={idx} className={cn}>
-					{renderHastChildren(child.children)}
-				</span>
-			);
-		}
-		return null;
-	});
-}
-
-function highlight(code: string, language: CodeLanguage): Root {
-	try {
-		return lowlight.highlight(HLJS_LANGUAGE[language], code);
-	} catch {
-		// Unknown language, malformed input — fall back to a plain-text
-		// hast root so the dialog still renders the snippet.
-		return { type: "root", children: [{ type: "text", value: code }] };
-	}
-}
-
 function CodeBlock({
 	code,
 	language,
@@ -382,9 +344,7 @@ function CodeBlock({
 				className="max-h-[60vh] overflow-auto rounded-md border border-slate-200 bg-slate-900 p-4 text-xs leading-relaxed text-slate-100 dark:border-slate-800 dark:bg-slate-950"
 				data-testid="astra-code-chip-block"
 			>
-				<code className="hljs">
-					{renderHastChildren(highlight(code, language).children)}
-				</code>
+				<HighlightedCode code={code} language={HIGHLIGHT_LANGUAGE[language]} />
 			</pre>
 		</div>
 	);

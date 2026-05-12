@@ -114,10 +114,15 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 			</div>
 
 			{rows.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
-					A knowledge base owns one Astra collection plus the chunking,
-					embedding, and (optionally) reranking services that produce its
-					content. Create the services first, then a KB that binds them.
+				<div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
+					<p>
+						A knowledge base owns one Astra collection plus the chunking,
+						embedding, and (optionally) reranking services that produce its
+						content. Create the services first, then a KB that binds them.
+					</p>
+					<Button variant="brand" size="sm" onClick={() => setCreateOpen(true)}>
+						<Plus className="h-4 w-4" /> Create your first knowledge base
+					</Button>
 				</div>
 			) : (
 				<div className="flex flex-col gap-2">

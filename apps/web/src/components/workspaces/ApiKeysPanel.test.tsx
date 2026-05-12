@@ -72,6 +72,25 @@ describe("ApiKeysPanel", () => {
 		expect(screen.getByRole("dialog")).toHaveTextContent("Create key dialog");
 	});
 
+	it("renders the scope tier as a friendly label, not the raw array", () => {
+		rows = [key({ scopes: ["read", "write"] })];
+		const { unmount } = render(
+			<ApiKeysPanel workspace="00000000-0000-4000-8000-000000000001" />,
+		);
+		// Same label the create-dialog picker uses — keeps the
+		// minting flow and the listing visually consistent.
+		expect(screen.getByText("Read + Write")).toBeInTheDocument();
+		// And the raw scope-array tokens are NOT rendered for the
+		// preset case (the badge collapses to a single chip).
+		expect(screen.queryByText("read")).not.toBeInTheDocument();
+		expect(screen.queryByText("write")).not.toBeInTheDocument();
+		unmount();
+
+		rows = [key({ scopes: ["read"] })];
+		render(<ApiKeysPanel workspace="00000000-0000-4000-8000-000000000001" />);
+		expect(screen.getByText("Read only")).toBeInTheDocument();
+	});
+
 	it("revokes an active key from the confirmation dialog", async () => {
 		revokeMutateAsync.mockResolvedValue(undefined);
 		const user = userEvent.setup();

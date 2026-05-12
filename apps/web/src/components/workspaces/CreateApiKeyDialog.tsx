@@ -1,5 +1,5 @@
 import { AlertTriangle, KeyRound } from "lucide-react";
-import { useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { CopyButton } from "@/components/common/CopyButton";
 import { Button } from "@/components/ui/button";
@@ -23,20 +23,58 @@ import { formatApiError } from "@/lib/api";
  * that consume it do; until then a toggle between "read only" and
  * "read + write" matches what the server accepts.
  */
+/**
+ * `help` is rendered as plain React children (not markdown), so the
+ * shape is a flat list of strings / `<code>` spans. Keeping it in a
+ * data array (rather than literal JSX inside the render) lets the
+ * picker stay a single map over `SCOPE_PRESETS`.
+ */
 const SCOPE_PRESETS = [
 	{
 		id: "read-write" as const,
 		label: "Read + Write",
-		help: "Full access — both retrieval and mutation. Same as keys minted before this picker existed.",
+		help: [
+			"Full access — both retrieval and mutation. Same as keys minted before this picker existed.",
+		],
 		scopes: ["read", "write"] as const,
 	},
 	{
 		id: "read-only" as const,
 		label: "Read only",
-		help: "Retrieval only — `search_kb`, `list_documents`, etc. Reject MCP write tools (`ingest_text`, `delete_document`) and other mutating routes.",
+		help: [
+			"Retrieval only — ",
+			{ code: "search_kb" },
+			", ",
+			{ code: "list_documents" },
+			", etc. Rejects MCP write tools (",
+			{ code: "ingest_text" },
+			", ",
+			{ code: "delete_document" },
+			") and other mutating routes.",
+		],
 		scopes: ["read"] as const,
 	},
 ] as const;
+
+type HelpFragment = string | { readonly code: string };
+
+function renderHelpFragments(fragments: readonly HelpFragment[]): ReactNode {
+	return fragments.map((fragment, idx) => {
+		if (typeof fragment === "string") {
+			// biome-ignore lint/suspicious/noArrayIndexKey: fragments are static literals in SCOPE_PRESETS — order never changes between renders.
+			return <Fragment key={idx}>{fragment}</Fragment>;
+		}
+		return (
+			<code
+				// biome-ignore lint/suspicious/noArrayIndexKey: see above.
+				key={idx}
+				className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+			>
+				{fragment.code}
+			</code>
+		);
+	});
+}
 
 /**
  * Two-phase dialog:
@@ -133,7 +171,7 @@ export function CreateApiKeyDialog({
 						<div className="flex flex-col gap-2">
 							<FieldLabel
 								htmlFor="key-scopes"
-								help="Privilege tiers this key carries. Pick `Read only` for keys that hand out to external agents you don't fully trust; pick `Read + Write` for first-party tooling that ingests or maintains KB content."
+								help="Privilege tiers this key carries. Pick Read only for keys that go to external agents you don't fully trust; pick Read + Write for first-party tooling that ingests or maintains KB content."
 							>
 								Scopes
 							</FieldLabel>
@@ -165,7 +203,7 @@ export function CreateApiKeyDialog({
 												{p.label}
 											</span>
 											<span className="text-xs text-slate-500 dark:text-slate-400">
-												{p.help}
+												{renderHelpFragments(p.help)}
 											</span>
 										</div>
 									</label>
