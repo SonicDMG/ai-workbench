@@ -162,3 +162,65 @@ describe("connect snippets route", () => {
 		expect(body.knowledgeBaseId).toBe(kb);
 	});
 });
+
+describe("connect verify route", () => {
+	test("404 when the workspace does not exist", async () => {
+		const { app } = makeApp({ mcpEnabled: true });
+		const res = await app.request(
+			"/api/v1/workspaces/00000000-0000-0000-0000-000000000000/connect/verify",
+			{ method: "POST" },
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("workspace_not_found");
+	});
+
+	test("returns ok:true with the registered tool list when MCP is on", async () => {
+		const { app } = makeApp({ mcpEnabled: true });
+		const ws = await createWorkspace(app);
+		const res = await app.request(`/api/v1/workspaces/${ws}/connect/verify`, {
+			method: "POST",
+		});
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.ok).toBe(true);
+		expect(body.mcpEnabled).toBe(true);
+		expect(body.error).toBeNull();
+		expect(typeof body.latencyMs).toBe("number");
+		expect(body.latencyMs).toBeGreaterThanOrEqual(0);
+		// The read tools always register. exposeChat is false here so
+		// chat_send is absent; ingestService is wired by the plugin
+		// so the `ingest_text` write tool is present. (`delete_document`
+		// lands in a follow-up PR — add to this set once that merges.)
+		expect(body.tools).toContain("search_kb");
+		expect(body.tools).toContain("list_knowledge_bases");
+		expect(body.tools).toContain("list_documents");
+		expect(body.tools).toContain("list_chats");
+		expect(body.tools).toContain("list_chat_messages");
+		expect(body.tools).toContain("ingest_text");
+		expect(body.tools).not.toContain("chat_send");
+		expect(body.toolCount).toBe(body.tools.length);
+		// The tool list is sorted for stable rendering in the UI.
+		const sorted = [...body.tools].sort((a: string, b: string) =>
+			a.localeCompare(b),
+		);
+		expect(body.tools).toEqual(sorted);
+	});
+
+	test("returns ok:false + mcpEnabled:false when MCP is off", async () => {
+		const { app } = makeApp({ mcpEnabled: false });
+		const ws = await createWorkspace(app);
+		const res = await app.request(`/api/v1/workspaces/${ws}/connect/verify`, {
+			method: "POST",
+		});
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.ok).toBe(false);
+		expect(body.mcpEnabled).toBe(false);
+		expect(body.toolCount).toBe(0);
+		expect(body.tools).toEqual([]);
+		// MCP-off is a legitimate "not wired" state, not a failure —
+		// the UI should render an amber warning, not a red one.
+		expect(body.error).toBeNull();
+	});
+});

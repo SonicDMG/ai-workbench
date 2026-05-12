@@ -2,11 +2,14 @@ import {
 	AlertTriangle,
 	ArrowLeft,
 	BookOpen,
+	CheckCircle2,
 	Database,
 	ExternalLink,
 	KeyRound,
+	Loader2,
 	Plug,
 	Terminal,
+	XCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
@@ -22,10 +25,11 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { useConnectSnippets } from "@/hooks/useConnectSnippets";
+import { useConnectVerify } from "@/hooks/useConnectVerify";
 import { useKnowledgeBases } from "@/hooks/useKnowledgeBases";
 import { useWorkspace } from "@/hooks/useWorkspaces";
 import { ApiError, formatApiError } from "@/lib/api";
-import type { ConnectSnippet } from "@/lib/schemas";
+import type { ConnectSnippet, ConnectVerifyResponse } from "@/lib/schemas";
 
 const ALL_KBS_SENTINEL = "__all__";
 
@@ -117,7 +121,7 @@ export function ConnectPage() {
 				/>
 			) : (
 				<>
-					<EndpointsCard data={snippets.data} />
+					<EndpointsCard data={snippets.data} workspaceId={workspaceId} />
 					<FrameworkTabs
 						active={activeTab}
 						onChange={setActiveTab}
@@ -172,14 +176,26 @@ function ScopePicker({
 
 function EndpointsCard({
 	data,
+	workspaceId,
 }: {
 	data: import("@/lib/schemas").ConnectSnippetsResponse;
+	workspaceId: string;
 }) {
+	const verify = useConnectVerify(workspaceId);
 	return (
 		<Card>
-			<CardHeader className="flex-row items-center gap-3 pb-3">
-				<KeyRound className="h-4 w-4 text-slate-500" />
-				<CardTitle>Endpoints</CardTitle>
+			<CardHeader className="flex-row items-center justify-between gap-3 pb-3">
+				<div className="flex items-center gap-3">
+					<KeyRound className="h-4 w-4 text-slate-500" />
+					<CardTitle>Endpoints</CardTitle>
+				</div>
+				<VerifyButton
+					mcpEnabled={data.mcpEnabled}
+					running={verify.isPending}
+					result={verify.data}
+					transportError={verify.error}
+					onClick={() => verify.mutate()}
+				/>
 			</CardHeader>
 			<CardContent className="flex flex-col gap-3">
 				<EndpointRow
@@ -207,8 +223,131 @@ function EndpointsCard({
 						</div>
 					</div>
 				) : null}
+				{verify.data ? <VerifyOutcome result={verify.data} /> : null}
 			</CardContent>
 		</Card>
+	);
+}
+
+/**
+ * The **Test** button in the Endpoints header. One click runs a
+ * server-side `tools/list` smoke test against the workspace's MCP
+ * server. We surface the outcome inline in the card so the user can
+ * confirm the wire works before pasting a snippet anywhere.
+ *
+ * Renders three states past idle:
+ *   - running  spinner
+ *   - ok       green check + tool count
+ *   - failed   red X
+ *
+ * Failure detail (mcp-off / verify_failed / transport error) lives in
+ * the {@link VerifyOutcome} block below the endpoint rows — the
+ * button itself stays compact so the header doesn't wrap on narrow
+ * viewports.
+ */
+function VerifyButton({
+	mcpEnabled,
+	running,
+	result,
+	transportError,
+	onClick,
+}: {
+	mcpEnabled: boolean;
+	running: boolean;
+	result: ConnectVerifyResponse | undefined;
+	transportError: unknown;
+	onClick: () => void;
+}) {
+	const status = verifyStatus({ running, result, transportError });
+	return (
+		<Button
+			variant="secondary"
+			size="sm"
+			onClick={onClick}
+			disabled={running || !mcpEnabled}
+			title={
+				mcpEnabled
+					? "Run an internal tools/list smoke test"
+					: "Enable MCP in workbench.yaml to run this check"
+			}
+		>
+			{status === "running" ? (
+				<Loader2 className="h-4 w-4 animate-spin" />
+			) : status === "ok" ? (
+				<CheckCircle2 className="h-4 w-4 text-emerald-600" />
+			) : status === "failed" ? (
+				<XCircle className="h-4 w-4 text-red-600" />
+			) : null}
+			{running
+				? "Testing…"
+				: result?.ok
+					? `Reachable · ${result.toolCount} tool${result.toolCount === 1 ? "" : "s"}`
+					: "Test"}
+		</Button>
+	);
+}
+
+type VerifyStatus = "idle" | "running" | "ok" | "failed";
+
+function verifyStatus(args: {
+	running: boolean;
+	result: ConnectVerifyResponse | undefined;
+	transportError: unknown;
+}): VerifyStatus {
+	if (args.running) return "running";
+	if (args.transportError) return "failed";
+	if (!args.result) return "idle";
+	return args.result.ok ? "ok" : "failed";
+}
+
+/**
+ * Detail block under the endpoint rows. Renders only when a verify
+ * call has completed; teases out the three meaningful outcomes:
+ *
+ *   - ok        — green; lists the tools and the round-trip time
+ *   - mcp off   — amber; nudges the operator toward `workbench.yaml`
+ *   - failed    — red;   shows the `error.message` verbatim
+ */
+function VerifyOutcome({ result }: { result: ConnectVerifyResponse }) {
+	if (result.ok) {
+		return (
+			<div className="flex items-start gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">
+				<CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+				<div>
+					<p className="font-medium">
+						MCP endpoint is reachable — {result.toolCount} tool
+						{result.toolCount === 1 ? "" : "s"} registered
+						<span className="ml-1 text-xs text-emerald-700/80 dark:text-emerald-300/80">
+							({result.latencyMs}ms)
+						</span>
+					</p>
+					<p className="mt-0.5 break-words font-mono text-xs text-emerald-800 dark:text-emerald-300">
+						{result.tools.join(", ")}
+					</p>
+				</div>
+			</div>
+		);
+	}
+	if (!result.mcpEnabled) {
+		// The amber "MCP is currently disabled" banner above this row
+		// already explains the state — keep this row terse.
+		return (
+			<div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+				<AlertTriangle className="h-4 w-4 shrink-0" />
+				<span>Test skipped — MCP is disabled on this runtime.</span>
+			</div>
+		);
+	}
+	return (
+		<div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900 dark:border-red-700 dark:bg-red-950/40 dark:text-red-200">
+			<XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+			<div>
+				<p className="font-medium">MCP endpoint test failed.</p>
+				<p className="mt-0.5 font-mono text-xs text-red-800 dark:text-red-300">
+					{result.error?.message ?? "unknown error"}
+				</p>
+			</div>
+		</div>
 	);
 }
 

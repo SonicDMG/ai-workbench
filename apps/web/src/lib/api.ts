@@ -21,6 +21,8 @@ import {
 	ChunkingServiceRecordSchema,
 	type ConnectSnippetsResponse,
 	ConnectSnippetsResponseSchema,
+	type ConnectVerifyResponse,
+	ConnectVerifyResponseSchema,
 	ConversationPageSchema,
 	type ConversationRecord,
 	ConversationRecordSchema,
@@ -367,6 +369,15 @@ export const api = {
 			ConnectSnippetsResponseSchema,
 		);
 	},
+
+	verifyConnectEndpoint: (
+		workspaceId: string,
+	): Promise<ConnectVerifyResponse> =>
+		request(
+			`/workspaces/${workspaceId}/connect/verify`,
+			{ method: "POST" },
+			ConnectVerifyResponseSchema,
+		),
 
 	/* -------- Knowledge bases -------- */
 

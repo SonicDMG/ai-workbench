@@ -1049,6 +1049,23 @@ export type ConnectSnippetsResponse = z.infer<
 	typeof ConnectSnippetsResponseSchema
 >;
 
+// Always 200 from the server. Inspect `ok` + `mcpEnabled` + `error`
+// to pick a UI badge state (green / amber / red).
+export const ConnectVerifyResponseSchema = z.object({
+	ok: z.boolean(),
+	mcpEnabled: z.boolean(),
+	toolCount: z.number().int().nonnegative(),
+	tools: z.array(z.string()),
+	latencyMs: z.number().int().nonnegative(),
+	error: z
+		.object({
+			code: z.string(),
+			message: z.string(),
+		})
+		.nullable(),
+});
+export type ConnectVerifyResponse = z.infer<typeof ConnectVerifyResponseSchema>;
+
 export const KIND_LABELS: Record<WorkspaceKind, string> = {
 	astra: "Astra DB",
 	hcd: "Hyper-Converged Database",

@@ -3680,6 +3680,63 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/api/v1/workspaces/{workspaceId}/connect/verify": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Smoke-test the workspace's MCP endpoint
+		 * @description Runs an internal JSON-RPC `tools/list` against the workspace's MCP server and reports what it finds. Drives the Connect tab's **Test** button — gives the user a one-click confirmation that the wire works before they paste a snippet anywhere. Always 200; failure modes are encoded in the envelope (`ok: false`, structured `error`) so the UI doesn't need to differentiate 500s from legitimate `mcp.enabled: false`.
+		 */
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description Verification outcome. Inspect `ok`, `mcpEnabled`, and `error` to render success / off / failed states. */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ConnectVerifyResponse"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4884,6 +4941,17 @@ export interface components {
 		ConnectSnippetLanguage: "python" | "typescript" | "bash" | "text";
 		/** @enum {string} */
 		ConnectSnippetTransport: "mcp" | "rest" | "manual";
+		ConnectVerifyResponse: {
+			ok: boolean;
+			mcpEnabled: boolean;
+			toolCount: number;
+			tools: string[];
+			latencyMs: number;
+			error: {
+				code: string;
+				message: string;
+			} | null;
+		};
 	};
 	responses: {
 		/** @description Malformed request or validation failure */

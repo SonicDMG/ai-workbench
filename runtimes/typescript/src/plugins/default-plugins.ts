@@ -55,6 +55,21 @@ export function buildDefaultRoutePlugins(
 }
 
 function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
+	// Single `IngestService` instance shared between the MCP plugin
+	// (powers `ingest_text` / `delete_document`) and the Connect
+	// plugin (powers the **Verify** smoke test, which spins up an
+	// in-process MCP server using the same registration code). The
+	// service is stateless above the underlying store / drivers /
+	// jobs / semaphore — sharing avoids two confusingly-identical
+	// instances in production.
+	const ingestService = createIngestService({
+		store: ctx.store,
+		drivers: ctx.drivers,
+		embedders: ctx.embedders,
+		jobs: ctx.jobs,
+		replicaId: ctx.replicaId,
+		ingestSemaphore: ctx.ingestSemaphore,
+	});
 	return [
 		{
 			id: "workspaces",
@@ -155,21 +170,7 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					chatService: ctx.chatService,
 					chatConfig: ctx.chatConfig,
 					mcpConfig: ctx.mcpConfig,
-					// Construct the ingest service here so the MCP write
-					// tool (`ingest_text`) runs the same pipeline as the
-					// REST `POST /ingest` route. IngestService is
-					// stateless above the shared deps; the kb_documents
-					// plugin builds its own instance — both safe, they
-					// only delegate to the underlying store / drivers /
-					// jobs / semaphore which ARE shared.
-					ingestService: createIngestService({
-						store: ctx.store,
-						drivers: ctx.drivers,
-						embedders: ctx.embedders,
-						jobs: ctx.jobs,
-						replicaId: ctx.replicaId,
-						ingestSemaphore: ctx.ingestSemaphore,
-					}),
+					ingestService,
 				}),
 		},
 		{
@@ -179,6 +180,11 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 				connectRoutes({
 					store: ctx.store,
 					mcpConfig: ctx.mcpConfig,
+					drivers: ctx.drivers,
+					embedders: ctx.embedders,
+					chatService: ctx.chatService,
+					chatConfig: ctx.chatConfig,
+					ingestService,
 				}),
 		},
 	];
