@@ -13,11 +13,11 @@ hand-editing placeholders.
 | Framework | Language | Transport | Status |
 |---|---|---|---|
 | [LangGraph](./langgraph.md) | Python | MCP (Streamable HTTP) | ✅ Ready |
-| [CrewAI](./crewai.md) | Python | MCP (Streamable HTTP) | 🟡 Stub |
-| [Google ADK](./google-adk.md) | Python | MCP (Streamable HTTP) | 🟡 Stub |
-| [Microsoft Agent Framework](./microsoft-agent-framework.md) | Python | MCP (Streamable HTTP) | 🟡 Stub |
-| [IBM watsonx Agent Builder](./watsonx.md) | UI / REST | MCP or OpenAPI | 🟡 Stub |
-| [Raw MCP smoke test (curl)](./mcp-raw.md) | Bash | MCP (Streamable HTTP) | 🟡 Stub |
+| [CrewAI](./crewai.md) | Python | MCP (Streamable HTTP) | ✅ Ready |
+| [Google ADK](./google-adk.md) | Python | MCP (Streamable HTTP) | ✅ Ready |
+| [Microsoft Agent Framework](./microsoft-agent-framework.md) | Python (+ .NET) | MCP (Streamable HTTP) | ✅ Ready |
+| [IBM watsonx Agent Builder](./watsonx.md) | UI / REST | MCP or OpenAPI | ✅ Ready |
+| [Raw MCP smoke test (curl)](./mcp-raw.md) | Bash | MCP (Streamable HTTP) | ✅ Ready |
 
 ## Prerequisites
 
@@ -35,20 +35,23 @@ All of the recipes assume:
 
 ## What gets exposed
 
-The MCP façade is deliberately **read-mostly** so an external agent can't
-accidentally drop a KB or burn a card-on-file. The tools it exposes:
+The MCP façade is intentionally bounded — retrieval + a small write
+surface that pairs naturally with it. The tools:
 
-| Tool | What it does |
-|---|---|
-| `list_knowledge_bases` | Discover what's in the workspace. |
-| `list_documents` | Page through documents in a KB. |
-| `search_kb` | Vector / hybrid / rerank retrieval against a KB. |
-| `list_chats`, `list_chat_messages` | Historical conversation context. |
-| `chat_send` (*opt-in*) | Routes a message through the runtime's chat service. |
+| Tool | Kind | What it does |
+|---|---|---|
+| `list_knowledge_bases` | read | Discover what's in the workspace. |
+| `list_documents` | read | Page through documents in a KB. |
+| `search_kb` | read | Vector / hybrid / rerank retrieval against a KB. |
+| `list_chats`, `list_chat_messages` | read | Historical conversation context. |
+| `ingest_text` | write | Append a new document to a KB (same dedup + chunk + embed pipeline as REST `POST /ingest`). |
+| `delete_document` | write | Remove a document and cascade its chunks. Idempotent. |
+| `chat_send` (*opt-in*) | write | Routes a message through the runtime's chat service. |
 
-Write paths (ingest, KB CRUD) stay on the REST API behind dedicated key
-scopes — see the roadmap. The "watsonx → Option B" recipe shows how to wire
-those via the OpenAPI doc when you do need them.
+Larger mutations (KB CRUD, workspace mutation, service CRUD) stay off the
+surface — see the discussion in [`mcp.md`](../mcp.md#why-these-tools-and-not-others).
+The "watsonx → Path B" recipe shows how to wire those via the OpenAPI
+doc when you do need them.
 
 ## A note on transports
 
