@@ -527,7 +527,23 @@ function SnippetView({ snippet }: { snippet: ConnectSnippet }) {
 			</div>
 
 			<div className="relative">
-				<pre className="hljs max-h-[480px] overflow-auto rounded-md border bg-slate-950 px-4 py-3 font-mono text-xs leading-relaxed text-slate-100 dark:border-slate-700">
+				{/*
+				 * Do NOT add the `hljs` class to the <pre>. The theme
+				 * rule in `index.css` is `.hljs { background: transparent
+				 * }`, so putting it on the <pre> voids the
+				 * `bg-slate-{900,950}` we set below — the dark code block
+				 * then renders transparently against the page, which on
+				 * a light-mode page reads as washed-out pastel text on
+				 * white. The `hljs` class belongs only on the inner
+				 * <code>, which `HighlightedCode` already adds for us.
+				 *
+				 * Light-mode background is `slate-900` to match the
+				 * Astra Code modal next door — slightly lighter than the
+				 * dark-mode `slate-950`, which keeps the block from
+				 * looking like a pure-black tile punched out of a white
+				 * card.
+				 */}
+				<pre className="max-h-[480px] overflow-auto rounded-md border border-slate-200 bg-slate-900 px-4 py-3 font-mono text-xs leading-relaxed text-slate-100 dark:border-slate-700 dark:bg-slate-950">
 					<HighlightedCode
 						code={snippet.code}
 						language={mapSnippetLanguage(snippet.language)}

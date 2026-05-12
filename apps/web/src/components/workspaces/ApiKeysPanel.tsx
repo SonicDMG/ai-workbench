@@ -90,16 +90,38 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 					</CardContent>
 				</Card>
 			) : (
-				<div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-					<table className="w-full text-sm">
+				/*
+				 * `overflow-x-auto` (not `overflow-hidden`) on the wrapper
+				 * — the table has 7 columns and lives in the right-rail of
+				 * a 2-column workspace layout, so it WILL spill past its
+				 * parent on narrow viewports. Clipping silently dropped
+				 * the right edge ("Scope" → "SCOR"); scrolling preserves
+				 * every cell and surfaces the overflow as an actual
+				 * scrollbar. `min-w-[640px]` keeps columns from squishing
+				 * the badges into unreadable widths before the scrollbar
+				 * appears. */
+				<div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+					<table className="w-full min-w-[640px] text-sm">
 						<thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
 							<tr>
-								<th className="px-4 py-2 font-medium">Label</th>
-								<th className="px-4 py-2 font-medium">Prefix</th>
-								<th className="px-4 py-2 font-medium">Scopes</th>
-								<th className="px-4 py-2 font-medium">Status</th>
-								<th className="px-4 py-2 font-medium">Last used</th>
-								<th className="px-4 py-2 font-medium">Created</th>
+								<th className="whitespace-nowrap px-4 py-2 font-medium">
+									Label
+								</th>
+								<th className="whitespace-nowrap px-4 py-2 font-medium">
+									Prefix
+								</th>
+								<th className="whitespace-nowrap px-4 py-2 font-medium">
+									Scopes
+								</th>
+								<th className="whitespace-nowrap px-4 py-2 font-medium">
+									Status
+								</th>
+								<th className="whitespace-nowrap px-4 py-2 font-medium">
+									Last used
+								</th>
+								<th className="whitespace-nowrap px-4 py-2 font-medium">
+									Created
+								</th>
 								<th className="px-2 py-2 sr-only">Actions</th>
 							</tr>
 						</thead>
@@ -109,20 +131,22 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 									key={row.keyId}
 									className="text-slate-800 dark:text-slate-100"
 								>
-									<td className="px-4 py-2 font-medium">{row.label}</td>
-									<td className="px-4 py-2 font-mono text-xs text-slate-600 dark:text-slate-400">
+									<td className="whitespace-nowrap px-4 py-2 font-medium">
+										{row.label}
+									</td>
+									<td className="whitespace-nowrap px-4 py-2 font-mono text-xs text-slate-600 dark:text-slate-400">
 										wb_live_{row.prefix}_…
 									</td>
-									<td className="px-4 py-2">
+									<td className="whitespace-nowrap px-4 py-2">
 										<ScopeBadges scopes={row.scopes} />
 									</td>
-									<td className="px-4 py-2">
+									<td className="whitespace-nowrap px-4 py-2">
 										<StatusBadge row={row} />
 									</td>
-									<td className="px-4 py-2 text-slate-600 dark:text-slate-400">
+									<td className="whitespace-nowrap px-4 py-2 text-slate-600 dark:text-slate-400">
 										{row.lastUsedAt ? formatDate(row.lastUsedAt) : "—"}
 									</td>
-									<td className="px-4 py-2 text-slate-600 dark:text-slate-400">
+									<td className="whitespace-nowrap px-4 py-2 text-slate-600 dark:text-slate-400">
 										{formatDate(row.createdAt)}
 									</td>
 									<td className="px-2 py-2 text-right">
@@ -231,7 +255,14 @@ function Badge({
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
+				// `whitespace-nowrap` is the load-bearing class — without
+				// it a narrow column (the API-keys table on a side panel,
+				// the workspace list squeezed by a sidebar) wraps multi-
+				// word labels like "Read only" or "Read + Write" across
+				// two lines inside the pill, which then gets vertically
+				// clipped by the row height. Pills should always be a
+				// single line.
+				"inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
 				styles[tone],
 			)}
 		>
