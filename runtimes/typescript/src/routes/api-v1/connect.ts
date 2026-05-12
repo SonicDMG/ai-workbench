@@ -53,6 +53,7 @@ import {
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
 import type { IngestService } from "../../services/ingest-service.js";
+import { subjectScopesFromAuth } from "./mcp.js";
 
 export interface ConnectRouteDeps {
 	readonly store: ControlPlaneStore;
@@ -234,6 +235,12 @@ export function connectRoutes(deps: ConnectRouteDeps): OpenAPIHono<AppEnv> {
 				chatConfig: deps.chatConfig ?? null,
 				exposeChat: deps.mcpConfig.exposeChat,
 				ingestService: deps.ingestService ?? null,
+				// Verify only exercises `tools/list`; that surface
+				// doesn't trip the write-tool scope gate. We still
+				// project the real subject's scopes onto the in-process
+				// server so the response reflects what the caller would
+				// actually see — keeps the smoke test honest.
+				subjectScopes: subjectScopesFromAuth(c.get("auth")),
 			});
 			const [serverTransport, clientTransport] =
 				InMemoryTransport.createLinkedPair();

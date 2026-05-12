@@ -59,6 +59,33 @@ anonymous callers in. **For any deployment exposing MCP to external
 agents, set `auth.mode: apiKey` (or stricter) and mint a workspace
 API key per agent.**
 
+### Per-tool scopes
+
+Workspace API keys carry a `scopes` field (see
+[API-keys card in the workspace UI](../README.md#current-http-surface)).
+The MCP server enforces it on the **write tools** today:
+
+| Tool | Required scope |
+|---|---|
+| `ingest_text`, `delete_document` | `write` |
+| `search_kb`, `list_*`, `chat_send` | `read` (passes any authenticated caller) |
+
+A key minted with `scopes: ["read"]` will see read tools work
+normally; a write-tool call returns `isError: true` with a JSON body
+\{ `outcome: "denied"`, `code: "scope_required"`, `required: "write"`,
+`subjectScopes`, `message` \} — same shape MCP clients already handle
+for tool failures, so LangGraph / CrewAI / ADK / MAF / watsonx surface
+the denial as a regular tool error, not a transport-level 403.
+
+OIDC + bootstrap operator credentials and anonymous (dev-mode) callers
+have `scopes: null` and pass every gate — the scope check only fires
+for concrete API-key subjects.
+
+Denials are also recorded as `mcp.invoke` audit events with
+`outcome: "denied"` (distinct from generic `failure`) so SIEM rules can
+alert on bursts of scope rejections without parsing tool-specific
+reason strings.
+
 ## Tools
 
 | Name | Args | Returns |
@@ -68,8 +95,8 @@ API key per agent.**
 | `search_kb` | `{ knowledgeBaseId, text? \| vector?, topK?, hybrid?, rerank? }` | JSON array of search hits (`chunkId`, `score`, `documentId`, `content`) |
 | `list_chats` | none | JSON array of chat summaries (`chatId`, `title`, `knowledgeBaseIds`, `createdAt`) |
 | `list_chat_messages` | `{ chatId }` | Oldest-first message log (`messageId`, `role`, `content`, `messageTs`, `metadata`) |
-| `ingest_text` | `{ knowledgeBaseId, text, sourceFilename?, sourceDocId?, metadata?, overwriteOnNameConflict? }` | JSON envelope with one of three `outcome` values: `completed` (new document — `documentId`, `sourceFilename`, `contentHash`, `chunks`), `duplicate` (content-hash match — pipeline did not run; returns the existing `documentId`), or `name_conflict` (`isError: true` — filename matched but bytes differ; retry with `overwriteOnNameConflict: true` or pick a new name). Runs the same dedup + chunk + embed + upsert pipeline as the REST `POST /ingest`. Always synchronous from the MCP caller's POV. |
-| `delete_document` | `{ knowledgeBaseId, documentId }` | JSON object with `outcome`: `deleted` (`documentId`, `chunksDropped`) or `not_found` (no row matched the id — returned without `isError` so speculative cleanup doesn't need to branch). Wraps the same cascade helper the REST `DELETE /documents/{id}` route uses; vector chunks come down first, then the control-plane row. |
+| `ingest_text` | `{ knowledgeBaseId, text, sourceFilename?, sourceDocId?, metadata?, overwriteOnNameConflict? }` | JSON envelope with one of three `outcome` values: `completed` (new document — `documentId`, `sourceFilename`, `contentHash`, `chunks`), `duplicate` (content-hash match — pipeline did not run; returns the existing `documentId`), or `name_conflict` (`isError: true` — filename matched but bytes differ; retry with `overwriteOnNameConflict: true` or pick a new name). Runs the same dedup + chunk + embed + upsert pipeline as the REST `POST /ingest`. Always synchronous from the MCP caller's POV. **Requires the `write` scope on the calling key** — read-only keys see `isError: true` + `outcome: "denied"` instead. |
+| `delete_document` | `{ knowledgeBaseId, documentId }` | JSON object with `outcome`: `deleted` (`documentId`, `chunksDropped`) or `not_found` (no row matched the id — returned without `isError` so speculative cleanup doesn't need to branch). Wraps the same cascade helper the REST `DELETE /documents/{id}` route uses; vector chunks come down first, then the control-plane row. **Requires the `write` scope on the calling key.** |
 | `chat_send` *(opt-in)* | `{ chatId, content }` | The assistant's reply as a single text block. Persists both turns through the runtime's global chat service; the system prompt falls back to `DEFAULT_AGENT_SYSTEM_PROMPT` when `chat.systemPrompt` is unset. |
 
 All tool results are returned as a single MCP `text` content item
@@ -94,12 +121,13 @@ service CRUD) stay off the surface. Reasons:
   `delete_document`. `delete_document` itself is scoped to a single
   document at a time (no "delete by filter" surface) so the radius
   stays predictable.
-- **Auth semantics aren't fully there yet.** The current scoped API
-  key is per-workspace; we have no per-tool scope. Until that lands
-  (planned, see the roadmap), any key with workspace access can call
-  any exposed tool. The write surface is intentionally bounded —
-  `ingest_text`, `delete_document`, and the opt-in `chat_send` — so
-  the upper bound is predictable.
+- **Auth has a coarse two-tier scope today.** Workspace API keys
+  carry `["read"]` or `["read", "write"]`; the write tools
+  (`ingest_text`, `delete_document`) refuse anything without
+  `"write"`. See the **Per-tool scopes** subsection in
+  [Auth](#auth) above for the deny envelope. The split is
+  intentionally narrow — adding `write:ingest` / `write:admin` is an
+  additive change when a use case demands it.
 - **Most useful surface first.** Retrieval is the killer feature for
   an MCP integration; ingestion is the most-asked-for write tool;
   delete pairs naturally with ingest for agents that maintain their

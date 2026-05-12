@@ -66,6 +66,98 @@ import { cascadeDeleteRagDocument } from "../services/document-cascade.js";
 import type { IngestService } from "../services/ingest-service.js";
 import { VERSION } from "../version.js";
 
+/**
+ * Refuse a write-tool invocation when the calling subject doesn't
+ * carry the required scope. Returns an MCP tool error envelope the
+ * caller can return directly from its handler; returns `null` when
+ * the gate passes (so the handler proceeds normally).
+ *
+ * `null` `subjectScopes` means "no scope gate applies" — used for
+ * anonymous (dev mode) and OIDC / bootstrap callers — and always
+ * passes. A concrete array (including `[]`) is enforced.
+ *
+ * The deny envelope keeps the same shape MCP clients already handle
+ * for tool failures (`isError: true` + structured `text` block) so a
+ * read-only key trying to write surfaces in LangGraph / CrewAI / etc.
+ * as a normal tool error, not a transport-level 403. The route layer
+ * still emits an `mcp.invoke` audit event with `outcome: "denied"`
+ * via the `onToolInvoke` hook.
+ */
+/**
+ * Classify the MCP tool-handler result for audit purposes. The SDK's
+ * `{ isError, content }` shape is the contract; we look inside the
+ * text body for the `scope_required` marker {@link denyIfMissingScope}
+ * stamps so a denial reads as `outcome: "denied"` in the audit log
+ * (otherwise it would look like a generic `failure`).
+ */
+function classifyToolResult(result: unknown): "success" | "failure" | "denied" {
+	if (!result || typeof result !== "object") return "success";
+	const obj = result as { isError?: unknown };
+	if (obj.isError !== true) return "success";
+	return extractDenyReason(result) !== null ? "denied" : "failure";
+}
+
+/**
+ * Extract the deny reason from a tool result, if present. Returns
+ * `null` when the result is not a structured denial. Matches the
+ * shape produced by {@link denyIfMissingScope}: a single `text`
+ * content block whose JSON body carries `code: "scope_required"`.
+ */
+function extractDenyReason(result: unknown): string | null {
+	if (!result || typeof result !== "object") return null;
+	const obj = result as {
+		content?: ReadonlyArray<{ type?: string; text?: string }>;
+	};
+	const first = obj.content?.[0];
+	if (!first || first.type !== "text" || !first.text) return null;
+	try {
+		const parsed = JSON.parse(first.text);
+		if (
+			parsed &&
+			typeof parsed === "object" &&
+			parsed.code === "scope_required" &&
+			typeof parsed.required === "string"
+		) {
+			return `scope '${parsed.required}' required`;
+		}
+	} catch {
+		// Body wasn't JSON — not a denial we produced; let the caller
+		// fall back to the generic failure path.
+	}
+	return null;
+}
+
+function denyIfMissingScope(
+	subjectScopes: readonly string[] | null,
+	required: string,
+	toolName: string,
+): {
+	isError: true;
+	content: Array<{ type: "text"; text: string }>;
+} | null {
+	if (subjectScopes === null) return null;
+	if (subjectScopes.includes(required)) return null;
+	return {
+		isError: true,
+		content: [
+			{
+				type: "text" as const,
+				text: JSON.stringify(
+					{
+						outcome: "denied",
+						code: "scope_required",
+						required,
+						subjectScopes: [...subjectScopes],
+						message: `the '${toolName}' tool requires the '${required}' scope; the calling API key has [${subjectScopes.join(", ") || "<empty>"}]. Mint a key with the '${required}' scope to enable this tool.`,
+					},
+					null,
+					2,
+				),
+			},
+		],
+	};
+}
+
 export interface McpServerDeps {
 	readonly store: ControlPlaneStore;
 	readonly drivers: VectorStoreDriverRegistry;
@@ -86,6 +178,26 @@ export interface McpServerDeps {
 	 */
 	readonly ingestService: IngestService | null;
 	/**
+	 * Privilege tiers the caller carries, projected from the request's
+	 * {@link AuthContext}. Used by the write tools (`ingest_text`,
+	 * `delete_document`) to refuse calls from a `read`-only key with a
+	 * structured tool error instead of running the mutation.
+	 *
+	 * Semantics match {@link assertScope} in `auth/authz.ts`:
+	 *
+	 *   - `null`  — no scope gate applies. Used for anonymous (dev mode)
+	 *               and unscoped subjects (OIDC / bootstrap). Write
+	 *               tools run as before.
+	 *   - `[]`    — concrete empty set. Write tools refuse.
+	 *   - `["read", "write"]` — a key that can do both. Write tools run.
+	 *   - `["read"]` — a read-only key. Write tools refuse.
+	 *
+	 * Read tools (`search_kb`, `list_*`) deliberately do not check —
+	 * any authenticated caller that reached the MCP route already
+	 * passed the workspace-scope gate, which is the read floor today.
+	 */
+	readonly subjectScopes: readonly string[] | null;
+	/**
 	 * Optional hook fired around every tool invocation. Used by the
 	 * route layer to emit `mcp.invoke` audit events without coupling
 	 * the MCP server to the audit module — argument payloads are not
@@ -97,7 +209,17 @@ export interface McpServerDeps {
 
 export interface McpToolInvocation {
 	readonly toolName: string;
-	readonly outcome: "success" | "failure";
+	/**
+	 * `success`  — handler returned normally without `isError`.
+	 * `failure`  — handler threw, OR returned `isError: true` with
+	 *              some other failure reason (e.g. name_conflict).
+	 * `denied`   — handler returned an authorization-shaped failure
+	 *              (currently: missing `write` scope on a write tool).
+	 *              Distinguished from `failure` so audit consumers can
+	 *              alert on bursts of denied calls without parsing
+	 *              tool-specific reasons.
+	 */
+	readonly outcome: "success" | "failure" | "denied";
 	readonly reason?: string;
 }
 
@@ -201,8 +323,11 @@ export function buildMcpServer(
 	);
 
 	// Audit-wrap registerTool once so every handler below fires the
-	// optional `onToolInvoke` hook on success/failure without each
-	// call site having to remember.
+	// optional `onToolInvoke` hook on success / failure / denied
+	// without each call site having to remember. Denials are
+	// distinguished from generic failures by the `code: "scope_required"`
+	// marker {@link denyIfMissingScope} stamps into the text body —
+	// keeps the wrap free of any tool-specific knowledge.
 	const onInvoke = deps.onToolInvoke;
 	if (onInvoke) {
 		const original = server.registerTool.bind(server);
@@ -212,7 +337,14 @@ export function buildMcpServer(
 			const wrapped = async (...args: any[]) => {
 				try {
 					const result = await handler(...args);
-					onInvoke({ toolName: name, outcome: "success" });
+					const outcome = classifyToolResult(result);
+					onInvoke({
+						toolName: name,
+						outcome,
+						...(outcome !== "success"
+							? { reason: extractDenyReason(result) ?? "tool returned isError" }
+							: {}),
+					});
 					return result;
 				} catch (err) {
 					const reason = err instanceof Error ? err.message : String(err);
@@ -393,7 +525,12 @@ export function buildMcpServer(
 	);
 
 	if (deps.ingestService) {
-		registerIngestTextTool(server, workspaceId, deps.ingestService);
+		registerIngestTextTool(
+			server,
+			workspaceId,
+			deps.ingestService,
+			deps.subjectScopes,
+		);
 		registerDeleteDocumentTool(server, workspaceId, deps);
 	}
 
@@ -438,13 +575,14 @@ function registerIngestTextTool(
 	server: McpServer,
 	workspaceId: string,
 	ingestService: IngestService,
+	subjectScopes: readonly string[] | null,
 ): void {
 	server.registerTool(
 		"ingest_text",
 		{
 			title: "Ingest plain text into a knowledge base",
 			description:
-				"Append a new document to a knowledge base by passing raw text. Runs the same dedup + chunk + embed + upsert pipeline as the REST `POST /ingest` route. Use this to let an agent record material it has just gathered (notes, transcripts, summaries) without leaving the MCP session. Returns the resulting documentId + chunk count, or signals duplicate / name_conflict when the pipeline short-circuits.",
+				"Append a new document to a knowledge base by passing raw text. Runs the same dedup + chunk + embed + upsert pipeline as the REST `POST /ingest` route. Use this to let an agent record material it has just gathered (notes, transcripts, summaries) without leaving the MCP session. Returns the resulting documentId + chunk count, or signals duplicate / name_conflict when the pipeline short-circuits. **Requires the `write` scope on the calling key.**",
 			inputSchema: {
 				knowledgeBaseId: z.string().uuid(),
 				text: z.string().min(1),
@@ -462,6 +600,8 @@ function registerIngestTextTool(
 			metadata,
 			overwriteOnNameConflict,
 		}) => {
+			const denial = denyIfMissingScope(subjectScopes, "write", "ingest_text");
+			if (denial) return denial;
 			// IngestService.ingest takes the wire `KbIngestRequest`
 			// shape. We forward what MCP gave us and let the service do
 			// its own hash + collision pre-checks; no duplication of
@@ -592,13 +732,19 @@ function registerDeleteDocumentTool(
 		{
 			title: "Delete a document from a knowledge base",
 			description:
-				'Remove a document and cascade its chunks from the KB\'s vector collection. Idempotent — re-deleting a missing document returns `outcome: "not_found"` rather than erroring, so an agent can run speculative deletes without branching. Wraps the same cascade helper the REST `DELETE /documents/{id}` route uses, so behavior is identical across the two front doors.',
+				'Remove a document and cascade its chunks from the KB\'s vector collection. Idempotent — re-deleting a missing document returns `outcome: "not_found"` rather than erroring, so an agent can run speculative deletes without branching. Wraps the same cascade helper the REST `DELETE /documents/{id}` route uses, so behavior is identical across the two front doors. **Requires the `write` scope on the calling key.**',
 			inputSchema: {
 				knowledgeBaseId: z.string().uuid(),
 				documentId: z.string().uuid(),
 			},
 		},
 		async ({ knowledgeBaseId, documentId }) => {
+			const denial = denyIfMissingScope(
+				deps.subjectScopes,
+				"write",
+				"delete_document",
+			);
+			if (denial) return denial;
 			const ctx = await resolveKb(deps.store, workspaceId, knowledgeBaseId);
 			const { deleted, chunksDropped } = await cascadeDeleteRagDocument({
 				store: deps.store,

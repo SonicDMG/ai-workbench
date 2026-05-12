@@ -50,6 +50,13 @@ async function makeMcpHarness(opts?: {
 	 * `tools/list` — the existing read-only test still passes.
 	 */
 	withIngest?: boolean;
+	/**
+	 * Scope set to project onto the in-process MCP server. `undefined`
+	 * defaults to `null` (no scope gate — legacy / pre-scopes
+	 * behavior); pass `["read"]` to model a read-only API-key caller
+	 * for the new write-tool gate tests.
+	 */
+	subjectScopes?: readonly string[] | null;
 }): Promise<McpHarness> {
 	const store = new MemoryControlPlaneStore();
 	const driver = new MockVectorStoreDriver();
@@ -78,6 +85,7 @@ async function makeMcpHarness(opts?: {
 		chatConfig: TEST_CHAT_CONFIG,
 		exposeChat: opts?.exposeChat ?? false,
 		ingestService,
+		subjectScopes: opts?.subjectScopes ?? null,
 	});
 
 	const [serverTransport, clientTransport] =
@@ -540,6 +548,119 @@ describe("MCP server tools", () => {
 			};
 			expect(payload.outcome).toBe("not_found");
 			expect(payload.documentId).toBe(created.documentId);
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("ingest_text refuses when caller is missing the `write` scope", async () => {
+		const h = await makeMcpHarness({
+			withIngest: true,
+			subjectScopes: ["read"],
+		});
+		try {
+			// No KB needs to exist: the scope gate fires BEFORE the
+			// pipeline touches the store, so the tool can refuse a
+			// caller using a read-only key even on a fresh workspace.
+			const result = (await h.client.callTool({
+				name: "ingest_text",
+				arguments: {
+					knowledgeBaseId: "11111111-2222-4333-8444-555555555555",
+					text: "should never persist",
+				},
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+			expect(result.isError).toBe(true);
+			const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+				outcome: string;
+				code: string;
+				required: string;
+				subjectScopes: readonly string[];
+			};
+			expect(payload.outcome).toBe("denied");
+			expect(payload.code).toBe("scope_required");
+			expect(payload.required).toBe("write");
+			expect(payload.subjectScopes).toEqual(["read"]);
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("delete_document refuses when caller is missing the `write` scope", async () => {
+		const h = await makeMcpHarness({
+			withIngest: true,
+			subjectScopes: ["read"],
+		});
+		try {
+			const result = (await h.client.callTool({
+				name: "delete_document",
+				arguments: {
+					knowledgeBaseId: "11111111-2222-4333-8444-555555555555",
+					documentId: "11111111-2222-4333-8444-666666666666",
+				},
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+			expect(result.isError).toBe(true);
+			const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+				outcome: string;
+				code: string;
+				required: string;
+			};
+			expect(payload.outcome).toBe("denied");
+			expect(payload.code).toBe("scope_required");
+			expect(payload.required).toBe("write");
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("ingest_text passes when the caller carries the `write` scope", async () => {
+		const h = await makeMcpHarness({
+			withIngest: true,
+			subjectScopes: ["read", "write"],
+		});
+		try {
+			const { knowledgeBaseId } = await makeKbForIngest(
+				h.store,
+				h.driver,
+				h.workspaceId,
+			);
+			const result = await h.client.callTool({
+				name: "ingest_text",
+				arguments: { knowledgeBaseId, text: "explicit write scope" },
+			});
+			const payload = JSON.parse(textContent(result as never)) as {
+				outcome: string;
+				documentId: string;
+			};
+			expect(payload.outcome).toBe("completed");
+			expect(typeof payload.documentId).toBe("string");
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("null subjectScopes (OIDC / bootstrap / anonymous dev mode) bypasses the scope gate", async () => {
+		// Same posture as the existing ingest tests — they default to
+		// `null` and rely on the read tools + write tools all running.
+		// This test is the explicit assertion that the no-gate case
+		// keeps the legacy behavior so the new gate doesn't break dev.
+		const h = await makeMcpHarness({
+			withIngest: true,
+			subjectScopes: null,
+		});
+		try {
+			const { knowledgeBaseId } = await makeKbForIngest(
+				h.store,
+				h.driver,
+				h.workspaceId,
+			);
+			const result = await h.client.callTool({
+				name: "ingest_text",
+				arguments: { knowledgeBaseId, text: "null scopes works" },
+			});
+			const payload = JSON.parse(textContent(result as never)) as {
+				outcome: string;
+			};
+			expect(payload.outcome).toBe("completed");
 		} finally {
 			await h.cleanup();
 		}

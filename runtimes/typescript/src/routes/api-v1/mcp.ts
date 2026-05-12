@@ -15,6 +15,7 @@
 
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Context } from "hono";
+import type { AuthContext } from "../../auth/types.js";
 import type { ChatService } from "../../chat/types.js";
 import type { ChatConfig, McpConfig } from "../../config/schema.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
@@ -25,6 +26,29 @@ import { ApiError } from "../../lib/errors.js";
 import type { AppEnv } from "../../lib/types.js";
 import { handleMcpRequest } from "../../mcp/server.js";
 import type { IngestService } from "../../services/ingest-service.js";
+
+/**
+ * Project the request's {@link AuthContext} onto the scope set the
+ * MCP server will use to gate write tools. Mirrors the semantics in
+ * `auth/authz.ts#assertScope`:
+ *
+ *   - missing context (middleware skipped this route) → `null`
+ *     (no gate)
+ *   - anonymous → `null` (gate already cleared by `anonymousPolicy`)
+ *   - subject with `scopes: null` (OIDC / bootstrap) → `null`
+ *   - subject with a concrete `scopes` array (API key) → that array
+ *
+ * Exported for reuse in the Connect tab's verify route, which builds
+ * an in-process MCP server with the same gate semantics.
+ */
+export function subjectScopesFromAuth(
+	auth: AuthContext | undefined,
+): readonly string[] | null {
+	if (!auth || auth.anonymous) return null;
+	const scopes = auth.subject?.scopes;
+	if (scopes === null || scopes === undefined) return null;
+	return scopes;
+}
 
 export interface McpRouteDeps {
 	readonly store: ControlPlaneStore;
@@ -76,6 +100,12 @@ export function mcpRoutes(deps: McpRouteDeps): OpenAPIHono<AppEnv> {
 				404,
 			);
 		}
+		// Project the caller's scope set onto the MCP server so write
+		// tools (`ingest_text`, `delete_document`) can refuse a
+		// read-only key. `null` from `subjectScopesFromAuth` means
+		// "no scope gate applies" — anonymous (dev mode) and OIDC /
+		// bootstrap subjects pass through to the legacy behavior.
+		const subjectScopes = subjectScopesFromAuth(c.get("auth"));
 		return handleMcpRequest({
 			workspaceId,
 			request: c.req.raw,
@@ -87,6 +117,7 @@ export function mcpRoutes(deps: McpRouteDeps): OpenAPIHono<AppEnv> {
 				chatConfig: deps.chatConfig,
 				exposeChat: deps.mcpConfig.exposeChat,
 				ingestService: deps.ingestService,
+				subjectScopes,
 				onToolInvoke: (info) => {
 					audit(c, {
 						action: "mcp.invoke",
