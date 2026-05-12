@@ -24,7 +24,7 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { workspaceRouteAuthz } from "./auth/authz.js";
+import { mutatingRouteWriteScope, workspaceRouteAuthz } from "./auth/authz.js";
 import { csrfOriginCheck } from "./auth/csrf.js";
 import { ForbiddenError, UnauthorizedError } from "./auth/errors.js";
 import { authMiddleware } from "./auth/middleware.js";
@@ -433,6 +433,15 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const workspaceAuthz = workspaceRouteAuthz();
 	app.use("/api/v1/workspaces/:workspaceId", workspaceAuthz);
 	app.use("/api/v1/workspaces/:workspaceId/*", workspaceAuthz);
+
+	// Per-tool scope gate on the workspace-scoped REST surface:
+	// mutating methods (POST / PATCH / PUT / DELETE) require the
+	// `write` scope. A small allowlist covers the read-shaped POSTs
+	// (search, test-connection, verify, conversations/messages, mcp).
+	// See `mutatingRouteWriteScope` in `auth/authz.ts` for the rules.
+	const writeScopeGate = mutatingRouteWriteScope();
+	app.use("/api/v1/workspaces/:workspaceId", writeScopeGate);
+	app.use("/api/v1/workspaces/:workspaceId/*", writeScopeGate);
 
 	app.route(
 		"/",

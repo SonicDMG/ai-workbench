@@ -108,6 +108,48 @@ silently escalate by minting a fresh tenant outside its scope and
 operating against it. Anonymous callers and unscoped subjects
 (operator tokens) pass through.
 
+### Privilege scopes (read / write)
+
+Workspace API keys carry a second axis besides workspace membership:
+a privilege-scope list. Keys minted from the workspace UI today
+carry `["read"]` (default) or `["read", "write"]`; OIDC and bootstrap
+subjects carry `scopes: null`, which implicitly grants every scope.
+
+Two layers enforce it:
+
+1. **MCP tool gate** — write tools (`ingest_text`, `delete_document`)
+   call `assertScope(c, "write")` inside the tool handler and return
+   `isError: true` with `outcome: "denied"` for a read-only caller.
+   See [MCP per-tool scopes](mcp.md#per-tool-scopes).
+2. **REST mutation gate** — `mutatingRouteWriteScope()` is mounted on
+   every `/api/v1/workspaces/{w}/*` route, right after
+   `workspaceRouteAuthz`. The middleware:
+   - Lets `GET` / `HEAD` / `OPTIONS` through unconditionally — read
+     methods can't mutate.
+   - Lets a small allowlist of "POST-as-read" paths through:
+     `/test-connection`, `/connect/verify`, `/mcp` (JSON-RPC entry
+     point; tool-level scope check handles individual writes),
+     `/search` (body-shaped query), and anything under
+     `/conversations` (chat session state, mirroring the ungated
+     `chat_send` MCP tool — conversations and their messages aren't
+     KB content).
+   - Calls `assertScope(c, "write")` for every other write-shaped
+     request (POST/PATCH/PUT/DELETE). A read-only key on any KB CRUD,
+     document register / patch / delete, ingest, agent CRUD, service
+     CRUD, or `POST /api-keys` (issuance is itself a privilege
+     escalation in disguise) gets `403 forbidden` with `message:
+     "authenticated subject is missing required scope 'write'"`.
+
+Anonymous callers (when `anonymousPolicy: allow`) and `scopes: null`
+subjects bypass both gates — `anonymousPolicy` is the only knob that
+decides whether anonymous reaches the route at all, and unscoped
+subjects are the operator-key escape hatch.
+
+The gate is mount-based rather than per-route, so a freshly added
+mutating route inherits the check automatically. New "POST-as-read"
+endpoints (a future smoke-test or probe surface) add a path suffix to
+the allowlist instead of editing every call site.
+
 ### Header format
 
 `Authorization: Bearer <token>` (RFC 6750). Any other scheme

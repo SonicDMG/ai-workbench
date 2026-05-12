@@ -144,3 +144,70 @@ export function requireScope(scope: string): MiddlewareHandler<AppEnv> {
 		await next();
 	};
 }
+
+/**
+ * Workspace-route middleware: reject mutating REST requests when the
+ * caller is missing the `write` scope. Mounts after
+ * {@link workspaceRouteAuthz} so workspace membership has already
+ * cleared.
+ *
+ * The gate fires only on **write-shaped** methods (POST/PATCH/PUT/
+ * DELETE). It then consults a small allowlist of "POST as read"
+ * paths that semantically don't mutate KB state:
+ *
+ *   - `/test-connection`     workspace-connection probe (read-only).
+ *   - `/connect/verify`      MCP smoke test (read-only).
+ *   - `/mcp`                 JSON-RPC entry point — the tool-level
+ *                            scope gate in `mcp/server.ts` covers
+ *                            individual write tools; gating the route
+ *                            here would block `search_kb` calls from
+ *                            a read-only key.
+ *   - `/search`              KB search; body-shaped so it has to be
+ *                            POST, but semantically a query.
+ *   - `/conversations` …     chat session state. Conversations and
+ *                            their messages aren't KB content; we
+ *                            treat them like the `chat_send` MCP tool
+ *                            (ungated). Includes `…/messages` and
+ *                            `…/messages/stream`.
+ *
+ * Anything else (KB CRUD, document register / patch / delete, ingest,
+ * agent CRUD, service CRUD, key issuance / revocation, …) goes
+ * through {@link assertScope} and fails 403 for a `["read"]` key.
+ *
+ * Scope is workspace-scoped routes only — workspace create
+ * (`POST /api/v1/workspaces`) is gated separately by
+ * {@link assertPlatformAccess} inside the handler.
+ */
+export function mutatingRouteWriteScope(): MiddlewareHandler<AppEnv> {
+	return async (c, next) => {
+		const method = c.req.method.toUpperCase();
+		if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+			await next();
+			return;
+		}
+		if (isReadShapedRoute(c.req.path)) {
+			await next();
+			return;
+		}
+		assertScope(c, "write");
+		await next();
+	};
+}
+
+/**
+ * Path tests for the {@link mutatingRouteWriteScope} allowlist. The
+ * mount restricts the patterns to `/api/v1/workspaces/{w}/...` so
+ * each suffix is a meaningful identifier — collisions with
+ * unrelated paths are not a concern given the surface today.
+ */
+function isReadShapedRoute(path: string): boolean {
+	if (path.endsWith("/test-connection")) return true;
+	if (path.endsWith("/connect/verify")) return true;
+	if (path.endsWith("/mcp")) return true;
+	if (path.endsWith("/search")) return true;
+	// `/conversations` covers POST /conversations (create), PATCH /
+	// DELETE on a specific conversation, and POST /messages
+	// + /messages/stream — chat session, not KB content.
+	if (path.includes("/conversations")) return true;
+	return false;
+}
