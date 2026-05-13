@@ -139,10 +139,9 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 		`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/search`,
 		{ data: { vector: [1, 0, 0, 0], topK: 10 } },
 	);
-	expect(
-		vectorSearch.ok(),
-		`vector search: ${await vectorSearch.text()}`,
-	).toBe(true);
+	expect(vectorSearch.ok(), `vector search: ${await vectorSearch.text()}`).toBe(
+		true,
+	);
 	const vectorHits = (await vectorSearch.json()) as Array<{ id: string }>;
 	const vectorIds = vectorHits.map((h) => h.id);
 	expect(vectorIds).toContain("alpha");
