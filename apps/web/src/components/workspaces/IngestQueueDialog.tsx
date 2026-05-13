@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -10,6 +11,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { documentQueryKey } from "@/hooks/useDocuments";
 import { useAsyncIngestFile, useJobPoller } from "@/hooks/useIngest";
 import { formatApiError } from "@/lib/api";
 import { isIngestableFile } from "@/lib/files";
@@ -69,6 +71,27 @@ interface PendingConflict {
  */
 
 const MAX_BYTES = 25 * 1024 * 1024;
+const AUTO_CLOSE_AFTER_COMPLETION_MS = 1200;
+
+interface QueueCounts {
+	readonly queued: number;
+	readonly running: number;
+	readonly succeeded: number;
+	readonly skipped: number;
+	readonly failed: number;
+}
+
+function completionDescription(counts: QueueCounts): string {
+	const parts: string[] = [];
+	if (counts.succeeded > 0) parts.push(plural(counts.succeeded, "ingested"));
+	if (counts.skipped > 0) parts.push(plural(counts.skipped, "skipped"));
+	if (counts.failed > 0) parts.push(plural(counts.failed, "failed"));
+	return parts.join(", ");
+}
+
+function plural(count: number, label: string): string {
+	return `${count} ${label}`;
+}
 
 export function IngestQueueDialog({
 	workspace,
@@ -91,7 +114,11 @@ export function IngestQueueDialog({
 	const [pendingConflict, setPendingConflict] =
 		useState<PendingConflict | null>(null);
 	const [applyToAll, setApplyToAll] = useState<ApplyToAll>(null);
+	const [batchStarted, setBatchStarted] = useState(false);
+	const completionAnnouncedRef = useRef(false);
+	const autoCloseTimerRef = useRef<number | null>(null);
 
+	const qc = useQueryClient();
 	const ingest = useAsyncIngestFile(workspace, knowledgeBase.knowledgeBaseId);
 	// Drives only the *active* row's poller. Each row shows a live
 	// snapshot from this hook while it's the head of the queue. We
@@ -121,14 +148,25 @@ export function IngestQueueDialog({
 	const ingestMutateAsyncRef = useRef(ingest.mutateAsync);
 	ingestMutateAsyncRef.current = ingest.mutateAsync;
 
-	function close(): void {
+	const clearAutoCloseTimer = useCallback((): void => {
+		if (autoCloseTimerRef.current === null) return;
+		window.clearTimeout(autoCloseTimerRef.current);
+		autoCloseTimerRef.current = null;
+	}, []);
+
+	const close = useCallback((): void => {
+		clearAutoCloseTimer();
 		setItems([]);
 		setActiveId(null);
 		setDraining(false);
+		setBatchStarted(false);
 		setPendingConflict(null);
 		setApplyToAll(null);
+		completionAnnouncedRef.current = false;
 		onOpenChange(false);
-	}
+	}, [clearAutoCloseTimer, onOpenChange]);
+
+	useEffect(() => clearAutoCloseTimer, [clearAutoCloseTimer]);
 
 	function handleOpenChange(next: boolean): void {
 		// Don't lose in-flight queue state if the user clicks outside while
@@ -138,57 +176,63 @@ export function IngestQueueDialog({
 		else onOpenChange(true);
 	}
 
-	const enqueue = useCallback((files: FileList | File[]): void => {
-		const accepted: QueueItem[] = [];
-		const rejected: { name: string; reason: string }[] = [];
-		for (const file of Array.from(files)) {
-			// `webkitRelativePath` is empty for plain file picks; non-empty
-			// only for the directory picker (and drag-drop'd folders).
-			const relative = file.webkitRelativePath || file.name;
-			if (!isIngestableFile(file)) {
-				rejected.push({ name: relative, reason: "unsupported file type" });
-				continue;
-			}
-			if (file.size > MAX_BYTES) {
-				rejected.push({
-					name: relative,
-					reason: `${(file.size / 1024 / 1024).toFixed(1)} MB > ${MAX_BYTES / 1024 / 1024} MB cap`,
+	const enqueue = useCallback(
+		(files: FileList | File[]): void => {
+			const accepted: QueueItem[] = [];
+			const rejected: { name: string; reason: string }[] = [];
+			for (const file of Array.from(files)) {
+				// `webkitRelativePath` is empty for plain file picks; non-empty
+				// only for the directory picker (and drag-drop'd folders).
+				const relative = file.webkitRelativePath || file.name;
+				if (!isIngestableFile(file)) {
+					rejected.push({ name: relative, reason: "unsupported file type" });
+					continue;
+				}
+				if (file.size > MAX_BYTES) {
+					rejected.push({
+						name: relative,
+						reason: `${(file.size / 1024 / 1024).toFixed(1)} MB > ${MAX_BYTES / 1024 / 1024} MB cap`,
+					});
+					continue;
+				}
+				accepted.push({
+					id: `${relative}-${file.size}-${file.lastModified}`,
+					file,
+					relativePath: relative,
+					status: "queued",
+					jobId: null,
+					processed: 0,
+					total: null,
+					errorMessage: null,
+					chunkCount: null,
+					snapshots: [],
 				});
-				continue;
 			}
-			accepted.push({
-				id: `${relative}-${file.size}-${file.lastModified}`,
-				file,
-				relativePath: relative,
-				status: "queued",
-				jobId: null,
-				processed: 0,
-				total: null,
-				errorMessage: null,
-				chunkCount: null,
-				snapshots: [],
-			});
-		}
-		if (accepted.length > 0) {
-			setItems((cur) => {
-				// Skip duplicates (same id) so re-dropping a folder doesn't
-				// double-queue.
-				const have = new Set(cur.map((i) => i.id));
-				return [...cur, ...accepted.filter((a) => !have.has(a.id))];
-			});
-		}
-		if (rejected.length > 0) {
-			toast.warning(
-				`Skipped ${rejected.length} file${rejected.length === 1 ? "" : "s"}`,
-				{
-					description: rejected
-						.slice(0, 6)
-						.map((r) => `${r.name}: ${r.reason}`)
-						.join("\n"),
-				},
-			);
-		}
-	}, []);
+			if (accepted.length > 0) {
+				clearAutoCloseTimer();
+				completionAnnouncedRef.current = false;
+				setBatchStarted(false);
+				setItems((cur) => {
+					// Skip duplicates (same id) so re-dropping a folder doesn't
+					// double-queue.
+					const have = new Set(cur.map((i) => i.id));
+					return [...cur, ...accepted.filter((a) => !have.has(a.id))];
+				});
+			}
+			if (rejected.length > 0) {
+				toast.warning(
+					`Skipped ${rejected.length} file${rejected.length === 1 ? "" : "s"}`,
+					{
+						description: rejected
+							.slice(0, 6)
+							.map((r) => `${r.name}: ${r.reason}`)
+							.join("\n"),
+					},
+				);
+			}
+		},
+		[clearAutoCloseTimer],
+	);
 
 	function removeItem(id: string): void {
 		setItems((cur) => cur.filter((i) => i.id !== id || i.status === "running"));
@@ -456,10 +500,12 @@ export function IngestQueueDialog({
 	}, [activeId, poll.data]);
 
 	function startDrain(): void {
+		completionAnnouncedRef.current = false;
+		setBatchStarted(true);
 		setDraining(true);
 	}
 
-	const counts = useMemo(() => {
+	const counts: QueueCounts = useMemo(() => {
 		const c = { queued: 0, running: 0, succeeded: 0, skipped: 0, failed: 0 };
 		for (const i of items) c[i.status] += 1;
 		return c;
@@ -474,6 +520,50 @@ export function IngestQueueDialog({
 				i.status === "skipped",
 		);
 	const anyQueued = counts.queued > 0;
+
+	useEffect(() => {
+		if (!open) return;
+		if (!batchStarted) return;
+		if (!allDone) return;
+		if (activeId !== null) return;
+		if (pendingConflict !== null) return;
+		if (kickInFlight.current) return;
+		if (completionAnnouncedRef.current) return;
+
+		completionAnnouncedRef.current = true;
+		setBatchStarted(false);
+		void qc.invalidateQueries({
+			queryKey: documentQueryKey(workspace, knowledgeBase.knowledgeBaseId),
+		});
+
+		const description = completionDescription(counts);
+		if (counts.failed > 0) {
+			toast.error("Ingest completed with failures", { description });
+			return;
+		}
+
+		toast.success(
+			counts.succeeded > 0 ? "Ingest complete" : "No new files ingested",
+			{ description },
+		);
+		clearAutoCloseTimer();
+		autoCloseTimerRef.current = window.setTimeout(() => {
+			autoCloseTimerRef.current = null;
+			close();
+		}, AUTO_CLOSE_AFTER_COMPLETION_MS);
+	}, [
+		open,
+		batchStarted,
+		allDone,
+		activeId,
+		pendingConflict,
+		qc,
+		workspace,
+		knowledgeBase.knowledgeBaseId,
+		counts,
+		close,
+		clearAutoCloseTimer,
+	]);
 
 	return (
 		<>

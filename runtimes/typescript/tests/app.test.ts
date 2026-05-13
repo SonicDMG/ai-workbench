@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { DataAPIResponseError } from "@datastax/astra-db-ts";
 import { describe, expect, test, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { ApiKeyVerifier } from "../src/auth/apiKey/verifier.js";
@@ -21,6 +22,29 @@ import { makeFakeEmbedderFactory } from "./helpers/embedder.js";
 async function json(res: Response): Promise<any> {
 	// biome-ignore lint/suspicious/noExplicitAny: test helper returns untyped JSON
 	return (await res.json()) as any;
+}
+
+function makeDataApiError(message: string): DataAPIResponseError {
+	const err = Object.create(
+		DataAPIResponseError.prototype,
+	) as DataAPIResponseError;
+	Object.assign(err as unknown as Record<string, unknown>, {
+		message,
+		name: "DataAPIResponseError",
+		rawResponse: {
+			errors: [
+				{
+					family: "REQUEST",
+					scope: "TABLE",
+					errorCode: "TABLE_NOT_FOUND",
+					id: "00000000-0000-4000-8000-000000000000",
+					title: "Table not found",
+					message,
+				},
+			],
+		},
+	});
+	return err;
 }
 
 function auditEvents(
@@ -359,6 +383,21 @@ describe("operational routes", () => {
 		} finally {
 			errorSpy.mockRestore();
 		}
+	});
+
+	test("Data API errors surface their message in the canonical envelope", async () => {
+		const { app } = makeApp();
+		const message =
+			"The command tried to get a Collection or Table wb_config_workspaces that does not exist in the Keyspace default_keyspace.";
+		app.get("/astra-boom", () => {
+			throw makeDataApiError(message);
+		});
+
+		const res = await app.request("/astra-boom");
+		expect(res.status).toBe(502);
+		const body = await json(res);
+		expect(body.error.code).toBe("data_api_error");
+		expect(body.error.message).toBe(message);
 	});
 
 	test("oversized API bodies are rejected before route handling", async () => {

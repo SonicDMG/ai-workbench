@@ -11,7 +11,7 @@ import { expect, test } from "@playwright/test";
 //   1. API: workspace + chunking + embedding services + KB.
 //   2. UI: open the KB explorer, open the ingest dialog, drop a
 //      single text file, wait for the row to land in the "completed"
-//      state, dismiss the dialog.
+//      state, and let the dialog auto-close.
 //   3. Verify: the document table on the explorer shows the file.
 //
 // Memory backend, no real LLM / embedding provider — embedding
@@ -135,17 +135,11 @@ test("ingest dialog: drop a text file → see it land in the document table", as
 		timeout: 60_000,
 	});
 
-	// 6. Dismiss + verify the document table on the explorer page picks
-	// it up (the dialog invalidates the documents query on close).
-	// The dialog renders two "Close" buttons (footer + corner X);
-	// `.first()` picks the footer one.
-	await page
-		.getByRole("dialog")
-		.getByRole("button", { name: /^Close$/i })
-		.first()
-		.click();
+	// 6. The dialog now auto-closes after a clean terminal batch and
+	// invalidates the document list, so the explorer page should pick
+	// up the ingested document without a manual Close click.
 	await expect(
 		page.getByRole("heading", { name: /Ingest into/i }),
-	).not.toBeVisible();
+	).not.toBeVisible({ timeout: 10_000 });
 	await expect(page.getByText(/intro\.md/).first()).toBeVisible();
 });

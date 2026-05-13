@@ -6,295 +6,197 @@
 [![Node 22+](https://img.shields.io/badge/node-%3E=22-blue)](./.nvmrc)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
-AI Workbench is a self-hosted product surface for building, inspecting,
-and operating retrieval-backed AI applications on **DataStax Astra**.
-It gives teams one place to manage workspaces, knowledge bases,
-chunking / embedding / reranking services, document ingest, API keys,
-and retrieval experiments.
+AI Workbench is a self-hosted app for building and operating
+retrieval-backed AI applications on DataStax Astra. It gives you a
+single place to create workspaces, organize knowledge bases, configure
+agents, manage service settings, issue workspace API keys, and try Astra
+Data API commands from the browser.
 
-Under the product UI is a stable HTTP runtime. The **TypeScript
-runtime is the production ship path** — it bundles with the UI in one
-Docker image and is the only runtime that implements the full
-`/api/v1/*` contract today. Language-native "green box" runtimes for
-**Python (FastAPI) and Java (Spring Boot) are preview scaffolds**:
-they boot, serve operational endpoints, and answer every `/api/v1/*`
-route with HTTP 501 until handlers are implemented. They live under
-[`runtimes/`](runtimes/) so the cross-runtime contract is testable
-end-to-end as the implementations land. See
-[`runtimes/README.md`](runtimes/README.md) for the per-runtime status
-table.
+![AI Workbench workspace overview](docs/assets/workbench-workspace.png)
 
-## At a glance
+## What You Can Do
 
-- **Workspace command center.** Workspaces isolate knowledge bases,
-  execution services, documents, jobs, credentials, and API keys.
-- **Knowledge bases as first-class.** A KB owns its Astra collection
-  end-to-end and binds the chunking + embedding + (optional)
-  reranking services that produce its content. The collection is
-  auto-provisioned on create.
-- **Knowledge operations.** Ingest raw text or files into a KB,
-  track sync/async job state, and let the KB's bound services drive
-  chunking and embedding.
-- **Retrieval playground.** Run text, vector, hybrid, and rerank
-  searches in the browser against real workspace data.
-- **Production-friendly controls.** Start in memory, switch to file
-  storage for single-node deployments, or use Astra Data API tables for
-  a durable control plane.
-- **Technical spine intact.** One `/api/v1/*` contract, direct Astra
-  SDK usage, secrets by reference, and fixture-enforced conformance.
-  The TypeScript runtime ships today; Python and Java runtimes are
-  preview scaffolds working toward parity.
+- **Create workspaces** for Astra databases, local mock backends, and
+  future backend kinds.
+- **Build knowledge bases** that own their collections, ingest files,
+  and bind to chunking, embedding, and reranking services.
+- **Configure agents** with personas, retrieval defaults, and LLM
+  service bindings.
+- **Use the Playground** to run Data API collection and table commands,
+  inspect results, and copy equivalent TypeScript, Python, Java, or
+  cURL examples.
+- **Expose workspace context** through API keys, the HTTP API, and the
+  optional MCP surface.
 
-## Architecture
-
-```
-                   ┌───────────────────────────────────────────┐
-                   │               WorkBench UI                │
-                   │                                           │
-                   │   /playground   /ingest   (agents, MCP)   │
-                   └─────────────────────┬─────────────────────┘
-                                         │
-                                    BACKEND_URL
-                                         │
-            ┌────────────────────────────┼────────────────────────────┐
-            ▼                            ▼                            ▼
-   ┌──────────────────┐       ┌──────────────────┐         ┌──────────────────┐
-   │  TS runtime      │       │  Python runtime  │         │  Java runtime    │
-   │  (production,    │       │  (preview        │         │  (preview        │
-   │   embedded       │       │   scaffold —     │         │   scaffold —     │
-   │   with UI)       │       │   FastAPI, 501s) │         │   Boot, 501s)    │
-   │                  │       │                  │         │                  │
-   │  /api/v1/*       │       │  /api/v1/*       │         │  /api/v1/*       │
-   └────────┬─────────┘       └────────┬─────────┘         └────────┬─────────┘
-            │                          │                            │
-            └──────────────── same HTTP contract ───────────────────┘
-                                       │
-                                       ▼ (per-runtime Astra SDK)
-                        ┌──────────────────────────────────┐
-                        │   Astra Data API                 │
-                        │     Tables (control plane):      │
-                        │       wb_workspaces              │
-                        │       wb_config_knowledge_       │
-                        │         bases_by_workspace       │
-                        │       wb_config_chunking/        │
-                        │         embedding/reranking      │
-                        │         _service_by_workspace    │
-                        │       wb_rag_documents_          │
-                        │         by_knowledge_base        │
-                        │     Collections (data plane):    │
-                        │       <kb vectorCollection>      │
-                        │       (one per knowledge base)   │
-                        └──────────────────────────────────┘
-```
-
-See [`docs/architecture.md`](docs/architecture.md) for the full model.
-
-## Quickstart
+## Run Locally
 
 ### Prerequisites
 
-- **Node.js 22+** (the runtime targets the LTS line; `package.json`
-  pins `engines.node >=22`). Older 21.x will work for the in-memory
-  dev loop because we rely on `process.loadEnvFile`, which landed in
-  21.7 — but CI, the Docker image, and conformance all run on 22.
-- **npm** (ships with Node).
-- **Optional:** Docker, an Astra account + `astra` CLI profile if
-  you want to swap the in-memory control plane for Astra.
+- Node.js 22+
+- npm
+- Optional: an Astra account and the `astra` CLI if you want the app to
+  discover your database defaults automatically
 
-### Run it
+### Start The App
 
 ```bash
-# First-run install (root devDeps + TS runtime + web UI).
-npm run setup                          # or: make setup
-
-# Build the latest UI and boot the runtime that serves it.
-npm start                              # or: make start
-                                       # → http://localhost:8080
-
-# Hit it.
-curl http://localhost:8080/healthz     # {"status":"ok"}
-curl http://localhost:8080/docs        # Scalar-rendered API reference
+npm run setup
+npm start
 ```
 
-`npm start` runs `npm run build:web && npm run dev` — Vite produces
-`apps/web/dist/`, the runtime auto-detects it, and the same port
-serves the UI at `/`, the JSON API at `/api/v1/*`, and the reference
-UI at `/docs`. One process, one URL.
+Then open [http://localhost:8080](http://localhost:8080).
 
-The `npm run *` scripts at root delegate into
-[`runtimes/typescript/`](runtimes/typescript/). You can also `cd`
-into that directory and work there directly.
+`npm start` builds the web UI and starts the default TypeScript runtime.
+One process serves:
 
-Other useful scripts:
+- the app at `/`
+- the JSON API at `/api/v1/*`
+- the API reference at `/docs`
 
-| Command | What it does |
+For UI development with live reload, use two terminals:
+
+```bash
+npm run dev
+npm run dev:web
+```
+
+The Vite app runs on [http://localhost:5173](http://localhost:5173) and
+proxies API calls to the runtime on `:8080`.
+
+## First Tour
+
+1. **Create or select a workspace.** Astra workspaces can use explicit
+   endpoint/token references, or values discovered from the `astra` CLI.
+2. **Add a knowledge base.** Bind it to the workspace's chunking and
+   embedding services, then ingest files from the knowledge-base page.
+3. **Create agents.** Start from the default templates or create your
+   own persona, then chat against the workspace's knowledge.
+4. **Open Playground.** For Astra workspaces, choose `Collection` or
+   `Table`, select a command, edit the request JSON, run it, and copy
+   client code.
+5. **Tune settings.** Services, LLM providers, credentials, and API keys
+   live in workspace settings so the main workspace page stays focused.
+
+![AI Workbench Playground](docs/assets/workbench-playground.png)
+
+## Useful Commands
+
+| Command | Purpose |
 |---|---|
-| `npm run dev` | API only, watch mode. Use when you don't need the UI. |
-| `npm run dev:web` | Vite dev server on `:5173` with `/api/*` proxied to `:8080`. Pair with `npm run dev` in another terminal for live UI reload. |
-| `npm run check` | Lint + typecheck + tests + build (the same gate CI runs). |
+| `npm run setup` | Install root, TypeScript runtime, and web UI dependencies. |
+| `npm start` | Build the UI and start the runtime on `:8080`. |
+| `npm run dev` | Start the API/runtime only, in watch mode. |
+| `npm run dev:web` | Start the Vite UI on `:5173` with API proxying. |
+| `npm run check` | Run linting, typechecks, tests, and build gates. |
+| `npm run test:web` | Run the web UI test suite. |
+| `npm test` | Run the TypeScript runtime tests. |
 
-Switching to an Astra-backed control plane is a YAML change —
-see [`docs/configuration.md`](docs/configuration.md). If you have
-the [`astra` CLI](https://github.com/datastax/astra-cli) installed
-and a profile configured, the runtime can auto-fill
-`ASTRA_DB_APPLICATION_TOKEN` / `ASTRA_DB_API_ENDPOINT` at startup —
-see [`docs/astra-cli.md`](docs/astra-cli.md).
+## Configuration
 
-## Current HTTP surface
+The default dev config lives at
+[`runtimes/typescript/examples/workbench.yaml`](runtimes/typescript/examples/workbench.yaml).
+At startup the runtime chooses a control-plane backend:
 
-All routes documented at `/docs` (Scalar UI) and
-`/api/v1/openapi.json` (machine-readable).
+- Astra Data API tables when Astra endpoint and token values are
+  available, including values discovered from `astra` CLI profiles
+- local file storage when Astra credentials are not available
+- in-memory storage when explicitly configured for tests or throwaway
+  demos
 
-### Operational (unversioned)
+See [`docs/configuration.md`](docs/configuration.md) for the full
+`workbench.yaml` reference, [`docs/astra-cli.md`](docs/astra-cli.md) for
+CLI discovery, and [`docs/production.md`](docs/production.md) before
+exposing a runtime beyond localhost.
 
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/` | Service banner |
-| `GET` | `/healthz` | Liveness probe |
-| `GET` | `/readyz` | Readiness + workspace count |
-| `GET` | `/version` | Build metadata |
-| `GET` | `/features` | Runtime feature flags (chat, MCP, auth posture) |
-| `GET` | `/metrics` | Prometheus exposition (request counters + duration histogram, ingest semaphore gauges, rate-limit rejections) |
-| `GET` | `/astra-cli` | Auto-detected `astra` CLI defaults the UI uses to pre-fill workspace onboarding |
-| `GET` | `/astra-cli/profiles` | Available `astra` CLI profiles + databases (live shellout) |
-| `GET` | `/docs` | Scalar-rendered API reference |
-| `GET` | `/api/v1/openapi.json` | Generated OpenAPI 3.1 document |
+## Technical Notes
 
-### `/api/v1/*`
+The app is designed to be usable first and inspectable second. The
+details below are here when you need to understand or extend the system.
 
-> All paths below are relative to the `/api/v1` prefix — e.g. `workspaces` resolves to `/api/v1/workspaces`. Stripping the prefix from each row keeps the Path column narrow enough that the Purpose column has room to breathe.
+<details>
+<summary>Runtime model</summary>
 
-| Method | Path | Purpose |
-|---|---|---|
-| `GET / POST` | `workspaces` | List / create workspaces |
-| `GET / PATCH / DELETE` | `workspaces/{w}` | Workspace CRUD (DELETE cascades) |
-| `POST` | `workspaces/{w}/test-connection` | Run a live workspace connection check |
-| `GET` | `workspaces/{w}/adoptable-collections` | Discover Astra collections in the workspace's keyspace that aren't yet bound to a KB (drives the "attach existing collection" path in the UI) |
-| `GET / POST` | `workspaces/{w}/knowledge-bases` | List / create knowledge bases (POST auto-provisions the underlying vector collection, or attaches a pre-existing one when `attach: true`) |
-| `GET / PATCH / DELETE` | `workspaces/{w}/knowledge-bases/{kb}` | KB CRUD (DELETE drops the collection + cascades RAG documents) |
-| `GET / POST` | `workspaces/{w}/knowledge-bases/{kb}/documents` | List / register a document in a KB |
-| `GET / PATCH / DELETE` | `workspaces/{w}/knowledge-bases/{kb}/documents/{d}` | Document metadata CRUD (DELETE cascades chunks in the KB's collection) |
-| `GET` | `workspaces/{w}/knowledge-bases/{kb}/documents/{d}/chunks` | List the chunks under a document |
-| `GET / POST` | `workspaces/{w}/knowledge-bases/{kb}/filters` | List / create knowledge filters scoped to a KB |
-| `GET / PATCH / DELETE` | `workspaces/{w}/knowledge-bases/{kb}/filters/{filterId}` | Knowledge-filter CRUD |
-| `POST` | `workspaces/{w}/knowledge-bases/{kb}/ingest` | Sync ingest (chunk → embed → upsert → register Document); JSON body |
-| `POST` | `workspaces/{w}/knowledge-bases/{kb}/ingest?async=true` | Same pipeline, returns 202 + job pointer |
-| `POST` | `workspaces/{w}/knowledge-bases/{kb}/ingest/file` | Multipart ingest (PDF / DOCX / XLSX / text); accepts `?async=true` and a `parser=native\|docling\|auto` form field |
-| `POST` | `workspaces/{w}/knowledge-bases/{kb}/records` | Upsert vector or text records (text → server-side `$vectorize` when supported, otherwise client-side embed) |
-| `DELETE` | `workspaces/{w}/knowledge-bases/{kb}/records/{rid}` | Delete one |
-| `POST` | `workspaces/{w}/knowledge-bases/{kb}/search` | KB-scoped search (vector / text, optional hybrid + rerank) |
-| `GET / POST / PATCH / DELETE` | `workspaces/{w}/chunking-services` | Chunking-service CRUD |
-| `GET / POST / PATCH / DELETE` | `workspaces/{w}/embedding-services` | Embedding-service CRUD |
-| `GET / POST / PATCH / DELETE` | `workspaces/{w}/reranking-services` | Reranking-service CRUD |
-| `GET` | `workspaces/{w}/jobs/{jobId}` | Poll an async-ingest job |
-| `GET` | `workspaces/{w}/jobs/{jobId}/events` | SSE stream of job updates until terminal state |
-| `GET / POST / PATCH / DELETE` | `workspaces/{w}/llm-services` | LLM-service CRUD (workspace-scoped chat-completion executors) |
-| `GET / POST / PATCH / DELETE` | `workspaces/{w}/agents` | User-defined agent CRUD — each carries persona, RAG defaults, and an optional `llmServiceId` |
-| `GET` | `workspaces/{w}/agent-templates` | Catalog of one-click agent templates (Bobby / Maven / Quill / Sage) |
-| `POST` | `workspaces/{w}/agents/from-template` | Instantiate a catalog template as a new agent in the workspace |
-| `GET / POST / PATCH / DELETE` | `workspaces/{w}/agents/{a}/conversations` | Per-agent conversation CRUD |
-| `GET` | `workspaces/{w}/agents/{a}/conversations/{c}/messages` | Conversation history, oldest-first |
-| `POST` | `workspaces/{w}/agents/{a}/conversations/{c}/messages` | Send a message; sync reply with retrieval-grounded chat-completion |
-| `POST` | `workspaces/{w}/agents/{a}/conversations/{c}/messages/stream` | Same flow as SSE — emits `user-message`, `token` deltas, optional `token-reset` + `tool-call` + `tool-result` per tool-use iteration, and terminal `done` / `error` |
-| `GET / POST / DELETE / OPTIONS` | `workspaces/{w}/mcp` | Model Context Protocol Streamable-HTTP façade (optional, `mcp.enabled: true`) — exposes the workspace as MCP tools for external agents |
-| `GET / POST` | `workspaces/{w}/api-keys` | List / issue workspace API keys |
-| `DELETE` | `workspaces/{w}/api-keys/{keyId}` | Revoke a workspace API key |
+The TypeScript runtime is the production path today. It serves the UI,
+implements the full `/api/v1/*` contract, and is the runtime bundled
+into the Docker image.
 
-### `/auth/*` (browser OIDC login, optional)
+Python and Java runtimes live under [`runtimes/`](runtimes/) as preview
+green-box scaffolds. They boot, expose operational endpoints, and return
+HTTP 501 for versioned API routes until their handlers reach parity.
+The shared conformance harness keeps the contract testable across
+language implementations.
 
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/auth/config` | Tells the UI which credential surfaces to render |
-| `GET` | `/auth/login` | 302 to the IdP's authorization endpoint (PKCE) |
-| `GET` | `/auth/callback` | Exchanges code for tokens, sets signed session cookie |
-| `GET` | `/auth/me` | Current session subject + access-token `expiresAt` + `canRefresh` |
-| `POST` | `/auth/refresh` | Silent refresh — swaps the cookie's refresh_token at the IdP without a redirect |
-| `POST` | `/auth/logout` | Clears the session cookie |
+</details>
 
-See [`docs/auth.md`](docs/auth.md) for the threat model and rollout
-phases.
+<details>
+<summary>Architecture</summary>
+
+```text
+Workbench UI
+  |
+  | BACKEND_URL
+  v
+TypeScript runtime
+  |
+  | /api/v1/*
+  v
+Control plane
+  |-- memory, file, or Astra Data API tables
+  |
+  v
+Data plane
+  |-- Astra collections owned by knowledge bases
+  |-- Astra tables and collections addressed by Playground commands
+```
+
+For the full model, see [`docs/architecture.md`](docs/architecture.md).
+
+</details>
+
+<details>
+<summary>Project layout</summary>
+
+```text
+ai-workbench/
+├── apps/web/                 # Vite + React UI
+├── runtimes/
+│   ├── typescript/           # Default production runtime
+│   ├── python/               # FastAPI preview runtime
+│   └── java/                 # Spring Boot preview runtime
+├── conformance/              # Cross-runtime contract harness
+├── docs/                     # Product, architecture, and ops docs
+├── package.json              # Root orchestration scripts
+└── biome.json                # Shared lint/format config
+```
+
+</details>
 
 ## Documentation
 
-| Document | Purpose |
-|----------|---------|
-| [`docs/overview.md`](docs/overview.md) | Product overview, workflows, quickstart path |
-| [`docs/architecture.md`](docs/architecture.md) | System model, components, data flow |
-| [`docs/api-spec.md`](docs/api-spec.md) | HTTP API contract narrative |
-| [`docs/auth.md`](docs/auth.md) | `/api/v1/*` auth middleware, OIDC login, silent refresh, threat model |
-| [`docs/audit.md`](docs/audit.md) | Structured audit events for sensitive operations |
-| [`docs/configuration.md`](docs/configuration.md) | `workbench.yaml` schema reference |
-| [`docs/production.md`](docs/production.md) | Production hardening checklist |
-| [`docs/workspaces.md`](docs/workspaces.md) | Workspace model, scoping, cascade semantics |
-| [`docs/green-boxes.md`](docs/green-boxes.md) | Multi-runtime "green box" architecture |
-| [`docs/playground.md`](docs/playground.md) | Playground UX, text/vector dispatch, hybrid + rerank, ingest dialog |
-| [`docs/agents.md`](docs/agents.md) | User-defined agents: personas, RAG defaults, per-agent LLM service binding, and the conversation + message routes |
-| [`docs/mcp.md`](docs/mcp.md) | Model Context Protocol façade — expose a workspace as MCP tools for external agents |
-| [`docs/astra-cli.md`](docs/astra-cli.md) | astra-cli auto-detection of Astra credentials at runtime startup |
-| [`docs/conformance.md`](docs/conformance.md) | Cross-runtime contract testing |
-| [`docs/cross-replica-jobs.md`](docs/cross-replica-jobs.md) | Design note for cross-replica job pub/sub + in-flight resume (proposed) |
-| [`docs/route-plugins.md`](docs/route-plugins.md) | Design note for the in-runtime route-plugin registry (scaffold shipped) |
-| [`docs/roadmap.md`](docs/roadmap.md) | Phased delivery plan and open questions |
-| [`docs/adr/`](docs/adr/) | Architecture Decision Records — the *why* behind structural choices |
-| [`runtimes/typescript/examples/workbench.yaml`](runtimes/typescript/examples/workbench.yaml) | Annotated sample config (plus `workbench.production.yaml`, `workbench.memory.yaml` variants) |
-| [`apps/web/README.md`](apps/web/README.md) | Web UI quickstart, bundle layout, test commands |
-| [`runtimes/README.md`](runtimes/README.md) | Index of language-native runtimes |
-| [`conformance/README.md`](conformance/README.md) | Conformance harness overview |
-| [`site/README.md`](site/README.md) | Landing page + docs site (VitePress, deployed to GitHub Pages on every push that touches `docs/**`) |
+| Document | Start here when you need... |
+|---|---|
+| [`docs/overview.md`](docs/overview.md) | A product-level walkthrough. |
+| [`docs/workspaces.md`](docs/workspaces.md) | Workspace semantics, scoping, and cascade behavior. |
+| [`docs/agents.md`](docs/agents.md) | Agent personas, RAG defaults, LLM bindings, and chat routes. |
+| [`docs/playground.md`](docs/playground.md) | Playground workflow and UX notes. |
+| [`docs/mcp.md`](docs/mcp.md) | The MCP facade for external agents. |
+| [`docs/configuration.md`](docs/configuration.md) | `workbench.yaml` configuration details. |
+| [`docs/auth.md`](docs/auth.md) | API keys, OIDC, sessions, and auth rollout notes. |
+| [`docs/api-spec.md`](docs/api-spec.md) | HTTP API contract narrative. |
+| [`docs/conformance.md`](docs/conformance.md) | Cross-runtime contract testing. |
+| [`runtimes/README.md`](runtimes/README.md) | Runtime status by language. |
+| [`apps/web/README.md`](apps/web/README.md) | Web UI development details. |
 
-## Project layout
-
-```
-ai-workbench/
-├── package.json                      # Root orchestration + Biome
-├── biome.json                        # Shared lint/format config
-├── runtimes/                         # N language-native runtimes (green boxes)
-│   ├── README.md
-│   ├── typescript/                   # Default runtime — embedded with the UI
-│   │   ├── src/
-│   │   │   ├── root.ts               # Process entry point
-│   │   │   ├── app.ts                # Hono app factory
-│   │   │   ├── config/               # workbench.yaml loader + schema
-│   │   │   ├── control-plane/        # Backend-agnostic store (memory/file/astra)
-│   │   │   ├── drivers/              # Vector-store drivers (mock/astra)
-│   │   │   ├── astra-client/         # astra-db-ts wrapper for wb_* tables
-│   │   │   ├── secrets/              # SecretResolver + env/file providers
-│   │   │   └── routes/
-│   │   │       ├── operational.ts
-│   │   │       └── api-v1/
-│   │   ├── tests/                    # Vitest suite + conformance drift guard
-│   │   ├── scripts/
-│   │   ├── examples/workbench.yaml
-│   │   ├── package.json
-│   │   ├── tsconfig.json
-│   │   └── Dockerfile
-│   ├── python/                       # Python runtime (FastAPI, scaffold)
-│   │   ├── src/workbench/
-│   │   ├── tests/
-│   │   ├── pyproject.toml
-│   │   └── README.md
-│   └── java/                         # Java runtime (Spring Boot, scaffold)
-│       ├── src/main/java/com/datastax/aiworkbench/
-│       ├── src/test/java/com/datastax/aiworkbench/
-│       ├── build.gradle.kts
-│       └── README.md
-├── conformance/                      # Cross-runtime contract harness
-│   ├── scenarios.json
-│   ├── scenarios.md
-│   ├── fixtures/                     # Expected normalized HTTP responses
-│   ├── mock-astra/                   # Deterministic Astra stand-in
-│   ├── normalize.mjs
-│   └── runner.mjs
-└── docs/                             # Narrative documentation
-```
+The generated API reference is also available from a running app at
+[`/docs`](http://localhost:8080/docs), with the machine-readable OpenAPI
+document at `/api/v1/openapi.json`.
 
 ## Contributing
 
-Setup, dev loops, PR expectations, and the rules for changing the
-cross-runtime API contract live in [`CONTRIBUTING.md`](CONTRIBUTING.md).
-Security issues use the private channel in
-[`SECURITY.md`](SECURITY.md).
+Setup notes, PR expectations, and contract-change rules live in
+[`CONTRIBUTING.md`](CONTRIBUTING.md). Security issues use the private
+channel described in [`SECURITY.md`](SECURITY.md).
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT. See [`LICENSE`](LICENSE).

@@ -17,7 +17,8 @@ import { PlaygroundPage } from "@/pages/PlaygroundPage";
 import { WorkspacesPage } from "@/pages/WorkspacesPage";
 
 // Workspaces is the landing route; Playground stays eager because it is
-// part of the KB workflow and should swap in cleanly from the explorer.
+// a compact workspace-level tool and should swap in cleanly from the
+// workspace header.
 // The two heavier flow pages stay lazy because they pull in react-hook-form
 // + zod, which is what the bundle-split work (#36/#37) was actually trying
 // to keep off first paint.
@@ -27,6 +28,11 @@ const OnboardingPage = lazy(() =>
 const WorkspaceDetailPage = lazy(() =>
 	import("@/pages/WorkspaceDetailPage").then((m) => ({
 		default: m.WorkspaceDetailPage,
+	})),
+);
+const WorkspaceSettingsPage = lazy(() =>
+	import("@/pages/WorkspaceSettingsPage").then((m) => ({
+		default: m.WorkspaceSettingsPage,
 	})),
 );
 const KnowledgeBaseExplorerPage = lazy(() =>
@@ -90,6 +96,10 @@ function RoutedView() {
 						path="/workspaces/:workspaceId"
 						element={<WorkspaceDetailPage />}
 					/>
+					<Route
+						path="/workspaces/:workspaceId/settings"
+						element={<WorkspaceSettingsPage />}
+					/>
 					<Route path="/workspaces/:workspaceId/chat" element={<ChatPage />} />
 					<Route
 						path="/workspaces/:workspaceId/agents"
@@ -100,14 +110,13 @@ function RoutedView() {
 						element={<ConnectPage />}
 					/>
 					<Route
+						path="/workspaces/:workspaceId/playground"
+						element={<PlaygroundPage />}
+					/>
+					<Route
 						path="/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId"
 						element={<KnowledgeBaseExplorerPage />}
 					/>
-					<Route
-						path="/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId/playground"
-						element={<PlaygroundPage />}
-					/>
-					<Route path="/playground" element={<PlaygroundPage />} />
 					<Route path="*" element={<Navigate to="/" replace />} />
 				</Routes>
 			</Suspense>

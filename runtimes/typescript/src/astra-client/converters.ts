@@ -324,8 +324,8 @@ export function knowledgeBaseFromRow(
 		// the original behavior at the time those rows were written.
 		owned: row.owned ?? true,
 		lexical: {
-			enabled: row.lexical_enabled,
-			analyzer: row.lexical_analyzer,
+			enabled: row.lexical_enabled ?? false,
+			analyzer: row.lexical_analyzer ?? null,
 			options: asPlainStringMap(row.lexical_options),
 		},
 		createdAt: row.created_at,

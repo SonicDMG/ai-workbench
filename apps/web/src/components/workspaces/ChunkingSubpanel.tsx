@@ -14,11 +14,13 @@ import {
 	useChunkingServices,
 	useCreateChunkingService,
 	useDeleteChunkingService,
+	useUpdateChunkingService,
 } from "@/hooks/useServices";
 import { formatApiError } from "@/lib/api";
 import type {
 	ChunkingServiceRecord,
 	CreateChunkingServiceInput,
+	UpdateChunkingServiceInput,
 } from "@/lib/schemas";
 import {
 	CHUNKING_ENGINES,
@@ -47,6 +49,7 @@ export function ChunkingSubpanel({ workspace }: { workspace: string }) {
 	const del = useDeleteChunkingService(workspace);
 	const [open, setOpen] = useState(false);
 	const [createOpen, setCreateOpen] = useState(false);
+	const [editing, setEditing] = useState<ChunkingServiceRecord | null>(null);
 	const {
 		presetId,
 		draft,
@@ -131,6 +134,7 @@ export function ChunkingSubpanel({ workspace }: { workspace: string }) {
 					title={s.name}
 					subtitle={`${s.engine}${s.strategy ? ` / ${s.strategy}` : ""}`}
 					status={s.status}
+					onEdit={() => setEditing(s)}
 					onDelete={async () => {
 						try {
 							await del.mutateAsync(s.chunkingServiceId);
@@ -213,6 +217,93 @@ export function ChunkingSubpanel({ workspace }: { workspace: string }) {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+			{editing ? (
+				<EditChunkingDialog
+					workspace={workspace}
+					service={editing}
+					onClose={() => setEditing(null)}
+				/>
+			) : null}
 		</ServiceCard>
+	);
+}
+
+function EditChunkingDialog({
+	workspace,
+	service,
+	onClose,
+}: {
+	workspace: string;
+	service: ChunkingServiceRecord;
+	onClose: () => void;
+}) {
+	const update = useUpdateChunkingService(workspace, service.chunkingServiceId);
+	const [draft, setDraft] = useState(() => ({
+		name: service.name,
+		engine: service.engine,
+		strategy: service.strategy ?? "",
+	}));
+
+	async function submit(): Promise<void> {
+		const patch: UpdateChunkingServiceInput = {
+			name: draft.name.trim(),
+			engine: draft.engine.trim(),
+			strategy: draft.strategy.trim() || null,
+		};
+		try {
+			await update.mutateAsync(patch);
+			toast.success(`'${patch.name}' updated`);
+			onClose();
+		} catch (err) {
+			toast.error("Couldn't save changes", {
+				description: formatApiError(err),
+			});
+		}
+	}
+
+	const submitDisabled =
+		update.isPending || !draft.name.trim() || !draft.engine.trim();
+
+	return (
+		<Dialog open onOpenChange={(v) => (!v ? onClose() : undefined)}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Edit chunking service</DialogTitle>
+					<DialogDescription>{service.name}</DialogDescription>
+				</DialogHeader>
+				<div className="flex flex-col gap-3">
+					<Field
+						label="Name"
+						help="Shown when choosing how a knowledge base splits documents."
+						id="edit-chunk-name"
+						value={draft.name}
+						onChange={(v) => setDraft((d) => ({ ...d, name: v }))}
+					/>
+					<Field
+						label="Engine"
+						help="The chunking family, such as langchain_ts or docling."
+						id="edit-chunk-engine"
+						value={draft.engine}
+						onChange={(v) => setDraft((d) => ({ ...d, engine: v }))}
+					/>
+					<Field
+						label="Strategy"
+						help="Optional splitting behavior inside the selected engine."
+						id="edit-chunk-strategy"
+						value={draft.strategy}
+						onChange={(v) => setDraft((d) => ({ ...d, strategy: v }))}
+						placeholder="recursive"
+					/>
+				</div>
+				<DialogFooter>
+					<Button variant="ghost" onClick={onClose} disabled={update.isPending}>
+						Cancel
+					</Button>
+					<Button variant="brand" onClick={submit} disabled={submitDisabled}>
+						{update.isPending ? "Saving…" : "Save changes"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }

@@ -1,9 +1,9 @@
-import { Plus, RefreshCw, Trash2 } from "lucide-react";
+import { KeyRound, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	Dialog,
 	DialogContent,
@@ -54,16 +54,25 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 	const activeCount = rows.filter((r) => r.revokedAt === null).length;
 
 	return (
-		<div className="flex flex-col gap-4">
-			<div className="flex items-start justify-between gap-3 flex-wrap">
-				<p className="text-xs text-slate-500 leading-relaxed dark:text-slate-400">
-					Bearer tokens; sent as{" "}
-					<code className="font-mono">Authorization: Bearer wb_live_…</code>.
-					{rows.length === 0
-						? " No keys yet."
-						: ` ${activeCount} active · ${rows.length} total.`}
-				</p>
-				<div className="flex items-center gap-2 shrink-0">
+		<Card className="overflow-hidden shadow-sm">
+			<CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 bg-slate-50/70 p-4 dark:bg-slate-900/60">
+				<div className="flex min-w-0 items-start gap-3">
+					<SectionIcon>
+						<KeyRound className="h-4 w-4" />
+					</SectionIcon>
+					<div className="min-w-0">
+						<CardTitle className="text-base">API keys</CardTitle>
+						<p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+							Bearer tokens; sent as{" "}
+							<code className="font-mono">Authorization: Bearer wb_live_…</code>
+							.
+							{rows.length === 0
+								? " No keys yet."
+								: ` ${activeCount} active · ${rows.length} total.`}
+						</p>
+					</div>
+				</div>
+				<div className="flex shrink-0 items-center justify-end gap-2">
 					<Button
 						variant="ghost"
 						size="icon"
@@ -80,94 +89,92 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 						New key
 					</Button>
 				</div>
-			</div>
-
-			{rows.length === 0 ? (
-				<Card>
-					<CardContent className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+			</CardHeader>
+			<CardContent className="p-4 pt-3">
+				{rows.length === 0 ? (
+					<div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
 						No keys yet. Create one to let a client authenticate against this
 						workspace.
-					</CardContent>
-				</Card>
-			) : (
-				/*
-				 * `overflow-x-auto` (not `overflow-hidden`) on the wrapper
-				 * — the table has 7 columns and lives in the right-rail of
-				 * a 2-column workspace layout, so it WILL spill past its
-				 * parent on narrow viewports. Clipping silently dropped
-				 * the right edge ("Scope" → "SCOR"); scrolling preserves
-				 * every cell and surfaces the overflow as an actual
-				 * scrollbar. `min-w-[640px]` keeps columns from squishing
-				 * the badges into unreadable widths before the scrollbar
-				 * appears. */
-				<div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-					<table className="w-full min-w-[640px] text-sm">
-						<thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-							<tr>
-								<th className="whitespace-nowrap px-4 py-2 font-medium">
-									Label
-								</th>
-								<th className="whitespace-nowrap px-4 py-2 font-medium">
-									Prefix
-								</th>
-								<th className="whitespace-nowrap px-4 py-2 font-medium">
-									Scopes
-								</th>
-								<th className="whitespace-nowrap px-4 py-2 font-medium">
-									Status
-								</th>
-								<th className="whitespace-nowrap px-4 py-2 font-medium">
-									Last used
-								</th>
-								<th className="whitespace-nowrap px-4 py-2 font-medium">
-									Created
-								</th>
-								<th className="px-2 py-2 sr-only">Actions</th>
-							</tr>
-						</thead>
-						<tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-							{rows.map((row) => (
-								<tr
-									key={row.keyId}
-									className="text-slate-800 dark:text-slate-100"
-								>
-									<td className="whitespace-nowrap px-4 py-2 font-medium">
-										{row.label}
-									</td>
-									<td className="whitespace-nowrap px-4 py-2 font-mono text-xs text-slate-600 dark:text-slate-400">
-										wb_live_{row.prefix}_…
-									</td>
-									<td className="whitespace-nowrap px-4 py-2">
-										<ScopeBadges scopes={row.scopes} />
-									</td>
-									<td className="whitespace-nowrap px-4 py-2">
-										<StatusBadge row={row} />
-									</td>
-									<td className="whitespace-nowrap px-4 py-2 text-slate-600 dark:text-slate-400">
-										{row.lastUsedAt ? formatDate(row.lastUsedAt) : "—"}
-									</td>
-									<td className="whitespace-nowrap px-4 py-2 text-slate-600 dark:text-slate-400">
-										{formatDate(row.createdAt)}
-									</td>
-									<td className="px-2 py-2 text-right">
-										{row.revokedAt === null ? (
-											<Button
-												variant="ghost"
-												size="icon"
-												aria-label={`Revoke ${row.label}`}
-												onClick={() => setToRevoke(row)}
-											>
-												<Trash2 className="h-4 w-4 text-red-600" />
-											</Button>
-										) : null}
-									</td>
+					</div>
+				) : (
+					/*
+					 * `overflow-x-auto` (not `overflow-hidden`) on the wrapper
+					 * — the table has 7 columns and lives in the right-rail of
+					 * a 2-column workspace layout, so it WILL spill past its
+					 * parent on narrow viewports. Clipping silently dropped
+					 * the right edge ("Scope" → "SCOR"); scrolling preserves
+					 * every cell and surfaces the overflow as an actual
+					 * scrollbar. `min-w-[640px]` keeps columns from squishing
+					 * the badges into unreadable widths before the scrollbar
+					 * appears. */
+					<div className="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+						<table className="w-full min-w-[640px] text-sm">
+							<thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+								<tr>
+									<th className="whitespace-nowrap px-4 py-2 font-medium">
+										Label
+									</th>
+									<th className="whitespace-nowrap px-4 py-2 font-medium">
+										Prefix
+									</th>
+									<th className="whitespace-nowrap px-4 py-2 font-medium">
+										Scopes
+									</th>
+									<th className="whitespace-nowrap px-4 py-2 font-medium">
+										Status
+									</th>
+									<th className="whitespace-nowrap px-4 py-2 font-medium">
+										Last used
+									</th>
+									<th className="whitespace-nowrap px-4 py-2 font-medium">
+										Created
+									</th>
+									<th className="px-2 py-2 sr-only">Actions</th>
 								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
-			)}
-
+							</thead>
+							<tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+								{rows.map((row) => (
+									<tr
+										key={row.keyId}
+										className="text-slate-800 dark:text-slate-100"
+									>
+										<td className="whitespace-nowrap px-4 py-2 font-medium">
+											{row.label}
+										</td>
+										<td className="whitespace-nowrap px-4 py-2 font-mono text-xs text-slate-600 dark:text-slate-400">
+											wb_live_{row.prefix}_…
+										</td>
+										<td className="whitespace-nowrap px-4 py-2">
+											<ScopeBadges scopes={row.scopes} />
+										</td>
+										<td className="whitespace-nowrap px-4 py-2">
+											<StatusBadge row={row} />
+										</td>
+										<td className="whitespace-nowrap px-4 py-2 text-slate-600 dark:text-slate-400">
+											{row.lastUsedAt ? formatDate(row.lastUsedAt) : "—"}
+										</td>
+										<td className="whitespace-nowrap px-4 py-2 text-slate-600 dark:text-slate-400">
+											{formatDate(row.createdAt)}
+										</td>
+										<td className="px-2 py-2 text-right">
+											{row.revokedAt === null ? (
+												<Button
+													variant="ghost"
+													size="icon"
+													aria-label={`Revoke ${row.label}`}
+													onClick={() => setToRevoke(row)}
+												>
+													<Trash2 className="h-4 w-4 text-red-600" />
+												</Button>
+											) : null}
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				)}
+			</CardContent>
 			<CreateApiKeyDialog
 				workspace={workspace}
 				open={createOpen}
@@ -178,7 +185,7 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 				target={toRevoke}
 				onClose={() => setToRevoke(null)}
 			/>
-		</div>
+		</Card>
 	);
 }
 
@@ -268,6 +275,17 @@ function Badge({
 		>
 			{children}
 		</span>
+	);
+}
+
+function SectionIcon({ children }: { children: React.ReactNode }) {
+	return (
+		<div
+			aria-hidden="true"
+			className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+		>
+			{children}
+		</div>
 	);
 }
 

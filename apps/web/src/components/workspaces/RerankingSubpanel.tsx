@@ -14,11 +14,13 @@ import {
 	useCreateRerankingService,
 	useDeleteRerankingService,
 	useRerankingServices,
+	useUpdateRerankingService,
 } from "@/hooks/useServices";
 import { formatApiError } from "@/lib/api";
 import type {
 	CreateRerankingServiceInput,
 	RerankingServiceRecord,
+	UpdateRerankingServiceInput,
 } from "@/lib/schemas";
 import {
 	CUSTOM_OPTION,
@@ -47,6 +49,7 @@ export function RerankingSubpanel({ workspace }: { workspace: string }) {
 	const del = useDeleteRerankingService(workspace);
 	const [open, setOpen] = useState(false);
 	const [createOpen, setCreateOpen] = useState(false);
+	const [editing, setEditing] = useState<RerankingServiceRecord | null>(null);
 	const {
 		presetId,
 		draft,
@@ -135,6 +138,7 @@ export function RerankingSubpanel({ workspace }: { workspace: string }) {
 					title={s.name}
 					subtitle={`${s.provider}:${s.modelName}`}
 					status={s.status}
+					onEdit={() => setEditing(s)}
 					onDelete={async () => {
 						try {
 							await del.mutateAsync(s.rerankingServiceId);
@@ -220,6 +224,98 @@ export function RerankingSubpanel({ workspace }: { workspace: string }) {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+			{editing ? (
+				<EditRerankingDialog
+					workspace={workspace}
+					service={editing}
+					onClose={() => setEditing(null)}
+				/>
+			) : null}
 		</ServiceCard>
+	);
+}
+
+function EditRerankingDialog({
+	workspace,
+	service,
+	onClose,
+}: {
+	workspace: string;
+	service: RerankingServiceRecord;
+	onClose: () => void;
+}) {
+	const update = useUpdateRerankingService(
+		workspace,
+		service.rerankingServiceId,
+	);
+	const [draft, setDraft] = useState(() => ({
+		name: service.name,
+		provider: service.provider,
+		modelName: service.modelName,
+	}));
+
+	async function submit(): Promise<void> {
+		const patch: UpdateRerankingServiceInput = {
+			name: draft.name.trim(),
+			provider: draft.provider.trim(),
+			modelName: draft.modelName.trim(),
+		};
+		try {
+			await update.mutateAsync(patch);
+			toast.success(`'${patch.name}' updated`);
+			onClose();
+		} catch (err) {
+			toast.error("Couldn't save changes", {
+				description: formatApiError(err),
+			});
+		}
+	}
+
+	const submitDisabled =
+		update.isPending ||
+		!draft.name.trim() ||
+		!draft.provider.trim() ||
+		!draft.modelName.trim();
+
+	return (
+		<Dialog open onOpenChange={(v) => (!v ? onClose() : undefined)}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Edit reranking service</DialogTitle>
+					<DialogDescription>{service.name}</DialogDescription>
+				</DialogHeader>
+				<div className="flex flex-col gap-3">
+					<Field
+						label="Name"
+						help="Shown when selecting an optional reranker."
+						id="edit-rer-name"
+						value={draft.name}
+						onChange={(v) => setDraft((d) => ({ ...d, name: v }))}
+					/>
+					<Field
+						label="Provider"
+						help="The service that will rerank retrieved candidates."
+						id="edit-rer-provider"
+						value={draft.provider}
+						onChange={(v) => setDraft((d) => ({ ...d, provider: v }))}
+					/>
+					<Field
+						label="Model"
+						help="The reranking model name sent to the provider."
+						id="edit-rer-model"
+						value={draft.modelName}
+						onChange={(v) => setDraft((d) => ({ ...d, modelName: v }))}
+					/>
+				</div>
+				<DialogFooter>
+					<Button variant="ghost" onClick={onClose} disabled={update.isPending}>
+						Cancel
+					</Button>
+					<Button variant="brand" onClick={submit} disabled={submitDisabled}>
+						{update.isPending ? "Saving…" : "Save changes"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }

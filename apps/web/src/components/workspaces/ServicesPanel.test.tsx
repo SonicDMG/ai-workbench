@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	ChunkingServiceRecord,
 	EmbeddingServiceRecord,
+	LlmServiceRecord,
 	RerankingServiceRecord,
 } from "@/lib/schemas";
 
@@ -36,6 +37,13 @@ const rerankingState: ListState<RerankingServiceRecord> = {
 	isError: false,
 	refetch: vi.fn(),
 };
+const llmState: ListState<LlmServiceRecord> = {
+	data: [],
+	error: null,
+	isLoading: false,
+	isError: false,
+	refetch: vi.fn(),
+};
 
 vi.mock("@/hooks/useServices", () => ({
 	useEmbeddingServices: () => ({ ...embeddingState }),
@@ -44,9 +52,19 @@ vi.mock("@/hooks/useServices", () => ({
 	useCreateEmbeddingService: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	useCreateChunkingService: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	useCreateRerankingService: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	useUpdateEmbeddingService: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	useUpdateChunkingService: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	useUpdateRerankingService: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	useDeleteEmbeddingService: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	useDeleteChunkingService: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	useDeleteRerankingService: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
+vi.mock("@/hooks/useConversations", () => ({
+	useLlmServices: () => ({ ...llmState }),
+	useCreateLlmService: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	useUpdateLlmService: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	useDeleteLlmService: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 vi.mock("sonner", () => ({
@@ -149,7 +167,42 @@ function makeReranking(
 	};
 }
 
+function makeLlm(overrides: Partial<LlmServiceRecord> = {}): LlmServiceRecord {
+	return {
+		workspaceId: "00000000-0000-4000-8000-000000000001",
+		llmServiceId: "00000000-0000-4000-8000-000000000101",
+		name: "Mistral chat",
+		description: null,
+		status: "active",
+		provider: "huggingface",
+		engine: null,
+		modelName: "mistralai/Mistral-7B-Instruct-v0.3",
+		modelVersion: null,
+		contextWindowTokens: null,
+		maxOutputTokens: 1024,
+		temperatureMin: null,
+		temperatureMax: null,
+		supportsStreaming: null,
+		supportsTools: null,
+		endpointBaseUrl: null,
+		endpointPath: null,
+		requestTimeoutMs: null,
+		maxBatchSize: null,
+		authType: "api_key",
+		credentialRef: "env:HUGGINGFACE_API_KEY",
+		supportedLanguages: [],
+		supportedContent: [],
+		createdAt: "2026-04-25T10:00:00.000Z",
+		updatedAt: "2026-04-25T10:00:00.000Z",
+		...overrides,
+	};
+}
+
 function resetState() {
+	llmState.data = [];
+	llmState.error = null;
+	llmState.isLoading = false;
+	llmState.isError = false;
 	embeddingState.data = [];
 	embeddingState.error = null;
 	embeddingState.isLoading = false;
@@ -167,12 +220,14 @@ function resetState() {
 beforeEach(resetState);
 
 describe("ServicesPanel", () => {
-	it("renders the three subpanel section headers", () => {
+	it("renders the service subpanel headers", () => {
 		render(<ServicesPanel workspace="ws-1" />);
-		// Page shell now owns the "Execution services" title; the panel
-		// renders only the descriptive blurb + the three subpanels.
+		expect(screen.getByTestId("settings-services-grid")).toHaveClass(
+			"grid",
+			"md:grid-cols-2",
+		);
 		expect(
-			screen.getByText(/Chunkers, embedders, and rerankers/),
+			screen.getByRole("button", { name: /LLM services/ }),
 		).toBeInTheDocument();
 		expect(screen.getByText(/Embedding services/)).toBeInTheDocument();
 		expect(screen.getByText(/Chunking services/)).toBeInTheDocument();
@@ -180,6 +235,7 @@ describe("ServicesPanel", () => {
 	});
 
 	it("shows the row count in each collapsed subpanel header", () => {
+		llmState.data = [makeLlm({ name: "Mistral chat" })];
 		embeddingState.data = [
 			makeEmbedding({ name: "Embed-A" }),
 			makeEmbedding({ embeddingServiceId: "emb-2", name: "Embed-B" }),
@@ -187,6 +243,7 @@ describe("ServicesPanel", () => {
 		chunkingState.data = [makeChunking({ name: "Chunk-A" })];
 		rerankingState.data = [];
 		render(<ServicesPanel workspace="ws-1" />);
+		expect(screen.getByText(/1 LLM service\b/)).toBeInTheDocument();
 		expect(screen.getByText(/2 embedding services/)).toBeInTheDocument();
 		expect(screen.getByText(/1 chunking service\b/)).toBeInTheDocument();
 		expect(screen.getByText(/0 reranking services/)).toBeInTheDocument();
@@ -207,6 +264,22 @@ describe("ServicesPanel", () => {
 		expect(
 			screen.getByText(/openai:text-embedding-3-small/),
 		).toBeInTheDocument();
+	});
+
+	it("opens the embedding edit dialog from a service row", async () => {
+		const user = userEvent.setup();
+		embeddingState.data = [makeEmbedding({ name: "OpenAI default" })];
+		render(<ServicesPanel workspace="ws-1" />);
+
+		await user.click(
+			screen.getByRole("button", { name: /Embedding services/ }),
+		);
+		await user.click(
+			screen.getByRole("button", { name: /Edit OpenAI default/ }),
+		);
+
+		expect(screen.getByText(/Edit embedding service/)).toBeInTheDocument();
+		expect(screen.getByDisplayValue("OpenAI default")).toBeInTheDocument();
 	});
 
 	it("shows the loading state inside an expanded subpanel while the list query is pending", async () => {
@@ -237,11 +310,10 @@ describe("ServicesPanel", () => {
 	it("opens the create dialog with the preset picker when 'New' is clicked", async () => {
 		const user = userEvent.setup();
 		render(<ServicesPanel workspace="ws-1" />);
-		// Three "New" buttons — one per subpanel. Click the embedding one
-		// (first in DOM order).
+		// Four "New" buttons — LLM, embedding, chunking, reranking.
 		const newButtons = screen.getAllByRole("button", { name: /^New/ });
-		expect(newButtons.length).toBe(3);
-		await user.click(newButtons[0] as HTMLButtonElement);
+		expect(newButtons.length).toBe(4);
+		await user.click(newButtons[1] as HTMLButtonElement);
 		expect(screen.getByText(/New embedding service/)).toBeInTheDocument();
 		expect(screen.getByText(/Pick a preset/)).toBeInTheDocument();
 	});
@@ -270,8 +342,8 @@ describe("ServicesPanel", () => {
 		const user = userEvent.setup();
 		render(<ServicesPanel workspace="ws-1" />);
 		const newButtons = screen.getAllByRole("button", { name: /^New/ });
-		// Order in the DOM: embedding (0), chunking (1), reranking (2).
-		await user.click(newButtons[1] as HTMLButtonElement);
+		// Order in the DOM: LLM (0), embedding (1), chunking (2), reranking (3).
+		await user.click(newButtons[2] as HTMLButtonElement);
 		expect(screen.getByText(/New chunking service/)).toBeInTheDocument();
 		expect(screen.getByLabelText(/Engine/)).toBeInTheDocument();
 		expect(screen.getByLabelText(/Strategy/)).toBeInTheDocument();
@@ -281,7 +353,7 @@ describe("ServicesPanel", () => {
 		const user = userEvent.setup();
 		render(<ServicesPanel workspace="ws-1" />);
 		const newButtons = screen.getAllByRole("button", { name: /^New/ });
-		await user.click(newButtons[2] as HTMLButtonElement);
+		await user.click(newButtons[3] as HTMLButtonElement);
 		expect(screen.getByText(/New reranking service/)).toBeInTheDocument();
 		expect(screen.getByLabelText(/Provider/)).toBeInTheDocument();
 		expect(screen.getByLabelText(/Model/)).toBeInTheDocument();
@@ -291,7 +363,7 @@ describe("ServicesPanel", () => {
 		const user = userEvent.setup();
 		render(<ServicesPanel workspace="ws-1" />);
 		const newButtons = screen.getAllByRole("button", { name: /^New/ });
-		await user.click(newButtons[0] as HTMLButtonElement);
+		await user.click(newButtons[1] as HTMLButtonElement);
 		expect(screen.getByLabelText(/Dimension/)).toBeInTheDocument();
 		// "Secret ref" is part of the help-tooltip wording too, so use a
 		// stricter label match.
@@ -305,7 +377,7 @@ describe("ServicesPanel", () => {
 		const user = userEvent.setup();
 		render(<ServicesPanel workspace="ws-1" />);
 		const newButtons = screen.getAllByRole("button", { name: /^New/ });
-		await user.click(newButtons[1] as HTMLButtonElement);
+		await user.click(newButtons[2] as HTMLButtonElement);
 		// Chunking dialog dialog hint about presets vs custom.
 		expect(
 			screen.getByText(
@@ -318,7 +390,7 @@ describe("ServicesPanel", () => {
 		const user = userEvent.setup();
 		render(<ServicesPanel workspace="ws-1" />);
 		const newButtons = screen.getAllByRole("button", { name: /^New/ });
-		await user.click(newButtons[0] as HTMLButtonElement);
+		await user.click(newButtons[1] as HTMLButtonElement);
 		// On a blank form the Create button is disabled because name +
 		// modelName + dimension are required.
 		const createBtn = screen.getByRole("button", { name: /^Create$/ });

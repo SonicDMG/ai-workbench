@@ -14,6 +14,15 @@ vi.mock("@/lib/api", () => ({
 		err instanceof Error ? err.message : "Unknown error",
 }));
 
+vi.mock("sonner", () => ({
+	toast: {
+		error: vi.fn(),
+		success: vi.fn(),
+		warning: vi.fn(),
+	},
+}));
+
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type {
 	JobRecord,
@@ -245,6 +254,46 @@ describe("IngestQueueDialog", () => {
 
 		// Bug guard from the original storm regression — same upper bound.
 		expect(vi.mocked(api.getJob).mock.calls.length).toBeLessThan(20);
+	});
+
+	it("toasts and requests close after every queued file reaches a clean terminal state", async () => {
+		vi.mocked(api.kbIngestFileAsync)
+			.mockResolvedValueOnce(ingestResponse("job-1"))
+			.mockResolvedValueOnce(duplicateResponse("dup-doc-1", 7));
+		vi.mocked(api.getJob).mockImplementation(async (_ws, jobId) =>
+			jobRecord(jobId, "succeeded"),
+		);
+		const onOpenChange = vi.fn();
+
+		const user = userEvent.setup();
+		render(
+			<IngestQueueDialog
+				workspace="ws-1"
+				knowledgeBase={KB}
+				open
+				onOpenChange={onOpenChange}
+			/>,
+			{ wrapper },
+		);
+
+		const fileInput = document.querySelector(
+			'input[type="file"]:not([webkitdirectory])',
+		) as HTMLInputElement;
+		await user.upload(fileInput, [
+			makeFile("fresh.md", "fresh body"),
+			makeFile("dup.md", "duplicate body"),
+		]);
+		await user.click(screen.getByRole("button", { name: /Start ingest/ }));
+
+		await waitFor(() => {
+			expect(toast.success).toHaveBeenCalledWith("Ingest complete", {
+				description: "1 ingested, 1 skipped",
+			});
+		});
+		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false), {
+			timeout: 3_000,
+		});
+		expect(toast.error).not.toHaveBeenCalled();
 	});
 
 	it("kicks exactly one ingest per file even while the mutation stays pending", async () => {

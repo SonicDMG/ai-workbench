@@ -52,6 +52,10 @@ const ALLOWLIST = new Set([
 	// the other workspace-scoped pages so deep links to a deleted
 	// workspace's Connect tab surface a friendly empty state.
 	resolve(WEB_SRC, "pages/ConnectPage.tsx"),
+	// WorkspaceSettingsPage uses the same `workspace_not_found`
+	// short-circuit as the other workspace-scoped pages so deep links
+	// to a deleted workspace's settings surface a friendly empty state.
+	resolve(WEB_SRC, "pages/WorkspaceSettingsPage.tsx"),
 ]);
 
 const PATTERN = /instanceof\s+ApiError\b/;

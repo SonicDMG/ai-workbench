@@ -14,11 +14,13 @@ import {
 	useCreateEmbeddingService,
 	useDeleteEmbeddingService,
 	useEmbeddingServices,
+	useUpdateEmbeddingService,
 } from "@/hooks/useServices";
 import { formatApiError } from "@/lib/api";
 import type {
 	CreateEmbeddingServiceInput,
 	EmbeddingServiceRecord,
+	UpdateEmbeddingServiceInput,
 } from "@/lib/schemas";
 import {
 	CUSTOM_OPTION,
@@ -51,6 +53,7 @@ export function EmbeddingSubpanel({ workspace }: { workspace: string }) {
 	const del = useDeleteEmbeddingService(workspace);
 	const [open, setOpen] = useState(false);
 	const [createOpen, setCreateOpen] = useState(false);
+	const [editing, setEditing] = useState<EmbeddingServiceRecord | null>(null);
 	const {
 		presetId,
 		draft,
@@ -151,6 +154,7 @@ export function EmbeddingSubpanel({ workspace }: { workspace: string }) {
 					title={s.name}
 					subtitle={`${s.provider}:${s.modelName} • dim ${s.embeddingDimension} • ${s.distanceMetric}`}
 					status={s.status}
+					onEdit={() => setEditing(s)}
 					onDelete={async () => {
 						try {
 							await del.mutateAsync(s.embeddingServiceId);
@@ -260,6 +264,121 @@ export function EmbeddingSubpanel({ workspace }: { workspace: string }) {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+			{editing ? (
+				<EditEmbeddingDialog
+					workspace={workspace}
+					service={editing}
+					onClose={() => setEditing(null)}
+				/>
+			) : null}
 		</ServiceCard>
+	);
+}
+
+function EditEmbeddingDialog({
+	workspace,
+	service,
+	onClose,
+}: {
+	workspace: string;
+	service: EmbeddingServiceRecord;
+	onClose: () => void;
+}) {
+	const update = useUpdateEmbeddingService(
+		workspace,
+		service.embeddingServiceId,
+	);
+	const [draft, setDraft] = useState(() => ({
+		name: service.name,
+		provider: service.provider,
+		modelName: service.modelName,
+		embeddingDimension: String(service.embeddingDimension),
+		credentialRef: service.credentialRef ?? "",
+	}));
+
+	async function submit(): Promise<void> {
+		const patch: UpdateEmbeddingServiceInput = {
+			name: draft.name.trim(),
+			provider: draft.provider.trim(),
+			modelName: draft.modelName.trim(),
+			embeddingDimension: Number(draft.embeddingDimension),
+			credentialRef: draft.credentialRef.trim() || null,
+		};
+		try {
+			await update.mutateAsync(patch);
+			toast.success(`'${patch.name}' updated`);
+			onClose();
+		} catch (err) {
+			toast.error("Couldn't save changes", {
+				description: formatApiError(err),
+			});
+		}
+	}
+
+	const dimension = Number(draft.embeddingDimension);
+	const submitDisabled =
+		update.isPending ||
+		!draft.name.trim() ||
+		!draft.provider.trim() ||
+		!draft.modelName.trim() ||
+		!Number.isFinite(dimension) ||
+		dimension <= 0;
+
+	return (
+		<Dialog open onOpenChange={(v) => (!v ? onClose() : undefined)}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Edit embedding service</DialogTitle>
+					<DialogDescription>{service.name}</DialogDescription>
+				</DialogHeader>
+				<div className="flex flex-col gap-3">
+					<Field
+						label="Name"
+						help="Shown when choosing how a knowledge base embeds documents."
+						id="edit-emb-name"
+						value={draft.name}
+						onChange={(v) => setDraft((d) => ({ ...d, name: v }))}
+					/>
+					<Field
+						label="Provider"
+						help="The embedding provider the runtime will call."
+						id="edit-emb-provider"
+						value={draft.provider}
+						onChange={(v) => setDraft((d) => ({ ...d, provider: v }))}
+					/>
+					<Field
+						label="Model"
+						help="The embedding model name sent to the provider."
+						id="edit-emb-model"
+						value={draft.modelName}
+						onChange={(v) => setDraft((d) => ({ ...d, modelName: v }))}
+					/>
+					<Field
+						label="Dimension"
+						help="Must match the model's native vector dimension."
+						id="edit-emb-dim"
+						value={draft.embeddingDimension}
+						onChange={(v) => setDraft((d) => ({ ...d, embeddingDimension: v }))}
+						type="number"
+					/>
+					<Field
+						label="Secret ref"
+						help="Where the runtime reads the provider credential."
+						id="edit-emb-secret-ref"
+						value={draft.credentialRef}
+						onChange={(v) => setDraft((d) => ({ ...d, credentialRef: v }))}
+						placeholder="env:OPENAI_API_KEY"
+					/>
+				</div>
+				<DialogFooter>
+					<Button variant="ghost" onClick={onClose} disabled={update.isPending}>
+						Cancel
+					</Button>
+					<Button variant="brand" onClick={submit} disabled={submitDisabled}>
+						{update.isPending ? "Saving…" : "Save changes"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }

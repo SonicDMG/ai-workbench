@@ -3620,6 +3620,64 @@ export interface paths {
 		};
 		trace?: never;
 	};
+	"/api/v1/workspaces/{workspaceId}/playground/execute": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Execute an Astra Data API command for a workspace */
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": components["schemas"]["ExecutePlaygroundCommandInput"];
+				};
+			};
+			responses: {
+				/** @description Command executed */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ExecutePlaygroundCommandResponse"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/api/v1/workspaces/{workspaceId}/connect/snippets": {
 		parameters: {
 			query?: never;
@@ -4964,6 +5022,76 @@ export interface components {
 			errorMessage?: string | null;
 			metadata?: {
 				[key: string]: string;
+			};
+		};
+		ExecutePlaygroundCommandResponse: {
+			/** @enum {boolean} */
+			ok: true;
+			/** @enum {string} */
+			commandName:
+				| "findCollections"
+				| "createCollection"
+				| "deleteCollection"
+				| "listTables"
+				| "createTable"
+				| "dropTable"
+				| "createIndex"
+				| "createTextIndex"
+				| "createVectorIndex"
+				| "listIndexes"
+				| "dropIndex"
+				| "find"
+				| "findOne"
+				| "distinct"
+				| "insertOne"
+				| "insertMany"
+				| "updateOne"
+				| "updateMany"
+				| "deleteOne"
+				| "deleteMany"
+				| "countDocuments";
+			/** @enum {string} */
+			targetKind: "collection" | "table";
+			targetName: string | null;
+			collection: string | null;
+			table: string | null;
+			keyspace: string | null;
+			command: {
+				[key: string]: unknown;
+			};
+			result?: unknown;
+			elapsedMs: number;
+		};
+		ExecutePlaygroundCommandInput: {
+			/** @enum {string} */
+			commandName:
+				| "findCollections"
+				| "createCollection"
+				| "deleteCollection"
+				| "listTables"
+				| "createTable"
+				| "dropTable"
+				| "createIndex"
+				| "createTextIndex"
+				| "createVectorIndex"
+				| "listIndexes"
+				| "dropIndex"
+				| "find"
+				| "findOne"
+				| "distinct"
+				| "insertOne"
+				| "insertMany"
+				| "updateOne"
+				| "updateMany"
+				| "deleteOne"
+				| "deleteMany"
+				| "countDocuments";
+			/** @enum {string} */
+			targetKind?: "collection" | "table";
+			collection?: string | null;
+			table?: string | null;
+			command: {
+				[key: string]: unknown;
 			};
 		};
 		ConnectSnippetsResponse: {

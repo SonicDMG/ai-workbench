@@ -2,6 +2,7 @@ import {
 	Box,
 	ChevronDown,
 	ChevronRight,
+	Pencil,
 	Plus,
 	RefreshCw,
 	Trash2,
@@ -21,11 +22,10 @@ import { PRESET_NONE } from "@/hooks/useServicePresetState";
 import { CUSTOM_OPTION } from "@/lib/service-catalog";
 
 /**
- * Shared shells for the three execution-service subpanels (embedding,
- * chunking, reranking). Each subpanel composes a {@link ServiceCard}
- * that wraps its list/error/loading/empty states, plus
+ * Shared shells for workspace service subpanels. Each subpanel composes
+ * a {@link ServiceCard} that wraps its list/error/loading/empty states, plus
  * {@link PresetPicker}, {@link SelectWithCustom}, {@link ServiceRow},
- * and {@link Field} for the create-form bodies.
+ * and {@link Field} for the create/edit-form bodies.
  */
 
 interface PresetOption {
@@ -165,12 +165,12 @@ export interface ServiceCardProps<T> {
 export function ServiceCard<T>(props: ServiceCardProps<T>) {
 	const rows = props.rows ?? [];
 	return (
-		<div className="rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-			<div className="flex items-center gap-3 p-3">
+		<div className="flex h-full flex-col rounded-lg border border-slate-200 bg-white shadow-sm transition-colors hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600">
+			<div className="flex items-center gap-3 p-4">
 				<button
 					type="button"
 					onClick={props.onToggle}
-					className="flex flex-1 items-center gap-2 text-left"
+					className="flex min-w-0 flex-1 items-center gap-2 text-left"
 					aria-expanded={props.expanded}
 				>
 					{props.expanded ? (
@@ -182,10 +182,10 @@ export function ServiceCard<T>(props: ServiceCardProps<T>) {
 						className="h-4 w-4 text-slate-400 dark:text-slate-500"
 						aria-hidden
 					/>
-					<span className="font-medium text-slate-900 dark:text-slate-100">
+					<span className="truncate font-medium text-slate-900 dark:text-slate-100">
 						{props.label}
 					</span>
-					<span className="text-xs text-slate-500 dark:text-slate-400">
+					<span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
 						{rows.length} {props.countLabel}
 						{rows.length === 1 ? "" : "s"}
 					</span>
@@ -227,11 +227,13 @@ export function ServiceRow({
 	title,
 	subtitle,
 	status,
+	onEdit,
 	onDelete,
 }: {
 	title: string;
 	subtitle: string;
 	status: string;
+	onEdit?: () => void;
 	onDelete: () => void;
 }) {
 	return (
@@ -245,6 +247,16 @@ export function ServiceRow({
 			<span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
 				{status}
 			</span>
+			{onEdit ? (
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={onEdit}
+					aria-label={`Edit ${title}`}
+				>
+					<Pencil className="h-4 w-4 text-slate-500 dark:text-slate-300" />
+				</Button>
+			) : null}
 			<Button
 				variant="ghost"
 				size="sm"

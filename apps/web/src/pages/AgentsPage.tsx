@@ -12,7 +12,6 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { AgentForm } from "@/components/agents/AgentForm";
 import { AgentTemplateGallery } from "@/components/agents/AgentTemplateGallery";
-import { LlmServicesPanel } from "@/components/agents/LlmServicesPanel";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,12 +42,12 @@ import type {
 import { formatDate } from "@/lib/utils";
 
 /**
- * Workspace-level agent + LLM-service management page.
+ * Workspace-level agent management page.
  *
- * Two stacked cards: LLM services first (since agents reference them),
- * then the agent list. Each agent row exposes inline edit / delete
- * dialogs. The "Chat" link navigates to ChatPage with that agent
- * preselected.
+ * Each agent row exposes inline edit / delete dialogs. The "Chat"
+ * link navigates to ChatPage with that agent preselected. LLM service
+ * setup lives under workspace settings; agents still read those
+ * services here for binding choices.
  */
 export function AgentsPage() {
 	const { workspaceId } = useParams<{ workspaceId: string }>();
@@ -96,13 +95,12 @@ export function AgentsPage() {
 						Agents
 					</h1>
 					<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-						{workspace.name} · Manage workspace agents and the LLM services they
-						use.
+						{workspace.name} · Manage workspace agents and their knowledge-base
+						scope.
 					</p>
 				</div>
 			</div>
 
-			<LlmServicesPanel workspace={workspace.workspaceId} />
 			<AgentsCard workspace={workspace.workspaceId} />
 		</div>
 	);

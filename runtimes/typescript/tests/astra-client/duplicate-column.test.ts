@@ -14,7 +14,10 @@
 
 import { DataAPIResponseError } from "@datastax/astra-db-ts";
 import { describe, expect, test } from "vitest";
-import { isAlreadyHasColumnError } from "../../src/astra-client/client.js";
+import {
+	ensureAdditiveColumns,
+	isAlreadyHasColumnError,
+} from "../../src/astra-client/client.js";
 
 // Forge a DataAPIResponseError from a faked raw response. The
 // public constructor signature on the upstream class isn't stable,
@@ -80,5 +83,60 @@ describe("isAlreadyHasColumnError", () => {
 		expect(isAlreadyHasColumnError(new Error("network is down"))).toBe(false);
 		expect(isAlreadyHasColumnError("not even an Error")).toBe(false);
 		expect(isAlreadyHasColumnError(null)).toBe(false);
+	});
+});
+
+describe("ensureAdditiveColumns", () => {
+	test("adds known post-v1 control-plane columns one at a time", async () => {
+		const attempts: Array<{ table: string; column: string }> = [];
+		const db = {
+			table(table: string) {
+				return {
+					async alter(options: {
+						operation: {
+							add?: { columns: Record<string, unknown> };
+						};
+					}) {
+						for (const column of Object.keys(
+							options.operation.add?.columns ?? {},
+						)) {
+							attempts.push({ table, column });
+						}
+					},
+				};
+			},
+		};
+
+		await ensureAdditiveColumns(
+			db as unknown as Parameters<typeof ensureAdditiveColumns>[0],
+		);
+
+		expect(attempts).toEqual(
+			expect.arrayContaining([
+				{
+					table: "wb_config_knowledge_bases_by_workspace",
+					column: "vector_collection",
+				},
+				{
+					table: "wb_config_knowledge_bases_by_workspace",
+					column: "owned",
+				},
+				{
+					table: "wb_config_knowledge_bases_by_workspace",
+					column: "lexical_enabled",
+				},
+				{
+					table: "wb_config_knowledge_bases_by_workspace",
+					column: "lexical_analyzer",
+				},
+				{
+					table: "wb_config_knowledge_bases_by_workspace",
+					column: "lexical_options",
+				},
+			]),
+		);
+		expect(attempts.filter((a) => a.column === "lexical_enabled")).toHaveLength(
+			1,
+		);
 	});
 });

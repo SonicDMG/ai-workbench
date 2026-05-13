@@ -5,12 +5,15 @@ import {
 	asNumberOrNull,
 	asPlainStringMap,
 	asUuidString,
+	knowledgeBaseFromRow,
+	knowledgeBaseToRow,
 	ragDocumentFromRow,
 	ragDocumentToRow,
 	workspaceFromRow,
 	workspaceToRow,
 } from "../../src/astra-client/converters.js";
 import type {
+	KnowledgeBaseRecord,
 	RagDocumentRecord,
 	WorkspaceRecord,
 } from "../../src/control-plane/types.js";
@@ -27,6 +30,27 @@ const WS: WorkspaceRecord = {
 };
 
 const KB_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+
+const KB: KnowledgeBaseRecord = {
+	workspaceId: WS.uid,
+	knowledgeBaseId: KB_ID,
+	name: "support",
+	description: null,
+	status: "active",
+	embeddingServiceId: "22222222-3333-4444-5555-666666666666",
+	chunkingServiceId: "33333333-4444-5555-6666-777777777777",
+	rerankingServiceId: null,
+	language: "en",
+	vectorCollection: "support",
+	owned: true,
+	lexical: {
+		enabled: false,
+		analyzer: null,
+		options: {},
+	},
+	createdAt: "2026-04-22T00:00:02.000Z",
+	updatedAt: "2026-04-22T00:00:03.000Z",
+};
 
 const DOC: RagDocumentRecord = {
 	workspaceId: WS.uid,
@@ -52,6 +76,10 @@ describe("converters — round-trip equivalence", () => {
 
 	test("rag document", () => {
 		expect(ragDocumentFromRow(ragDocumentToRow(DOC))).toEqual(DOC);
+	});
+
+	test("knowledge base", () => {
+		expect(knowledgeBaseFromRow(knowledgeBaseToRow(KB))).toEqual(KB);
 	});
 });
 
@@ -114,6 +142,21 @@ describe("converters — null/undefined handling", () => {
 		// @ts-expect-error — simulate a row returned by Astra without the map column
 		row.credentials = undefined;
 		expect(workspaceFromRow(row).credentials).toEqual({});
+	});
+
+	test("knowledge base with missing lexical fields defaults on fromRow", () => {
+		const row = knowledgeBaseToRow(KB);
+		// @ts-expect-error — simulate a row written before the lexical columns existed
+		row.lexical_enabled = undefined;
+		// @ts-expect-error
+		row.lexical_analyzer = undefined;
+		// @ts-expect-error
+		row.lexical_options = undefined;
+		expect(knowledgeBaseFromRow(row).lexical).toEqual({
+			enabled: false,
+			analyzer: null,
+			options: {},
+		});
 	});
 });
 

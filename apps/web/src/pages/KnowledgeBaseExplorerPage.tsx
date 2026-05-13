@@ -1,4 +1,4 @@
-import { ArrowLeft, Database, RefreshCw, Sparkles, Upload } from "lucide-react";
+import { ArrowLeft, Database, RefreshCw, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -173,13 +173,6 @@ export function KnowledgeBaseExplorerPage() {
 							onClick={() => setIngestOpen(true)}
 						>
 							<Upload className="h-4 w-4" /> Ingest
-						</Button>
-						<Button variant="brand" size="sm" asChild>
-							<Link
-								to={`/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/playground`}
-							>
-								<Sparkles className="h-4 w-4" /> Playground
-							</Link>
 						</Button>
 					</div>
 				</div>

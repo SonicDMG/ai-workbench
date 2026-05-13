@@ -151,13 +151,60 @@ export const CreatedApiKeyResponseSchema = z.object({
 });
 export type CreatedApiKeyResponse = z.infer<typeof CreatedApiKeyResponseSchema>;
 
-export const SearchHitSchema = z.object({
-	id: z.string(),
-	score: z.number(),
-	payload: z.record(z.string(), z.unknown()).optional(),
-	vector: z.array(z.number()).optional(),
+export const PlaygroundCommandNameSchema = z.enum([
+	"findCollections",
+	"createCollection",
+	"deleteCollection",
+	"listTables",
+	"createTable",
+	"dropTable",
+	"createIndex",
+	"createTextIndex",
+	"createVectorIndex",
+	"listIndexes",
+	"dropIndex",
+	"find",
+	"findOne",
+	"distinct",
+	"insertOne",
+	"insertMany",
+	"updateOne",
+	"updateMany",
+	"deleteOne",
+	"deleteMany",
+	"countDocuments",
+]);
+export type PlaygroundCommandName = z.infer<typeof PlaygroundCommandNameSchema>;
+
+export const PlaygroundTargetKindSchema = z.enum(["collection", "table"]);
+export type PlaygroundTargetKind = z.infer<typeof PlaygroundTargetKindSchema>;
+
+export const PlaygroundCommandInputSchema = z.object({
+	commandName: PlaygroundCommandNameSchema,
+	targetKind: PlaygroundTargetKindSchema.optional(),
+	collection: z.string().min(1).max(128).nullable().optional(),
+	table: z.string().min(1).max(128).nullable().optional(),
+	command: z.record(z.string(), z.unknown()),
 });
-export type SearchHit = z.infer<typeof SearchHitSchema>;
+export type PlaygroundCommandInput = z.infer<
+	typeof PlaygroundCommandInputSchema
+>;
+
+export const PlaygroundCommandResponseSchema = z.object({
+	ok: z.literal(true),
+	commandName: PlaygroundCommandNameSchema,
+	targetKind: PlaygroundTargetKindSchema,
+	targetName: z.string().nullable(),
+	collection: z.string().nullable(),
+	table: z.string().nullable(),
+	keyspace: z.string().nullable(),
+	command: z.record(z.string(), z.unknown()),
+	result: z.unknown(),
+	elapsedMs: z.number().int().nonnegative(),
+});
+export type PlaygroundCommandResponse = z.infer<
+	typeof PlaygroundCommandResponseSchema
+>;
 
 /* ---------------- Knowledge bases ---------------- */
 
@@ -350,6 +397,12 @@ export type CreateChunkingServiceInput = z.infer<
 	typeof CreateChunkingServiceInputSchema
 >;
 
+export const UpdateChunkingServiceInputSchema =
+	CreateChunkingServiceInputSchema.partial().strict();
+export type UpdateChunkingServiceInput = z.infer<
+	typeof UpdateChunkingServiceInputSchema
+>;
+
 export const EmbeddingServiceRecordSchema = z.object({
 	workspaceId: z.string().uuid(),
 	embeddingServiceId: z.string().uuid(),
@@ -390,6 +443,12 @@ export type CreateEmbeddingServiceInput = z.infer<
 	typeof CreateEmbeddingServiceInputSchema
 >;
 
+export const UpdateEmbeddingServiceInputSchema =
+	CreateEmbeddingServiceInputSchema.partial().strict();
+export type UpdateEmbeddingServiceInput = z.infer<
+	typeof UpdateEmbeddingServiceInputSchema
+>;
+
 export const RerankingServiceRecordSchema = z.object({
 	workspaceId: z.string().uuid(),
 	rerankingServiceId: z.string().uuid(),
@@ -426,6 +485,12 @@ export const CreateRerankingServiceInputSchema = z.object({
 });
 export type CreateRerankingServiceInput = z.infer<
 	typeof CreateRerankingServiceInputSchema
+>;
+
+export const UpdateRerankingServiceInputSchema =
+	CreateRerankingServiceInputSchema.partial().strict();
+export type UpdateRerankingServiceInput = z.infer<
+	typeof UpdateRerankingServiceInputSchema
 >;
 
 /* ---------------- RAG documents (KB-scoped) ---------------- */

@@ -64,23 +64,27 @@ import {
 	LlmServicePageSchema,
 	type LlmServiceRecord,
 	LlmServiceRecordSchema,
+	type PlaygroundCommandInput,
+	type PlaygroundCommandResponse,
+	PlaygroundCommandResponseSchema,
 	RagDocumentPageSchema,
 	type RagDocumentRecord,
 	RerankingServicePageSchema,
 	type RerankingServiceRecord,
 	RerankingServiceRecordSchema,
-	type SearchHit,
-	SearchHitSchema,
 	type SendChatMessageInput,
 	type SendChatMessageResponse,
 	SendChatMessageResponseSchema,
 	type TestConnectionResult,
 	TestConnectionResultSchema,
 	type UpdateAgentInput,
+	type UpdateChunkingServiceInput,
 	type UpdateConversationInput,
+	type UpdateEmbeddingServiceInput,
 	type UpdateKnowledgeBaseInput,
 	type UpdateKnowledgeFilterInput,
 	type UpdateLlmServiceInput,
+	type UpdateRerankingServiceInput,
 	type UpdateWorkspaceInput,
 	type Workspace,
 	WorkspacePageSchema,
@@ -597,6 +601,17 @@ export const api = {
 			ChunkingServiceRecordSchema,
 		),
 
+	updateChunkingService: (
+		workspaceId: string,
+		chunkingServiceId: string,
+		patch: UpdateChunkingServiceInput,
+	): Promise<ChunkingServiceRecord> =>
+		request(
+			`/workspaces/${workspaceId}/chunking-services/${chunkingServiceId}`,
+			{ method: "PATCH", body: JSON.stringify(stripUndefined(patch)) },
+			ChunkingServiceRecordSchema,
+		),
+
 	deleteChunkingService: (
 		workspaceId: string,
 		chunkingServiceId: string,
@@ -626,6 +641,17 @@ export const api = {
 			EmbeddingServiceRecordSchema,
 		),
 
+	updateEmbeddingService: (
+		workspaceId: string,
+		embeddingServiceId: string,
+		patch: UpdateEmbeddingServiceInput,
+	): Promise<EmbeddingServiceRecord> =>
+		request(
+			`/workspaces/${workspaceId}/embedding-services/${embeddingServiceId}`,
+			{ method: "PATCH", body: JSON.stringify(stripUndefined(patch)) },
+			EmbeddingServiceRecordSchema,
+		),
+
 	deleteEmbeddingService: (
 		workspaceId: string,
 		embeddingServiceId: string,
@@ -652,6 +678,17 @@ export const api = {
 		request(
 			`/workspaces/${workspaceId}/reranking-services`,
 			{ method: "POST", body: JSON.stringify(stripEmptyStrings(input)) },
+			RerankingServiceRecordSchema,
+		),
+
+	updateRerankingService: (
+		workspaceId: string,
+		rerankingServiceId: string,
+		patch: UpdateRerankingServiceInput,
+	): Promise<RerankingServiceRecord> =>
+		request(
+			`/workspaces/${workspaceId}/reranking-services/${rerankingServiceId}`,
+			{ method: "PATCH", body: JSON.stringify(stripUndefined(patch)) },
 			RerankingServiceRecordSchema,
 		),
 
@@ -907,17 +944,14 @@ export const api = {
 			null,
 		),
 
-	/* -------- KB data plane -------- */
-
-	kbSearch: (
+	executePlaygroundCommand: (
 		workspaceId: string,
-		kbId: string,
-		input: PlaygroundSearchInput,
-	): Promise<SearchHit[]> =>
+		input: PlaygroundCommandInput,
+	): Promise<PlaygroundCommandResponse> =>
 		request(
-			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/search`,
+			`/workspaces/${workspaceId}/playground/execute`,
 			{ method: "POST", body: JSON.stringify(input) },
-			z.array(SearchHitSchema),
+			PlaygroundCommandResponseSchema,
 		),
 
 	/* -------- Ingest + jobs -------- */
@@ -973,17 +1007,6 @@ export const api = {
 			JobRecordSchema,
 		),
 };
-
-export interface PlaygroundSearchInput {
-	readonly text?: string;
-	readonly vector?: number[];
-	readonly topK?: number;
-	readonly filter?: Record<string, unknown>;
-	readonly includeEmbeddings?: boolean;
-	readonly hybrid?: boolean;
-	readonly lexicalWeight?: number;
-	readonly rerank?: boolean;
-}
 
 function normalizeCreate(input: CreateWorkspaceInput) {
 	return {

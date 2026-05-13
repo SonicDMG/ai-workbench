@@ -1,14 +1,4 @@
-import {
-	ChevronDown,
-	Database,
-	Loader2,
-	Pencil,
-	Plus,
-	RefreshCw,
-	Sparkles,
-	Trash2,
-	Upload,
-} from "lucide-react";
+import { Database, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -22,7 +12,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { useDocuments } from "@/hooks/useDocuments";
 import {
 	useDeleteKnowledgeBase,
 	useKnowledgeBases,
@@ -33,14 +22,8 @@ import {
 	useRerankingServices,
 } from "@/hooks/useServices";
 import { formatApiError } from "@/lib/api";
-import { formatFileSize } from "@/lib/files";
-import type { KnowledgeBaseRecord, RagDocumentRecord } from "@/lib/schemas";
-import { formatDate } from "@/lib/utils";
-import { CreateKnowledgeBaseDialog } from "./CreateKnowledgeBaseDialog";
-import { DocumentStatusBadge } from "./DocumentStatusBadge";
+import type { KnowledgeBaseRecord } from "@/lib/schemas";
 import { EditKnowledgeBaseDialog } from "./EditKnowledgeBaseDialog";
-import { FileTypeBadge } from "./FileTypeBadge";
-import { IngestQueueDialog } from "./IngestQueueDialog";
 
 interface ServiceLabels {
 	readonly chunking: ReadonlyMap<string, string>;
@@ -49,12 +32,10 @@ interface ServiceLabels {
 }
 
 /**
- * Workspace-scoped KB management + ingest trigger.
+ * Workspace-scoped KB management.
  *
- * Each row shows the KB, a status badge, document count, and two
- * actions: "Ingest" (opens the ingest dialog, which runs async +
- * polls) and delete. Rows are expandable to show the first 10
- * documents in the KB.
+ * Each card links to the KB explorer page, where ingest and document-list
+ * workflows live with the full KB context.
  */
 export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 	const list = useKnowledgeBases(workspace);
@@ -62,11 +43,8 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 	const chunkings = useChunkingServices(workspace);
 	const embeddings = useEmbeddingServices(workspace);
 	const rerankings = useRerankingServices(workspace);
-	const [createOpen, setCreateOpen] = useState(false);
 	const [toDelete, setToDelete] = useState<KnowledgeBaseRecord | null>(null);
 	const [toEdit, setToEdit] = useState<KnowledgeBaseRecord | null>(null);
-	const [ingestFor, setIngestFor] = useState<KnowledgeBaseRecord | null>(null);
-	const [expanded, setExpanded] = useState<string | null>(null);
 
 	const serviceLabels = useMemo<ServiceLabels>(
 		() => ({
@@ -102,70 +80,37 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 
 	return (
 		<div className="flex flex-col gap-4">
-			<div className="flex items-start justify-between gap-3 flex-wrap">
-				<p className="text-xs text-slate-500 dark:text-slate-400">
-					{rows.length === 0
-						? "No knowledge bases yet — create one to start ingesting documents."
-						: `${rows.length} knowledge base${rows.length === 1 ? "" : "s"} in this workspace.`}
-				</p>
-				<Button variant="brand" size="sm" onClick={() => setCreateOpen(true)}>
-					<Plus className="h-4 w-4" /> New knowledge base
-				</Button>
-			</div>
-
 			{rows.length === 0 ? (
 				<div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
+					<p className="font-medium text-slate-700 dark:text-slate-300">
+						No knowledge bases yet.
+					</p>
 					<p>
 						A knowledge base owns one Astra collection plus the chunking,
 						embedding, and (optionally) reranking services that produce its
 						content. Create the services first, then a KB that binds them.
 					</p>
-					<Button variant="brand" size="sm" onClick={() => setCreateOpen(true)}>
-						<Plus className="h-4 w-4" /> Create your first knowledge base
-					</Button>
 				</div>
 			) : (
-				<div className="flex flex-col gap-2">
+				<ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
 					{rows.map((kb) => (
-						<KnowledgeBaseRow
+						<KnowledgeBaseCard
 							key={kb.knowledgeBaseId}
 							workspace={workspace}
 							kb={kb}
 							services={serviceLabels}
-							expanded={expanded === kb.knowledgeBaseId}
-							onToggle={() =>
-								setExpanded((cur) =>
-									cur === kb.knowledgeBaseId ? null : kb.knowledgeBaseId,
-								)
-							}
-							onIngest={() => setIngestFor(kb)}
 							onEdit={() => setToEdit(kb)}
 							onDelete={() => setToDelete(kb)}
 						/>
 					))}
-				</div>
+				</ul>
 			)}
-
-			<CreateKnowledgeBaseDialog
-				workspace={workspace}
-				open={createOpen}
-				onOpenChange={setCreateOpen}
-			/>
 
 			<EditKnowledgeBaseDialog
 				workspace={workspace}
 				kb={toEdit}
 				onOpenChange={(o) => !o && setToEdit(null)}
 			/>
-
-			{ingestFor ? (
-				<IngestQueueDialog
-					workspace={workspace}
-					knowledgeBase={ingestFor}
-					open={true}
-					onOpenChange={(o) => !o && setIngestFor(null)}
-				/>
-			) : null}
 
 			<DeleteKnowledgeBaseDialog
 				kb={toDelete}
@@ -188,30 +133,19 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 	);
 }
 
-function KnowledgeBaseRow({
+function KnowledgeBaseCard({
 	workspace,
 	kb,
 	services,
-	expanded,
-	onToggle,
-	onIngest,
 	onEdit,
 	onDelete,
 }: {
 	workspace: string;
 	kb: KnowledgeBaseRecord;
 	services: ServiceLabels;
-	expanded: boolean;
-	onToggle: () => void;
-	onIngest: () => void;
 	onEdit: () => void;
 	onDelete: () => void;
 }) {
-	const docs = useDocuments(
-		expanded ? workspace : undefined,
-		expanded ? kb.knowledgeBaseId : undefined,
-	);
-
 	const chunkingName = services.chunking.get(kb.chunkingServiceId);
 	const embeddingName = services.embedding.get(kb.embeddingServiceId);
 	const rerankingName = kb.rerankingServiceId
@@ -220,134 +154,82 @@ function KnowledgeBaseRow({
 
 	const detailPath = `/workspaces/${workspace}/knowledge-bases/${kb.knowledgeBaseId}`;
 	return (
-		<div className="rounded-lg border border-slate-200 bg-white transition-colors hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600">
-			<div className="flex items-center gap-3 p-3">
-				{/*
-				 * Primary action — clicking the info zone (icon + name + chips
-				 * + date) navigates to the explorer page. Keeping the action
-				 * buttons (Ingest / Playground / Edit / Delete) outside the
-				 * Link avoids the nested-anchor / button-inside-link
-				 * accessibility footgun. Expand-for-document-preview moved
-				 * to a dedicated chevron toggle on the right.
-				 */}
-				<Link
-					to={detailPath}
-					className="-m-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] dark:hover:bg-slate-800"
-					title={`Open ${kb.name}`}
-				>
-					<Database
-						className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500"
-						aria-hidden
-					/>
+		<li className="group relative rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600">
+			{/*
+			 * Primary action — the whole card opens the explorer. Edit/delete
+			 * live above the link layer so mutating controls don't navigate.
+			 */}
+			<Link
+				to={detailPath}
+				aria-label={`Open ${kb.name}`}
+				className="absolute inset-0 z-10 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+			/>
+			<div className="pointer-events-none flex h-full flex-col gap-4 pr-16">
+				<div className="flex items-start gap-3">
+					<div
+						aria-hidden="true"
+						className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+					>
+						<Database className="h-5 w-5" />
+					</div>
 					<div className="min-w-0 flex-1">
-						<div className="flex items-center gap-2 flex-wrap">
-							<span className="font-medium text-slate-900 truncate dark:text-slate-100">
+						<div className="flex flex-wrap items-center gap-2">
+							<span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
 								{kb.name}
 							</span>
 							<KbStatusBadge status={kb.status} />
 						</div>
 						{kb.description ? (
-							<p className="text-xs text-slate-500 mt-0.5 truncate dark:text-slate-400">
+							<p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
 								{kb.description}
 							</p>
 						) : (
-							<p className="text-xs text-slate-400 mt-0.5 font-mono truncate dark:text-slate-500">
+							<p className="mt-1 truncate font-mono text-xs text-slate-400 dark:text-slate-500">
 								{kb.knowledgeBaseId}
 							</p>
 						)}
-						<div className="mt-1.5 flex flex-wrap items-center gap-1">
-							<ServiceChip
-								kind="chunking"
-								name={chunkingName}
-								id={kb.chunkingServiceId}
-							/>
-							<ServiceChip
-								kind="embedding"
-								name={embeddingName}
-								id={kb.embeddingServiceId}
-							/>
-							{kb.rerankingServiceId ? (
-								<ServiceChip
-									kind="reranking"
-									name={rerankingName}
-									id={kb.rerankingServiceId}
-								/>
-							) : null}
-						</div>
 					</div>
-					<span className="text-xs text-slate-500 shrink-0 dark:text-slate-400">
-						{formatDate(kb.createdAt)}
-					</span>
-				</Link>
-				<div className="shrink-0 flex items-center gap-1">
-					<button
-						type="button"
-						onClick={onToggle}
-						aria-expanded={expanded}
-						aria-label={`${expanded ? "Collapse" : "Expand"} documents for ${kb.name}`}
-						title={expanded ? "Hide documents" : "Show documents"}
-						className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-					>
-						<ChevronDown
-							className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+				</div>
+				<div className="mt-auto flex flex-wrap items-center gap-1">
+					<ServiceChip
+						kind="chunking"
+						name={chunkingName}
+						id={kb.chunkingServiceId}
+					/>
+					<ServiceChip
+						kind="embedding"
+						name={embeddingName}
+						id={kb.embeddingServiceId}
+					/>
+					{kb.rerankingServiceId ? (
+						<ServiceChip
+							kind="reranking"
+							name={rerankingName}
+							id={kb.rerankingServiceId}
 						/>
-					</button>
-					<Button variant="secondary" size="sm" onClick={onIngest}>
-						<Upload className="h-4 w-4" /> Ingest
-					</Button>
-					<Button variant="secondary" size="sm" asChild>
-						<Link
-							to={`${detailPath}/playground`}
-							title="Open the playground for this knowledge base"
-						>
-							<Sparkles className="h-4 w-4" /> Playground
-						</Link>
-					</Button>
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={onEdit}
-						aria-label={`Edit ${kb.name}`}
-						title={`Edit ${kb.name}`}
-					>
-						<Pencil className="h-4 w-4 text-slate-600 dark:text-slate-400" />
-					</Button>
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={onDelete}
-						aria-label={`Delete ${kb.name}`}
-					>
-						<Trash2 className="h-4 w-4 text-red-600" />
-					</Button>
+					) : null}
 				</div>
 			</div>
-			{expanded ? (
-				<div className="border-t border-slate-100 bg-slate-50/50 p-3 flex flex-col gap-4 dark:border-slate-800 dark:bg-slate-800/50">
-					<div className="flex flex-col gap-2">
-						<p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
-							Documents
-						</p>
-						{docs.isLoading ? (
-							<p className="text-xs text-slate-500 inline-flex items-center gap-2 dark:text-slate-400">
-								<Loader2 className="h-3 w-3 animate-spin" /> Loading documents…
-							</p>
-						) : docs.isError ? (
-							<p className="text-xs text-red-600 dark:text-red-400">
-								Couldn't load documents: {docs.error.message}
-							</p>
-						) : (docs.data?.length ?? 0) === 0 ? (
-							<p className="text-xs text-slate-500 dark:text-slate-400">
-								No documents yet. Click{" "}
-								<span className="font-medium">Ingest</span> to add one.
-							</p>
-						) : (
-							<DocumentList rows={docs.data ?? []} />
-						)}
-					</div>
-				</div>
-			) : null}
-		</div>
+			<div className="absolute right-3 top-3 z-20 flex shrink-0 items-center gap-1">
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={onEdit}
+					aria-label={`Edit ${kb.name}`}
+					title={`Edit ${kb.name}`}
+				>
+					<Pencil className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+				</Button>
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={onDelete}
+					aria-label={`Delete ${kb.name}`}
+				>
+					<Trash2 className="h-4 w-4 text-red-600" />
+				</Button>
+			</div>
+		</li>
 	);
 }
 
@@ -412,47 +294,6 @@ function KbStatusBadge({ status }: { status: KnowledgeBaseRecord["status"] }) {
 		>
 			{status}
 		</span>
-	);
-}
-
-function DocumentList({ rows }: { rows: readonly RagDocumentRecord[] }) {
-	const trimmed = rows.slice(0, 10);
-	return (
-		<div className="flex flex-col gap-1">
-			{trimmed.map((d) => (
-				<DocumentRow key={d.documentId} doc={d} />
-			))}
-			{rows.length > trimmed.length ? (
-				<p className="text-xs text-slate-500 pl-6 dark:text-slate-400">
-					+ {rows.length - trimmed.length} more
-				</p>
-			) : null}
-		</div>
-	);
-}
-
-function DocumentRow({ doc }: { doc: RagDocumentRecord }) {
-	return (
-		<div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-white dark:hover:bg-slate-900">
-			<DocumentStatusBadge status={doc.status} />
-			<FileTypeBadge
-				sourceFilename={doc.sourceFilename}
-				fileType={doc.fileType}
-			/>
-			<span className="min-w-0 truncate text-slate-700 dark:text-slate-300">
-				{doc.sourceFilename ?? (
-					<span className="font-mono text-slate-500 dark:text-slate-400">
-						{doc.documentId}
-					</span>
-				)}
-			</span>
-			<span className="ml-auto flex shrink-0 items-center gap-3 text-slate-500 tabular-nums dark:text-slate-400">
-				<span>{formatFileSize(doc.fileSize)}</span>
-				<span>
-					{doc.chunkTotal !== null ? `${doc.chunkTotal} chunks` : "—"}
-				</span>
-			</span>
-		</div>
 	);
 }
 

@@ -1,7 +1,7 @@
 /**
  * Hooks for the three execution-service surfaces (chunking,
  * embedding, reranking). They share the same shape — list / create /
- * delete — so we use a small factory to avoid stamping out three
+ * update / delete — so we use a small factory to avoid stamping out three
  * near-identical files.
  */
 import {
@@ -19,6 +19,9 @@ import type {
 	CreateRerankingServiceInput,
 	EmbeddingServiceRecord,
 	RerankingServiceRecord,
+	UpdateChunkingServiceInput,
+	UpdateEmbeddingServiceInput,
+	UpdateRerankingServiceInput,
 } from "@/lib/schemas";
 
 type ServiceKind = "chunking" | "embedding" | "reranking";
@@ -81,6 +84,20 @@ export function useCreateChunkingService(
 	});
 }
 
+export function useUpdateChunkingService(
+	workspaceId: string,
+	chunkingServiceId: string,
+): UseMutationResult<ChunkingServiceRecord, Error, UpdateChunkingServiceInput> {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (patch) =>
+			api.updateChunkingService(workspaceId, chunkingServiceId, patch),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: keys(workspaceId, "chunking") });
+		},
+	});
+}
+
 export function useCreateEmbeddingService(
 	workspaceId: string,
 ): UseMutationResult<
@@ -97,6 +114,24 @@ export function useCreateEmbeddingService(
 	});
 }
 
+export function useUpdateEmbeddingService(
+	workspaceId: string,
+	embeddingServiceId: string,
+): UseMutationResult<
+	EmbeddingServiceRecord,
+	Error,
+	UpdateEmbeddingServiceInput
+> {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (patch) =>
+			api.updateEmbeddingService(workspaceId, embeddingServiceId, patch),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: keys(workspaceId, "embedding") });
+		},
+	});
+}
+
 export function useCreateRerankingService(
 	workspaceId: string,
 ): UseMutationResult<
@@ -107,6 +142,24 @@ export function useCreateRerankingService(
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (input) => api.createRerankingService(workspaceId, input),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: keys(workspaceId, "reranking") });
+		},
+	});
+}
+
+export function useUpdateRerankingService(
+	workspaceId: string,
+	rerankingServiceId: string,
+): UseMutationResult<
+	RerankingServiceRecord,
+	Error,
+	UpdateRerankingServiceInput
+> {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (patch) =>
+			api.updateRerankingService(workspaceId, rerankingServiceId, patch),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: keys(workspaceId, "reranking") });
 		},

@@ -8,6 +8,11 @@
  * (which would also fight OpenAPIHono's typed-response inference).
  */
 
+import {
+	DataAPIHttpError,
+	DataAPIResponseError,
+	DataAPITimeoutError,
+} from "@datastax/astra-db-ts";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import {
 	ControlPlaneConflictError,
@@ -20,6 +25,7 @@ import {
 	DriverUnavailableError,
 	WorkspaceMisconfiguredError,
 } from "../../drivers/vector-store.js";
+import { safeErrorMessage } from "../../lib/safe-error.js";
 
 export interface MappedError {
 	readonly status: ContentfulStatusCode;
@@ -71,6 +77,20 @@ export function mapControlPlaneError(err: unknown): MappedError | null {
 			status: 503,
 			code: "collection_unavailable",
 			message: err.message,
+		};
+	}
+	if (err instanceof DataAPIResponseError) {
+		return {
+			status: 502,
+			code: "data_api_error",
+			message: safeErrorMessage(err),
+		};
+	}
+	if (err instanceof DataAPIHttpError || err instanceof DataAPITimeoutError) {
+		return {
+			status: 503,
+			code: "data_api_unavailable",
+			message: safeErrorMessage(err),
 		};
 	}
 	return null;

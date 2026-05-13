@@ -44,22 +44,6 @@ vi.mock("@/hooks/useServices", () => ({
 	}),
 }));
 
-// Document fetch only fires when a row is expanded; in these tests
-// we don't expand rows, so a stub is enough.
-vi.mock("@/hooks/useDocuments", () => ({
-	useDocuments: () => ({
-		data: [],
-		error: null,
-		isLoading: false,
-		isError: false,
-	}),
-}));
-
-vi.mock("./CreateKnowledgeBaseDialog", () => ({
-	CreateKnowledgeBaseDialog: ({ open }: { open: boolean }) =>
-		open ? <div data-testid="create-kb-dialog" /> : null,
-}));
-
 vi.mock("./EditKnowledgeBaseDialog", () => ({
 	EditKnowledgeBaseDialog: ({
 		kb,
@@ -69,10 +53,6 @@ vi.mock("./EditKnowledgeBaseDialog", () => ({
 		kb ? (
 			<div data-testid="edit-kb-dialog" data-kb-id={kb.knowledgeBaseId} />
 		) : null,
-}));
-
-vi.mock("./IngestQueueDialog", () => ({
-	IngestQueueDialog: () => <div data-testid="ingest-dialog" />,
 }));
 
 vi.mock("sonner", () => ({
@@ -156,32 +136,13 @@ describe("KnowledgeBasesPanel", () => {
 		).toBeInTheDocument();
 	});
 
-	it("singular vs plural copy reflects row count", () => {
+	it("does not render a separate row-count summary when cards are present", () => {
 		listState.data = [KB_ALPHA];
-		const { rerender } = renderPanel();
-		expect(
-			screen.getByText("1 knowledge base in this workspace."),
-		).toBeInTheDocument();
-
-		listState.data = [KB_ALPHA, KB_BETA];
-		rerender(
-			<MemoryRouter>
-				<KnowledgeBasesPanel workspace="ws-1" />
-			</MemoryRouter>,
-		);
-		expect(
-			screen.getByText("2 knowledge bases in this workspace."),
-		).toBeInTheDocument();
-	});
-
-	it("opens the CreateKnowledgeBaseDialog when 'New knowledge base' is clicked", async () => {
-		const user = userEvent.setup();
 		renderPanel();
-		expect(screen.queryByTestId("create-kb-dialog")).not.toBeInTheDocument();
-		await user.click(
-			screen.getByRole("button", { name: /New knowledge base/ }),
-		);
-		expect(screen.getByTestId("create-kb-dialog")).toBeInTheDocument();
+
+		expect(
+			screen.queryByText(/knowledge bases? in this workspace/i),
+		).not.toBeInTheDocument();
 	});
 
 	it("renders rows with the KB name, status badge, and a 'reranker' chip when a reranker is bound", () => {
@@ -189,6 +150,10 @@ describe("KnowledgeBasesPanel", () => {
 		renderPanel();
 		expect(screen.getByText("alpha")).toBeInTheDocument();
 		expect(screen.getByText("beta")).toBeInTheDocument();
+		expect(screen.getByRole("link", { name: "Open alpha" })).toHaveAttribute(
+			"href",
+			"/workspaces/ws-1/knowledge-bases/kb-alpha",
+		);
 		// KB_BETA has rerankingServiceId set; KB_ALPHA does not — exactly
 		// one reranker chip should render.
 		expect(screen.getAllByText("reranker")).toHaveLength(1);
@@ -207,6 +172,18 @@ describe("KnowledgeBasesPanel", () => {
 		expect(
 			screen.getByRole("button", { name: "Delete beta" }),
 		).toBeInTheDocument();
+	});
+
+	it("keeps ingest and document-list actions on the KB page", () => {
+		listState.data = [KB_ALPHA];
+		renderPanel();
+
+		expect(
+			screen.queryByRole("button", { name: /Ingest/i }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /documents for alpha/i }),
+		).not.toBeInTheDocument();
 	});
 
 	it("renders chunking and embedding service chips with the resolved service names", () => {

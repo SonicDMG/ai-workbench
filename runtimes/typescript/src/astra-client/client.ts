@@ -8,6 +8,7 @@
  */
 
 import {
+	type CreateTableColumnDefinitions,
 	DataAPIClient,
 	DataAPIResponseError,
 	type Db,
@@ -70,6 +71,80 @@ import {
 	WORKSPACES_TABLE,
 } from "./table-definitions.js";
 import type { TablesBundle } from "./tables.js";
+
+type ColumnDefinition = CreateTableColumnDefinitions[string];
+
+interface AdditiveColumnMigration {
+	readonly table: string;
+	readonly column: string;
+	readonly definition: ColumnDefinition;
+}
+
+const ADDITIVE_COLUMN_MIGRATIONS = [
+	// Workspaces predate persisted UI URL/keyspace metadata in early
+	// developer keyspaces.
+	{
+		table: WORKSPACES_TABLE,
+		column: "url",
+		definition: WORKSPACES_DEFINITION.columns.url,
+	},
+	{
+		table: WORKSPACES_TABLE,
+		column: "keyspace",
+		definition: WORKSPACES_DEFINITION.columns.keyspace,
+	},
+	// API-key scopes are additive; legacy keys default to full access
+	// on read when the column is null/missing.
+	{
+		table: API_KEYS_TABLE,
+		column: "scopes",
+		definition: API_KEYS_DEFINITION.columns.scopes,
+	},
+	// Knowledge-base collection lifecycle + lexical config landed
+	// after the first issue #98 control-plane table shape.
+	{
+		table: KNOWLEDGE_BASES_TABLE,
+		column: "vector_collection",
+		definition: KNOWLEDGE_BASES_DEFINITION.columns.vector_collection,
+	},
+	{
+		table: KNOWLEDGE_BASES_TABLE,
+		column: "owned",
+		definition: KNOWLEDGE_BASES_DEFINITION.columns.owned,
+	},
+	{
+		table: KNOWLEDGE_BASES_TABLE,
+		column: "lexical_enabled",
+		definition: KNOWLEDGE_BASES_DEFINITION.columns.lexical_enabled,
+	},
+	{
+		table: KNOWLEDGE_BASES_TABLE,
+		column: "lexical_analyzer",
+		definition: KNOWLEDGE_BASES_DEFINITION.columns.lexical_analyzer,
+	},
+	{
+		table: KNOWLEDGE_BASES_TABLE,
+		column: "lexical_options",
+		definition: KNOWLEDGE_BASES_DEFINITION.columns.lexical_options,
+	},
+	// Cross-replica job resume fields were added after the initial job
+	// table. Rows written before them are read null-safe.
+	{
+		table: JOBS_TABLE,
+		column: "leased_by",
+		definition: JOBS_DEFINITION.columns.leased_by,
+	},
+	{
+		table: JOBS_TABLE,
+		column: "leased_at",
+		definition: JOBS_DEFINITION.columns.leased_at,
+	},
+	{
+		table: JOBS_TABLE,
+		column: "ingest_input_json",
+		definition: JOBS_DEFINITION.columns.ingest_input_json,
+	},
+] as const satisfies readonly AdditiveColumnMigration[];
 
 export interface AstraClientConfig {
 	readonly endpoint: string;
@@ -194,17 +269,16 @@ async function ensureTables(db: Db): Promise<void> {
 
 	// Additive column migrations on existing tables. `createTable
 	// (ifNotExists)` is a no-op when the table already exists, so a
-	// new column added to `API_KEYS_DEFINITION` does NOT land on a
-	// pre-existing deployment without an explicit alter. Each
-	// migration here is idempotent — safe to re-run on every boot.
-	await ensureApiKeyScopesColumn(db);
+	// new column added to a definition does NOT land on a pre-existing
+	// deployment without an explicit alter. Each migration here is
+	// idempotent — safe to re-run on every boot.
+	await ensureAdditiveColumns(db);
 }
 
 /**
- * Add the `scopes set<text>` column to `wb_api_key_by_workspace` on
- * existing deployments. Fresh deployments already have it from the
- * table definition; the alter here is a no-op-on-duplicate handler so
- * the boot path is uniform.
+ * Add non-key columns to existing deployments. Fresh deployments
+ * already have them from the table definitions; the alters here are
+ * no-op-on-duplicate handlers so the boot path is uniform.
  *
  * Data API's `alterTable.add` is a single-column command and fails
  * with `CANNOT_ADD_EXISTING_COLUMNS` (a `DataAPIResponseError`) when
@@ -212,17 +286,25 @@ async function ensureTables(db: Db): Promise<void> {
  * continue; any other failure surfaces because it implies a real
  * schema problem (permissions, partition mismatch, etc.) the
  * operator should see at boot, not at first write.
- *
- * Structured-code match first (stable contract); message fallback
- * second so a minor SDK-side phrasing change doesn't blow up boot.
  */
-async function ensureApiKeyScopesColumn(db: Db): Promise<void> {
+export async function ensureAdditiveColumns(
+	db: Pick<Db, "table">,
+): Promise<void> {
+	for (const migration of ADDITIVE_COLUMN_MIGRATIONS) {
+		await ensureAddedColumn(db, migration);
+	}
+}
+
+async function ensureAddedColumn(
+	db: Pick<Db, "table">,
+	{ table, column, definition }: AdditiveColumnMigration,
+): Promise<void> {
 	try {
-		await db.table<ApiKeyRow>(API_KEYS_TABLE).alter({
+		await db.table<Record<string, unknown>>(table).alter({
 			operation: {
 				add: {
 					columns: {
-						scopes: { type: "set", valueType: "text" },
+						[column]: definition,
 					},
 				},
 			},
@@ -234,7 +316,10 @@ async function ensureApiKeyScopesColumn(db: Db): Promise<void> {
 }
 
 /**
- * Exported for unit testing. Not part of the bundle's public surface.
+ * Classify duplicate-column responses from additive table alters.
+ *
+ * Structured-code match first (stable contract); message fallback
+ * second so a minor SDK-side phrasing change doesn't blow up boot.
  */
 export function isAlreadyHasColumnError(err: unknown): boolean {
 	if (err instanceof DataAPIResponseError) {
