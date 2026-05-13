@@ -1,8 +1,8 @@
 # AI Workbench
 
-[![CI](https://github.com/datastax/ai-workbench/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/datastax/ai-workbench/actions/workflows/ci.yml)
-[![Runtimes](https://github.com/datastax/ai-workbench/actions/workflows/runtimes.yml/badge.svg?branch=main)](https://github.com/datastax/ai-workbench/actions/workflows/runtimes.yml)
-[![Secret scan](https://github.com/datastax/ai-workbench/actions/workflows/secret-scan.yml/badge.svg?branch=main)](https://github.com/datastax/ai-workbench/actions/workflows/secret-scan.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/ci.yml?branch=main&label=CI)](https://github.com/datastax/ai-workbench/actions/workflows/ci.yml)
+[![Runtimes](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/runtimes.yml?branch=main&label=Runtimes)](https://github.com/datastax/ai-workbench/actions/workflows/runtimes.yml)
+[![Secret scan](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/secret-scan.yml?branch=main&label=Secret%20scan)](https://github.com/datastax/ai-workbench/actions/workflows/secret-scan.yml)
 [![Node 22+](https://img.shields.io/badge/node-%3E=22-blue)](./.nvmrc)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
