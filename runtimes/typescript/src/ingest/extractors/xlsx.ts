@@ -1,5 +1,5 @@
 /**
- * Native `.xlsx` text extraction via `exceljs`.
+ * Native `.xlsx` text extraction via `read-excel-file`.
  *
  * Walks every worksheet in the workbook and renders it as a markdown
  * table — sheet name as a level-2 heading, header row separated from
@@ -8,14 +8,10 @@
  * for retrieval (sheet names + cell values, with row + column locality
  * preserved). Empty sheets are skipped.
  *
- * Cell values are coerced to strings:
- *   - numbers / booleans / dates → `String(value)` / ISO-8601 for dates
- *   - hyperlinks → display text (the URL is dropped — the markdown
- *     table cell would otherwise carry the full link target into every
- *     row, which doesn't help retrieval)
- *   - formulas → the cached result when the workbook has one,
- *     otherwise the formula source
- *   - rich text → concatenated runs
+ * `read-excel-file` already coerces cell values:
+ *   - numbers / booleans → primitives; dates → `Date` objects (ISO-8601 here)
+ *   - formulas → the cached result the spreadsheet app last wrote
+ *   - hyperlinks / rich text → flattened to display text
  *
  * Operators who need spreadsheet-aware extraction (per-sheet metadata,
  * named ranges, charts, formula evaluation) should route through
@@ -29,89 +25,35 @@ import {
 	type ExtractInput,
 } from "./types.js";
 
-interface RichTextRun {
-	readonly text?: string;
-}
+type CellValue = string | number | boolean | Date | null;
+type Row = ReadonlyArray<CellValue>;
+type SheetEntry = { readonly sheet: string; readonly data: ReadonlyArray<Row> };
 
-interface ExcelHyperlinkValue {
-	readonly text?: string;
-	readonly hyperlink?: string;
-}
+type ReadExcelFileFn = (input: Buffer) => Promise<ReadonlyArray<SheetEntry>>;
 
-interface ExcelFormulaValue {
-	readonly result?: unknown;
-	readonly formula?: string;
-}
+let readXlsxFilePromise: Promise<ReadExcelFileFn> | null = null;
 
-interface ExcelRichTextValue {
-	readonly richText?: ReadonlyArray<RichTextRun>;
-}
-
-interface ExcelRow {
-	getCell(col: number): { readonly value: unknown };
-	readonly cellCount: number;
-	readonly actualCellCount: number;
-}
-
-interface ExcelWorksheet {
-	readonly name: string;
-	readonly rowCount: number;
-	readonly columnCount: number;
-	readonly actualColumnCount: number;
-	readonly actualRowCount: number;
-	getRow(row: number): ExcelRow;
-}
-
-interface ExcelWorkbook {
-	readonly worksheets: ReadonlyArray<ExcelWorksheet>;
-}
-
-interface ExcelJsModule {
-	Workbook: new () => {
-		xlsx: { load(buffer: Buffer): Promise<ExcelWorkbook> };
-	};
-}
-
-let exceljsPromise: Promise<ExcelJsModule> | null = null;
-
-async function loadExcelJs(): Promise<ExcelJsModule> {
-	if (!exceljsPromise) {
-		exceljsPromise = import("exceljs").then(
+async function loadReader(): Promise<ReadExcelFileFn> {
+	if (!readXlsxFilePromise) {
+		readXlsxFilePromise = import("read-excel-file/node").then(
 			(mod) =>
-				(mod as unknown as { default?: ExcelJsModule }).default ??
-				(mod as unknown as ExcelJsModule),
+				((mod as unknown as { default: ReadExcelFileFn }).default ??
+					(mod as unknown as ReadExcelFileFn)) as ReadExcelFileFn,
 		);
 	}
-	return exceljsPromise;
+	return readXlsxFilePromise;
 }
 
-/** Coerce a single cell value to its display string. Tolerant of the
- * mixed-shape `value` union exceljs exposes — formulas, hyperlinks,
- * rich text, numbers, dates, booleans, and null all flow through here. */
-function cellToString(value: unknown): string {
+/** Coerce a single cell value to its display string. `read-excel-file`
+ * already flattens formulas / hyperlinks / rich text into primitives,
+ * so this only has to handle the four cell-value types it produces. */
+function cellToString(value: CellValue): string {
 	if (value === null || value === undefined) return "";
 	if (typeof value === "string") return value;
 	if (typeof value === "number" || typeof value === "boolean") {
 		return String(value);
 	}
 	if (value instanceof Date) return value.toISOString();
-	if (typeof value === "object") {
-		const obj = value as ExcelHyperlinkValue &
-			ExcelFormulaValue &
-			ExcelRichTextValue;
-		if (Array.isArray(obj.richText)) {
-			return obj.richText.map((r) => r.text ?? "").join("");
-		}
-		if (typeof obj.text === "string") return obj.text;
-		if (obj.result !== undefined) return cellToString(obj.result);
-		if (typeof obj.formula === "string") return `=${obj.formula}`;
-		// Fallback: stringify so we don't drop unknown shapes silently.
-		try {
-			return JSON.stringify(value);
-		} catch {
-			return String(value);
-		}
-	}
 	return String(value);
 }
 
@@ -121,32 +63,34 @@ function escapeCell(s: string): string {
 	return s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 
-function renderSheet(sheet: ExcelWorksheet): string {
-	if (sheet.actualRowCount === 0 || sheet.actualColumnCount === 0) {
-		return "";
-	}
-	const rowCount = Math.max(sheet.rowCount, 0);
-	const colCount = Math.max(sheet.columnCount, 0);
-	if (rowCount === 0 || colCount === 0) return "";
+function renderSheet(entry: SheetEntry): string {
+	const rows = entry.data;
+	if (rows.length === 0) return "";
+	const colCount = rows.reduce((n, r) => Math.max(n, r.length), 0);
+	if (colCount === 0) return "";
 
-	const lines: string[] = [`## ${sheet.name}`, ""];
+	const lines: string[] = [`## ${entry.sheet}`, ""];
+	let dataRowsEmitted = 0;
+	let headerEmitted = false;
 
-	for (let r = 1; r <= rowCount; r++) {
-		const row = sheet.getRow(r);
+	for (const row of rows) {
 		const cells: string[] = [];
-		for (let c = 1; c <= colCount; c++) {
-			cells.push(escapeCell(cellToString(row.getCell(c).value)));
+		for (let c = 0; c < colCount; c++) {
+			cells.push(escapeCell(cellToString(row[c] ?? null)));
 		}
 		// Skip rows that came back entirely empty — XLSX files often
 		// have phantom rows past the last filled row, and they bloat
 		// the output without adding anything for retrieval.
 		if (cells.every((c) => c.length === 0)) continue;
 		lines.push(`| ${cells.join(" | ")} |`);
-		if (r === 1) {
+		if (!headerEmitted) {
 			lines.push(`| ${cells.map(() => "---").join(" | ")} |`);
+			headerEmitted = true;
 		}
+		dataRowsEmitted++;
 	}
 
+	if (dataRowsEmitted === 0) return "";
 	lines.push("");
 	return lines.join("\n");
 }
@@ -154,14 +98,13 @@ function renderSheet(sheet: ExcelWorksheet): string {
 export async function extractXlsx(
 	input: ExtractInput,
 ): Promise<ExtractedDocument> {
-	const ExcelJS = await loadExcelJs();
-	let workbook: ExcelWorkbook;
+	const readXlsxFile = await loadReader();
+	let sheets: ReadonlyArray<SheetEntry>;
 	try {
-		const wb = new ExcelJS.Workbook();
 		// `Buffer.from(view)` copies into a fresh standalone Buffer so the
 		// underlying ArrayBuffer the multipart layer handed us isn't held
 		// past this call.
-		workbook = await wb.xlsx.load(Buffer.from(input.bytes));
+		sheets = await readXlsxFile(Buffer.from(input.bytes));
 	} catch (err) {
 		throw new ExtractError(
 			"extraction_failed",
@@ -172,8 +115,8 @@ export async function extractXlsx(
 		);
 	}
 
-	const rendered = workbook.worksheets
-		.map((sheet) => renderSheet(sheet))
+	const rendered = sheets
+		.map((s) => renderSheet(s))
 		.filter((s) => s.length > 0);
 
 	if (rendered.length === 0) {
@@ -186,6 +129,6 @@ export async function extractXlsx(
 	return {
 		text: rendered.join("\n"),
 		parser: "native",
-		parserVersion: "exceljs",
+		parserVersion: "read-excel-file",
 	};
 }

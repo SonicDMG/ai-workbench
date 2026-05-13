@@ -230,17 +230,27 @@ describe("POST .../ingest/file (multipart)", () => {
 		expect((await json(res)).error.code).toBe("invalid_parser");
 	});
 
-	test("round-trips a real XLSX through exceljs", async () => {
+	test("round-trips a real XLSX through the native extractor", async () => {
 		const harness = makeApp();
 		const { ws, kbId } = await setupKb(harness);
 
-		const ExcelJS = await import("exceljs");
-		const wb = new ExcelJS.default.Workbook();
-		const sheet = wb.addWorksheet("Inventory");
-		sheet.addRow(["SKU", "Name", "Qty"]);
-		sheet.addRow(["A-001", "Widget alpha", 12]);
-		sheet.addRow(["A-002", "Widget beta", 7]);
-		const xlsxBuffer = Buffer.from(await wb.xlsx.writeBuffer());
+		const writeXlsxFile = (await import("write-excel-file/node"))
+			.default as unknown as (
+			arg: ReadonlyArray<{
+				readonly sheet: string;
+				readonly data: ReadonlyArray<ReadonlyArray<{ value: string | number }>>;
+			}>,
+		) => { toBuffer(): Promise<Buffer> };
+		const xlsxBuffer = await writeXlsxFile([
+			{
+				sheet: "Inventory",
+				data: [
+					[{ value: "SKU" }, { value: "Name" }, { value: "Qty" }],
+					[{ value: "A-001" }, { value: "Widget alpha" }, { value: 12 }],
+					[{ value: "A-002" }, { value: "Widget beta" }, { value: 7 }],
+				],
+			},
+		]).toBuffer();
 
 		const form = new FormData();
 		form.append(
@@ -259,7 +269,7 @@ describe("POST .../ingest/file (multipart)", () => {
 		const body = await json(res);
 		expect(body.chunks).toBeGreaterThan(0);
 		expect(body.document.metadata.ingestParser).toBe("native");
-		expect(body.document.metadata.ingestParserVersion).toBe("exceljs");
+		expect(body.document.metadata.ingestParserVersion).toBe("read-excel-file");
 
 		const chunksRes = await harness.app.request(
 			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents/${body.document.documentId}/chunks`,

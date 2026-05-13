@@ -109,17 +109,45 @@ describe("text extractor (native fast-path)", () => {
 });
 
 describe("xlsx extractor (native)", () => {
+	async function makeXlsxBuffer(
+		sheets: ReadonlyArray<{
+			readonly sheet: string;
+			readonly rows: ReadonlyArray<ReadonlyArray<string | number>>;
+		}>,
+	): Promise<Buffer> {
+		const writeXlsxFile = (await import("write-excel-file/node"))
+			.default as unknown as (
+			arg: ReadonlyArray<{
+				readonly sheet: string;
+				readonly data: ReadonlyArray<ReadonlyArray<{ value: string | number }>>;
+			}>,
+		) => { toBuffer(): Promise<Buffer> };
+		return writeXlsxFile(
+			sheets.map((s) => ({
+				sheet: s.sheet,
+				data: s.rows.map((r) => r.map((v) => ({ value: v }))),
+			})),
+		).toBuffer();
+	}
+
 	test("renders each sheet as a markdown table with header alignment row", async () => {
-		const ExcelJS = await import("exceljs");
-		const wb = new ExcelJS.default.Workbook();
-		const s1 = wb.addWorksheet("Inventory");
-		s1.addRow(["SKU", "Name", "Qty"]);
-		s1.addRow(["A-001", "Widget alpha", 12]);
-		s1.addRow(["A-002", "Widget beta", 7]);
-		const s2 = wb.addWorksheet("Notes");
-		s2.addRow(["Field", "Value"]);
-		s2.addRow(["Owner", "finance"]);
-		const buf = await wb.xlsx.writeBuffer();
+		const buf = await makeXlsxBuffer([
+			{
+				sheet: "Inventory",
+				rows: [
+					["SKU", "Name", "Qty"],
+					["A-001", "Widget alpha", 12],
+					["A-002", "Widget beta", 7],
+				],
+			},
+			{
+				sheet: "Notes",
+				rows: [
+					["Field", "Value"],
+					["Owner", "finance"],
+				],
+			},
+		]);
 
 		const reg = createExtractorRegistry({ docling: null });
 		const out = await reg.extract({
@@ -129,7 +157,7 @@ describe("xlsx extractor (native)", () => {
 				"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 		});
 		expect(out.parser).toBe("native");
-		expect(out.parserVersion).toBe("exceljs");
+		expect(out.parserVersion).toBe("read-excel-file");
 		// Each sheet appears as a level-2 heading.
 		expect(out.text).toContain("## Inventory");
 		expect(out.text).toContain("## Notes");
@@ -142,13 +170,12 @@ describe("xlsx extractor (native)", () => {
 	});
 
 	test("escapes pipes and newlines so cells don't bust the table grid", async () => {
-		const ExcelJS = await import("exceljs");
-		const wb = new ExcelJS.default.Workbook();
-		const s = wb.addWorksheet("Data");
-		s.addRow(["Header"]);
-		s.addRow(["pipe | inside"]);
-		s.addRow(["multi\nline"]);
-		const buf = await wb.xlsx.writeBuffer();
+		const buf = await makeXlsxBuffer([
+			{
+				sheet: "Data",
+				rows: [["Header"], ["pipe | inside"], ["multi\nline"]],
+			},
+		]);
 
 		const reg = createExtractorRegistry({ docling: null });
 		const out = await reg.extract({
@@ -163,10 +190,7 @@ describe("xlsx extractor (native)", () => {
 	});
 
 	test("rejects an empty workbook with empty_document", async () => {
-		const ExcelJS = await import("exceljs");
-		const wb = new ExcelJS.default.Workbook();
-		wb.addWorksheet("blank");
-		const buf = await wb.xlsx.writeBuffer();
+		const buf = await makeXlsxBuffer([{ sheet: "blank", rows: [[""]] }]);
 
 		const reg = createExtractorRegistry({ docling: null });
 		await expect(
