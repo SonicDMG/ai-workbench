@@ -129,29 +129,29 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	);
 	expect(upsert.ok()).toBe(true);
 
-	// 8. Navigate to the KB-scoped playground via a fresh load. We
-	//    deliberately use `page.goto` instead of clicking through the
-	//    UI: the services + KB were created via the `request` fixture,
-	//    which is invisible to the page's React Query cache until a
-	//    hard load remounts the route.
-	await page.goto(
-		`/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/playground`,
+	// 8. Vector lane: query the KB through the data-plane `/search`
+	//    endpoint with the matching vector. The UI surface for
+	//    KB-scoped retrieval was folded into the runtime API by the
+	//    "AI design sweep" — the production retrieval path is the same
+	//    POST `/search` either way, so the golden path now verifies
+	//    that path directly rather than driving a removed widget.
+	const vectorSearch = await request.post(
+		`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/search`,
+		{ data: { vector: [1, 0, 0, 0], topK: 10 } },
 	);
-	await expect(page.getByRole("heading", { name: "Playground" })).toBeVisible();
+	expect(
+		vectorSearch.ok(),
+		`vector search: ${await vectorSearch.text()}`,
+	).toBe(true);
+	const vectorHits = (await vectorSearch.json()) as Array<{ id: string }>;
+	const vectorIds = vectorHits.map((h) => h.id);
+	expect(vectorIds).toContain("alpha");
+	expect(vectorIds).toContain("bravo");
 
-	// 9. Switch to the Vector tab and paste a matching vector.
-	await page.getByRole("button", { name: "Vector", exact: true }).click();
-	await page.getByLabel(/Vector \(/).fill("[1, 0, 0, 0]");
-
-	// 10. Run the query — both rows visible.
-	await page.getByRole("button", { name: /Run query/ }).click();
-	await expect(page.getByText(/alpha/, { exact: false })).toBeVisible();
-	await expect(page.getByText(/bravo/, { exact: false })).toBeVisible();
-
-	// 11. Cover the text lane. Upsert two records by `text` — the
-	//     runtime client-side embeds them through the mock embedder,
-	//     producing deterministic vectors. Querying with the same text
-	//     deterministically retrieves the matching record at cosine 1.0.
+	// 9. Text lane: upsert two records by `text` — the runtime
+	//    client-side embeds them through the mock embedder, producing
+	//    deterministic vectors. Querying with the same text
+	//    deterministically retrieves the matching record at cosine 1.0.
 	const textUpsert = await request.post(
 		`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/records`,
 		{
@@ -173,13 +173,24 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	);
 	expect(textUpsert.ok(), `text upsert: ${await textUpsert.text()}`).toBe(true);
 
-	// 12. Switch back to the Text tab (default, but the previous step
-	//     left us on Vector) and query with one of the upserted texts.
-	//     The mock embedder hashes both the upserted text and the
-	//     query text identically → cosine 1.0 → that record is the top
-	//     hit.
-	await page.getByRole("button", { name: "Text", exact: true }).click();
-	await page.getByLabel("Query").fill("cats sit on mats");
-	await page.getByRole("button", { name: /Run query/ }).click();
-	await expect(page.getByText("text-cat", { exact: false })).toBeVisible();
+	// 10. Query by text — the mock embedder hashes both the upserted
+	//     text and the query text identically → cosine 1.0 → that
+	//     record is the top hit.
+	const textSearch = await request.post(
+		`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/search`,
+		{ data: { text: "cats sit on mats", topK: 5 } },
+	);
+	expect(textSearch.ok(), `text search: ${await textSearch.text()}`).toBe(true);
+	const textHits = (await textSearch.json()) as Array<{ id: string }>;
+	expect(textHits[0]?.id).toBe("text-cat");
+
+	// 11. UI smoke: the workspace-scoped Data API Playground is the
+	//     remaining browser surface on the retrieval flow. We just
+	//     prove the page renders for the freshly-created workspace —
+	//     the command execution itself is covered by the runtime's
+	//     own playground-route tests.
+	await page.goto(`/workspaces/${workspaceId}/playground`);
+	await expect(
+		page.getByRole("heading", { name: "Data API Playground" }),
+	).toBeVisible();
 });
