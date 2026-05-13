@@ -88,7 +88,8 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 					<p>
 						A knowledge base owns one Astra collection plus the chunking,
 						embedding, and (optionally) reranking services that produce its
-						content. Create the services first, then a KB that binds them.
+						content. Pick those when you create the KB — service definitions
+						live under Settings.
 					</p>
 				</div>
 			) : (
