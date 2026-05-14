@@ -37,12 +37,12 @@ export function WorkspacesPage() {
 
 	return (
 		<div className="flex flex-col gap-6">
-			<div className="flex items-start justify-between gap-4">
-				<div className="flex items-start gap-3">
+			<div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+				<div className="flex min-w-0 items-start gap-3">
 					<span className="brand-tile" aria-hidden>
 						<Layers className="h-5 w-5" />
 					</span>
-					<div>
+					<div className="min-w-0">
 						<h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
 							Workspaces
 						</h1>
@@ -53,10 +53,11 @@ export function WorkspacesPage() {
 						</p>
 					</div>
 				</div>
-				<div className="flex items-center gap-2">
+				<div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end">
 					<Button
 						variant="ghost"
 						size="icon"
+						className="shrink-0"
 						onClick={() => refetch()}
 						disabled={isFetching}
 						aria-label="Refresh workspaces"
@@ -65,7 +66,11 @@ export function WorkspacesPage() {
 							className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
 						/>
 					</Button>
-					<Button variant="brand" asChild>
+					<Button
+						variant="brand"
+						className="min-w-0 flex-1 sm:flex-none"
+						asChild
+					>
 						<Link to="/onboarding">
 							<Plus className="h-4 w-4" />
 							New workspace

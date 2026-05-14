@@ -82,7 +82,7 @@ export function WorkspaceDetailPage() {
 				</Link>
 			</Button>
 
-			<div className="flex items-start justify-between gap-4">
+			<div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 				<div className="min-w-0">
 					<div className="flex flex-wrap items-center gap-3">
 						<h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
@@ -94,9 +94,9 @@ export function WorkspaceDetailPage() {
 						Build searchable knowledge bases and bind them to workspace agents.
 					</p>
 				</div>
-				<div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+				<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:flex-wrap sm:items-center sm:justify-end">
 					{data.kind === "astra" ? (
-						<Button variant="secondary" asChild>
+						<Button variant="secondary" className="justify-center" asChild>
 							<Link to={`/workspaces/${data.workspaceId}/playground`}>
 								<Code2 className="h-4 w-4" />
 								Playground
@@ -105,6 +105,7 @@ export function WorkspaceDetailPage() {
 					) : (
 						<Button
 							variant="secondary"
+							className="justify-center"
 							disabled
 							title="Playground is available for Astra workspaces"
 						>
@@ -113,15 +114,19 @@ export function WorkspaceDetailPage() {
 						</Button>
 					)}
 					{mcpBaseUrl ? (
-						<McpUrlButton workspaceId={data.workspaceId} baseUrl={mcpBaseUrl} />
+						<McpUrlButton
+							workspaceId={data.workspaceId}
+							baseUrl={mcpBaseUrl}
+							className="justify-center"
+						/>
 					) : null}
-					<Button variant="secondary" asChild>
+					<Button variant="secondary" className="justify-center" asChild>
 						<Link to={`/workspaces/${data.workspaceId}/connect`}>
 							<Plug className="h-4 w-4" />
 							Connect
 						</Link>
 					</Button>
-					<Button variant="secondary" asChild>
+					<Button variant="secondary" className="justify-center" asChild>
 						<Link to={`/workspaces/${data.workspaceId}/settings`}>
 							<Settings className="h-4 w-4" />
 							Settings
@@ -142,8 +147,8 @@ function KnowledgeBaseHero({ workspaceId }: { workspaceId: string }) {
 	return (
 		<>
 			<Card className="overflow-hidden border-t-2 border-t-[var(--color-brand-500)] shadow-sm">
-				<CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 bg-gradient-to-b from-[var(--color-brand-50)]/60 to-white pb-4 dark:to-slate-900">
-					<div>
+				<CardHeader className="flex flex-col items-stretch gap-4 space-y-0 bg-gradient-to-b from-[var(--color-brand-50)]/60 to-white pb-4 sm:flex-row sm:items-start sm:justify-between dark:to-slate-900">
+					<div className="min-w-0">
 						<CardTitle className="flex items-center gap-3 text-lg">
 							<SectionIcon tone="brand">
 								<Database className="h-4 w-4" />
@@ -158,7 +163,7 @@ function KnowledgeBaseHero({ workspaceId }: { workspaceId: string }) {
 					<Button
 						variant="brand"
 						size="sm"
-						className="shrink-0"
+						className="w-full shrink-0 sm:w-auto"
 						onClick={() => setCreateOpen(true)}
 					>
 						<Plus className="h-4 w-4" />
@@ -189,8 +194,8 @@ function AgentsHero({ workspaceId }: { workspaceId: string }) {
 
 	return (
 		<Card className="overflow-hidden">
-			<CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
-				<div>
+			<CardHeader className="flex flex-col items-stretch gap-4 space-y-0 sm:flex-row sm:items-start sm:justify-between">
+				<div className="min-w-0">
 					<CardTitle className="flex items-center gap-3 text-lg">
 						<SectionIcon tone="brand">
 							<Bot className="h-4 w-4" />
@@ -202,8 +207,12 @@ function AgentsHero({ workspaceId }: { workspaceId: string }) {
 						tools.
 					</p>
 				</div>
-				<div className="flex shrink-0 items-center gap-2">
-					<Button variant="brand" onClick={() => setCreating(true)}>
+				<div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
+					<Button
+						variant="brand"
+						className="w-full sm:w-auto"
+						onClick={() => setCreating(true)}
+					>
 						<Plus className="h-4 w-4" />
 						New agent
 					</Button>

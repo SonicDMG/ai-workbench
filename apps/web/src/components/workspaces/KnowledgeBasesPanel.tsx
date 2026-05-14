@@ -155,7 +155,7 @@ function KnowledgeBaseCard({
 
 	const detailPath = `/workspaces/${workspace}/knowledge-bases/${kb.knowledgeBaseId}`;
 	return (
-		<li className="group relative rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600">
+		<li className="group relative min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600">
 			{/*
 			 * Primary action — the whole card opens the explorer. Edit/delete
 			 * live above the link layer so mutating controls don't navigate.
@@ -165,7 +165,7 @@ function KnowledgeBaseCard({
 				aria-label={`Open ${kb.name}`}
 				className="absolute inset-0 z-10 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
 			/>
-			<div className="pointer-events-none flex h-full flex-col gap-4 pr-16">
+			<div className="pointer-events-none flex h-full min-w-0 flex-col gap-4 pr-16">
 				<div className="flex items-start gap-3">
 					<div
 						aria-hidden="true"
@@ -174,8 +174,8 @@ function KnowledgeBaseCard({
 						<Database className="h-5 w-5" />
 					</div>
 					<div className="min-w-0 flex-1">
-						<div className="flex flex-wrap items-center gap-2">
-							<span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+						<div className="flex min-w-0 flex-wrap items-center gap-2">
+							<span className="min-w-0 max-w-full truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
 								{kb.name}
 							</span>
 							<KbStatusBadge status={kb.status} />
@@ -271,11 +271,11 @@ function ServiceChip({
 	const tooltip = name ? `${styles.label}: ${name}` : `${styles.label}: ${id}`;
 	return (
 		<span
-			className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${styles.className}`}
+			className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${styles.className}`}
 			title={tooltip}
 		>
 			<span className="opacity-70">{styles.label}</span>
-			<span className="font-mono normal-case">{display}</span>
+			<span className="truncate font-mono normal-case">{display}</span>
 		</span>
 	);
 }

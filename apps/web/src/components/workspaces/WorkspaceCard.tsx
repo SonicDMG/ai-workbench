@@ -7,7 +7,7 @@ import { KindBadge } from "./KindBadge";
 
 export function WorkspaceCard({ workspace }: { workspace: Workspace }) {
 	return (
-		<Card className="group card-lift relative border-[#e0e0e0] bg-white dark:border-slate-700 dark:bg-slate-900">
+		<Card className="group card-lift relative min-w-0 border-[#e0e0e0] bg-white dark:border-slate-700 dark:bg-slate-900">
 			<Link
 				to={`/workspaces/${workspace.workspaceId}`}
 				className="absolute inset-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
@@ -28,7 +28,7 @@ export function WorkspaceCard({ workspace }: { workspace: Workspace }) {
 				</div>
 			</CardHeader>
 			<CardContent>
-				<dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+				<dl className="grid min-w-0 grid-cols-[minmax(5.5rem,auto)_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
 					<dt className="text-slate-500 dark:text-slate-400">Keyspace</dt>
 					<dd className="text-slate-800 font-mono truncate dark:text-slate-300">
 						{workspace.keyspace ?? "—"}

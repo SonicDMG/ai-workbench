@@ -18,7 +18,13 @@ import { cn } from "@/lib/utils";
  * Compact trigger + modal result for
  * `POST /workspaces/{workspaceId}/test-connection`.
  */
-export function TestConnectionPanel({ workspaceId }: { workspaceId: string }) {
+export function TestConnectionPanel({
+	workspaceId,
+	className,
+}: {
+	workspaceId: string;
+	className?: string;
+}) {
 	const probe = useTestConnection(workspaceId);
 	const [open, setOpen] = useState(false);
 	const result = probe.data;
@@ -31,7 +37,12 @@ export function TestConnectionPanel({ workspaceId }: { workspaceId: string }) {
 
 	return (
 		<>
-			<Button variant="secondary" onClick={runProbe} disabled={probe.isPending}>
+			<Button
+				variant="secondary"
+				className={className}
+				onClick={runProbe}
+				disabled={probe.isPending}
+			>
 				<PlugZap className="h-4 w-4" />
 				{probe.isPending ? "Testing…" : "Test Connectivity"}
 			</Button>

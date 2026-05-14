@@ -24,16 +24,22 @@ import {
 export function McpUrlButton({
 	workspaceId,
 	baseUrl,
+	className,
 }: {
 	workspaceId: string;
 	baseUrl: string;
+	className?: string;
 }) {
 	const [open, setOpen] = useState(false);
 	const url = `${baseUrl}/api/v1/workspaces/${workspaceId}/mcp`;
 
 	return (
 		<>
-			<Button variant="secondary" onClick={() => setOpen(true)}>
+			<Button
+				variant="secondary"
+				className={className}
+				onClick={() => setOpen(true)}
+			>
 				<Plug className="h-4 w-4" />
 				MCP
 			</Button>

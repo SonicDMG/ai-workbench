@@ -81,7 +81,7 @@ export function WorkspaceSettingsPage() {
 				</Link>
 			</Button>
 
-			<div className="flex items-start justify-between gap-4">
+			<div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 				<div className="min-w-0">
 					<h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
 						Settings
@@ -95,8 +95,8 @@ export function WorkspaceSettingsPage() {
 			<SeededDefaultsCallout workspace={data} />
 
 			<Card>
-				<CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
-					<div className="flex min-w-0 items-center gap-3">
+				<CardHeader className="flex flex-col items-stretch gap-4 space-y-0 sm:flex-row sm:items-center sm:justify-between">
+					<div className="flex min-w-0 items-start gap-3 sm:items-center">
 						<SectionIcon>
 							<Cog className="h-4 w-4" />
 						</SectionIcon>
@@ -110,24 +110,43 @@ export function WorkspaceSettingsPage() {
 							</p>
 						</div>
 					</div>
-					<div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-						<TestConnectionPanel workspaceId={data.workspaceId} />
-						<Button variant="secondary" onClick={() => setInfoOpen(true)}>
+					<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:flex-wrap sm:items-center sm:justify-end">
+						<TestConnectionPanel
+							workspaceId={data.workspaceId}
+							className="col-span-2 justify-center sm:col-span-1"
+						/>
+						<Button
+							variant="secondary"
+							className="justify-center"
+							onClick={() => setInfoOpen(true)}
+						>
 							<Info className="h-4 w-4" />
 							Info
 						</Button>
 						{editing ? (
-							<Button variant="ghost" onClick={() => setEditing(false)}>
+							<Button
+								variant="ghost"
+								className="justify-center"
+								onClick={() => setEditing(false)}
+							>
 								<X className="h-4 w-4" />
 								Cancel edit
 							</Button>
 						) : (
-							<Button variant="secondary" onClick={() => setEditing(true)}>
+							<Button
+								variant="secondary"
+								className="justify-center"
+								onClick={() => setEditing(true)}
+							>
 								<Pencil className="h-4 w-4" />
 								Edit
 							</Button>
 						)}
-						<Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+						<Button
+							variant="destructive"
+							className="col-span-2 justify-center sm:col-span-1"
+							onClick={() => setDeleteOpen(true)}
+						>
 							<Trash2 className="h-4 w-4" />
 							Delete
 						</Button>

@@ -24,13 +24,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 					aria-hidden
 					className="h-[3px] w-full bg-[var(--color-brand-500)]"
 				/>
-				<div className="mx-auto max-w-6xl px-4 py-3 sm:px-6 flex items-center justify-between gap-3 sm:gap-6">
+				<div className="mx-auto grid max-w-6xl grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 py-3 sm:gap-6 sm:px-6">
 					<Link
 						to="/"
-						className="flex min-w-0 items-center gap-2 sm:gap-3 group rounded-md -my-1 -mx-1 px-1 py-1"
+						className="group -my-1 -mx-1 flex min-w-0 items-center gap-2 rounded-md px-1 py-1 sm:gap-3"
 					>
 						<BrandMark size={28} />
-						<div className="flex min-w-0 flex-col leading-none">
+						<div className="hidden min-w-0 flex-col leading-none min-[390px]:flex">
 							<span className="truncate whitespace-nowrap text-sm font-semibold tracking-tight text-[#161616] group-hover:text-[#393939] dark:text-slate-100 dark:group-hover:text-white">
 								AI Workbench
 							</span>
@@ -54,11 +54,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 					</nav>
 				</div>
 			</header>
-			<main className="app-backdrop mx-auto w-full max-w-6xl flex-1 px-6 py-10">
+			<main className="app-backdrop mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
 				{children}
 			</main>
 			<footer className="border-t border-[#c6c6c6] bg-white dark:border-slate-800 dark:bg-slate-900">
-				<div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+				<div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:text-slate-400">
 					<span>
 						AI Workbench · DataStax, an IBM company ·{" "}
 						<a
@@ -109,7 +109,7 @@ function WorkspaceSwitcher({
 			>
 				<SelectTrigger
 					aria-label="Workspace"
-					className="max-w-xs border-slate-200 bg-slate-50 shadow-none"
+					className="min-w-0 max-w-[12rem] border-slate-200 bg-slate-50 shadow-none sm:max-w-xs"
 				>
 					<SelectValue
 						placeholder={

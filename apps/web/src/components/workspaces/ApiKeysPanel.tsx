@@ -55,7 +55,7 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 
 	return (
 		<Card className="overflow-hidden shadow-sm">
-			<CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 bg-slate-50/70 p-4 dark:bg-slate-900/60">
+			<CardHeader className="flex flex-col items-stretch gap-4 space-y-0 bg-slate-50/70 p-4 sm:flex-row sm:items-start sm:justify-between dark:bg-slate-900/60">
 				<div className="flex min-w-0 items-start gap-3">
 					<SectionIcon>
 						<KeyRound className="h-4 w-4" />
@@ -72,10 +72,11 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 						</p>
 					</div>
 				</div>
-				<div className="flex shrink-0 items-center justify-end gap-2">
+				<div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
 					<Button
 						variant="ghost"
 						size="icon"
+						className="shrink-0"
 						onClick={() => keys.refetch()}
 						disabled={keys.isFetching}
 						aria-label="Refresh keys"
@@ -84,7 +85,11 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 							className={cn("h-4 w-4", keys.isFetching && "animate-spin")}
 						/>
 					</Button>
-					<Button variant="brand" onClick={() => setCreateOpen(true)}>
+					<Button
+						variant="brand"
+						className="min-w-0 flex-1 sm:flex-none"
+						onClick={() => setCreateOpen(true)}
+					>
 						<Plus className="h-4 w-4" />
 						New key
 					</Button>

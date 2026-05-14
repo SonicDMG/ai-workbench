@@ -165,32 +165,45 @@ export interface ServiceCardProps<T> {
 export function ServiceCard<T>(props: ServiceCardProps<T>) {
 	const rows = props.rows ?? [];
 	return (
-		<div className="flex h-full flex-col rounded-lg border border-slate-200 bg-white shadow-sm transition-colors hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600">
-			<div className="flex items-center gap-3 p-4">
+		<div className="flex h-full min-w-0 flex-col rounded-lg border border-slate-200 bg-white shadow-sm transition-colors hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600">
+			<div className="relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 p-3 sm:p-4">
 				<button
 					type="button"
 					onClick={props.onToggle}
-					className="flex min-w-0 flex-1 items-center gap-2 text-left"
+					className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
 					aria-expanded={props.expanded}
+					aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.label}`}
+				/>
+				<div
+					className="pointer-events-none z-10 flex min-w-0 items-center gap-2 overflow-hidden text-left"
+					aria-hidden="true"
 				>
 					{props.expanded ? (
-						<ChevronDown className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+						<ChevronDown className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
 					) : (
-						<ChevronRight className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+						<ChevronRight className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
 					)}
 					<Box
-						className="h-4 w-4 text-slate-400 dark:text-slate-500"
+						className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500"
 						aria-hidden
 					/>
 					<span className="truncate font-medium text-slate-900 dark:text-slate-100">
 						{props.label}
 					</span>
-					<span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+					<span className="hidden shrink-0 text-xs text-slate-500 lg:inline dark:text-slate-400">
 						{rows.length} {props.countLabel}
 						{rows.length === 1 ? "" : "s"}
 					</span>
-				</button>
-				<Button variant="secondary" size="sm" onClick={props.onCreate}>
+				</div>
+				<Button
+					variant="secondary"
+					size="sm"
+					className="z-10 shrink-0"
+					onClick={(event) => {
+						event.stopPropagation();
+						props.onCreate();
+					}}
+				>
 					<Plus className="h-4 w-4" /> New
 				</Button>
 			</div>
@@ -237,34 +250,38 @@ export function ServiceRow({
 	onDelete: () => void;
 }) {
 	return (
-		<div className="flex items-center gap-2 rounded-md bg-white border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900">
-			<span className="font-medium text-slate-900 truncate dark:text-slate-100">
-				{title}
-			</span>
-			<span className="text-xs text-slate-500 truncate dark:text-slate-400">
-				{subtitle}
-			</span>
-			<span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-				{status}
-			</span>
-			{onEdit ? (
+		<div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900">
+			<div className="min-w-0">
+				<p className="truncate font-medium text-slate-900 dark:text-slate-100">
+					{title}
+				</p>
+				<p className="truncate text-xs text-slate-500 dark:text-slate-400">
+					{subtitle}
+				</p>
+			</div>
+			<div className="flex shrink-0 items-center gap-1">
+				<span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+					{status}
+				</span>
+				{onEdit ? (
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={onEdit}
+						aria-label={`Edit ${title}`}
+					>
+						<Pencil className="h-4 w-4 text-slate-500 dark:text-slate-300" />
+					</Button>
+				) : null}
 				<Button
 					variant="ghost"
 					size="sm"
-					onClick={onEdit}
-					aria-label={`Edit ${title}`}
+					onClick={onDelete}
+					aria-label={`Delete ${title}`}
 				>
-					<Pencil className="h-4 w-4 text-slate-500 dark:text-slate-300" />
+					<Trash2 className="h-4 w-4 text-red-600" />
 				</Button>
-			) : null}
-			<Button
-				variant="ghost"
-				size="sm"
-				onClick={onDelete}
-				aria-label={`Delete ${title}`}
-			>
-				<Trash2 className="h-4 w-4 text-red-600" />
-			</Button>
+			</div>
 		</div>
 	);
 }
