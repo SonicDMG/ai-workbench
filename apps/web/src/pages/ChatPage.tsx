@@ -194,22 +194,21 @@ function ChatLayout({
 	const messages = messagesQuery.data ?? [];
 
 	return (
-		// Fixed-height grid row. Default layout sizing made the empty-
-		// conversation pane taller than the retrieved-context panel
-		// (or vice versa) because each pane sized to its own content
-		// and the row's `min-h` only set a floor. With `h-[…]`, both
-		// panes inherit the same row height; long conversations and
-		// busy context panels handle their own internal scrolling.
-		// Viewport-aware so big monitors get a tall chat surface and
-		// laptops still see a usable floor.
-		<div className="grid grid-cols-[14rem_minmax(0,1fr)] gap-4 h-[calc(100vh-14rem)] min-h-[32rem] xl:grid-cols-[14rem_minmax(0,1fr)_18rem]">
+		// Desktop gets a fixed-height multi-column chat surface so each
+		// rail owns its internal scroll. Narrow viewports stack the
+		// conversation picker above a bounded thread pane; this keeps
+		// the 14rem sidebar from forcing horizontal page overflow.
+		<div className="grid grid-cols-1 gap-4 lg:h-[calc(100vh-14rem)] lg:min-h-[32rem] lg:grid-cols-[14rem_minmax(0,1fr)] xl:grid-cols-[14rem_minmax(0,1fr)_18rem]">
 			<ConversationSidebar
 				workspaceId={workspaceId}
 				agentId={agentId}
 				activeConversationId={activeConversationId}
 				onSelect={onSelectConversation}
+				className="max-h-72 min-h-0 lg:h-full lg:max-h-none"
 			/>
-			{children}
+			<div className="h-[calc(100dvh-18rem)] min-h-[28rem] min-w-0 lg:h-full lg:min-h-0">
+				{children}
+			</div>
 			{/* Hidden below xl until the screen has room. Operators on
 			    smaller viewports still see citations through the per-
 			    message Sources disclosure inside MessageBubble. */}

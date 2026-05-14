@@ -13,6 +13,7 @@ interface ConversationSidebarProps {
 	agentId: string;
 	activeConversationId: string | null;
 	onSelect: (conversationId: string) => void;
+	className?: string;
 }
 
 /**
@@ -27,6 +28,7 @@ export function ConversationSidebar({
 	agentId,
 	activeConversationId,
 	onSelect,
+	className,
 }: ConversationSidebarProps) {
 	const conversationsQuery = useConversations(workspaceId, agentId);
 	const create = useCreateConversation(workspaceId, agentId);
@@ -45,7 +47,10 @@ export function ConversationSidebar({
 
 	return (
 		<aside
-			className="flex flex-col rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+			className={cn(
+				"flex flex-col rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900",
+				className,
+			)}
 			aria-label="Conversations"
 		>
 			<div className="border-b border-slate-100 px-3 py-2 dark:border-slate-800">

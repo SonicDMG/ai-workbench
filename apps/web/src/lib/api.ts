@@ -93,6 +93,7 @@ import {
 import { fetchAuthConfig, loginHref, refreshSession } from "./session";
 
 const BASE = "/api/v1";
+const CLIENT_PAGE_LIMIT = 200;
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -212,6 +213,52 @@ async function request<T>(
 	return responseSchema.parse(body);
 }
 
+interface PaginatedResponse<T> {
+	items: T[];
+	nextCursor: string | null;
+}
+
+function withPageQuery(path: string, cursor: string | null): string {
+	const url = new URL(path, "https://workbench.local");
+	if (!url.searchParams.has("limit")) {
+		url.searchParams.set("limit", String(CLIENT_PAGE_LIMIT));
+	}
+	if (cursor) {
+		url.searchParams.set("cursor", cursor);
+	}
+	return `${url.pathname}${url.search}`;
+}
+
+async function requestAllPages<T>(
+	path: string,
+	responseSchema: z.ZodType<PaginatedResponse<T>>,
+): Promise<T[]> {
+	const items: T[] = [];
+	const seenCursors = new Set<string>();
+	let cursor: string | null = null;
+
+	for (;;) {
+		const page: PaginatedResponse<T> = await request(
+			withPageQuery(path, cursor),
+			{ method: "GET" },
+			responseSchema,
+		);
+		items.push(...page.items);
+
+		if (!page.nextCursor) return items;
+		if (seenCursors.has(page.nextCursor)) {
+			throw new ApiError(
+				500,
+				"pagination_loop",
+				"Server returned a repeated pagination cursor",
+				"",
+			);
+		}
+		seenCursors.add(page.nextCursor);
+		cursor = page.nextCursor;
+	}
+}
+
 let inFlightRefresh: Promise<boolean> | null = null;
 async function trySilentRefresh(): Promise<boolean> {
 	if (inFlightRefresh) return inFlightRefresh;
@@ -316,9 +363,7 @@ export const api = {
 	},
 
 	listWorkspaces: (): Promise<Workspace[]> =>
-		request("/workspaces", { method: "GET" }, WorkspacePageSchema).then(
-			(page) => page.items,
-		),
+		requestAllPages("/workspaces", WorkspacePageSchema),
 
 	getWorkspace: (workspaceId: string): Promise<Workspace> =>
 		request(
@@ -355,11 +400,7 @@ export const api = {
 		),
 
 	listApiKeys: (workspaceId: string): Promise<ApiKeyRecord[]> =>
-		request(
-			`/workspaces/${workspaceId}/api-keys`,
-			{ method: "GET" },
-			ApiKeyPageSchema,
-		).then((page) => page.items),
+		requestAllPages(`/workspaces/${workspaceId}/api-keys`, ApiKeyPageSchema),
 
 	createApiKey: (
 		workspaceId: string,
@@ -437,11 +478,10 @@ export const api = {
 	/* -------- Knowledge bases -------- */
 
 	listKnowledgeBases: (workspaceId: string): Promise<KnowledgeBaseRecord[]> =>
-		request(
+		requestAllPages(
 			`/workspaces/${workspaceId}/knowledge-bases`,
-			{ method: "GET" },
 			KnowledgeBasePageSchema,
-		).then((page) => page.items),
+		),
 
 	getKnowledgeBase: (
 		workspaceId: string,
@@ -516,11 +556,10 @@ export const api = {
 		workspaceId: string,
 		kbId: string,
 	): Promise<KnowledgeFilterRecord[]> =>
-		request(
+		requestAllPages(
 			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/filters`,
-			{ method: "GET" },
 			KnowledgeFilterPageSchema,
-		).then((page) => page.items),
+		),
 
 	getKnowledgeFilter: (
 		workspaceId: string,
@@ -585,11 +624,10 @@ export const api = {
 	listChunkingServices: (
 		workspaceId: string,
 	): Promise<ChunkingServiceRecord[]> =>
-		request(
+		requestAllPages(
 			`/workspaces/${workspaceId}/chunking-services`,
-			{ method: "GET" },
 			ChunkingServicePageSchema,
-		).then((page) => page.items),
+		),
 
 	createChunkingService: (
 		workspaceId: string,
@@ -625,11 +663,10 @@ export const api = {
 	listEmbeddingServices: (
 		workspaceId: string,
 	): Promise<EmbeddingServiceRecord[]> =>
-		request(
+		requestAllPages(
 			`/workspaces/${workspaceId}/embedding-services`,
-			{ method: "GET" },
 			EmbeddingServicePageSchema,
-		).then((page) => page.items),
+		),
 
 	createEmbeddingService: (
 		workspaceId: string,
@@ -665,11 +702,10 @@ export const api = {
 	listRerankingServices: (
 		workspaceId: string,
 	): Promise<RerankingServiceRecord[]> =>
-		request(
+		requestAllPages(
 			`/workspaces/${workspaceId}/reranking-services`,
-			{ method: "GET" },
 			RerankingServicePageSchema,
-		).then((page) => page.items),
+		),
 
 	createRerankingService: (
 		workspaceId: string,
@@ -705,11 +741,7 @@ export const api = {
 	/* -------- Agents -------- */
 
 	listAgents: (workspaceId: string): Promise<AgentRecord[]> =>
-		request(
-			`/workspaces/${workspaceId}/agents`,
-			{ method: "GET" },
-			AgentPageSchema,
-		).then((page) => page.items),
+		requestAllPages(`/workspaces/${workspaceId}/agents`, AgentPageSchema),
 
 	getAgent: (workspaceId: string, agentId: string): Promise<AgentRecord> =>
 		request(
@@ -771,11 +803,10 @@ export const api = {
 		workspaceId: string,
 		agentId: string,
 	): Promise<ConversationRecord[]> =>
-		request(
+		requestAllPages(
 			`/workspaces/${workspaceId}/agents/${agentId}/conversations`,
-			{ method: "GET" },
 			ConversationPageSchema,
-		).then((page) => page.items),
+		),
 
 	getConversation: (
 		workspaceId: string,
@@ -839,11 +870,10 @@ export const api = {
 		agentId: string,
 		conversationId: string,
 	): Promise<ChatMessage[]> =>
-		request(
+		requestAllPages(
 			`/workspaces/${workspaceId}/agents/${agentId}/conversations/${conversationId}/messages`,
-			{ method: "GET" },
 			ChatMessagePageSchema,
-		).then((page) => page.items),
+		),
 
 	sendConversationMessage: (
 		workspaceId: string,
@@ -860,11 +890,10 @@ export const api = {
 	/* -------- LLM services -------- */
 
 	listLlmServices: (workspaceId: string): Promise<LlmServiceRecord[]> =>
-		request(
+		requestAllPages(
 			`/workspaces/${workspaceId}/llm-services`,
-			{ method: "GET" },
 			LlmServicePageSchema,
-		).then((page) => page.items),
+		),
 
 	getLlmService: (
 		workspaceId: string,
@@ -913,11 +942,10 @@ export const api = {
 		workspaceId: string,
 		kbId: string,
 	): Promise<RagDocumentRecord[]> =>
-		request(
+		requestAllPages(
 			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents`,
-			{ method: "GET" },
 			RagDocumentPageSchema,
-		).then((page) => page.items),
+		),
 
 	listKbDocumentChunks: (
 		workspaceId: string,

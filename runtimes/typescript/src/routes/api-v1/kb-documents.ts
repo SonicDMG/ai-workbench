@@ -59,6 +59,52 @@ export interface KbDocumentRouteDeps {
 	readonly extractors: ExtractorRegistry;
 }
 
+const AsyncIngestQuerySchema = z.object({
+	async: z
+		.enum(["true", "false"])
+		.optional()
+		.openapi({
+			param: { name: "async", in: "query" },
+			description:
+				"When 'true', run the pipeline in the background and return 202 with a job pointer. Default is synchronous (201).",
+		}),
+});
+
+const KbIngestFileFormSchema = z
+	.object({
+		file: z.string().openapi({
+			type: "string",
+			format: "binary",
+			description:
+				"Document bytes. Supported formats include PDF, DOCX, XLSX, and plain text.",
+		}),
+		parser: z.enum(["auto", "native", "docling"]).optional().openapi({
+			description:
+				"Extractor preference. `auto` uses runtime configuration to choose native or docling.",
+		}),
+		metadata: z.string().optional().openapi({
+			description:
+				"Optional JSON object encoded as a string; values must be strings.",
+			example: '{"source":"upload"}',
+		}),
+		chunker: z.string().optional().openapi({
+			description:
+				"Optional JSON object encoded as a string; overrides chunking for this ingest.",
+			example: '{"maxChunkSize":800}',
+		}),
+		overwriteOnNameConflict: z.enum(["true", "false"]).optional().openapi({
+			description:
+				"When `true`, replace an existing document with the same source filename.",
+		}),
+		documentId: z.string().uuid().optional().openapi({
+			description: "Optional caller-supplied document id.",
+		}),
+		sourceDocId: z.string().optional().openapi({
+			description: "Optional external source document id.",
+		}),
+	})
+	.openapi("KbIngestFileForm");
+
 export function kbDocumentRoutes(
 	deps: KbDocumentRouteDeps,
 ): OpenAPIHono<AppEnv> {
@@ -148,16 +194,7 @@ export function kbDocumentRoutes(
 					workspaceId: WorkspaceIdParamSchema,
 					knowledgeBaseId: KnowledgeBaseIdParamSchema,
 				}),
-				query: z.object({
-					async: z
-						.enum(["true", "false"])
-						.optional()
-						.openapi({
-							param: { name: "async", in: "query" },
-							description:
-								"When 'true', run the pipeline in the background and return 202 with a job pointer. Default is synchronous (201).",
-						}),
-				}),
+				query: AsyncIngestQuerySchema,
 				body: {
 					content: { "application/json": { schema: KbIngestRequestSchema } },
 				},
@@ -236,17 +273,57 @@ export function kbDocumentRoutes(
 		},
 	);
 
-	// Multipart binary ingest. Accepts PDF / DOCX / text uploads via
-	// `multipart/form-data`, routes the bytes through the extractor
-	// dispatcher (`native` or `docling-serve` depending on the
-	// caller's preference + `DOCLING_URL`), and hands the resulting
-	// plain text off to the same ingest service the JSON route uses.
-	// Response shapes are identical to the JSON path so the web UI
-	// can keep one queue / conflict-resolution flow for both.
-	//
-	// Bypasses the `app.openapi(...)` wrapper because zod-openapi's
-	// validator doesn't model `File` form fields cleanly; the field
-	// shape is documented inline and exercised by integration tests.
+	const ingestFileRoute = createRoute({
+		method: "post",
+		path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/ingest/file",
+		tags: ["knowledge-bases"],
+		summary: "Ingest a file into a knowledge base",
+		description:
+			"Accepts a multipart file upload, extracts plain text with the native or docling parser, and feeds the result into the same ingest pipeline as the JSON text route. Response shapes match the JSON ingest endpoint, including duplicate/name-conflict outcomes and async job responses.",
+		request: {
+			params: z.object({
+				workspaceId: WorkspaceIdParamSchema,
+				knowledgeBaseId: KnowledgeBaseIdParamSchema,
+			}),
+			query: AsyncIngestQuerySchema,
+			body: {
+				required: true,
+				content: {
+					"multipart/form-data": { schema: KbIngestFileFormSchema },
+				},
+			},
+		},
+		responses: {
+			200: {
+				content: {
+					"application/json": { schema: KbIngestNonCreateResponseSchema },
+				},
+				description:
+					"Pipeline did not run; the existing document is returned. Discriminated by `outcome`: `duplicate` when content matches an existing document by SHA-256 hash, `name_conflict` when `sourceFilename` matches but content differs and `overwriteOnNameConflict` was not set.",
+			},
+			201: {
+				content: { "application/json": { schema: KbIngestResponseSchema } },
+				description: "Document created and chunks upserted (sync path)",
+			},
+			202: {
+				content: {
+					"application/json": { schema: KbAsyncIngestResponseSchema },
+				},
+				description: "Ingest queued; poll the job for progress",
+			},
+			...errorResponse(400, "Malformed multipart body or invalid form field"),
+			...errorResponse(404, "Workspace or knowledge base not found"),
+			...errorResponse(415, "Unsupported file type"),
+			...errorResponse(422, "File parsed but could not be extracted"),
+			...errorResponse(503, "Configured docling extractor is unavailable"),
+		},
+	});
+
+	// Register the multipart route in the OpenAPI document while
+	// keeping the manual parser below. The validator stack does not
+	// model browser `File` fields well enough to preserve our specific
+	// multipart error codes, so docs and runtime parsing are separated.
+	app.openAPIRegistry.registerPath(ingestFileRoute);
 	app.post(
 		"/:workspaceId/knowledge-bases/:knowledgeBaseId/ingest/file",
 		async (c) => {

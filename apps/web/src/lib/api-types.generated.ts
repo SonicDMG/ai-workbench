@@ -3412,6 +3412,107 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/api/v1/workspaces/{workspaceId}/knowledge-bases/{knowledgeBaseId}/ingest/file": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Ingest a file into a knowledge base
+		 * @description Accepts a multipart file upload, extracts plain text with the native or docling parser, and feeds the result into the same ingest pipeline as the JSON text route. Response shapes match the JSON ingest endpoint, including duplicate/name-conflict outcomes and async job responses.
+		 */
+		post: {
+			parameters: {
+				query?: {
+					/** @description When 'true', run the pipeline in the background and return 202 with a job pointer. Default is synchronous (201). */
+					async?: "true" | "false";
+				};
+				header?: never;
+				path: {
+					workspaceId: string;
+					knowledgeBaseId: string;
+				};
+				cookie?: never;
+			};
+			requestBody: {
+				content: {
+					"multipart/form-data": components["schemas"]["KbIngestFileForm"];
+				};
+			};
+			responses: {
+				/** @description Pipeline did not run; the existing document is returned. Discriminated by `outcome`: `duplicate` when content matches an existing document by SHA-256 hash, `name_conflict` when `sourceFilename` matches but content differs and `overwriteOnNameConflict` was not set. */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["KbIngestNonCreateResponse"];
+					};
+				};
+				/** @description Document created and chunks upserted (sync path) */
+				201: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["KbIngestResponse"];
+					};
+				};
+				/** @description Ingest queued; poll the job for progress */
+				202: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["KbAsyncIngestResponse"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace or knowledge base not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				/** @description Unsupported file type */
+				415: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+				/** @description Configured docling extractor is unavailable */
+				503: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/api/v1/workspaces/{workspaceId}/knowledge-bases/{knowledgeBaseId}/documents/{documentId}/chunks": {
 		parameters: {
 			query?: never;
@@ -5000,6 +5101,40 @@ export interface components {
 			maxChars?: number;
 			minChars?: number;
 			overlapChars?: number;
+		};
+		KbIngestFileForm: {
+			/**
+			 * Format: binary
+			 * @description Document bytes. Supported formats include PDF, DOCX, XLSX, and plain text.
+			 */
+			file: string;
+			/**
+			 * @description Extractor preference. `auto` uses runtime configuration to choose native or docling.
+			 * @enum {string}
+			 */
+			parser?: "auto" | "native" | "docling";
+			/**
+			 * @description Optional JSON object encoded as a string; values must be strings.
+			 * @example {"source":"upload"}
+			 */
+			metadata?: string;
+			/**
+			 * @description Optional JSON object encoded as a string; overrides chunking for this ingest.
+			 * @example {"maxChunkSize":800}
+			 */
+			chunker?: string;
+			/**
+			 * @description When `true`, replace an existing document with the same source filename.
+			 * @enum {string}
+			 */
+			overwriteOnNameConflict?: "true" | "false";
+			/**
+			 * Format: uuid
+			 * @description Optional caller-supplied document id.
+			 */
+			documentId?: string;
+			/** @description Optional external source document id. */
+			sourceDocId?: string;
 		};
 		DocumentChunk: {
 			id: string;

@@ -151,6 +151,36 @@ describe("api client request contract", () => {
 		});
 	});
 
+	it("walks cursor-paginated list responses before returning items", async () => {
+		const secondWorkspace = {
+			...WORKSPACE,
+			workspaceId: "00000000-0000-4000-8000-000000000002",
+			name: "Second",
+		};
+		fetchMock()
+			.mockResolvedValueOnce(
+				jsonResponse({ items: [WORKSPACE], nextCursor: "cursor-2" }),
+			)
+			.mockResolvedValueOnce(
+				jsonResponse({ items: [secondWorkspace], nextCursor: null }),
+			);
+
+		await expect(api.listWorkspaces()).resolves.toEqual([
+			WORKSPACE,
+			secondWorkspace,
+		]);
+		expect(fetchMock()).toHaveBeenNthCalledWith(
+			1,
+			"/api/v1/workspaces?limit=200",
+			expect.objectContaining({ method: "GET", credentials: "include" }),
+		);
+		expect(fetchMock()).toHaveBeenNthCalledWith(
+			2,
+			"/api/v1/workspaces?limit=200&cursor=cursor-2",
+			expect.objectContaining({ method: "GET", credentials: "include" }),
+		);
+	});
+
 	it("falls back to disabled feature flags when discovery is unavailable", async () => {
 		fetchMock().mockResolvedValue(jsonResponse({ error: "down" }, 503));
 

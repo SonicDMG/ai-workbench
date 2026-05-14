@@ -135,6 +135,28 @@ function helloPdf(): Uint8Array<ArrayBuffer> {
 }
 
 describe("POST .../ingest/file (multipart)", () => {
+	test("includes the multipart upload route in the generated OpenAPI document", async () => {
+		const harness = makeApp();
+
+		const res = await harness.app.request("/api/v1/openapi.json");
+		expect(res.status).toBe(200);
+		const doc = await json(res);
+		const route =
+			doc.paths[
+				"/api/v1/workspaces/{workspaceId}/knowledge-bases/{knowledgeBaseId}/ingest/file"
+			]?.post;
+
+		expect(route).toBeDefined();
+		expect(route.requestBody.content["multipart/form-data"].schema.$ref).toBe(
+			"#/components/schemas/KbIngestFileForm",
+		);
+		expect(doc.components.schemas.KbIngestFileForm.properties.file.format).toBe(
+			"binary",
+		);
+		expect(route.responses["202"].content["application/json"]).toBeDefined();
+		expect(route.responses["415"].content["application/json"]).toBeDefined();
+	});
+
 	test("ingests a plain text upload via the native text extractor", async () => {
 		const harness = makeApp();
 		const { ws, kbId } = await setupKb(harness);
