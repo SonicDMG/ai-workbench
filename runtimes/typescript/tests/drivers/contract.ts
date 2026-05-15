@@ -27,6 +27,7 @@ const WORKSPACE: WorkspaceRecord = {
 	kind: "mock",
 	credentials: {},
 	keyspace: null,
+	rlacEnabled: false,
 	createdAt: "2026-04-22T00:00:00.000Z",
 	updatedAt: "2026-04-22T00:00:00.000Z",
 };

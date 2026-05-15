@@ -22,6 +22,8 @@ function makeDoc(
 		status: "ready",
 		errorMessage: null,
 		metadata: {},
+		visibleTo: null,
+		ownerPrincipalId: null,
 		...overrides,
 	};
 }

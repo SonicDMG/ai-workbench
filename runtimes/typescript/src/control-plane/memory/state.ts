@@ -21,6 +21,8 @@ import type {
 	KnowledgeFilterRecord,
 	LlmServiceRecord,
 	MessageRecord,
+	PolicyAuditRecord,
+	PrincipalRecord,
 	RagDocumentRecord,
 	RerankingServiceRecord,
 	WorkspaceRecord,
@@ -59,6 +61,10 @@ export interface MemoryStoreState {
 	readonly agents: Map<string, Map<string, AgentRecord>>;
 	readonly conversations: Map<string, Map<string, ConversationRecord>>; // keyed by `${workspace}:${agent}`
 	readonly messages: Map<string, Map<string, MessageRecord>>; // keyed by `${workspace}:${conversation}`
+	// RLAC prototype. Principals are workspace-scoped; audit is an
+	// append-only list keyed by workspace.
+	readonly principals: Map<string, Map<string, PrincipalRecord>>;
+	readonly policyAudit: Map<string, PolicyAuditRecord[]>;
 }
 
 /** Throws {@link ControlPlaneNotFoundError} if the workspace is missing. */
@@ -130,6 +136,17 @@ export async function assertAgent(
 	await assertWorkspace(state, workspaceId);
 	if (!state.agents.get(workspaceId)?.has(agentId)) {
 		throw new ControlPlaneNotFoundError("agent", agentId);
+	}
+}
+
+export async function assertPrincipal(
+	state: MemoryStoreState,
+	workspace: string,
+	principalId: string,
+): Promise<void> {
+	await assertWorkspace(state, workspace);
+	if (!state.principals.get(workspace)?.has(principalId)) {
+		throw new ControlPlaneNotFoundError("principal", principalId);
 	}
 }
 

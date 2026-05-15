@@ -158,6 +158,11 @@ export function makeRagDocumentMethods(
 				status: input.status ?? "pending",
 				errorMessage: input.errorMessage ?? null,
 				metadata: { ...(input.metadata ?? {}) },
+				visibleTo:
+					input.visibleTo === undefined || input.visibleTo === null
+						? null
+						: [...new Set(input.visibleTo)].sort(),
+				ownerPrincipalId: input.ownerPrincipalId ?? null,
 			};
 			await state.tables.ragDocuments.insertOne(ragDocumentToRow(record));
 			await writeRagStatusIndex(state, record);
@@ -209,6 +214,15 @@ export function makeRagDocumentMethods(
 				}),
 				...(patch.metadata !== undefined && {
 					metadata: { ...patch.metadata },
+				}),
+				...(patch.visibleTo !== undefined && {
+					visibleTo:
+						patch.visibleTo === null
+							? null
+							: [...new Set(patch.visibleTo)].sort(),
+				}),
+				...(patch.ownerPrincipalId !== undefined && {
+					ownerPrincipalId: patch.ownerPrincipalId,
 				}),
 				updatedAt: nowIso(),
 			};

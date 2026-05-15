@@ -188,6 +188,18 @@ export function createIngestService(deps: IngestServiceDeps): IngestService {
 					contentHash,
 					status: "writing",
 					metadata: input.metadata,
+					// RLAC: thread caller-supplied `visibleTo` and
+					// `ownerPrincipalId` through to the store. The route
+					// layer is responsible for applying the
+					// principal-default when policy is enabled and the
+					// caller omitted these — by the time we reach here
+					// the values are authoritative.
+					...(input.visibleTo !== undefined && {
+						visibleTo: input.visibleTo,
+					}),
+					...(input.ownerPrincipalId !== undefined && {
+						ownerPrincipalId: input.ownerPrincipalId,
+					}),
 				},
 			);
 

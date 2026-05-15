@@ -46,6 +46,9 @@ by filter.
 | `auth.login` | OIDC `/auth/callback` | `outcome: "success"` once the access token passes the runtime's own verifier; `outcome: "failure"` with `reason` on token-validation errors. |
 | `auth.refresh` | OIDC `/auth/refresh` | `outcome: "success"` on a clean rotate. `outcome: "failure"` with `reason` ∈ `{ "no_refresh_token", "idp_rejected", "token_validation_failed" }` covers the three failure paths (missing cookie, IdP refused the refresh_token, freshly-issued access token failed self-verification). |
 | `auth.logout` | OIDC `/auth/logout` | Emitted on every cookie clear, even when no session was present. |
+| `principal.create` | `POST /api/v1/workspaces/{w}/principals` | RLAC prototype. Includes the `principalId`. |
+| `principal.update` | `PATCH /api/v1/workspaces/{w}/principals/{principalId}` | RLAC prototype. Includes the `principalId`. |
+| `principal.delete` | `DELETE /api/v1/workspaces/{w}/principals/{principalId}` | RLAC prototype. Includes the `principalId`. |
 
 The set is intentionally small. Adding a new event is a one-line
 call from a route handler — see

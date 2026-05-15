@@ -18,6 +18,7 @@
 					"keyspace": null,
 					"kind": "mock",
 					"name": "w",
+					"rlacEnabled": false,
 					"updatedAt": "{{TS}}",
 					"url": null,
 					"workspaceId": "{{UUID_1}}"
@@ -186,6 +187,8 @@
 					},
 					"name": "kb",
 					"owned": true,
+					"policyDsl": null,
+					"policyEnabled": false,
 					"rerankingServiceId": null,
 					"status": "active",
 					"updatedAt": "{{TS}}",
@@ -220,10 +223,12 @@
 					"metadata": {
 						"tag": "intro"
 					},
+					"ownerPrincipalId": null,
 					"sourceDocId": null,
 					"sourceFilename": "alpha.txt",
 					"status": "pending",
 					"updatedAt": "{{TS}}",
+					"visibleTo": null,
 					"workspaceId": "{{UUID_1}}"
 				},
 				"status": 201
@@ -251,10 +256,12 @@
 							"metadata": {
 								"tag": "intro"
 							},
+							"ownerPrincipalId": null,
 							"sourceDocId": null,
 							"sourceFilename": "alpha.txt",
 							"status": "pending",
 							"updatedAt": "{{TS}}",
+							"visibleTo": null,
 							"workspaceId": "{{UUID_1}}"
 						}
 					],
@@ -283,10 +290,12 @@
 					"metadata": {
 						"tag": "intro"
 					},
+					"ownerPrincipalId": null,
 					"sourceDocId": null,
 					"sourceFilename": "alpha.txt",
 					"status": "pending",
 					"updatedAt": "{{TS}}",
+					"visibleTo": null,
 					"workspaceId": "{{UUID_1}}"
 				},
 				"status": 200
@@ -318,10 +327,12 @@
 						"reviewed": "yes",
 						"tag": "intro"
 					},
+					"ownerPrincipalId": null,
 					"sourceDocId": null,
 					"sourceFilename": "alpha.txt",
 					"status": "pending",
 					"updatedAt": "{{TS}}",
+					"visibleTo": null,
 					"workspaceId": "{{UUID_1}}"
 				},
 				"status": 200

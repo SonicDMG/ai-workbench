@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, api, formatApiError } from "./api";
 import { setAuthToken } from "./authToken";
+import {
+	setActiveWorkspaceId,
+	setViewAsPrincipal,
+	workspaceIdFromApiPath,
+} from "./viewAs";
 
 const WORKSPACE = {
 	workspaceId: "00000000-0000-4000-8000-000000000001",
@@ -9,6 +14,7 @@ const WORKSPACE = {
 	kind: "mock",
 	credentials: {},
 	keyspace: null,
+	rlacEnabled: false,
 	createdAt: "2026-05-05T00:00:00.000Z",
 	updatedAt: "2026-05-05T00:00:00.000Z",
 };
@@ -188,4 +194,147 @@ describe("api client request contract", () => {
 			mcp: { enabled: false, baseUrl: null },
 		});
 	});
+
+	it("forwards policyDsl and policyEnabled on updateKnowledgeBase (RLAC)", async () => {
+		// Regression: the field-whitelisting in `updateKnowledgeBase`
+		// previously dropped RLAC fields silently, which made the
+		// Access-control preset picker look like a no-op (the PATCH
+		// would succeed but the body would be `{}` and the KB row
+		// wouldn't change). Pin the wire contract here so a future
+		// contributor adding another field can't accidentally drop
+		// these again.
+		const KB = {
+			workspaceId: "00000000-0000-4000-8000-000000000001",
+			knowledgeBaseId: "00000000-0000-4000-8000-000000000010",
+			name: "demo",
+			description: null,
+			status: "active",
+			embeddingServiceId: "00000000-0000-4000-8000-000000000100",
+			chunkingServiceId: "00000000-0000-4000-8000-000000000101",
+			rerankingServiceId: null,
+			language: null,
+			vectorCollection: "demo",
+			owned: true,
+			lexical: { enabled: false, analyzer: null, options: {} },
+			policyDsl:
+				"current_principal_id() = ANY(visible_to) OR '*' = ANY(visible_to)",
+			policyEnabled: true,
+			createdAt: "2026-05-14T00:00:00.000Z",
+			updatedAt: "2026-05-14T00:00:01.000Z",
+		};
+		fetchMock().mockResolvedValue(jsonResponse(KB));
+
+		await api.updateKnowledgeBase(KB.workspaceId, KB.knowledgeBaseId, {
+			policyDsl: KB.policyDsl,
+			policyEnabled: true,
+		});
+
+		const call = fetchMock().mock.calls[0];
+		expect(call?.[0]).toBe(
+			"/api/v1/workspaces/00000000-0000-4000-8000-000000000001/knowledge-bases/00000000-0000-4000-8000-000000000010",
+		);
+		const init = call?.[1] as RequestInit;
+		expect(init.method).toBe("PATCH");
+		const parsed = JSON.parse(init.body as string);
+		expect(parsed.policyDsl).toBe(KB.policyDsl);
+		expect(parsed.policyEnabled).toBe(true);
+	});
+
+	it("forwards policyEnabled: false (turn the policy off) without dropping the field", async () => {
+		const KB = {
+			workspaceId: "00000000-0000-4000-8000-000000000001",
+			knowledgeBaseId: "00000000-0000-4000-8000-000000000010",
+			name: "demo",
+			description: null,
+			status: "active",
+			embeddingServiceId: "00000000-0000-4000-8000-000000000100",
+			chunkingServiceId: "00000000-0000-4000-8000-000000000101",
+			rerankingServiceId: null,
+			language: null,
+			vectorCollection: "demo",
+			owned: true,
+			lexical: { enabled: false, analyzer: null, options: {} },
+			policyDsl: null,
+			policyEnabled: false,
+			createdAt: "2026-05-14T00:00:00.000Z",
+			updatedAt: "2026-05-14T00:00:01.000Z",
+		};
+		fetchMock().mockResolvedValue(jsonResponse(KB));
+
+		await api.updateKnowledgeBase(KB.workspaceId, KB.knowledgeBaseId, {
+			policyEnabled: false,
+		});
+
+		const init = fetchMock().mock.calls[0]?.[1] as RequestInit;
+		const parsed = JSON.parse(init.body as string);
+		// `policyEnabled: false` is a defined value and must be sent.
+		expect(parsed).toHaveProperty("policyEnabled", false);
+		// `policyDsl` was not in the patch, so it should not appear on
+		// the wire — sending null would clear the stored DSL, which the
+		// Access-control "Off" preset deliberately avoids so toggling
+		// back on restores the previous policy.
+		expect(parsed).not.toHaveProperty("policyDsl");
+	});
+
+	it("sends x-view-as-principal derived from the request path (RLAC)", async () => {
+		// Regression: the API client used to read the view-as principal
+		// from a React-side "active workspace" state that the
+		// ViewAsPicker set on mount. On the first page load — before
+		// the picker's effect ran — the documents query fired without
+		// the header and got 401'd. The path-parse approach below makes
+		// the resolution lifecycle-independent: the header is derived
+		// from the URL we're calling, so it's always present when the
+		// user has previously picked a principal for that workspace.
+		const ws = "00000000-0000-4000-8000-000000000abc";
+		setViewAsPrincipalForWorkspaceUnderTest(ws, "admin");
+		fetchMock().mockResolvedValue(
+			jsonResponse({ items: [], nextCursor: null }),
+		);
+
+		await api.listPrincipals(ws);
+
+		const call = fetchMock().mock.calls[0];
+		const init = call?.[1] as RequestInit;
+		const headers = init.headers as Record<string, string>;
+		expect(headers["x-view-as-principal"]).toBe("admin");
+	});
+
+	it("omits x-view-as-principal when the request path is not workspace-scoped", async () => {
+		// Auth-config + similar non-workspace endpoints must not pick
+		// up a stray view-as header.
+		const ws = "00000000-0000-4000-8000-000000000abc";
+		setViewAsPrincipalForWorkspaceUnderTest(ws, "admin");
+		fetchMock().mockResolvedValue(
+			jsonResponse({ mcp: { enabled: false, baseUrl: null } }),
+		);
+
+		await api.getFeatures();
+
+		const init = fetchMock().mock.calls[0]?.[1] as RequestInit;
+		const headers = init.headers as Record<string, string>;
+		expect(headers["x-view-as-principal"]).toBeUndefined();
+	});
+
+	it("parses workspace id out of both absolute and relative API paths", () => {
+		expect(workspaceIdFromApiPath("/api/v1/workspaces/abc/principals")).toBe(
+			"abc",
+		);
+		expect(workspaceIdFromApiPath("/workspaces/abc/knowledge-bases")).toBe(
+			"abc",
+		);
+		expect(workspaceIdFromApiPath("/workspaces/abc?cursor=x")).toBe("abc");
+		expect(workspaceIdFromApiPath("/api/v1/health")).toBeNull();
+	});
 });
+
+// Helper: write a per-workspace view-as value without relying on the
+// `setActiveWorkspaceId` path (which mirrors the production picker's
+// lifecycle but isn't what we're testing here). Localstorage is shared
+// across the suite; reset by re-binding the workspace.
+function setViewAsPrincipalForWorkspaceUnderTest(
+	workspaceId: string,
+	principal: string,
+): void {
+	setActiveWorkspaceId(workspaceId);
+	setViewAsPrincipal(principal);
+}

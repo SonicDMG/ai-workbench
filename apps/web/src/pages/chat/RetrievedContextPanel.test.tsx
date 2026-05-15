@@ -163,6 +163,8 @@ describe("RetrievedContextPanel", () => {
 			status: "ready",
 			errorMessage: null,
 			metadata: {},
+			visibleTo: null,
+			ownerPrincipalId: null,
 		};
 		vi.mocked(api.listKbDocuments).mockResolvedValue([docFixture]);
 

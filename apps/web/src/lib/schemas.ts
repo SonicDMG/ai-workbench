@@ -67,6 +67,8 @@ export const WorkspaceRecordSchema = z.object({
 		.string()
 		.nullish()
 		.transform((v) => v ?? null),
+	// RLAC master switch. Legacy rows back-compat to `false`.
+	rlacEnabled: z.boolean().default(false),
 	createdAt: z.string(),
 	updatedAt: z.string(),
 });
@@ -87,6 +89,7 @@ export const UpdateWorkspaceSchema = z.object({
 	url: EndpointInputSchema,
 	keyspace: z.string().or(z.literal("")).nullable().optional(),
 	credentials: z.record(z.string(), SecretRefSchema).optional(),
+	rlacEnabled: z.boolean().optional(),
 });
 export type UpdateWorkspaceInput = z.infer<typeof UpdateWorkspaceSchema>;
 
@@ -248,6 +251,10 @@ export const KnowledgeBaseRecordSchema = z.object({
 	vectorCollection: z.string().nullable(),
 	owned: z.boolean(),
 	lexical: LexicalConfigSchema,
+	// RLAC fields. Nullable for legacy KBs that were created before
+	// the prototype landed.
+	policyDsl: z.string().nullable(),
+	policyEnabled: z.boolean(),
 	createdAt: z.string(),
 	updatedAt: z.string(),
 });
@@ -304,6 +311,8 @@ export const UpdateKnowledgeBaseInputSchema = z.object({
 	status: KnowledgeBaseStatusSchema.optional(),
 	rerankingServiceId: z.string().uuid().nullable().optional(),
 	language: z.string().or(z.literal("")).nullable().optional(),
+	policyDsl: z.string().nullable().optional(),
+	policyEnabled: z.boolean().optional(),
 });
 export type UpdateKnowledgeBaseInput = z.infer<
 	typeof UpdateKnowledgeBaseInputSchema
@@ -520,6 +529,9 @@ export const RagDocumentRecordSchema = z.object({
 	status: DocumentStatusSchema,
 	errorMessage: z.string().nullable(),
 	metadata: z.record(z.string(), z.string()),
+	// RLAC fields. Nullable for legacy / pre-RLAC rows.
+	visibleTo: z.array(z.string()).nullable(),
+	ownerPrincipalId: z.string().nullable(),
 });
 export type RagDocumentRecord = z.infer<typeof RagDocumentRecordSchema>;
 export const RagDocumentPageSchema = paginatedSchema(RagDocumentRecordSchema);
@@ -1178,3 +1190,68 @@ export const KIND_DESCRIPTIONS: Record<WorkspaceKind, string> = {
 	openrag: "The OpenRAG project. Routing coming later.",
 	mock: "In-memory backend for local development and smoke tests. No persistence, no credentials.",
 };
+
+/* ====================================================================== */
+/* RLAC prototype frontend schemas — principals, policy preview, audit.   */
+/* ====================================================================== */
+
+export const PrincipalRecordSchema = z.object({
+	workspaceId: z.string().uuid(),
+	principalId: z.string(),
+	label: z.string().nullable(),
+	attributes: z.record(z.string(), z.string()),
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type PrincipalRecord = z.infer<typeof PrincipalRecordSchema>;
+export const PrincipalPageSchema = paginatedSchema(PrincipalRecordSchema);
+
+export const CreatePrincipalInputSchema = z.object({
+	principalId: z
+		.string()
+		.min(1, "Principal id is required")
+		.regex(/^[A-Za-z0-9._@:+-]+$/, "Use letters, digits, @ . _ : + - only"),
+	label: z.string().max(200).nullable().optional(),
+	attributes: z.record(z.string(), z.string()).optional(),
+});
+export type CreatePrincipalInput = z.infer<typeof CreatePrincipalInputSchema>;
+
+export const UpdatePrincipalInputSchema = z.object({
+	label: z.string().max(200).nullable().optional(),
+	attributes: z.record(z.string(), z.string()).optional(),
+});
+export type UpdatePrincipalInput = z.infer<typeof UpdatePrincipalInputSchema>;
+
+export const PolicyValidationIssueSchema = z.object({
+	code: z.string(),
+	message: z.string(),
+	hint: z.string().optional(),
+});
+export type PolicyValidationIssue = z.infer<typeof PolicyValidationIssueSchema>;
+
+export const PolicyCompilePreviewResponseSchema = z.object({
+	ok: z.boolean(),
+	parseError: z.string().nullable(),
+	issues: z.array(PolicyValidationIssueSchema),
+	compiledFilter: z.unknown().nullable(),
+	principalId: z.string().nullable(),
+});
+export type PolicyCompilePreviewResponse = z.infer<
+	typeof PolicyCompilePreviewResponseSchema
+>;
+
+export const PolicyAuditRecordSchema = z.object({
+	workspaceId: z.string().uuid(),
+	auditDay: z.string(),
+	ts: z.string(),
+	decisionId: z.string().uuid(),
+	principalId: z.string().nullable(),
+	knowledgeBaseId: z.string().uuid(),
+	resourceId: z.string(),
+	action: z.enum(["list", "get", "search", "ingest", "update", "delete"]),
+	decision: z.enum(["allow", "deny", "filter"]),
+	reason: z.string(),
+	compiledFilterJson: z.string().nullable(),
+});
+export type PolicyAuditRecord = z.infer<typeof PolicyAuditRecordSchema>;
+export const PolicyAuditPageSchema = paginatedSchema(PolicyAuditRecordSchema);

@@ -23,6 +23,13 @@ export const WORKSPACES_DEFINITION = {
 		kind: "text",
 		keyspace: "text",
 		credentials: { type: "map", keyType: "text", valueType: "text" },
+		// RLAC master switch (workspace-wide). When false (the default
+		// for legacy rows), no row-level filtering happens anywhere in
+		// the workspace and the SPA hides every RLAC surface. When
+		// true, every KB read is filtered through the canonical
+		// visibility-list predicate. Additive — existing rows back-
+		// compat to `false`.
+		rlac_enabled: "boolean",
 		created_at: "timestamp",
 		updated_at: "timestamp",
 	},
@@ -130,6 +137,13 @@ export const KNOWLEDGE_BASES_DEFINITION = {
 		lexical_enabled: "boolean",
 		lexical_analyzer: "text",
 		lexical_options: { type: "map", keyType: "text", valueType: "text" },
+		// Row-level access control (RLAC) prototype. `policy_dsl` is the
+		// authored SQL-subset predicate (e.g. `current_principal_id() = ANY(visible_to) OR '*' = ANY(visible_to)`).
+		// `policy_enabled` gates enforcement; while false the predicate is
+		// stored but not applied. Both are additive and nullable for
+		// pre-RLAC rows.
+		policy_dsl: "text",
+		policy_enabled: "boolean",
 		created_at: "timestamp",
 		updated_at: "timestamp",
 	},
@@ -347,6 +361,14 @@ export const RAG_DOCUMENTS_DEFINITION = {
 		ingested_at: "timestamp",
 		updated_at: "timestamp",
 		metadata: { type: "map", keyType: "text", valueType: "text" },
+		// Row-level access control (RLAC) prototype.
+		// `visible_to` is the set of principal ids (and/or the special
+		// token "*" meaning "anyone in the workspace") authorized to
+		// read this row. Nullable for pre-RLAC rows; the backfill script
+		// seeds `{ "admin" }` for legacy data. `owner_principal_id`
+		// records provenance only — enforcement uses `visible_to`.
+		visible_to: { type: "set", valueType: "text" },
+		owner_principal_id: "text",
 	},
 	primaryKey: {
 		partitionBy: ["workspace_id", "knowledge_base_id"],
@@ -502,6 +524,68 @@ export const MESSAGES_DEFINITION = {
 
 /* ================================================================== */
 /* End knowledge-base schema (issue #98).                             */
+/* ================================================================== */
+
+/* ================================================================== */
+/*                                                                    */
+/* RLAC prototype schema.                                             */
+/*                                                                    */
+/* `wb_principals_by_workspace` — sub-workspace identities that the   */
+/* policy DSL evaluates against. Created via the workspace settings    */
+/* UI; resolved on every authenticated request via the principal       */
+/* resolver middleware. `principal_id` is a free-form string (OIDC sub,*/
+/* email, or operator-chosen handle) — _not_ a UUID — so the wire shape*/
+/* matches the way customers think about user identity.                */
+/*                                                                    */
+/* `wb_policy_audit_by_workspace` — append-only audit of policy        */
+/* decisions. Partitioned by workspace + day so a workspace's audit    */
+/* tail stays bounded; clustered by `ts DESC, decision_id`.            */
+/*                                                                    */
+/* ================================================================== */
+
+/** `wb_principals_by_workspace` — sub-workspace identities. */
+export const PRINCIPALS_TABLE = "wb_principals_by_workspace";
+export const PRINCIPALS_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		principal_id: "text",
+		label: "text",
+		// Free-form attributes the policy DSL can reference as
+		// `$principal.<key>` (e.g. role=finance, clearance=high).
+		attributes: { type: "map", keyType: "text", valueType: "text" },
+		created_at: "timestamp",
+		updated_at: "timestamp",
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id"],
+		partitionSort: { principal_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/** `wb_policy_audit_by_workspace` — append-only policy-decision log. */
+export const POLICY_AUDIT_TABLE = "wb_policy_audit_by_workspace";
+export const POLICY_AUDIT_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		audit_day: "text", // YYYY-MM-DD partition key
+		ts: "timestamp",
+		decision_id: "uuid",
+		principal_id: "text",
+		knowledge_base_id: "uuid",
+		resource_id: "text", // document_id (uuid) or "*" for list-scope
+		action: "text", // list | get | search | ingest | update | delete
+		decision: "text", // allow | deny | filter
+		reason: "text",
+		compiled_filter_json: "text",
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id", "audit_day"],
+		partitionSort: { ts: -1, decision_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
+/* ================================================================== */
+/* End RLAC prototype schema.                                         */
 /* ================================================================== */
 
 /**

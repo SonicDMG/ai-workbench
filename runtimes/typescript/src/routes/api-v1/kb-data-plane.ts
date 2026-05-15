@@ -18,9 +18,12 @@
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { getRequestPrincipal } from "../../auth/principal-resolver.js";
+import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
+import { ApiError } from "../../lib/errors.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
@@ -33,6 +36,10 @@ import {
 	UpsertResponseSchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
+import {
+	buildPolicyContext,
+	PolicyDeniedError,
+} from "../../policy/enforcer.js";
 import { resolveKb } from "./kb-descriptor.js";
 import { dispatchSearch, toMutableHits } from "./search-dispatch.js";
 import { dispatchUpsert } from "./upsert-dispatch.js";
@@ -167,12 +174,63 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 				workspaceId,
 				knowledgeBaseId,
 			);
+			// RLAC: merge the KB's compiled policy filter into the search
+			// `filter` parameter. Stefano's design: Data API combines the
+			// merged filter with the vector sort server-side, so the
+			// filter doesn't degrade recall — the post-filter recall
+			// problem doesn't exist for this surface. See
+			// `docs/rlac-prototype/data-api-design-ask.md`.
+			const kb = await store.getKnowledgeBase(workspaceId, knowledgeBaseId);
+			if (!kb)
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
+			const ws = await store.getWorkspace(workspaceId);
+			let mergedBody = body;
+			try {
+				const decision = await buildPolicyContext({
+					workspace: workspaceId,
+					workspaceRlacEnabled: ws?.rlacEnabled ?? false,
+					knowledgeBase: kb,
+					principal: getRequestPrincipal(c),
+					action: "search",
+					resourceId: "*",
+					audit: store,
+				});
+				if (decision.filter) {
+					mergedBody = {
+						...body,
+						filter: mergeFilter(body.filter, decision.filter),
+					};
+				}
+			} catch (err) {
+				if (err instanceof PolicyDeniedError) {
+					throw new ApiError("policy_principal_required", err.reason, 401);
+				}
+				throw err;
+			}
 			const driver = drivers.for(workspace);
 			const ctx = { workspace, descriptor };
-			const hits = await dispatchSearch({ ctx, driver, body, embedders });
+			const hits = await dispatchSearch({
+				ctx,
+				driver,
+				body: mergedBody,
+				embedders,
+			});
 			return c.json(toMutableHits(hits), 200);
 		},
 	);
 
 	return app;
+}
+
+/**
+ * Merge two Data API filter clauses with `$and`. Either side may be
+ * undefined; an `$and` of a single clause collapses to that clause to
+ * keep the wire shape clean.
+ */
+function mergeFilter(
+	caller: Readonly<Record<string, unknown>> | undefined,
+	policy: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+	if (!caller || Object.keys(caller).length === 0) return policy;
+	return { $and: [caller, policy] };
 }

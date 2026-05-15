@@ -31,6 +31,7 @@ import { authMiddleware } from "./auth/middleware.js";
 import type { CookieSigner } from "./auth/oidc/login/cookie.js";
 import type { OidcEndpoints } from "./auth/oidc/login/discovery.js";
 import type { PendingLoginStore } from "./auth/oidc/login/pending.js";
+import { principalResolverMiddleware } from "./auth/principal-resolver.js";
 import type { AuthResolver } from "./auth/resolver.js";
 import type { ChatService } from "./chat/types.js";
 import type { AstraCliInfo } from "./config/astra-cli.js";
@@ -415,6 +416,12 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	app.use(
 		"/api/v1/workspaces/*",
 		authMiddleware({ resolver: opts.auth, cookie: cookieMiddlewareCfg }),
+	);
+	// RLAC: resolve the sub-workspace principal on every workspace
+	// request right after auth. No-op when no auth subject exists.
+	app.use(
+		"/api/v1/workspaces/*",
+		principalResolverMiddleware({ store: opts.store }),
 	);
 
 	// The `/auth/me` endpoint also needs the auth context — run the

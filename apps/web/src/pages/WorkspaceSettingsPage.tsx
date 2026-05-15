@@ -5,6 +5,7 @@ import {
 	Info,
 	Pencil,
 	ServerCog,
+	ShieldCheck,
 	Trash2,
 	X,
 } from "lucide-react";
@@ -25,6 +26,8 @@ import {
 import { ApiKeysPanel } from "@/components/workspaces/ApiKeysPanel";
 import { DeleteDialog } from "@/components/workspaces/DeleteDialog";
 import { KindBadge } from "@/components/workspaces/KindBadge";
+import { PolicyAuditPanel } from "@/components/workspaces/PolicyAuditPanel";
+import { PrincipalsPanel } from "@/components/workspaces/PrincipalsPanel";
 import { SeededDefaultsCallout } from "@/components/workspaces/SeededDefaultsCallout";
 import { ServicesPanel } from "@/components/workspaces/ServicesPanel";
 import { TestConnectionPanel } from "@/components/workspaces/TestConnectionPanel";
@@ -190,6 +193,15 @@ export function WorkspaceSettingsPage() {
 			</SettingsSection>
 
 			<ApiKeysPanel workspace={data.workspaceId} />
+
+			<AccessControlToggle workspace={data} />
+
+			{data.rlacEnabled ? (
+				<>
+					<PrincipalsPanel workspace={data.workspaceId} />
+					<PolicyAuditPanel workspace={data.workspaceId} />
+				</>
+			) : null}
 
 			<DeleteDialog
 				open={deleteOpen}
@@ -359,6 +371,70 @@ function SettingsSection({
 				</div>
 			</CardHeader>
 			<CardContent className="p-4 pt-3">{children}</CardContent>
+		</Card>
+	);
+}
+
+/**
+ * Workspace-level RLAC master switch.
+ *
+ * The current model is binary: when off, every KB read returns
+ * everything (no row filter, no audit emission). When on, every KB
+ * read filters through the canonical visibility-list predicate, the
+ * View-as picker appears in the KB header + ingest dialog, and the
+ * Principals + Policy-audit panels appear below this card in the
+ * settings page.
+ *
+ * Per-KB customization (Off / Visibility list / Custom DSL) used to
+ * live in the KB explorer header. It's gone — one switch per
+ * workspace is enough for the prototype's demo flow.
+ */
+function AccessControlToggle({ workspace }: { workspace: Workspace }) {
+	const update = useUpdateWorkspace(workspace.workspaceId);
+
+	async function flip(next: boolean): Promise<void> {
+		try {
+			await update.mutateAsync({ rlacEnabled: next });
+			toast.success(
+				next ? "Access control enabled" : "Access control disabled",
+			);
+		} catch (err) {
+			toast.error(`Couldn't update access control: ${formatApiError(err)}`);
+		}
+	}
+
+	return (
+		<Card className="overflow-hidden shadow-sm">
+			<CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 bg-slate-50/70 p-4 dark:bg-slate-900/60">
+				<div className="flex min-w-0 items-start gap-3">
+					<SectionIcon>
+						<ShieldCheck className="h-4 w-4" />
+					</SectionIcon>
+					<div className="min-w-0">
+						<CardTitle className="text-base">Access control</CardTitle>
+						<p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+							Row-level access control. When on, every KB read is filtered
+							against each document's <code>visible_to</code> list and the
+							View-as picker, principal management, and audit log become
+							available. When off, every member of the workspace sees every
+							document.
+						</p>
+					</div>
+				</div>
+				<label className="flex shrink-0 items-center gap-2 text-sm">
+					<input
+						type="checkbox"
+						checked={workspace.rlacEnabled}
+						onChange={(e) => void flip(e.target.checked)}
+						disabled={update.isPending}
+						className="h-4 w-4"
+						aria-label="Enable access control"
+					/>
+					<span className="font-medium text-slate-700 dark:text-slate-200">
+						{workspace.rlacEnabled ? "Enabled" : "Disabled"}
+					</span>
+				</label>
+			</CardHeader>
 		</Card>
 	);
 }

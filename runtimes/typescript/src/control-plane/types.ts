@@ -69,6 +69,16 @@ export interface WorkspaceRecord {
 	readonly credentials: Readonly<Record<string, SecretRef>>;
 	/** Astra/HCD keyspace targeted by the workspace. */
 	readonly keyspace: string | null;
+	/**
+	 * RLAC master switch (workspace-wide). When `false` no row-level
+	 * filtering happens anywhere in the workspace and the SPA hides
+	 * every RLAC surface (View-as picker, visibility picker, audit
+	 * panel, principals panel). When `true` every KB read is filtered
+	 * through the canonical visibility-list predicate. Defaults to
+	 * `false`; legacy rows that predate the column also back-compat
+	 * to `false`.
+	 */
+	readonly rlacEnabled: boolean;
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }
@@ -248,6 +258,14 @@ export interface KnowledgeBaseRecord {
 	 * `DELETE` drops the collection. */
 	readonly owned: boolean;
 	readonly lexical: LexicalConfig;
+	/**
+	 * Row-level access control (RLAC) prototype. `policyDsl` is the
+	 * authored SQL-subset predicate; `policyEnabled` gates enforcement.
+	 * When `policyEnabled` is false (or `policyDsl` is null), reads
+	 * return the legacy unfiltered set. See `runtimes/typescript/src/policy/`.
+	 */
+	readonly policyDsl: string | null;
+	readonly policyEnabled: boolean;
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }
@@ -406,6 +424,64 @@ export interface RagDocumentRecord {
 	readonly ingestedAt: string | null;
 	readonly updatedAt: string;
 	readonly metadata: Readonly<Record<string, string>>;
+	/**
+	 * RLAC: principal ids (and/or the special token "*") that may read
+	 * this row. The route layer injects a Data API filter equivalent to
+	 * `{$or: [{visible_to: "*"}, {visible_to: <caller>}]}` on every read
+	 * when the parent KB has `policyEnabled = true`. An empty set means
+	 * the row is invisible to every non-admin caller (operator escape
+	 * hatches still bypass enforcement). Null preserves legacy behavior
+	 * for pre-RLAC rows.
+	 */
+	readonly visibleTo: string[] | null;
+	/** Provenance only; never used for enforcement. */
+	readonly ownerPrincipalId: string | null;
+}
+
+/**
+ * RLAC: a sub-workspace identity that the policy DSL evaluates against.
+ * `principalId` is a free-form string — typically an OIDC `sub`, an
+ * email address, or an operator-chosen handle. Attribute keys mirror
+ * the names available to the DSL as `$principal.<key>`.
+ */
+export interface PrincipalRecord {
+	readonly workspaceId: string;
+	readonly principalId: string;
+	readonly label: string | null;
+	readonly attributes: Readonly<Record<string, string>>;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+}
+
+/** RLAC: outcome of a single policy decision. */
+export type PolicyDecision = "allow" | "deny" | "filter";
+
+/** RLAC: action verb captured in the audit log. */
+export type PolicyAction =
+	| "list"
+	| "get"
+	| "search"
+	| "ingest"
+	| "update"
+	| "delete";
+
+/**
+ * RLAC: a single policy-decision audit record. Persisted append-only to
+ * `wb_policy_audit_by_workspace`. The route layer emits one per call
+ * via the policy enforcer.
+ */
+export interface PolicyAuditRecord {
+	readonly workspaceId: string;
+	readonly auditDay: string; // YYYY-MM-DD
+	readonly ts: string;
+	readonly decisionId: string;
+	readonly principalId: string | null;
+	readonly knowledgeBaseId: string;
+	readonly resourceId: string;
+	readonly action: PolicyAction;
+	readonly decision: PolicyDecision;
+	readonly reason: string;
+	readonly compiledFilterJson: string | null;
 }
 
 /** Index row in `wb_rag_documents_by_knowledge_base_and_status`. */

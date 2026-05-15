@@ -18,6 +18,7 @@
 					"keyspace": null,
 					"kind": "astra",
 					"name": "w",
+					"rlacEnabled": false,
 					"updatedAt": "{{TS}}",
 					"url": null,
 					"workspaceId": "{{UUID_1}}"
@@ -59,6 +60,7 @@
 					"keyspace": null,
 					"kind": "astra",
 					"name": "w",
+					"rlacEnabled": false,
 					"updatedAt": "{{TS}}",
 					"url": null,
 					"workspaceId": "{{UUID_1}}"

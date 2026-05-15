@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { documentQueryKey } from "@/hooks/useDocuments";
 import { useAsyncIngestFile, useJobPoller } from "@/hooks/useIngest";
+import { useRlacEnabled } from "@/hooks/useRlac";
 import { formatApiError } from "@/lib/api";
 import { isIngestableFile } from "@/lib/files";
 import type {
@@ -24,6 +25,7 @@ import type {
 import { IngestDropZone } from "./IngestDropZone";
 import { NameConflictPrompt } from "./IngestNameConflictPrompt";
 import { type QueueItem, QueueRow } from "./IngestQueueRow";
+import { VisibilityPicker } from "./VisibilityPicker";
 
 /**
  * The user's standing answer for name-conflict prompts in this
@@ -107,6 +109,14 @@ export function IngestQueueDialog({
 	const [items, setItems] = useState<QueueItem[]>([]);
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const [draining, setDraining] = useState(false);
+	const rlacEnabled = useRlacEnabled(workspace);
+	// RLAC: visibility selection that applies to every file in this
+	// batch. Initial value is `null` — the picker resolves that to
+	// "Only You" against the live view-as principal at render time,
+	// so the radio renders preselected on the safest option. The
+	// picker is hidden when the workspace toggle is off —
+	// `visibleTo` is meaningless there.
+	const [visibleTo, setVisibleTo] = useState<readonly string[] | null>(null);
 	// Name-conflict prompt state. When `pendingConflict` is non-null,
 	// the drain effect halts so the user can decide overwrite vs skip
 	// in the modal. `applyToAll` carries the standing answer if the
@@ -267,11 +277,18 @@ export function IngestQueueDialog({
 	// effect so the overwrite-prompt's "Overwrite" handler can re-use
 	// it for the retry call (with the flag set) without copying the
 	// payload assembly logic.
+	// RLAC: capture `visibleTo` per submit in a ref so the in-flight
+	// drain effect always sees the latest picker state without
+	// re-running on every state change.
+	const visibleToRef = useRef(visibleTo);
+	visibleToRef.current = visibleTo;
 	const submitIngest = useCallback((item: QueueItem, overwrite: boolean) => {
+		const vt = visibleToRef.current;
 		return ingestMutateAsyncRef.current({
 			file: item.file,
 			filename: item.relativePath,
 			...(overwrite && { overwriteOnNameConflict: true }),
+			...(vt !== null && { visibleTo: vt }),
 		});
 	}, []);
 
@@ -583,6 +600,14 @@ export function IngestQueueDialog({
 						disabled={draining}
 						onFiles={enqueue}
 					/>
+
+					{rlacEnabled ? (
+						<VisibilityPicker
+							workspace={workspace}
+							value={visibleTo}
+							onChange={setVisibleTo}
+						/>
+					) : null}
 
 					{items.length > 0 ? (
 						<div className="flex flex-col gap-2">

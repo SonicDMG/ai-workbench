@@ -36,6 +36,8 @@ import type {
 	LlmServiceRow,
 	McpToolRow,
 	MessageRow,
+	PolicyAuditRow,
+	PrincipalRow,
 	RagDocumentByContentHashRow,
 	RagDocumentByStatusRow,
 	RagDocumentRow,
@@ -213,6 +215,12 @@ export function createFakeTablesBundle(): TablesBundle {
 		messages: new FakeTable<MessageRow>(
 			["workspace_id", "conversation_id"],
 			["message_ts"],
+		),
+		// RLAC prototype tables.
+		principals: new FakeTable<PrincipalRow>(["workspace_id"], ["principal_id"]),
+		policyAudit: new FakeTable<PolicyAuditRow>(
+			["workspace_id", "audit_day"],
+			["ts", "decision_id"],
 		),
 	};
 }

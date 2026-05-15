@@ -18,6 +18,10 @@ import {
 	type McpToolRecord,
 	type MessageRecord,
 	normalizeApiKeyScopes,
+	type PolicyAction,
+	type PolicyAuditRecord,
+	type PolicyDecision,
+	type PrincipalRecord,
 	type RagDocumentHashEntry,
 	type RagDocumentRecord,
 	type RagDocumentStatusEntry,
@@ -35,6 +39,8 @@ import type {
 	LlmServiceRow,
 	McpToolRow,
 	MessageRow,
+	PolicyAuditRow,
+	PrincipalRow,
 	RagDocumentByContentHashRow,
 	RagDocumentByStatusRow,
 	RagDocumentRow,
@@ -129,6 +135,33 @@ export function asNumberOrNull(v: unknown): number | null {
 	return asNumber(v);
 }
 
+/**
+ * Coerce a Data API timestamp column value back to an ISO-8601 string.
+ *
+ * astra-db-ts decodes `timestamp` columns as JS `Date` instances —
+ * fine for most callsites because JSON serialization runs
+ * `Date.toJSON()` and produces the same wire format the application
+ * expects. But anything that touches the value before serialization
+ * (sorting, comparing, computing day partitions) sees the underlying
+ * class and breaks: `Date.localeCompare` is not a function, `Date <
+ * Date` only works through `valueOf` coercion, etc. Coerce on the way
+ * out so every `Iso`-typed field in the record is genuinely a string.
+ */
+export function asIsoString(v: unknown): string {
+	if (typeof v === "string") return v;
+	if (v instanceof Date) return v.toISOString();
+	if (v && typeof v === "object") {
+		const fn = (v as { toISOString?: () => string }).toISOString;
+		if (typeof fn === "function") return fn.call(v);
+	}
+	return String(v ?? "");
+}
+
+export function asIsoStringOrNull(v: unknown): string | null {
+	if (v === null || v === undefined) return null;
+	return asIsoString(v);
+}
+
 /* ------------------------------------------------------------------ */
 /* Workspace                                                          */
 /* ------------------------------------------------------------------ */
@@ -141,6 +174,7 @@ export function workspaceToRow(r: WorkspaceRecord): WorkspaceRow {
 		kind: r.kind,
 		keyspace: r.keyspace,
 		credentials: { ...r.credentials },
+		rlac_enabled: r.rlacEnabled,
 		created_at: r.createdAt,
 		updated_at: r.updatedAt,
 	};
@@ -166,6 +200,9 @@ export function workspaceFromRow(row: WorkspaceRow): WorkspaceRecord {
 		kind: row.kind,
 		keyspace: row.keyspace ?? null,
 		credentials: asPlainStringMap(row.credentials),
+		// Legacy rows (written before the column existed) decode as
+		// `false` — the safest default for a feature gate.
+		rlacEnabled: row.rlac_enabled ?? false,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -300,6 +337,8 @@ export function knowledgeBaseToRow(r: KnowledgeBaseRecord): KnowledgeBaseRow {
 		lexical_enabled: r.lexical.enabled,
 		lexical_analyzer: r.lexical.analyzer,
 		lexical_options: { ...r.lexical.options },
+		policy_dsl: r.policyDsl,
+		policy_enabled: r.policyEnabled,
 		created_at: r.createdAt,
 		updated_at: r.updatedAt,
 	};
@@ -328,6 +367,8 @@ export function knowledgeBaseFromRow(
 			analyzer: row.lexical_analyzer ?? null,
 			options: asPlainStringMap(row.lexical_options),
 		},
+		policyDsl: row.policy_dsl ?? null,
+		policyEnabled: row.policy_enabled ?? false,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -675,6 +716,8 @@ export function ragDocumentToRow(r: RagDocumentRecord): RagDocumentRow {
 		ingested_at: r.ingestedAt,
 		updated_at: r.updatedAt,
 		metadata: { ...r.metadata },
+		visible_to: r.visibleTo === null ? null : new Set(r.visibleTo),
+		owner_principal_id: r.ownerPrincipalId,
 	};
 }
 
@@ -694,6 +737,8 @@ export function ragDocumentFromRow(row: RagDocumentRow): RagDocumentRecord {
 		ingestedAt: row.ingested_at,
 		updatedAt: row.updated_at,
 		metadata: asPlainStringMap(row.metadata),
+		visibleTo: row.visible_to == null ? null : [...row.visible_to].sort(),
+		ownerPrincipalId: row.owner_principal_id ?? null,
 	};
 }
 
@@ -856,3 +901,89 @@ export function messageFromRow(row: MessageRow): MessageRecord {
 /* ================================================================== */
 /* End knowledge-base converters.                                     */
 /* ================================================================== */
+
+/* ================================================================== */
+/* RLAC prototype converters.                                          */
+/* ================================================================== */
+
+export function principalToRow(r: PrincipalRecord): PrincipalRow {
+	return {
+		workspace_id: r.workspaceId,
+		principal_id: r.principalId,
+		label: r.label,
+		attributes: { ...r.attributes },
+		created_at: r.createdAt,
+		updated_at: r.updatedAt,
+	};
+}
+
+export function principalFromRow(row: PrincipalRow): PrincipalRecord {
+	return {
+		workspaceId: asUuidString(row.workspace_id),
+		principalId: row.principal_id,
+		label: row.label,
+		attributes: asPlainStringMap(row.attributes),
+		// `timestamp` columns come back as `Date` from astra-db-ts;
+		// coerce to ISO-8601 so consumers can sort/compare with
+		// `localeCompare` and `<` without crashing.
+		createdAt: asIsoString(row.created_at),
+		updatedAt: asIsoString(row.updated_at),
+	};
+}
+
+const POLICY_ACTIONS = new Set<PolicyAction>([
+	"list",
+	"get",
+	"search",
+	"ingest",
+	"update",
+	"delete",
+]);
+const POLICY_DECISIONS = new Set<PolicyDecision>(["allow", "deny", "filter"]);
+
+function coercePolicyAction(value: string): PolicyAction {
+	return POLICY_ACTIONS.has(value as PolicyAction)
+		? (value as PolicyAction)
+		: "list";
+}
+
+function coercePolicyDecision(value: string): PolicyDecision {
+	return POLICY_DECISIONS.has(value as PolicyDecision)
+		? (value as PolicyDecision)
+		: "filter";
+}
+
+export function policyAuditToRow(r: PolicyAuditRecord): PolicyAuditRow {
+	return {
+		workspace_id: r.workspaceId,
+		audit_day: r.auditDay,
+		ts: r.ts,
+		decision_id: r.decisionId,
+		principal_id: r.principalId,
+		knowledge_base_id: r.knowledgeBaseId,
+		resource_id: r.resourceId,
+		action: r.action,
+		decision: r.decision,
+		reason: r.reason,
+		compiled_filter_json: r.compiledFilterJson,
+	};
+}
+
+export function policyAuditFromRow(row: PolicyAuditRow): PolicyAuditRecord {
+	return {
+		workspaceId: asUuidString(row.workspace_id),
+		auditDay: row.audit_day,
+		// `ts` is a `timestamp` column — astra-db-ts decodes it as a
+		// JS `Date`. The audit slice sorts the merged two-day result
+		// set with `localeCompare`, which throws on `Date`. Coerce here.
+		ts: asIsoString(row.ts),
+		decisionId: asUuidString(row.decision_id),
+		principalId: row.principal_id ?? null,
+		knowledgeBaseId: asUuidString(row.knowledge_base_id),
+		resourceId: row.resource_id,
+		action: coercePolicyAction(row.action),
+		decision: coercePolicyDecision(row.decision),
+		reason: row.reason,
+		compiledFilterJson: row.compiled_filter_json ?? null,
+	};
+}

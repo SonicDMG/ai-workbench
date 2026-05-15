@@ -28,6 +28,11 @@ export interface CreateKnowledgeBaseInput {
 	 * collection (KB was attached to a pre-existing one) and `DELETE`
 	 * must NOT drop it. Defaults to `true` for backward compatibility. */
 	readonly owned?: boolean;
+	/** RLAC: authored SQL-subset predicate, or null for no policy. */
+	readonly policyDsl?: string | null;
+	/** RLAC: when true, the route layer injects the compiled filter on
+	 * every read. Defaults to false on create. */
+	readonly policyEnabled?: boolean;
 }
 
 /**
@@ -44,6 +49,10 @@ export interface UpdateKnowledgeBaseInput {
 	readonly rerankingServiceId?: string | null;
 	readonly language?: KnowledgeBaseLanguage | null;
 	readonly lexical?: LexicalConfig;
+	/** RLAC: replace the policy DSL (null clears it). */
+	readonly policyDsl?: string | null;
+	/** RLAC: toggle enforcement. */
+	readonly policyEnabled?: boolean;
 }
 
 export interface KnowledgeBaseRepo {

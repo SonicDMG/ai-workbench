@@ -38,6 +38,7 @@ import {
 	type CreateKnowledgeBaseInput,
 	type CreateKnowledgeFilterInput,
 	type CreateLlmServiceInput,
+	type CreatePrincipalInput,
 	type CreateRerankingServiceInput,
 	type CreateWorkspaceInput,
 	type DocumentChunk,
@@ -67,8 +68,16 @@ import {
 	type PlaygroundCommandInput,
 	type PlaygroundCommandResponse,
 	PlaygroundCommandResponseSchema,
+	PolicyAuditPageSchema,
+	type PolicyAuditRecord,
+	type PolicyCompilePreviewResponse,
+	PolicyCompilePreviewResponseSchema,
+	PrincipalPageSchema,
+	type PrincipalRecord,
+	PrincipalRecordSchema,
 	RagDocumentPageSchema,
 	type RagDocumentRecord,
+	RagDocumentRecordSchema,
 	RerankingServicePageSchema,
 	type RerankingServiceRecord,
 	RerankingServiceRecordSchema,
@@ -84,6 +93,7 @@ import {
 	type UpdateKnowledgeBaseInput,
 	type UpdateKnowledgeFilterInput,
 	type UpdateLlmServiceInput,
+	type UpdatePrincipalInput,
 	type UpdateRerankingServiceInput,
 	type UpdateWorkspaceInput,
 	type Workspace,
@@ -91,6 +101,10 @@ import {
 	WorkspaceRecordSchema,
 } from "./schemas";
 import { fetchAuthConfig, loginHref, refreshSession } from "./session";
+import {
+	getViewAsPrincipalForWorkspace,
+	workspaceIdFromApiPath,
+} from "./viewAs";
 
 const BASE = "/api/v1";
 const CLIENT_PAGE_LIMIT = 200;
@@ -159,6 +173,19 @@ async function request<T>(
 		? { authorization: `Bearer ${token}` }
 		: {};
 
+	// RLAC: when the "view as" picker has a value for this request's
+	// workspace, send it on every request. Resolution is driven by
+	// the request path itself, not by React lifecycle — that way the
+	// first fetch from a freshly-loaded KB page gets the right
+	// header even before the picker component has mounted. The
+	// backend ignores the header unless auth is disabled, the caller
+	// is a bootstrap operator, or `WB_DEV_MODE=1`.
+	const workspaceForRequest = workspaceIdFromApiPath(path);
+	const viewAs = getViewAsPrincipalForWorkspace(workspaceForRequest);
+	const viewAsHeader: Record<string, string> = viewAs
+		? { "x-view-as-principal": viewAs }
+		: {};
+
 	// Multipart bodies set their own `content-type` (with the
 	// boundary) when the browser serializes them. Leaving the default
 	// `application/json` in place would clobber that and the server
@@ -175,6 +202,7 @@ async function request<T>(
 		headers: {
 			...defaultHeaders,
 			...authHeader,
+			...viewAsHeader,
 			...(init.headers ?? {}),
 		},
 	});
@@ -538,6 +566,12 @@ export const api = {
 			body.rerankingServiceId = patch.rerankingServiceId;
 		if (patch.language !== undefined)
 			body.language = patch.language ? patch.language : null;
+		// RLAC: pass the policy fields through verbatim. `null` clears
+		// the DSL; `undefined` leaves it untouched. `policyEnabled` is
+		// a plain boolean.
+		if (patch.policyDsl !== undefined) body.policyDsl = patch.policyDsl;
+		if (patch.policyEnabled !== undefined)
+			body.policyEnabled = patch.policyEnabled;
 		return request(
 			`/workspaces/${workspaceId}/knowledge-bases/${kbId}`,
 			{ method: "PATCH", body: JSON.stringify(body) },
@@ -972,6 +1006,33 @@ export const api = {
 			null,
 		),
 
+	updateKbDocument: (
+		workspaceId: string,
+		kbId: string,
+		documentId: string,
+		patch: {
+			readonly sourceFilename?: string | null;
+			readonly visibleTo?: readonly string[] | null;
+			readonly ownerPrincipalId?: string | null;
+		},
+	): Promise<RagDocumentRecord> => {
+		const body: Record<string, unknown> = {};
+		if (patch.sourceFilename !== undefined) {
+			body.sourceFilename = patch.sourceFilename;
+		}
+		if (patch.visibleTo !== undefined) {
+			body.visibleTo = patch.visibleTo === null ? null : [...patch.visibleTo];
+		}
+		if (patch.ownerPrincipalId !== undefined) {
+			body.ownerPrincipalId = patch.ownerPrincipalId;
+		}
+		return request(
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents/${documentId}`,
+			{ method: "PATCH", body: JSON.stringify(body) },
+			RagDocumentRecordSchema,
+		);
+	},
+
 	executePlaygroundCommand: (
 		workspaceId: string,
 		input: PlaygroundCommandInput,
@@ -1012,6 +1073,10 @@ export const api = {
 			readonly parser?: "auto" | "native" | "docling";
 			readonly metadata?: Readonly<Record<string, string>>;
 			readonly overwriteOnNameConflict?: boolean;
+			/** RLAC: principal ids (or `"*"`) that may read this doc. */
+			readonly visibleTo?: readonly string[];
+			/** RLAC: provenance only. */
+			readonly ownerPrincipalId?: string;
 		},
 	): Promise<KbIngestAsyncOrDuplicate> => {
 		const form = new FormData();
@@ -1021,6 +1086,10 @@ export const api = {
 			form.append("metadata", JSON.stringify(params.metadata));
 		if (params.overwriteOnNameConflict)
 			form.append("overwriteOnNameConflict", "true");
+		if (params.visibleTo)
+			form.append("visibleTo", JSON.stringify([...params.visibleTo]));
+		if (params.ownerPrincipalId)
+			form.append("ownerPrincipalId", params.ownerPrincipalId);
 		return request(
 			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/ingest/file?async=true`,
 			{ method: "POST", body: form },
@@ -1034,6 +1103,78 @@ export const api = {
 			{ method: "GET" },
 			JobRecordSchema,
 		),
+
+	/* ====== RLAC prototype ====== */
+
+	listPrincipals: (workspaceId: string): Promise<PrincipalRecord[]> =>
+		requestAllPages(
+			`/workspaces/${workspaceId}/principals`,
+			PrincipalPageSchema,
+		),
+
+	createPrincipal: (
+		workspaceId: string,
+		input: CreatePrincipalInput,
+	): Promise<PrincipalRecord> =>
+		request(
+			`/workspaces/${workspaceId}/principals`,
+			{ method: "POST", body: JSON.stringify(input) },
+			PrincipalRecordSchema,
+		),
+
+	updatePrincipal: (
+		workspaceId: string,
+		principalId: string,
+		patch: UpdatePrincipalInput,
+	): Promise<PrincipalRecord> =>
+		request(
+			`/workspaces/${workspaceId}/principals/${encodeURIComponent(principalId)}`,
+			{ method: "PATCH", body: JSON.stringify(patch) },
+			PrincipalRecordSchema,
+		),
+
+	deletePrincipal: (workspaceId: string, principalId: string): Promise<void> =>
+		request(
+			`/workspaces/${workspaceId}/principals/${encodeURIComponent(principalId)}`,
+			{ method: "DELETE" },
+			null,
+		),
+
+	compilePolicy: (
+		workspaceId: string,
+		params: { readonly dsl: string; readonly principalId?: string | null },
+	): Promise<PolicyCompilePreviewResponse> =>
+		request(
+			`/workspaces/${workspaceId}/policy/compile-preview`,
+			{
+				method: "POST",
+				body: JSON.stringify({
+					dsl: params.dsl,
+					...(params.principalId ? { principalId: params.principalId } : {}),
+				}),
+			},
+			PolicyCompilePreviewResponseSchema,
+		),
+
+	listPolicyAudit: (
+		workspaceId: string,
+		query: {
+			readonly principalId?: string;
+			readonly knowledgeBaseId?: string;
+			readonly limit?: number;
+		} = {},
+	): Promise<PolicyAuditRecord[]> => {
+		const params = new URLSearchParams();
+		if (query.principalId) params.set("principalId", query.principalId);
+		if (query.knowledgeBaseId)
+			params.set("knowledgeBaseId", query.knowledgeBaseId);
+		if (query.limit !== undefined) params.set("limit", String(query.limit));
+		const qs = params.toString();
+		return requestAllPages(
+			`/workspaces/${workspaceId}/policy/audit${qs ? `?${qs}` : ""}`,
+			PolicyAuditPageSchema,
+		);
+	},
 };
 
 function normalizeCreate(input: CreateWorkspaceInput) {
@@ -1054,6 +1195,9 @@ function normalizeUpdate(patch: UpdateWorkspaceInput) {
 		out.keyspace = patch.keyspace ? patch.keyspace : null;
 	if (patch.credentials !== undefined)
 		out.credentials = pruneCredentials(patch.credentials);
+	// RLAC master switch. Same forwarding-the-field-or-leaving-it-out
+	// pattern as the rest of the patch shape.
+	if (patch.rlacEnabled !== undefined) out.rlacEnabled = patch.rlacEnabled;
 	return out;
 }
 

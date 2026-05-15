@@ -127,6 +127,7 @@ describe("AstraVectorStoreDriver endpoint resolution", () => {
 			kind: "astra",
 			credentials: { token: "env:TEST_ASTRA_TOKEN" },
 			keyspace: null,
+			rlacEnabled: false,
 			createdAt: "2026-04-23T00:00:00.000Z",
 			updatedAt: "2026-04-23T00:00:00.000Z",
 		};
@@ -222,6 +223,7 @@ describe("AstraVectorStoreDriver hybrid + rerank", () => {
 		kind: "astra",
 		credentials: { token: "env:TEST_ASTRA_TOKEN" },
 		keyspace: null,
+		rlacEnabled: false,
 		createdAt: "2026-04-23T00:00:00.000Z",
 		updatedAt: "2026-04-23T00:00:00.000Z",
 	};
@@ -440,6 +442,7 @@ describe("AstraVectorStoreDriver ANN over-fetch (recall)", () => {
 		kind: "astra",
 		credentials: { token: "env:TEST_ASTRA_TOKEN" },
 		keyspace: null,
+		rlacEnabled: false,
 		createdAt: "2026-04-23T00:00:00.000Z",
 		updatedAt: "2026-04-23T00:00:00.000Z",
 	};

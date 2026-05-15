@@ -23,6 +23,19 @@ vi.mock("@/hooks/useDocuments", () => ({
 		isLoading: chunksState.isLoading,
 		isError: chunksState.isError,
 	}),
+	useUpdateDocument: () => ({
+		mutateAsync: async () => undefined,
+		isPending: false,
+	}),
+}));
+
+// `VisibilityEditor` renders inside the dialog and pulls the
+// workspace's principal roster via `usePrincipals`. The existing
+// test harness doesn't need to exercise that flow, so stub the hook
+// out — the editor handles `[]` gracefully (renders an empty chip set).
+vi.mock("@/hooks/useRlac", () => ({
+	usePrincipals: () => ({ data: [], isLoading: false, isError: false }),
+	useRlacEnabled: () => false,
 }));
 
 import { DocumentDetailDialog } from "./DocumentDetailDialog";
@@ -45,6 +58,8 @@ function makeDoc(
 		status: "ready",
 		errorMessage: null,
 		metadata: {},
+		visibleTo: null,
+		ownerPrincipalId: null,
 		...overrides,
 	};
 }

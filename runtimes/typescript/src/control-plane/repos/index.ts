@@ -55,6 +55,16 @@ export type {
 	UpdateLlmServiceInput,
 } from "./llm-services.js";
 export type {
+	ListPolicyAuditOptions,
+	PolicyAuditRepo,
+	RecordPolicyDecisionInput,
+} from "./policy-audit.js";
+export type {
+	CreatePrincipalInput,
+	PrincipalRepo,
+	UpdatePrincipalInput,
+} from "./principals.js";
+export type {
 	CreateRagDocumentInput,
 	RagDocumentRepo,
 	UpdateRagDocumentInput,

@@ -116,6 +116,11 @@ export function makeRagDocumentMethods(state: FileStoreState): RagDocumentRepo {
 					status: input.status ?? "pending",
 					errorMessage: input.errorMessage ?? null,
 					metadata: { ...(input.metadata ?? {}) },
+					visibleTo:
+						input.visibleTo === undefined || input.visibleTo === null
+							? null
+							: [...new Set(input.visibleTo)].sort(),
+					ownerPrincipalId: input.ownerPrincipalId ?? null,
 				};
 				return { rows: [...rows, record], result: record };
 			});
@@ -164,6 +169,15 @@ export function makeRagDocumentMethods(state: FileStoreState): RagDocumentRepo {
 					}),
 					...(patch.metadata !== undefined && {
 						metadata: { ...patch.metadata },
+					}),
+					...(patch.visibleTo !== undefined && {
+						visibleTo:
+							patch.visibleTo === null
+								? null
+								: [...new Set(patch.visibleTo)].sort(),
+					}),
+					...(patch.ownerPrincipalId !== undefined && {
+						ownerPrincipalId: patch.ownerPrincipalId,
 					}),
 					updatedAt: nowIso(),
 				};

@@ -58,7 +58,11 @@ export type AuditAction =
 	| "auth.csrf_rejected"
 	| "auth.login"
 	| "auth.logout"
-	| "auth.refresh";
+	| "auth.refresh"
+	// RLAC prototype audit actions.
+	| "principal.create"
+	| "principal.update"
+	| "principal.delete";
 
 export type AuditOutcome = "success" | "failure" | "denied";
 
@@ -96,6 +100,8 @@ export interface AuditDetails {
 	 * the exact scope set, not just whether scopes were requested.
 	 */
 	readonly scopes?: string;
+	/** RLAC principal id (workspace-scoped). */
+	readonly principalId?: string;
 }
 
 export interface AuditEventInput {

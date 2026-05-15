@@ -3955,6 +3955,362 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/api/v1/workspaces/{workspaceId}/principals": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List principals (RLAC sub-workspace identities) */
+		get: {
+			parameters: {
+				query?: {
+					/** @description Maximum number of items to return (max 200). */
+					limit?: number;
+					/** @description Opaque cursor returned as `nextCursor` from the previous page. */
+					cursor?: string;
+				};
+				header?: never;
+				path: {
+					workspaceId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description All principals in the workspace */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["PrincipalPage"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		put?: never;
+		/** Create a principal */
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": components["schemas"]["CreatePrincipalInput"];
+				};
+			};
+			responses: {
+				/** @description Principal created */
+				201: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["Principal"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/v1/workspaces/{workspaceId}/principals/{principalId}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get a single principal */
+		get: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+					principalId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description Principal record */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["Principal"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace or principal not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		put?: never;
+		post?: never;
+		/** Delete a principal */
+		delete: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+					principalId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description Deleted */
+				204: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content?: never;
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace or principal not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		options?: never;
+		head?: never;
+		/** Update a principal */
+		patch: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+					principalId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": components["schemas"]["UpdatePrincipalInput"];
+				};
+			};
+			responses: {
+				/** @description Updated principal */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["Principal"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace or principal not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		trace?: never;
+	};
+	"/api/v1/workspaces/{workspaceId}/policy/compile-preview": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Parse, validate, and compile a policy DSL
+		 * @description Returns the parsed-and-compiled Data API filter for the supplied principal, alongside a list of translatability issues. The UI uses this as a live preview while the user authors a policy.
+		 */
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": components["schemas"]["PolicyCompilePreviewRequest"];
+				};
+			};
+			responses: {
+				/** @description Compilation result */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["PolicyCompilePreviewResponse"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/v1/workspaces/{workspaceId}/policy/audit": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List recent policy decisions for the workspace */
+		get: {
+			parameters: {
+				query?: {
+					principalId?: string;
+					knowledgeBaseId?: string;
+					auditDay?: string;
+					limit?: number;
+				};
+				header?: never;
+				path: {
+					workspaceId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description Audit tail */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["PolicyAuditPage"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4105,6 +4461,7 @@ export interface components {
 			credentials: {
 				[key: string]: components["schemas"]["SecretRef"];
 			};
+			rlacEnabled: boolean;
 			/** Format: date-time */
 			createdAt: string;
 			/** Format: date-time */
@@ -4123,6 +4480,7 @@ export interface components {
 			credentials?: {
 				[key: string]: components["schemas"]["SecretRef"];
 			};
+			rlacEnabled?: boolean;
 		};
 		/** @example env:ASTRA_DB_API_ENDPOINT */
 		Endpoint: string | components["schemas"]["SecretRef"] | null;
@@ -4133,6 +4491,7 @@ export interface components {
 			credentials?: {
 				[key: string]: components["schemas"]["SecretRef"];
 			};
+			rlacEnabled?: boolean;
 		};
 		TestConnectionResponse: {
 			ok: boolean;
@@ -4225,6 +4584,8 @@ export interface components {
 			vectorCollection: string | null;
 			owned: boolean;
 			lexical: components["schemas"]["LexicalConfig"];
+			policyDsl: string | null;
+			policyEnabled: boolean;
 			/** Format: date-time */
 			createdAt: string;
 			/** Format: date-time */
@@ -4395,6 +4756,8 @@ export interface components {
 			rerankingServiceId?: string | null;
 			language?: string | null;
 			lexical?: components["schemas"]["LexicalConfig"];
+			policyDsl?: string | null;
+			policyEnabled?: boolean;
 		};
 		KnowledgeFilterPage: {
 			items: components["schemas"]["KnowledgeFilter"][];
@@ -5027,6 +5390,8 @@ export interface components {
 			metadata: {
 				[key: string]: string;
 			};
+			visibleTo: string[] | null;
+			ownerPrincipalId: string | null;
 		};
 		/** @enum {string} */
 		DocumentStatus:
@@ -5052,6 +5417,8 @@ export interface components {
 			metadata?: {
 				[key: string]: string;
 			};
+			visibleTo?: string[] | null;
+			ownerPrincipalId?: string | null;
 		};
 		KbIngestNonCreateResponse:
 			| components["schemas"]["KbIngestDuplicateResponse"]
@@ -5096,6 +5463,8 @@ export interface components {
 			};
 			chunker?: components["schemas"]["IngestChunkerOptions"];
 			overwriteOnNameConflict?: boolean;
+			visibleTo?: string[] | null;
+			ownerPrincipalId?: string | null;
 		};
 		IngestChunkerOptions: {
 			maxChars?: number;
@@ -5135,6 +5504,13 @@ export interface components {
 			documentId?: string;
 			/** @description Optional external source document id. */
 			sourceDocId?: string;
+			/**
+			 * @description RLAC: JSON-encoded array of principal ids (or `"*"`) authorized to read this document. Defaults to `[caller_principal]` when policy is enabled on the KB and the field is omitted.
+			 * @example ["alice","bob"]
+			 */
+			visibleTo?: string;
+			/** @description RLAC: provenance only. Defaults to the caller's principal id. */
+			ownerPrincipalId?: string;
 		};
 		DocumentChunk: {
 			id: string;
@@ -5158,6 +5534,8 @@ export interface components {
 			metadata?: {
 				[key: string]: string;
 			};
+			visibleTo?: string[] | null;
+			ownerPrincipalId?: string | null;
 		};
 		ExecutePlaygroundCommandResponse: {
 			/** @enum {boolean} */
@@ -5300,6 +5678,75 @@ export interface components {
 			subjectType: "apiKey" | "oidc" | "bootstrap" | "anonymous" | "system";
 			subjectLabel: string | null;
 			reason: string | null;
+		};
+		PrincipalPage: {
+			items: components["schemas"]["Principal"][];
+			nextCursor: string | null;
+		};
+		Principal: {
+			/** Format: uuid */
+			workspaceId: string;
+			principalId: string;
+			label: string | null;
+			attributes: {
+				[key: string]: string;
+			};
+			/** Format: date-time */
+			createdAt: string;
+			/** Format: date-time */
+			updatedAt: string;
+		};
+		CreatePrincipalInput: {
+			principalId: string;
+			label?: string | null;
+			attributes?: {
+				[key: string]: string;
+			};
+		};
+		UpdatePrincipalInput: {
+			label?: string | null;
+			attributes?: {
+				[key: string]: string;
+			};
+		};
+		PolicyCompilePreviewResponse: {
+			ok: boolean;
+			parseError: string | null;
+			issues: components["schemas"]["PolicyValidationIssue"][];
+			compiledFilter?: unknown;
+			principalId: string | null;
+		};
+		PolicyValidationIssue: {
+			code: string;
+			message: string;
+			hint?: string;
+		};
+		PolicyCompilePreviewRequest: {
+			dsl: string;
+			principalId?: string;
+		};
+		PolicyAuditPage: {
+			items: components["schemas"]["PolicyAuditRecord"][];
+			nextCursor: string | null;
+		};
+		PolicyAuditRecord: {
+			/** Format: uuid */
+			workspaceId: string;
+			auditDay: string;
+			/** Format: date-time */
+			ts: string;
+			/** Format: uuid */
+			decisionId: string;
+			principalId: string | null;
+			/** Format: uuid */
+			knowledgeBaseId: string;
+			resourceId: string;
+			/** @enum {string} */
+			action: "list" | "get" | "search" | "ingest" | "update" | "delete";
+			/** @enum {string} */
+			decision: "allow" | "deny" | "filter";
+			reason: string;
+			compiledFilterJson: string | null;
 		};
 	};
 	responses: {

@@ -39,6 +39,26 @@ export interface AuthSubject {
 	 * subjects always set this to a concrete (possibly empty) array.
 	 */
 	readonly scopes: readonly string[] | null;
+	/**
+	 * RLAC (prototype). Resolved sub-workspace principal for the
+	 * current request — the value `current_principal_id()` in the
+	 * policy DSL evaluates to. Absent/null when no principal has been
+	 * provisioned (legacy / unscoped flows). Populated by the
+	 * principal-resolver middleware after authentication; the policy
+	 * enforcer reads it on every policy-enabled call.
+	 *
+	 * Optional so verifiers (apiKey, oidc, bootstrap) can construct an
+	 * `AuthSubject` without knowing about RLAC; the resolver layers
+	 * the field in afterward.
+	 */
+	readonly principal?: ResolvedPrincipal | null;
+}
+
+/** RLAC: resolved principal for a single request. */
+export interface ResolvedPrincipal {
+	readonly id: string;
+	readonly workspaceId: string;
+	readonly attributes: Readonly<Record<string, string>>;
 }
 
 /** What the middleware writes into `c.set("auth", ...)` on every request. */

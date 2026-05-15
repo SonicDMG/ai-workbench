@@ -95,6 +95,8 @@ export function makeKnowledgeBaseMethods(
 						input.vectorCollection ?? defaultVectorCollection(uid),
 					owned: input.owned ?? true,
 					lexical: input.lexical ?? DEFAULT_LEXICAL,
+					policyDsl: input.policyDsl ?? null,
+					policyEnabled: input.policyEnabled ?? false,
 					createdAt: now,
 					updatedAt: now,
 				};
@@ -137,6 +139,10 @@ export function makeKnowledgeBaseMethods(
 					}),
 					...(patch.language !== undefined && { language: patch.language }),
 					...(patch.lexical !== undefined && { lexical: patch.lexical }),
+					...(patch.policyDsl !== undefined && { policyDsl: patch.policyDsl }),
+					...(patch.policyEnabled !== undefined && {
+						policyEnabled: patch.policyEnabled,
+					}),
 					updatedAt: nowIso(),
 				};
 				const nextRows = [...rows];

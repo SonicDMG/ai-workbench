@@ -103,6 +103,11 @@ export function makeRagDocumentMethods(
 				status: input.status ?? "pending",
 				errorMessage: input.errorMessage ?? null,
 				metadata: freezeMetadata(input.metadata),
+				visibleTo:
+					input.visibleTo === undefined || input.visibleTo === null
+						? null
+						: [...new Set(input.visibleTo)].sort(),
+				ownerPrincipalId: input.ownerPrincipalId ?? null,
 			};
 			bucket.set(uid, record);
 			state.ragDocuments.set(key, bucket);
@@ -142,6 +147,15 @@ export function makeRagDocumentMethods(
 				}),
 				...(patch.metadata !== undefined && {
 					metadata: freezeMetadata(patch.metadata),
+				}),
+				...(patch.visibleTo !== undefined && {
+					visibleTo:
+						patch.visibleTo === null
+							? null
+							: [...new Set(patch.visibleTo)].sort(),
+				}),
+				...(patch.ownerPrincipalId !== undefined && {
+					ownerPrincipalId: patch.ownerPrincipalId,
 				}),
 				updatedAt: nowIso(),
 			};

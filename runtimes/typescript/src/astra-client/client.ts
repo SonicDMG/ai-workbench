@@ -27,6 +27,8 @@ import type {
 	LlmServiceRow,
 	McpToolRow,
 	MessageRow,
+	PolicyAuditRow,
+	PrincipalRow,
 	RagDocumentByContentHashRow,
 	RagDocumentByStatusRow,
 	RagDocumentRow,
@@ -59,6 +61,10 @@ import {
 	MCP_TOOLS_TABLE,
 	MESSAGES_DEFINITION,
 	MESSAGES_TABLE,
+	POLICY_AUDIT_DEFINITION,
+	POLICY_AUDIT_TABLE,
+	PRINCIPALS_DEFINITION,
+	PRINCIPALS_TABLE,
 	RAG_DOCUMENTS_BY_HASH_DEFINITION,
 	RAG_DOCUMENTS_BY_HASH_TABLE,
 	RAG_DOCUMENTS_BY_STATUS_DEFINITION,
@@ -92,6 +98,11 @@ const ADDITIVE_COLUMN_MIGRATIONS = [
 		table: WORKSPACES_TABLE,
 		column: "keyspace",
 		definition: WORKSPACES_DEFINITION.columns.keyspace,
+	},
+	{
+		table: WORKSPACES_TABLE,
+		column: "rlac_enabled",
+		definition: WORKSPACES_DEFINITION.columns.rlac_enabled,
 	},
 	// API-key scopes are additive; legacy keys default to full access
 	// on read when the column is null/missing.
@@ -144,6 +155,28 @@ const ADDITIVE_COLUMN_MIGRATIONS = [
 		column: "ingest_input_json",
 		definition: JOBS_DEFINITION.columns.ingest_input_json,
 	},
+	// RLAC prototype additive columns. Existing deployments pick them
+	// up on next boot; new deployments get them from the table DDL.
+	{
+		table: KNOWLEDGE_BASES_TABLE,
+		column: "policy_dsl",
+		definition: KNOWLEDGE_BASES_DEFINITION.columns.policy_dsl,
+	},
+	{
+		table: KNOWLEDGE_BASES_TABLE,
+		column: "policy_enabled",
+		definition: KNOWLEDGE_BASES_DEFINITION.columns.policy_enabled,
+	},
+	{
+		table: RAG_DOCUMENTS_TABLE,
+		column: "visible_to",
+		definition: RAG_DOCUMENTS_DEFINITION.columns.visible_to,
+	},
+	{
+		table: RAG_DOCUMENTS_TABLE,
+		column: "owner_principal_id",
+		definition: RAG_DOCUMENTS_DEFINITION.columns.owner_principal_id,
+	},
 ] as const satisfies readonly AdditiveColumnMigration[];
 
 export interface AstraClientConfig {
@@ -191,6 +224,9 @@ export async function openAstraClient(
 		agents: db.table<AgentRow>(AGENTS_TABLE),
 		conversations: db.table<ConversationRow>(CONVERSATIONS_TABLE),
 		messages: db.table<MessageRow>(MESSAGES_TABLE),
+		// RLAC prototype tables.
+		principals: db.table<PrincipalRow>(PRINCIPALS_TABLE),
+		policyAudit: db.table<PolicyAuditRow>(POLICY_AUDIT_TABLE),
 	};
 }
 
@@ -263,6 +299,15 @@ async function ensureTables(db: Db): Promise<void> {
 		}),
 		db.createTable(MESSAGES_TABLE, {
 			definition: MESSAGES_DEFINITION,
+			ifNotExists: true,
+		}),
+		// RLAC prototype.
+		db.createTable(PRINCIPALS_TABLE, {
+			definition: PRINCIPALS_DEFINITION,
+			ifNotExists: true,
+		}),
+		db.createTable(POLICY_AUDIT_TABLE, {
+			definition: POLICY_AUDIT_DEFINITION,
 			ifNotExists: true,
 		}),
 	]);

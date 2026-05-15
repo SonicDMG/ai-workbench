@@ -40,6 +40,7 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
 		kind: "mock",
 		credentials: {},
 		keyspace: null,
+		rlacEnabled: false,
 		createdAt: now,
 		updatedAt: now,
 		...overrides,

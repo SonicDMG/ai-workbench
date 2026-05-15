@@ -42,6 +42,10 @@ export interface AsyncIngestFileInput {
 	readonly parser?: "auto" | "native" | "docling";
 	readonly metadata?: Readonly<Record<string, string>>;
 	readonly overwriteOnNameConflict?: boolean;
+	/** RLAC: principal ids (or `"*"`) that may read this doc. */
+	readonly visibleTo?: readonly string[];
+	/** RLAC: provenance only. */
+	readonly ownerPrincipalId?: string;
 }
 
 /**

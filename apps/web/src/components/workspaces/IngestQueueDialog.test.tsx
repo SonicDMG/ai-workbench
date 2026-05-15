@@ -53,6 +53,8 @@ const KB: KnowledgeBaseRecord = {
 	vectorCollection: "wb_vectors_kb",
 	owned: true,
 	lexical: { enabled: false, analyzer: null, options: {} },
+	policyDsl: null,
+	policyEnabled: false,
 	createdAt: "2026-04-25T00:00:00.000Z",
 	updatedAt: "2026-04-25T00:00:00.000Z",
 };
@@ -97,6 +99,8 @@ function ingestResponse(jobId: string): KbAsyncIngestResponse {
 			status: "writing",
 			errorMessage: null,
 			metadata: {},
+			visibleTo: null,
+			ownerPrincipalId: null,
 		},
 		astraQueries: [],
 	};
@@ -124,6 +128,8 @@ function duplicateResponse(
 			status: "ready",
 			errorMessage: null,
 			metadata: {},
+			visibleTo: null,
+			ownerPrincipalId: null,
 		},
 	};
 }
@@ -150,6 +156,8 @@ function nameConflictResponse(
 			status: "ready",
 			errorMessage: null,
 			metadata: {},
+			visibleTo: null,
+			ownerPrincipalId: null,
 		},
 	};
 }

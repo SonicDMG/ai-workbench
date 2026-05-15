@@ -22,8 +22,10 @@ import {
 } from "@/components/ui/dialog";
 import { DocumentDetailDialog } from "@/components/workspaces/DocumentDetailDialog";
 import { DocumentTable } from "@/components/workspaces/DocumentTable";
+import { EditDocumentDialog } from "@/components/workspaces/EditDocumentDialog";
 import { FileTypeBadge } from "@/components/workspaces/FileTypeBadge";
 import { IngestQueueDialog } from "@/components/workspaces/IngestQueueDialog";
+import { ViewAsPicker } from "@/components/workspaces/ViewAsPicker";
 import { useDeleteDocument, useDocuments } from "@/hooks/useDocuments";
 import { useKnowledgeBase } from "@/hooks/useKnowledgeBases";
 import { useWorkspace } from "@/hooks/useWorkspaces";
@@ -57,6 +59,7 @@ export function KnowledgeBaseExplorerPage() {
 
 	const [ingestOpen, setIngestOpen] = useState(false);
 	const [detail, setDetail] = useState<RagDocumentRecord | null>(null);
+	const [toEdit, setToEdit] = useState<RagDocumentRecord | null>(null);
 	const [toDelete, setToDelete] = useState<RagDocumentRecord | null>(null);
 	const deleteDoc = useDeleteDocument(workspaceId ?? "", knowledgeBaseId ?? "");
 
@@ -160,6 +163,15 @@ export function KnowledgeBaseExplorerPage() {
 						</div>
 					</div>
 					<div className="flex items-center gap-2">
+						{/*
+						 * View-as is gated on the workspace-level RLAC
+						 * master switch. The per-KB access-control toggle
+						 * was removed — access control is workspace-wide
+						 * now and lives in Workspace Settings.
+						 */}
+						{ws.data?.rlacEnabled ? (
+							<ViewAsPicker workspace={workspaceId} />
+						) : null}
 						<Button
 							variant="secondary"
 							size="sm"
@@ -204,10 +216,12 @@ export function KnowledgeBaseExplorerPage() {
 						<DocumentTable
 							docs={docs.data ?? []}
 							onSelect={(d) => setDetail(d)}
+							onEdit={(d) => setToEdit(d)}
 							onDelete={(d) => setToDelete(d)}
 							deletingDocumentId={
 								deleteDoc.isPending ? (deleteDoc.variables ?? null) : null
 							}
+							rlacEnabled={ws.data?.rlacEnabled ?? false}
 						/>
 					)}
 				</CardContent>
@@ -225,6 +239,15 @@ export function KnowledgeBaseExplorerPage() {
 				doc={detail}
 				highlightChunkId={wantedChunkId}
 				onOpenChange={onDetailOpenChange}
+			/>
+
+			<EditDocumentDialog
+				workspace={workspaceId}
+				knowledgeBaseId={knowledgeBase.knowledgeBaseId}
+				doc={toEdit}
+				onOpenChange={(open) => {
+					if (!open) setToEdit(null);
+				}}
 			/>
 
 			<DeleteDocumentDialog

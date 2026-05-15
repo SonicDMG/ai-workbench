@@ -43,6 +43,8 @@ import { makeEmbeddingServiceMethods } from "./embedding-services.js";
 import { makeKnowledgeBaseMethods } from "./knowledge-bases.js";
 import { makeKnowledgeFilterMethods } from "./knowledge-filters.js";
 import { makeLlmServiceMethods } from "./llm-services.js";
+import { makePolicyAuditMethods } from "./policy-audit.js";
+import { makePrincipalMethods } from "./principals.js";
 import { makeRagDocumentMethods } from "./rag-documents.js";
 import { makeRerankingServiceMethods } from "./reranking-services.js";
 import { createFileStoreState, type FileStoreState } from "./state.js";
@@ -70,6 +72,8 @@ function buildFileStore(state: FileStoreState): ControlPlaneStore {
 		...makeAgentMethods(state),
 		...makeConversationMethods(state),
 		...makeChatMessageMethods(state),
+		...makePrincipalMethods(state),
+		...makePolicyAuditMethods(state),
 	};
 }
 

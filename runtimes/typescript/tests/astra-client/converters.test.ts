@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
+	asIsoString,
+	asIsoStringOrNull,
 	asNullableUuidString,
 	asNumber,
 	asNumberOrNull,
@@ -7,11 +9,17 @@ import {
 	asUuidString,
 	knowledgeBaseFromRow,
 	knowledgeBaseToRow,
+	policyAuditFromRow,
+	principalFromRow,
 	ragDocumentFromRow,
 	ragDocumentToRow,
 	workspaceFromRow,
 	workspaceToRow,
 } from "../../src/astra-client/converters.js";
+import type {
+	PolicyAuditRow,
+	PrincipalRow,
+} from "../../src/astra-client/row-types.js";
 import type {
 	KnowledgeBaseRecord,
 	RagDocumentRecord,
@@ -25,6 +33,7 @@ const WS: WorkspaceRecord = {
 	kind: "astra",
 	credentials: { token: "env:ASTRA_TOKEN", scb: "file:/etc/scb.zip" },
 	keyspace: "workbench",
+	rlacEnabled: false,
 	createdAt: "2026-04-22T00:00:00.000Z",
 	updatedAt: "2026-04-22T00:00:01.000Z",
 };
@@ -48,6 +57,8 @@ const KB: KnowledgeBaseRecord = {
 		analyzer: null,
 		options: {},
 	},
+	policyDsl: null,
+	policyEnabled: false,
 	createdAt: "2026-04-22T00:00:02.000Z",
 	updatedAt: "2026-04-22T00:00:03.000Z",
 };
@@ -67,6 +78,8 @@ const DOC: RagDocumentRecord = {
 	status: "ready",
 	errorMessage: null,
 	metadata: { author: "Ada", lang: "en" },
+	visibleTo: null,
+	ownerPrincipalId: null,
 };
 
 describe("converters — round-trip equivalence", () => {
@@ -305,6 +318,8 @@ describe("converters — numeric column coercion", () => {
 			status: "ready",
 			errorMessage: null,
 			metadata: {},
+			visibleTo: null,
+			ownerPrincipalId: null,
 		});
 		// Simulate the Tables decoder handing back BigInts.
 		// @ts-expect-error — row-types declare these as `number`,
@@ -336,5 +351,74 @@ describe("schema — messages.tool_id is text, not uuid", () => {
 			"../../src/astra-client/table-definitions.js"
 		);
 		expect(MESSAGES_DEFINITION.columns.tool_id).toBe("text");
+	});
+});
+
+describe("converters — Date → ISO coercion for RLAC tables", () => {
+	test("asIsoString returns a string verbatim", () => {
+		expect(asIsoString("2026-05-14T18:44:22.025Z")).toBe(
+			"2026-05-14T18:44:22.025Z",
+		);
+	});
+
+	test("asIsoString converts a JS Date to ISO-8601", () => {
+		const date = new Date(Date.UTC(2026, 4, 14, 18, 44, 22, 25));
+		expect(asIsoString(date)).toBe("2026-05-14T18:44:22.025Z");
+	});
+
+	test("asIsoString accepts an object with toISOString()", () => {
+		const dateLike = {
+			toISOString: () => "2026-05-14T18:44:22.025Z",
+		};
+		expect(asIsoString(dateLike)).toBe("2026-05-14T18:44:22.025Z");
+	});
+
+	test("asIsoStringOrNull preserves null/undefined", () => {
+		expect(asIsoStringOrNull(null)).toBeNull();
+		expect(asIsoStringOrNull(undefined)).toBeNull();
+		expect(asIsoStringOrNull("2026-05-14T18:44:22.025Z")).toBe(
+			"2026-05-14T18:44:22.025Z",
+		);
+	});
+
+	test("policyAuditFromRow coerces ts from Date to ISO string", () => {
+		// astra-db-ts decodes `timestamp` columns as `Date` instances —
+		// the audit-list code sorts on `record.ts`, so leaving it as a
+		// Date breaks `localeCompare`. Pin the coercion here.
+		const ts = new Date(Date.UTC(2026, 4, 14, 18, 44, 22, 25));
+		const row = {
+			workspace_id: "73136050-d7a7-44a7-8e1d-fbb724bfba9b",
+			audit_day: "2026-05-14",
+			ts,
+			decision_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+			principal_id: "alice",
+			knowledge_base_id: "11111111-2222-3333-4444-555555555555",
+			resource_id: "*",
+			action: "list",
+			decision: "filter",
+			reason: "filter injected",
+			compiled_filter_json: null,
+		} as unknown as PolicyAuditRow;
+		const record = policyAuditFromRow(row);
+		expect(typeof record.ts).toBe("string");
+		expect(record.ts).toBe("2026-05-14T18:44:22.025Z");
+		// And the very thing that crashed in production must now work.
+		expect(() => record.ts.localeCompare(record.ts)).not.toThrow();
+	});
+
+	test("principalFromRow coerces createdAt/updatedAt from Date to ISO string", () => {
+		const created = new Date(Date.UTC(2026, 4, 14, 18, 0, 0));
+		const updated = new Date(Date.UTC(2026, 4, 14, 18, 5, 0));
+		const row = {
+			workspace_id: "73136050-d7a7-44a7-8e1d-fbb724bfba9b",
+			principal_id: "alice",
+			label: "Alice",
+			attributes: { role: "viewer" },
+			created_at: created,
+			updated_at: updated,
+		} as unknown as PrincipalRow;
+		const record = principalFromRow(row);
+		expect(record.createdAt).toBe("2026-05-14T18:00:00.000Z");
+		expect(record.updatedAt).toBe("2026-05-14T18:05:00.000Z");
 	});
 });

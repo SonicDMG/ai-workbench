@@ -18,6 +18,10 @@ export interface CreateRagDocumentInput {
 	readonly status?: DocumentStatus;
 	readonly errorMessage?: string | null;
 	readonly metadata?: Readonly<Record<string, string>>;
+	/** RLAC: principals that may read this row (or `"*"` for any). */
+	readonly visibleTo?: readonly string[] | null;
+	/** RLAC: provenance only — never used for enforcement. */
+	readonly ownerPrincipalId?: string | null;
 }
 
 export type UpdateRagDocumentInput = Partial<

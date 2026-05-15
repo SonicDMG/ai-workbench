@@ -14,6 +14,8 @@ export interface CreateWorkspaceInput {
 	readonly kind: WorkspaceKind;
 	readonly credentials?: Readonly<Record<string, SecretRef>>;
 	readonly keyspace?: string | null;
+	/** RLAC master switch. Omit to default to `false`. */
+	readonly rlacEnabled?: boolean;
 }
 
 /**
@@ -27,6 +29,8 @@ export interface UpdateWorkspaceInput {
 	readonly url?: string | null;
 	readonly credentials?: Readonly<Record<string, SecretRef>>;
 	readonly keyspace?: string | null;
+	/** RLAC master switch. */
+	readonly rlacEnabled?: boolean;
 }
 
 export interface WorkspaceRepo {

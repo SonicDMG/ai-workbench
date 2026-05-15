@@ -56,6 +56,7 @@ export function makeWorkspaceMethods(state: MemoryStoreState): WorkspaceRepo {
 				kind: input.kind,
 				credentials: freezeCredentials(input.credentials),
 				keyspace: input.keyspace ?? null,
+				rlacEnabled: input.rlacEnabled ?? false,
 				createdAt: now,
 				updatedAt: now,
 			};
@@ -79,6 +80,9 @@ export function makeWorkspaceMethods(state: MemoryStoreState): WorkspaceRepo {
 					credentials: freezeCredentials(patch.credentials),
 				}),
 				...(patch.keyspace !== undefined && { keyspace: patch.keyspace }),
+				...(patch.rlacEnabled !== undefined && {
+					rlacEnabled: patch.rlacEnabled,
+				}),
 				updatedAt: nowIso(),
 			};
 			assertNoWorkspaceConflict(

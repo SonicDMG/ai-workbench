@@ -35,6 +35,8 @@ import type {
 	KnowledgeFilterRecord,
 	LlmServiceRecord,
 	MessageRecord,
+	PolicyAuditRecord,
+	PrincipalRecord,
 	RagDocumentRecord,
 	RerankingServiceRecord,
 	WorkspaceRecord,
@@ -56,7 +58,10 @@ export type Table =
 	// Agentic tables (Stage-2 schema).
 	| "agents"
 	| "conversations"
-	| "messages";
+	| "messages"
+	// RLAC prototype.
+	| "principals"
+	| "policy-audit";
 
 /** Map table discriminator to its row type. */
 export type TableRow<K extends Table> = K extends "workspaces"
@@ -83,7 +88,11 @@ export type TableRow<K extends Table> = K extends "workspaces"
 											? ConversationRecord
 											: K extends "messages"
 												? MessageRecord
-												: never;
+												: K extends "principals"
+													? PrincipalRecord
+													: K extends "policy-audit"
+														? PolicyAuditRecord
+														: never;
 
 export const TABLE_FILES: Record<Table, string> = {
 	workspaces: "workspaces.json",
@@ -98,6 +107,8 @@ export const TABLE_FILES: Record<Table, string> = {
 	agents: "agents.json",
 	conversations: "conversations.json",
 	messages: "messages.json",
+	principals: "principals.json",
+	"policy-audit": "policy-audit.json",
 };
 
 /**
@@ -132,6 +143,8 @@ function createMutexes(): Record<Table, Mutex> {
 		agents: new Mutex(),
 		conversations: new Mutex(),
 		messages: new Mutex(),
+		principals: new Mutex(),
+		"policy-audit": new Mutex(),
 	};
 }
 

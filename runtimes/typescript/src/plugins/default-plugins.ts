@@ -30,6 +30,8 @@ import { knowledgeFilterRoutes } from "../routes/api-v1/knowledge-filters.js";
 import { llmServiceRoutes } from "../routes/api-v1/llm-services.js";
 import { mcpRoutes } from "../routes/api-v1/mcp.js";
 import { playgroundRoutes } from "../routes/api-v1/playground.js";
+import { policyRoutes } from "../routes/api-v1/policy.js";
+import { principalRoutes } from "../routes/api-v1/principals.js";
 import { rerankingServiceRoutes } from "../routes/api-v1/reranking-services.js";
 import { workspaceRoutes } from "../routes/api-v1/workspaces.js";
 import { createIngestService } from "../services/ingest-service.js";
@@ -196,6 +198,17 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					chatConfig: ctx.chatConfig,
 					ingestService,
 				}),
+		},
+		// RLAC prototype: principal CRUD + policy compile-preview + audit.
+		{
+			id: "principals",
+			mountPath: WORKSPACE_MOUNT,
+			build: () => principalRoutes(ctx.store),
+		},
+		{
+			id: "policy",
+			mountPath: WORKSPACE_MOUNT,
+			build: () => policyRoutes(ctx.store),
 		},
 	];
 }

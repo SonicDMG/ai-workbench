@@ -31,6 +31,8 @@ export interface WorkspaceRow {
 	kind: WorkspaceKind;
 	keyspace: string | null;
 	credentials: Record<string, string>;
+	/** RLAC master switch. Nullable for legacy rows; read as `false`. */
+	rlac_enabled: boolean | null;
 	created_at: Iso;
 	updated_at: Iso;
 }
@@ -89,6 +91,11 @@ export interface KnowledgeBaseRow {
 	lexical_enabled: boolean;
 	lexical_analyzer: string | null;
 	lexical_options: Record<string, string>;
+	/** RLAC: authored SQL-subset predicate. Nullable for legacy rows. */
+	policy_dsl: string | null;
+	/** RLAC: gates enforcement. Defaults to false (no enforcement) for
+	 * legacy rows. */
+	policy_enabled: boolean | null;
 	created_at: Iso;
 	updated_at: Iso;
 }
@@ -246,6 +253,10 @@ export interface RagDocumentRow {
 	ingested_at: Iso | null;
 	updated_at: Iso;
 	metadata: Record<string, string>;
+	/** RLAC: principals allowed to read this row. Null for legacy rows. */
+	visible_to: Set<string> | null;
+	/** RLAC: provenance — never used for enforcement. */
+	owner_principal_id: string | null;
 }
 
 export interface RagDocumentByStatusRow {
@@ -348,4 +359,31 @@ export interface JobRow {
 	 * replay the pipeline. Same `text`-column pattern as
 	 * `result_json`; converters parse/stringify on the boundary. */
 	ingest_input_json: string | null;
+}
+
+/* ================================================================== */
+/* RLAC prototype row shapes.                                          */
+/* ================================================================== */
+
+export interface PrincipalRow {
+	workspace_id: Uuid;
+	principal_id: string;
+	label: string | null;
+	attributes: Record<string, string>;
+	created_at: Iso;
+	updated_at: Iso;
+}
+
+export interface PolicyAuditRow {
+	workspace_id: Uuid;
+	audit_day: string;
+	ts: Iso;
+	decision_id: Uuid;
+	principal_id: string | null;
+	knowledge_base_id: Uuid;
+	resource_id: string;
+	action: string;
+	decision: string;
+	reason: string;
+	compiled_filter_json: string | null;
 }

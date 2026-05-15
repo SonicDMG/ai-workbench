@@ -83,6 +83,37 @@ export function documentQueryKey(workspaceId: string, kbId: string) {
  * document's chunks from the KB's vector collection too, so a
  * successful delete leaves no traces in KB-scoped search.
  */
+/**
+ * Patches a KB document. Surfaces the subset of `UpdateRagDocumentInput`
+ * the UI cares about: rename, visibility, and ownership transfer.
+ */
+export interface UpdateDocumentPatch {
+	readonly sourceFilename?: string | null;
+	readonly visibleTo?: readonly string[] | null;
+	readonly ownerPrincipalId?: string | null;
+}
+
+export function useUpdateDocument(
+	workspaceId: string,
+	kbId: string,
+): UseMutationResult<
+	RagDocumentRecord,
+	Error,
+	{
+		readonly documentId: string;
+		readonly patch: UpdateDocumentPatch;
+	}
+> {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({ documentId, patch }) =>
+			api.updateKbDocument(workspaceId, kbId, documentId, patch),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: keys.all(workspaceId, kbId) });
+		},
+	});
+}
+
 export function useDeleteDocument(
 	workspaceId: string,
 	kbId: string,

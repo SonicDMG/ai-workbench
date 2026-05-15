@@ -2,6 +2,7 @@ import {
 	ChevronDown,
 	ChevronsUpDown,
 	ChevronUp,
+	Pencil,
 	Search,
 	Trash2,
 } from "lucide-react";
@@ -36,17 +37,27 @@ const STATUS_ORDER: Record<DocumentStatus, number> = {
 export function DocumentTable({
 	docs,
 	onSelect,
+	onEdit,
 	onDelete,
 	deletingDocumentId,
+	rlacEnabled,
 }: {
 	docs: readonly RagDocumentRecord[];
 	onSelect?: (doc: RagDocumentRecord) => void;
+	/** When provided, a pencil button renders next to delete that
+	 * opens the edit dialog (rename, change visibility, replace
+	 * file). */
+	onEdit?: (doc: RagDocumentRecord) => void;
 	/** When provided, a trash button renders on each row that calls
 	 * back to the parent (which usually pops a confirm dialog). */
 	onDelete?: (doc: RagDocumentRecord) => void;
 	/** documentId currently being deleted — disables that row's
 	 * trash button to prevent double-clicks during the round trip. */
 	deletingDocumentId?: string | null;
+	/** Workspace-level RLAC master switch. When false, the
+	 * `visible_to` column is hidden — the chips would be meaningless
+	 * to a user who has no other RLAC affordance in view. */
+	rlacEnabled?: boolean;
 }) {
 	const [sortKey, setSortKey] = useState<SortKey>("ingestedAt");
 	const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -148,14 +159,19 @@ export function DocumentTable({
 							>
 								Ingested
 							</SortHead>
-							{onDelete ? <th className="w-12 px-3 py-2" /> : null}
+							{rlacEnabled ? (
+								<th className="px-3 py-2 text-left font-medium w-48">
+									Visible to
+								</th>
+							) : null}
+							{onEdit || onDelete ? <th className="w-20 px-3 py-2" /> : null}
 						</tr>
 					</thead>
 					<tbody>
 						{sorted.length === 0 ? (
 							<tr>
 								<td
-									colSpan={onDelete ? 7 : 6}
+									colSpan={(rlacEnabled ? 7 : 6) + (onEdit || onDelete ? 1 : 0)}
 									className="px-3 py-6 text-center text-xs text-slate-500 dark:text-slate-400"
 								>
 									No documents match “{filter}”.
@@ -206,24 +222,70 @@ export function DocumentTable({
 											? formatDate(d.ingestedAt)
 											: formatDate(d.updatedAt)}
 									</td>
-									{onDelete ? (
+									{rlacEnabled ? (
+										<td className="px-3 py-2 text-slate-600 text-xs dark:text-slate-400">
+											{!d.visibleTo ? (
+												<span className="text-slate-400">legacy</span>
+											) : d.visibleTo.length === 0 ? (
+												<span className="text-slate-400">— nobody —</span>
+											) : (
+												<div className="flex flex-wrap gap-1">
+													{d.visibleTo.map((p) => (
+														<span
+															key={p}
+															className={cn(
+																"rounded px-1.5 py-0.5 font-mono text-[10px]",
+																p === "*"
+																	? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+																	: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
+															)}
+														>
+															{p}
+														</span>
+													))}
+												</div>
+											)}
+										</td>
+									) : null}
+									{onEdit || onDelete ? (
 										<td className="px-3 py-2 text-right">
-											<Button
-												variant="ghost"
-												size="sm"
-												disabled={deletingDocumentId === d.documentId}
-												onClick={(e) => {
-													// Stop the row-level click that opens the
-													// detail dialog — destructive actions
-													// shouldn't pop a metadata view at the same
-													// time.
-													e.stopPropagation();
-													onDelete(d);
-												}}
-												aria-label={`Delete ${d.sourceFilename ?? d.documentId}`}
-											>
-												<Trash2 className="h-4 w-4 text-red-600" />
-											</Button>
+											<div className="flex items-center justify-end gap-1">
+												{onEdit ? (
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={(e) => {
+															// Same row-click suppression as delete:
+															// the edit dialog opens via this button,
+															// not the row-level click that opens the
+															// read-only detail view.
+															e.stopPropagation();
+															onEdit(d);
+														}}
+														aria-label={`Edit ${d.sourceFilename ?? d.documentId}`}
+													>
+														<Pencil className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+													</Button>
+												) : null}
+												{onDelete ? (
+													<Button
+														variant="ghost"
+														size="sm"
+														disabled={deletingDocumentId === d.documentId}
+														onClick={(e) => {
+															// Stop the row-level click that opens the
+															// detail dialog — destructive actions
+															// shouldn't pop a metadata view at the same
+															// time.
+															e.stopPropagation();
+															onDelete(d);
+														}}
+														aria-label={`Delete ${d.sourceFilename ?? d.documentId}`}
+													>
+														<Trash2 className="h-4 w-4 text-red-600" />
+													</Button>
+												) : null}
+											</div>
 										</td>
 									) : null}
 								</tr>

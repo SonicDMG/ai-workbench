@@ -32,6 +32,7 @@ const WORKSPACE: WorkspaceRecord = {
 	kind: "astra",
 	credentials: { token: "env:TEST_ASTRA_TOKEN" },
 	keyspace: null,
+	rlacEnabled: false,
 	createdAt: "2026-01-01T00:00:00Z",
 	updatedAt: "2026-01-01T00:00:00Z",
 };

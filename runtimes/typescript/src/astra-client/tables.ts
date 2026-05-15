@@ -32,6 +32,8 @@ import type {
 	LlmServiceRow,
 	McpToolRow,
 	MessageRow,
+	PolicyAuditRow,
+	PrincipalRow,
 	RagDocumentByContentHashRow,
 	RagDocumentByStatusRow,
 	RagDocumentRow,
@@ -79,4 +81,7 @@ export interface TablesBundle {
 	readonly agents: TableLike<AgentRow>;
 	readonly conversations: TableLike<ConversationRow>;
 	readonly messages: TableLike<MessageRow>;
+	/* ---- RLAC prototype (workbench-owned tables) ---- */
+	readonly principals: TableLike<PrincipalRow>;
+	readonly policyAudit: TableLike<PolicyAuditRow>;
 }

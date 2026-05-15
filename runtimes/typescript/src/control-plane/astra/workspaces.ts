@@ -69,6 +69,7 @@ export function makeWorkspaceMethods(state: AstraStoreState): WorkspaceRepo {
 				kind: input.kind,
 				credentials: { ...(input.credentials ?? {}) },
 				keyspace: input.keyspace ?? null,
+				rlacEnabled: input.rlacEnabled ?? false,
 				createdAt: now,
 				updatedAt: now,
 			};
@@ -91,6 +92,9 @@ export function makeWorkspaceMethods(state: AstraStoreState): WorkspaceRepo {
 					credentials: { ...patch.credentials },
 				}),
 				...(patch.keyspace !== undefined && { keyspace: patch.keyspace }),
+				...(patch.rlacEnabled !== undefined && {
+					rlacEnabled: patch.rlacEnabled,
+				}),
 				updatedAt: nowIso(),
 			};
 			const allRows = (await state.tables.workspaces.find({}).toArray()).map(

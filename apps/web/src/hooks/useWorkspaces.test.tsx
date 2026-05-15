@@ -31,6 +31,7 @@ const fixture: Workspace = {
 	kind: "astra",
 	credentials: { token: "env:ASTRA_DB_APPLICATION_TOKEN" },
 	keyspace: "default_keyspace",
+	rlacEnabled: false,
 	createdAt: "2026-04-22T10:11:12.345Z",
 	updatedAt: "2026-04-22T10:11:12.345Z",
 };

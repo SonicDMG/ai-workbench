@@ -31,6 +31,8 @@ import type {
 	KnowledgeBaseRepo,
 	KnowledgeFilterRepo,
 	LlmServiceRepo,
+	PolicyAuditRepo,
+	PrincipalRepo,
 	RagDocumentRepo,
 	RerankingServiceRepo,
 	WorkspaceRepo,
@@ -53,15 +55,20 @@ export type {
 	CreateKnowledgeBaseInput,
 	CreateKnowledgeFilterInput,
 	CreateLlmServiceInput,
+	CreatePrincipalInput,
 	CreateRagDocumentInput,
 	CreateRerankingServiceInput,
 	CreateWorkspaceInput,
 	EmbeddingServiceRepo,
 	KnowledgeBaseRepo,
 	KnowledgeFilterRepo,
+	ListPolicyAuditOptions,
 	LlmServiceRepo,
 	PersistApiKeyInput,
+	PolicyAuditRepo,
+	PrincipalRepo,
 	RagDocumentRepo,
+	RecordPolicyDecisionInput,
 	RerankingServiceRepo,
 	UpdateAgentInput,
 	UpdateChatMessageInput,
@@ -71,6 +78,7 @@ export type {
 	UpdateKnowledgeBaseInput,
 	UpdateKnowledgeFilterInput,
 	UpdateLlmServiceInput,
+	UpdatePrincipalInput,
 	UpdateRagDocumentInput,
 	UpdateRerankingServiceInput,
 	UpdateWorkspaceInput,
@@ -139,7 +147,9 @@ export interface ControlPlaneStore
 		LlmServiceRepo,
 		AgentRepo,
 		ConversationRepo,
-		ChatMessageRepo {
+		ChatMessageRepo,
+		PrincipalRepo,
+		PolicyAuditRepo {
 	/** Optional: run migrations, open connections, etc. Idempotent. */
 	init?(): Promise<void>;
 

@@ -11,8 +11,10 @@
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { getRequestPrincipal } from "../../auth/principal-resolver.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
+import type { RagDocumentRecord } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
 import type { ExtractorRegistry } from "../../ingest/extractors/index.js";
@@ -44,6 +46,11 @@ import {
 	UpdateRagDocumentInputSchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
+import {
+	assertPolicyAllowsMutation,
+	buildPolicyContext,
+	PolicyDeniedError,
+} from "../../policy/enforcer.js";
 import { cascadeDeleteRagDocument } from "../../services/document-cascade.js";
 import { createIngestService } from "../../services/ingest-service.js";
 import { resolveKb } from "./kb-descriptor.js";
@@ -102,8 +109,47 @@ const KbIngestFileFormSchema = z
 		sourceDocId: z.string().optional().openapi({
 			description: "Optional external source document id.",
 		}),
+		visibleTo: z.string().optional().openapi({
+			description:
+				'RLAC: JSON-encoded array of principal ids (or `"*"`) authorized to read this document. Defaults to `[caller_principal]` when policy is enabled on the KB and the field is omitted.',
+			example: '["alice","bob"]',
+		}),
+		ownerPrincipalId: z.string().optional().openapi({
+			description:
+				"RLAC: provenance only. Defaults to the caller's principal id.",
+		}),
 	})
 	.openapi("KbIngestFileForm");
+
+/**
+ * RLAC: apply the compiled filter returned by the enforcer to an
+ * in-memory list of rag documents. Mirrors what the Data API does
+ * server-side for the canonical Stefano pattern — only `$or` of
+ * single-column matches against `visible_to` is interpreted here. Any
+ * other compiled shape falls through to "no filter applied" with the
+ * route still passing the filter to the enforcer's audit record.
+ */
+function applyVisibleToFilter(
+	docs: readonly RagDocumentRecord[],
+	filter: Readonly<Record<string, unknown>> | null,
+): readonly RagDocumentRecord[] {
+	if (!filter) return docs;
+	const orBranches = (filter as { $or?: Array<Record<string, unknown>> }).$or;
+	if (orBranches) {
+		const allowed = new Set<string>();
+		for (const branch of orBranches) {
+			const v = branch.visible_to;
+			if (typeof v === "string") allowed.add(v);
+		}
+		if (allowed.size === 0) return docs;
+		return docs.filter((d) => (d.visibleTo ?? []).some((p) => allowed.has(p)));
+	}
+	const single = (filter as { visible_to?: unknown }).visible_to;
+	if (typeof single === "string") {
+		return docs.filter((d) => (d.visibleTo ?? []).includes(single));
+	}
+	return docs;
+}
 
 export function kbDocumentRoutes(
 	deps: KbDocumentRouteDeps,
@@ -137,7 +183,32 @@ export function kbDocumentRoutes(
 			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
 			const query = c.req.valid("query");
 			const rows = await store.listRagDocuments(workspaceId, knowledgeBaseId);
-			return c.json(paginate(rows, query), 200);
+			// RLAC: apply the KB's policy filter when enabled. The
+			// enforcer also writes the audit record and returns the
+			// compiled filter for in-memory application.
+			const kb = await store.getKnowledgeBase(workspaceId, knowledgeBaseId);
+			if (!kb)
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
+			const ws = await store.getWorkspace(workspaceId);
+			let filtered: readonly RagDocumentRecord[];
+			try {
+				const decision = await buildPolicyContext({
+					workspace: workspaceId,
+					workspaceRlacEnabled: ws?.rlacEnabled ?? false,
+					knowledgeBase: kb,
+					principal: getRequestPrincipal(c),
+					action: "list",
+					resourceId: "*",
+					audit: store,
+				});
+				filtered = applyVisibleToFilter(rows, decision.filter);
+			} catch (err) {
+				if (err instanceof PolicyDeniedError) {
+					throw new ApiError("policy_principal_required", err.reason, 401);
+				}
+				throw err;
+			}
+			return c.json(paginate(filtered, query), 200);
 		},
 	);
 
@@ -172,10 +243,30 @@ export function kbDocumentRoutes(
 		async (c) => {
 			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
 			const body = c.req.valid("json");
+			// RLAC: when the workspace toggle is on and the caller didn't
+			// supply `visibleTo`, default to the caller's principal so
+			// the doc is visible to them (and only them) by default. When
+			// the workspace toggle is off, leave the column untouched —
+			// legacy behavior.
+			const kb = await store.getKnowledgeBase(workspaceId, knowledgeBaseId);
+			if (!kb)
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
+			const ws = await store.getWorkspace(workspaceId);
+			const principal = getRequestPrincipal(c);
+			const defaultedBody =
+				(ws?.rlacEnabled ?? false) &&
+				body.visibleTo === undefined &&
+				principal !== null
+					? {
+							...body,
+							visibleTo: [principal.id],
+							ownerPrincipalId: body.ownerPrincipalId ?? principal.id,
+						}
+					: body;
 			const record = await store.createRagDocument(
 				workspaceId,
 				knowledgeBaseId,
-				{ ...body, uid: body.documentId },
+				{ ...defaultedBody, uid: body.documentId },
 			);
 			return c.json(record, 201);
 		},
@@ -229,10 +320,31 @@ export function kbDocumentRoutes(
 			const { async: asyncMode } = c.req.valid("query");
 			const body = c.req.valid("json");
 
+			// RLAC: when the workspace toggle is on and the caller didn't
+			// supply visibleTo, default to `[principalId]` so the newly
+			// ingested doc is visible to its creator. Same defaulting
+			// rule as the create-stub-document route just above; kept
+			// here too so the live ingest path matches.
+			const kb = await store.getKnowledgeBase(workspaceId, knowledgeBaseId);
+			if (!kb)
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
+			const ws = await store.getWorkspace(workspaceId);
+			const principal = getRequestPrincipal(c);
+			const defaultedBody =
+				(ws?.rlacEnabled ?? false) &&
+				body.visibleTo === undefined &&
+				principal !== null
+					? {
+							...body,
+							visibleTo: [principal.id],
+							ownerPrincipalId: body.ownerPrincipalId ?? principal.id,
+						}
+					: body;
+
 			const outcome = await ingestService.ingest(
 				workspaceId,
 				knowledgeBaseId,
-				body,
+				defaultedBody,
 				{ async: asyncMode === "true" },
 			);
 
@@ -467,6 +579,55 @@ export function kbDocumentRoutes(
 			const sourceDocId =
 				(form.get("sourceDocId") as string | null) ?? undefined;
 
+			// RLAC: caller may supply `visibleTo` as a JSON-encoded
+			// string array, and `ownerPrincipalId` as a plain string.
+			// Parse here; defaulting happens below in the same shape
+			// the text-ingest route uses.
+			const visibleToField = form.get("visibleTo") as string | null;
+			let callerVisibleTo: readonly string[] | undefined;
+			if (visibleToField) {
+				try {
+					const parsed = JSON.parse(visibleToField);
+					if (
+						!Array.isArray(parsed) ||
+						parsed.some((v) => typeof v !== "string")
+					) {
+						throw new Error("visibleTo must be a JSON array of strings");
+					}
+					callerVisibleTo = parsed as string[];
+				} catch (err) {
+					throw new ApiError(
+						"invalid_visible_to",
+						`visibleTo field is not a valid JSON string-array: ${
+							err instanceof Error ? err.message : String(err)
+						}`,
+						400,
+					);
+				}
+			}
+			const ownerPrincipalIdField =
+				(form.get("ownerPrincipalId") as string | null) ?? undefined;
+
+			// RLAC defaulting: match the kb-documents text-ingest route.
+			const kbForRlac = await store.getKnowledgeBase(
+				workspaceId,
+				knowledgeBaseId,
+			);
+			if (!kbForRlac)
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
+			const wsForRlac = await store.getWorkspace(workspaceId);
+			const rlacOn = wsForRlac?.rlacEnabled ?? false;
+			const principal = getRequestPrincipal(c);
+			const resolvedVisibleTo =
+				callerVisibleTo !== undefined
+					? callerVisibleTo
+					: rlacOn && principal !== null
+						? [principal.id]
+						: undefined;
+			const resolvedOwnerPrincipalId =
+				ownerPrincipalIdField ??
+				(rlacOn && principal !== null ? principal.id : undefined);
+
 			const outcome = await ingestService.ingest(
 				workspaceId,
 				knowledgeBaseId,
@@ -480,6 +641,12 @@ export function kbDocumentRoutes(
 					metadata,
 					...(chunker !== undefined && { chunker }),
 					overwriteOnNameConflict: overwrite,
+					...(resolvedVisibleTo !== undefined && {
+						visibleTo: [...resolvedVisibleTo],
+					}),
+					...(resolvedOwnerPrincipalId !== undefined && {
+						ownerPrincipalId: resolvedOwnerPrincipalId,
+					}),
 				},
 				{ async: asyncMode },
 			);
@@ -640,6 +807,33 @@ export function kbDocumentRoutes(
 				documentId,
 			);
 			if (!record) throw new ControlPlaneNotFoundError("document", documentId);
+			// RLAC: 404 the document when the principal cannot see it
+			// (Postgres-style semantics — the row "doesn't exist" to the
+			// caller). Emits an audit record either way.
+			const kb = await store.getKnowledgeBase(workspaceId, knowledgeBaseId);
+			if (!kb)
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
+			const ws = await store.getWorkspace(workspaceId);
+			try {
+				const decision = await buildPolicyContext({
+					workspace: workspaceId,
+					workspaceRlacEnabled: ws?.rlacEnabled ?? false,
+					knowledgeBase: kb,
+					principal: getRequestPrincipal(c),
+					action: "get",
+					resourceId: documentId,
+					audit: store,
+				});
+				const visible = applyVisibleToFilter([record], decision.filter);
+				if (visible.length === 0) {
+					throw new ControlPlaneNotFoundError("document", documentId);
+				}
+			} catch (err) {
+				if (err instanceof PolicyDeniedError) {
+					throw new ApiError("policy_principal_required", err.reason, 401);
+				}
+				throw err;
+			}
 			return c.json(record, 200);
 		},
 	);
@@ -678,6 +872,37 @@ export function kbDocumentRoutes(
 		async (c) => {
 			const { workspaceId, knowledgeBaseId, documentId } = c.req.valid("param");
 			const body = c.req.valid("json");
+			const existing = await store.getRagDocument(
+				workspaceId,
+				knowledgeBaseId,
+				documentId,
+			);
+			if (!existing)
+				throw new ControlPlaneNotFoundError("document", documentId);
+			// RLAC: only let the caller patch a doc they can see.
+			const kbForPatch = await store.getKnowledgeBase(
+				workspaceId,
+				knowledgeBaseId,
+			);
+			if (!kbForPatch)
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
+			const wsForPatch = await store.getWorkspace(workspaceId);
+			try {
+				await assertPolicyAllowsMutation({
+					workspace: workspaceId,
+					workspaceRlacEnabled: wsForPatch?.rlacEnabled ?? false,
+					knowledgeBase: kbForPatch,
+					principal: getRequestPrincipal(c),
+					action: "update",
+					document: existing,
+					audit: store,
+				});
+			} catch (err) {
+				if (err instanceof PolicyDeniedError) {
+					throw new ApiError("policy_denied", err.reason, 403);
+				}
+				throw err;
+			}
 			const record = await store.updateRagDocument(
 				workspaceId,
 				knowledgeBaseId,
@@ -719,6 +944,33 @@ export function kbDocumentRoutes(
 			);
 			if (!existing) {
 				throw new ControlPlaneNotFoundError("document", documentId);
+			}
+
+			// RLAC: deny the delete if the caller's principal can't see
+			// the row. Mirrors the read-path 404 — write-path is louder
+			// (403) because the caller has a documentId in hand.
+			const kbForDelete = await store.getKnowledgeBase(
+				workspaceId,
+				knowledgeBaseId,
+			);
+			if (!kbForDelete)
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
+			const wsForDelete = await store.getWorkspace(workspaceId);
+			try {
+				await assertPolicyAllowsMutation({
+					workspace: workspaceId,
+					workspaceRlacEnabled: wsForDelete?.rlacEnabled ?? false,
+					knowledgeBase: kbForDelete,
+					principal: getRequestPrincipal(c),
+					action: "delete",
+					document: existing,
+					audit: store,
+				});
+			} catch (err) {
+				if (err instanceof PolicyDeniedError) {
+					throw new ApiError("policy_denied", err.reason, 403);
+				}
+				throw err;
 			}
 
 			// Cascade: drop chunk records out of the KB's vector collection

@@ -83,6 +83,8 @@ const KB_ALPHA: KnowledgeBaseRecord = {
 	rerankingServiceId: null,
 	language: null,
 	lexical: { enabled: false, analyzer: null, options: {} },
+	policyDsl: null,
+	policyEnabled: false,
 	createdAt: "2026-04-01T00:00:00.000Z",
 	updatedAt: "2026-04-01T00:00:00.000Z",
 };
