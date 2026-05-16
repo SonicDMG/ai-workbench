@@ -414,4 +414,58 @@ describe("RLAC routes — KB documents enforced by policy", () => {
 		expect(filtered[0]?.decision).toBe("filter");
 		expect(filtered[0]?.action).toBe("list");
 	});
+
+	test("HTTP DELETE of a doc the view-as principal can't see is rejected by the route", async () => {
+		// Closes the residual RLAC gap: mutation enforcement was
+		// unit-tested at the enforcer level (`enforcer.integration.test.ts`)
+		// but never driven through the actual Hono route. This test runs
+		// the full request stack — view-as resolution → workspace authz →
+		// enforcer.assertMutation → route handler — and asserts the
+		// response is 4xx, not 200/204, when alice tries to delete a
+		// document marked visible_to=["bob"]. The doc must still exist
+		// in the store afterward.
+		const { app, store, workspaceId, knowledgeBaseId } =
+			await setupPolicyEnabledKb();
+		const all = await store.listRagDocuments(workspaceId, knowledgeBaseId);
+		const bobOnly = all.find((d) => d.sourceFilename === "bob-only.md");
+		expect(bobOnly).toBeDefined();
+
+		const deleteAsAlice = await app.request(
+			`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/documents/${bobOnly?.documentId}`,
+			{
+				method: "DELETE",
+				headers: { "x-view-as-principal": "alice" },
+			},
+		);
+		// 403 (forbidden) or 404 (filtered to invisible) are both correct
+		// outcomes — the only wrong outcome is a 2xx (mutation succeeded).
+		expect(deleteAsAlice.status).toBeGreaterThanOrEqual(400);
+		expect(deleteAsAlice.status).toBeLessThan(500);
+
+		// The document must still exist after the rejected mutation.
+		const stillThere = await store.listRagDocuments(
+			workspaceId,
+			knowledgeBaseId,
+		);
+		expect(
+			stillThere.find((d) => d.documentId === bobOnly?.documentId),
+		).toBeDefined();
+
+		// And the rejection must show up in the audit log as a deny on
+		// alice's account, not just a silent 4xx.
+		const auditRes = await app.request(
+			`/api/v1/workspaces/${workspaceId}/policy/audit`,
+		);
+		const auditBody = (await auditRes.json()) as {
+			items: Array<{
+				principalId: string | null;
+				action: string;
+				decision: string;
+			}>;
+		};
+		const denies = auditBody.items.filter(
+			(a) => a.principalId === "alice" && a.decision === "deny",
+		);
+		expect(denies.length).toBeGreaterThan(0);
+	});
 });

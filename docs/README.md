@@ -40,6 +40,22 @@ contract first, then the runtime architecture behind them.
 13. [`roadmap.md`](roadmap.md) — phased delivery plan and open
     questions.
 
+## Codemaps
+
+Token-lean, AI-friendly maps of the codebase. Read these first when
+landing in a new area.
+
+- [`CODEMAPS/architecture.md`](CODEMAPS/architecture.md) — top-level
+  layout, system diagram, request lifecycle.
+- [`CODEMAPS/backend.md`](CODEMAPS/backend.md) — routes, middleware,
+  services, repos, policy engine, jobs.
+- [`CODEMAPS/frontend.md`](CODEMAPS/frontend.md) — page tree,
+  components, React Query hooks, state strategy.
+- [`CODEMAPS/data.md`](CODEMAPS/data.md) — Astra tables, repo→table
+  mapping, RLAC data model.
+- [`CODEMAPS/dependencies.md`](CODEMAPS/dependencies.md) — external
+  services, runtime + web app deps, version overrides.
+
 ## Design notes
 
 - [`cross-replica-jobs.md`](cross-replica-jobs.md) — shipped design

@@ -1,0 +1,103 @@
+<!-- Generated: 2026-05-16 | Token estimate: ~700 -->
+
+# Dependencies Codemap
+
+## External services
+
+| Service | Use | Required? |
+|---|---|---|
+| **DataStax Astra** | Tabular + vector storage (production control plane) | Yes (when control-plane=astra) |
+| **OpenAI API** | Embeddings, chat completions, function calling | Optional (gated per workspace) |
+| **HuggingFace Inference** | Embeddings, JSON-prompted chat for non-OpenAI models | Optional |
+| **Cohere** | Reranking | Optional |
+| **OIDC provider** | SSO (any compliant: Auth0, Okta, Authelia, Keycloak…) | Optional (API keys also supported) |
+| **OpenTelemetry collector (OTLP/HTTP)** | Trace export | Optional |
+
+## Runtime dependencies (`runtimes/typescript/package.json`)
+
+### Core
+| Package | Why |
+|---|---|
+| `hono` | Web framework |
+| `@hono/node-server` | Node adapter |
+| `@hono/zod-openapi` | Route definition → OpenAPI schema |
+| `zod` | Runtime validation; source of truth for schemas |
+| `pino` (+ `pino-pretty`) | Structured JSON logs |
+| `ulid` | Lexicographically sortable IDs |
+| `jose` | JWT verification (OIDC) |
+| `yaml` | `workbench.yaml` parsing |
+
+### Astra
+| Package | Why |
+|---|---|
+| `@datastax/astra-db-ts` | Astra SDK (tables + vectors) |
+
+### AI / RAG
+| Package | Why |
+|---|---|
+| `@langchain/core` | Chunker / embedder / reranker abstractions |
+| `@langchain/openai` | OpenAI provider for LangChain |
+| `@langchain/cohere` | Cohere reranker |
+| `@huggingface/inference` | HuggingFace embeddings + chat |
+| `@modelcontextprotocol/sdk` | MCP server facade |
+
+### Document extraction
+| Package | Why |
+|---|---|
+| `mammoth` | DOCX → text |
+| `pdfjs-dist` | PDF extraction |
+| `read-excel-file`, `write-excel-file` | XLSX in/out |
+
+### Observability
+| Package | Why |
+|---|---|
+| `@opentelemetry/api` + `sdk-node` + `auto-instrumentations-node` | Tracing |
+| `@opentelemetry/exporter-trace-otlp-http` | OTLP HTTP exporter |
+
+### Docs UI
+| Package | Why |
+|---|---|
+| `@scalar/hono-api-reference` | Renders `/docs` from OpenAPI |
+
+## Web app dependencies (`apps/web/package.json`)
+
+- **Framework:** `react`, `react-dom` (v19), `react-router` (v7)
+- **State:** `@tanstack/react-query` (v5)
+- **Forms:** `react-hook-form`, `@hookform/resolvers`, `zod`
+- **UI:** `@radix-ui/*` primitives, `tailwindcss` (v4), `class-variance-authority`, `lucide-react`, `sonner` (toasts)
+- **Build:** `vite`, `vite-tsconfig-paths`, `typescript`
+- **Test:** `vitest`, `@testing-library/react`, `@testing-library/user-event`, `@playwright/test`
+- **Types:** `openapi-typescript` (runtime OpenAPI → TS types)
+
+## Dev tooling (root)
+
+- `@biomejs/biome` — single linter/formatter (no prettier/eslint)
+- `npm` workspaces NOT used; root script orchestration via `--prefix`
+
+## Version overrides (security mitigations)
+
+Pinned in root `package.json`:
+- `uuid ^14`
+- `picomatch ^4.0.4`
+- `brace-expansion >=2.0.3`
+- `ip-address ^10.1.1`
+- `fast-uri ^3.1.2`
+
+## Engines
+
+- Node: `>=22.0.0` (root + runtime)
+- Browsers: modern only (Vite default, no IE/legacy)
+
+## CI dependencies (`.github/workflows/`)
+
+- `ci.yml` — lint, typecheck, test, build, schema-drift, E2E smoke
+- `runtimes.yml` — per-runtime conformance
+- `secret-scan.yml` — `scripts/secret-scan.mjs`
+- `smoke-astra.yml` — gated on Astra creds (skipped by default)
+- `deploy-site.yml` — docs site deploy
+
+## See also
+
+- [../configuration.md](../configuration.md) — `workbench.yaml` schema + env vars
+- [../production.md](../production.md) — deployment hardening
+- [data.md](data.md) — Astra storage details

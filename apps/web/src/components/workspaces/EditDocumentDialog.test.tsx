@@ -1,25 +1,45 @@
+/**
+ * Behaviour tests for EditDocumentDialog. The dialog wraps two distinct
+ * flows (metadata patch via PATCH /documents, and file replacement via
+ * async ingest with overwriteOnNameConflict); the tests below capture
+ * the spies handed to the mocked hooks and assert that user actions —
+ * typing, clicking Save, picking a file — call them with the right
+ * payload shape. Render-only assertions live here too where the
+ * conditional rendering itself is the behavior (RLAC gate, dialog open
+ * state), but every flow that mutates anything is exercised end-to-end
+ * through the form.
+ */
+
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrincipalRecord, RagDocumentRecord } from "@/lib/schemas";
 
-const rlacState: { enabled: boolean } = { enabled: false };
+const mocks = vi.hoisted(() => ({
+	rlacState: { enabled: false } as { enabled: boolean },
+	updateMutate: vi.fn(async (_args: unknown) => undefined),
+	ingestMutate: vi.fn(async (_args: unknown) => undefined),
+	toastSuccess: vi.fn(),
+	toastError: vi.fn(),
+}));
+const onOpenChange = vi.fn();
 
 vi.mock("@/hooks/useDocuments", () => ({
 	useUpdateDocument: () => ({
-		mutateAsync: async () => undefined,
+		mutateAsync: mocks.updateMutate,
 		isPending: false,
 	}),
 }));
 
 vi.mock("@/hooks/useIngest", () => ({
 	useAsyncIngestFile: () => ({
-		mutateAsync: async () => undefined,
+		mutateAsync: mocks.ingestMutate,
 		isPending: false,
 	}),
 }));
 
 vi.mock("@/hooks/useRlac", () => ({
-	useRlacEnabled: () => rlacState.enabled,
+	useRlacEnabled: () => mocks.rlacState.enabled,
 	usePrincipals: () => ({
 		data: [] as PrincipalRecord[],
 		error: null,
@@ -34,7 +54,7 @@ vi.mock("@/lib/viewAs", () => ({
 }));
 
 vi.mock("sonner", () => ({
-	toast: { success: vi.fn(), error: vi.fn() },
+	toast: { success: mocks.toastSuccess, error: mocks.toastError },
 }));
 
 import { EditDocumentDialog } from "./EditDocumentDialog";
@@ -64,7 +84,14 @@ function makeDoc(
 }
 
 beforeEach(() => {
-	rlacState.enabled = false;
+	mocks.rlacState.enabled = false;
+	mocks.updateMutate.mockClear();
+	mocks.updateMutate.mockResolvedValue(undefined);
+	mocks.ingestMutate.mockClear();
+	mocks.ingestMutate.mockResolvedValue(undefined);
+	mocks.toastSuccess.mockClear();
+	mocks.toastError.mockClear();
+	onOpenChange.mockClear();
 });
 
 describe("EditDocumentDialog", () => {
@@ -74,56 +101,174 @@ describe("EditDocumentDialog", () => {
 				workspace="ws-1"
 				knowledgeBaseId="kb-1"
 				doc={null}
-				onOpenChange={() => {}}
+				onOpenChange={onOpenChange}
 			/>,
 		);
 		expect(container.querySelector("[role='dialog']")).toBeNull();
 	});
 
-	it("renders the rename input and the Replace + Save controls when a doc is provided", () => {
-		rlacState.enabled = false;
+	it("seeds the rename input from the doc and keeps Save disabled until the name changes", () => {
 		render(
 			<EditDocumentDialog
 				workspace="ws-1"
 				knowledgeBaseId="kb-1"
 				doc={makeDoc({ sourceFilename: "spec.md" })}
-				onOpenChange={() => {}}
+				onOpenChange={onOpenChange}
 			/>,
 		);
-
-		// Dialog header copy.
-		expect(screen.getByText("Edit document")).toBeInTheDocument();
-		expect(screen.getByText("Name")).toBeInTheDocument();
-
-		// Rename input is seeded with the doc's current filename.
-		const input = screen.getByPlaceholderText(
-			"document.md",
-		) as HTMLInputElement;
+		const input = screen.getByPlaceholderText("document.md") as HTMLInputElement;
 		expect(input.value).toBe("spec.md");
-
-		// Metadata save and replace controls render. Save is disabled
-		// (metadata not dirty); Replace is enabled.
-		const save = screen.getByRole("button", { name: /Save changes/ });
-		expect(save).toBeDisabled();
-		expect(
-			screen.getByRole("button", { name: /Replace…/ }),
-		).toBeInTheDocument();
-
-		// VisibilityPicker is gated on rlacEnabled — should not render here.
-		expect(screen.queryByText("Visible to")).toBeNull();
+		expect(screen.getByRole("button", { name: /Save changes/ })).toBeDisabled();
 	});
 
-	it("mounts the VisibilityPicker when rlacEnabled is true", () => {
-		rlacState.enabled = true;
+	it("enables Save and PATCHes the new filename when the user renames a document", async () => {
+		const user = userEvent.setup();
+		render(
+			<EditDocumentDialog
+				workspace="ws-1"
+				knowledgeBaseId="kb-1"
+				doc={makeDoc({ sourceFilename: "spec.md" })}
+				onOpenChange={onOpenChange}
+			/>,
+		);
+		const input = screen.getByPlaceholderText("document.md");
+		await user.clear(input);
+		await user.type(input, "renamed.md");
+
+		const save = screen.getByRole("button", { name: /Save changes/ });
+		expect(save).toBeEnabled();
+		await user.click(save);
+
+		expect(mocks.updateMutate).toHaveBeenCalledTimes(1);
+		expect(mocks.updateMutate).toHaveBeenCalledWith({
+			documentId: "00000000-0000-4000-8000-000000000003",
+			patch: { sourceFilename: "renamed.md", visibleTo: null },
+		});
+		expect(mocks.toastSuccess).toHaveBeenCalledWith("Document updated");
+		expect(onOpenChange).toHaveBeenCalledWith(false);
+	});
+
+	it("surfaces an error toast and keeps the dialog open when the update fails", async () => {
+		const user = userEvent.setup();
+		mocks.updateMutate.mockRejectedValueOnce(new Error("nope"));
+		render(
+			<EditDocumentDialog
+				workspace="ws-1"
+				knowledgeBaseId="kb-1"
+				doc={makeDoc({ sourceFilename: "spec.md" })}
+				onOpenChange={onOpenChange}
+			/>,
+		);
+		const input = screen.getByPlaceholderText("document.md");
+		await user.clear(input);
+		await user.type(input, "renamed.md");
+		await user.click(screen.getByRole("button", { name: /Save changes/ }));
+
+		expect(mocks.updateMutate).toHaveBeenCalledTimes(1);
+		expect(mocks.toastSuccess).not.toHaveBeenCalled();
+		expect(mocks.toastError).toHaveBeenCalledTimes(1);
+		expect(onOpenChange).not.toHaveBeenCalled();
+	});
+
+	it("mounts the VisibilityPicker only when rlacEnabled is true", () => {
+		const { rerender } = render(
+			<EditDocumentDialog
+				workspace="ws-1"
+				knowledgeBaseId="kb-1"
+				doc={makeDoc()}
+				onOpenChange={onOpenChange}
+			/>,
+		);
+		expect(screen.queryByText("Visible to")).toBeNull();
+
+		mocks.rlacState.enabled = true;
+		rerender(
+			<EditDocumentDialog
+				workspace="ws-1"
+				knowledgeBaseId="kb-1"
+				doc={makeDoc()}
+				onOpenChange={onOpenChange}
+			/>,
+		);
+		expect(screen.getByText("Visible to")).toBeInTheDocument();
+	});
+
+	it("triggers async ingest with overwriteOnNameConflict when the user picks a replacement file", async () => {
+		const user = userEvent.setup();
+		render(
+			<EditDocumentDialog
+				workspace="ws-1"
+				knowledgeBaseId="kb-1"
+				doc={makeDoc({ sourceFilename: "spec.md" })}
+				onOpenChange={onOpenChange}
+			/>,
+		);
+		// Dialog content lives in a Radix Portal, so the hidden file
+		// input is attached under document.body — not the render()
+		// container. Find it from the document root.
+		const fileInput = document.body.querySelector(
+			"input[type='file']",
+		) as HTMLInputElement | null;
+		expect(fileInput).not.toBeNull();
+
+		const file = new File(["hello"], "fresh.md", { type: "text/markdown" });
+		await user.upload(fileInput!, file);
+
+		expect(mocks.ingestMutate).toHaveBeenCalledTimes(1);
+		const call = mocks.ingestMutate.mock.calls[0]?.[0] as {
+			file: File;
+			filename: string;
+			overwriteOnNameConflict: boolean;
+		};
+		expect(call.file.name).toBe("fresh.md");
+		expect(call.filename).toBe("spec.md"); // current staged name wins
+		expect(call.overwriteOnNameConflict).toBe(true);
+		expect(mocks.toastSuccess).toHaveBeenCalledWith("Document replaced");
+		expect(onOpenChange).toHaveBeenCalledWith(false);
+	});
+
+	it("rejects unsupported file types inline without calling ingest", async () => {
+		const user = userEvent.setup();
 		render(
 			<EditDocumentDialog
 				workspace="ws-1"
 				knowledgeBaseId="kb-1"
 				doc={makeDoc()}
-				onOpenChange={() => {}}
+				onOpenChange={onOpenChange}
 			/>,
 		);
-		// VisibilityPicker renders the "Visible to" label.
-		expect(screen.getByText("Visible to")).toBeInTheDocument();
+		const fileInput = document.body.querySelector(
+			"input[type='file']",
+		) as HTMLInputElement | null;
+		expect(fileInput).not.toBeNull();
+		const bogus = new File(["x"], "weird.xyz", {
+			type: "application/x-not-real",
+		});
+		await user.upload(fileInput!, bogus);
+
+		expect(mocks.ingestMutate).not.toHaveBeenCalled();
+		expect(screen.getByText(/not a supported type/i)).toBeInTheDocument();
+	});
+
+	it("closes the dialog when the footer Close button is clicked", async () => {
+		const user = userEvent.setup();
+		render(
+			<EditDocumentDialog
+				workspace="ws-1"
+				knowledgeBaseId="kb-1"
+				doc={makeDoc()}
+				onOpenChange={onOpenChange}
+			/>,
+		);
+		// The Dialog primitive renders its own aria-label="Close" X
+		// button in the corner; the footer button has the literal text
+		// "Close" instead. Pick the latter by visible text so we
+		// exercise the explicit affordance, not the chrome.
+		const footerClose = screen
+			.getAllByRole("button", { name: /Close/ })
+			.find((b) => b.textContent?.trim() === "Close");
+		expect(footerClose).toBeDefined();
+		await user.click(footerClose!);
+		expect(onOpenChange).toHaveBeenCalledWith(false);
 	});
 });

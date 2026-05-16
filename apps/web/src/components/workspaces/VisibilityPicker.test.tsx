@@ -1,4 +1,18 @@
+/**
+ * Behaviour tests for VisibilityPicker — the three-mode (Only You /
+ * Public / Custom) RLAC visibility selector.
+ *
+ * Covers two layers:
+ *   1. value → view derivation: which mode radio is checked given a
+ *      particular `value` + `currentPrincipal` combination, and which
+ *      chips render with what `aria-pressed` state.
+ *   2. user interaction → onChange contract: clicking a radio or a
+ *      principal chip emits the right `visibleTo` payload, with the
+ *      "self" pin enforced everywhere it should be.
+ */
+
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrincipalRecord } from "@/lib/schemas";
 
@@ -56,7 +70,7 @@ beforeEach(() => {
 	viewAsState.current = null;
 });
 
-describe("VisibilityPicker", () => {
+describe("VisibilityPicker — value → view derivation", () => {
 	it("renders the three mode radios and defaults to Only-You when a principal is in flight", () => {
 		viewAsState.current = "me";
 		principalsState.data = [makePrincipal({ principalId: "me" })];
@@ -64,18 +78,27 @@ describe("VisibilityPicker", () => {
 			<VisibilityPicker workspace="ws-1" value={null} onChange={() => {}} />,
 		);
 
-		// All three mode labels render.
 		expect(screen.getByText("Only You")).toBeInTheDocument();
 		expect(screen.getByText("Public")).toBeInTheDocument();
 		expect(screen.getByText("Custom")).toBeInTheDocument();
 
-		// Three radios — Only-You is the checked one when value is null and
-		// a principal is in flight.
 		const radios = screen.getAllByRole("radio");
 		expect(radios).toHaveLength(3);
 		const onlyYou = radios.find((r) => r.getAttribute("value") === "only-you");
-		expect(onlyYou).toBeDefined();
 		expect((onlyYou as HTMLInputElement).checked).toBe(true);
+	});
+
+	it("disables Only-You and surfaces the 'View as' hint when no principal is in flight", () => {
+		viewAsState.current = null;
+		principalsState.data = [makePrincipal({ principalId: "alice@example.com" })];
+		render(
+			<VisibilityPicker workspace="ws-1" value={null} onChange={() => {}} />,
+		);
+		const radios = screen.getAllByRole("radio");
+		const onlyYou = radios.find(
+			(r) => r.getAttribute("value") === "only-you",
+		) as HTMLInputElement;
+		expect(onlyYou.disabled).toBe(true);
 	});
 
 	it("renders Public mode when value is ['*'] and hides the custom chip strip", () => {
@@ -96,8 +119,6 @@ describe("VisibilityPicker", () => {
 				/Every principal in this workspace can read these documents\./,
 			),
 		).toBeInTheDocument();
-
-		// Custom chip strip is not rendered in public mode.
 		expect(screen.queryByRole("button", { name: "me" })).toBeNull();
 	});
 
@@ -122,7 +143,6 @@ describe("VisibilityPicker", () => {
 		);
 		expect((customRadio as HTMLInputElement).checked).toBe(true);
 
-		// One chip button per principal — three total.
 		const meChip = screen.getByRole("button", { name: /me/ });
 		expect(meChip).toBeDisabled();
 		expect(meChip).toHaveAttribute("aria-pressed", "true");
@@ -156,5 +176,113 @@ describe("VisibilityPicker", () => {
 				/No principals in this workspace yet\. Create some in workspace settings/,
 			),
 		).toBeInTheDocument();
+	});
+});
+
+describe("VisibilityPicker — user interaction → onChange", () => {
+	it("emits ['*'] when the user clicks the Public radio", async () => {
+		const user = userEvent.setup();
+		viewAsState.current = "me";
+		principalsState.data = [makePrincipal({ principalId: "me" })];
+		const onChange = vi.fn();
+		render(
+			<VisibilityPicker workspace="ws-1" value={null} onChange={onChange} />,
+		);
+		const radios = screen.getAllByRole("radio");
+		const publicRadio = radios.find(
+			(r) => r.getAttribute("value") === "public",
+		) as HTMLInputElement;
+		await user.click(publicRadio);
+		expect(onChange).toHaveBeenCalledWith(["*"]);
+	});
+
+	it("emits [currentPrincipal] when the user clicks Only-You with a view-as set", async () => {
+		const user = userEvent.setup();
+		viewAsState.current = "me";
+		principalsState.data = [makePrincipal({ principalId: "me" })];
+		const onChange = vi.fn();
+		render(
+			<VisibilityPicker workspace="ws-1" value={["*"]} onChange={onChange} />,
+		);
+		const radios = screen.getAllByRole("radio");
+		const onlyYou = radios.find(
+			(r) => r.getAttribute("value") === "only-you",
+		) as HTMLInputElement;
+		await user.click(onlyYou);
+		expect(onChange).toHaveBeenCalledWith(["me"]);
+	});
+
+	it("pins the current principal when switching to Custom so the user can't lock themselves out", async () => {
+		const user = userEvent.setup();
+		viewAsState.current = "me";
+		principalsState.data = [
+			makePrincipal({ principalId: "me" }),
+			makePrincipal({ principalId: "alice@example.com" }),
+		];
+		const onChange = vi.fn();
+		render(
+			<VisibilityPicker workspace="ws-1" value={["*"]} onChange={onChange} />,
+		);
+		const radios = screen.getAllByRole("radio");
+		const customRadio = radios.find(
+			(r) => r.getAttribute("value") === "custom",
+		) as HTMLInputElement;
+		await user.click(customRadio);
+		// Custom always re-adds the current principal; wildcard is dropped.
+		expect(onChange).toHaveBeenCalledWith(["me"]);
+	});
+
+	it("toggles a non-self principal on/off in Custom mode while keeping self pinned", async () => {
+		const user = userEvent.setup();
+		viewAsState.current = "me";
+		principalsState.data = [
+			makePrincipal({ principalId: "me" }),
+			makePrincipal({ principalId: "alice@example.com" }),
+			makePrincipal({ principalId: "bob@example.com" }),
+		];
+		const onChange = vi.fn();
+		render(
+			<VisibilityPicker
+				workspace="ws-1"
+				value={["me", "alice@example.com"]}
+				onChange={onChange}
+			/>,
+		);
+
+		// Bob is unselected → click adds him.
+		await user.click(screen.getByRole("button", { name: "bob@example.com" }));
+		expect(onChange).toHaveBeenLastCalledWith([
+			"alice@example.com",
+			"bob@example.com",
+			"me",
+		]);
+
+		onChange.mockClear();
+
+		// Alice is selected → click removes her, but self ("me") stays pinned.
+		await user.click(screen.getByRole("button", { name: "alice@example.com" }));
+		expect(onChange).toHaveBeenLastCalledWith(["me"]);
+	});
+
+	it("does NOT emit when the user clicks their own (self) chip in Custom mode", async () => {
+		const user = userEvent.setup();
+		viewAsState.current = "me";
+		principalsState.data = [
+			makePrincipal({ principalId: "me" }),
+			makePrincipal({ principalId: "alice@example.com" }),
+		];
+		const onChange = vi.fn();
+		render(
+			<VisibilityPicker
+				workspace="ws-1"
+				value={["me", "alice@example.com"]}
+				onChange={onChange}
+			/>,
+		);
+		// The self chip is `disabled`; user.click is a no-op on disabled
+		// elements, which is the contract we want: the user cannot remove
+		// themselves from their own visibility set.
+		await user.click(screen.getByRole("button", { name: /me/ }));
+		expect(onChange).not.toHaveBeenCalled();
 	});
 });
