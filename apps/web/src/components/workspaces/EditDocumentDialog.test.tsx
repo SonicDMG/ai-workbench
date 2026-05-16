@@ -116,7 +116,9 @@ describe("EditDocumentDialog", () => {
 				onOpenChange={onOpenChange}
 			/>,
 		);
-		const input = screen.getByPlaceholderText("document.md") as HTMLInputElement;
+		const input = screen.getByPlaceholderText(
+			"document.md",
+		) as HTMLInputElement;
 		expect(input.value).toBe("spec.md");
 		expect(screen.getByRole("button", { name: /Save changes/ })).toBeDisabled();
 	});
@@ -206,13 +208,13 @@ describe("EditDocumentDialog", () => {
 		// Dialog content lives in a Radix Portal, so the hidden file
 		// input is attached under document.body — not the render()
 		// container. Find it from the document root.
-		const fileInput = document.body.querySelector(
-			"input[type='file']",
-		) as HTMLInputElement | null;
-		expect(fileInput).not.toBeNull();
+		const fileInput = document.body.querySelector("input[type='file']");
+		if (!(fileInput instanceof HTMLInputElement)) {
+			throw new Error("expected hidden file input under document.body");
+		}
 
 		const file = new File(["hello"], "fresh.md", { type: "text/markdown" });
-		await user.upload(fileInput!, file);
+		await user.upload(fileInput, file);
 
 		expect(mocks.ingestMutate).toHaveBeenCalledTimes(1);
 		const call = mocks.ingestMutate.mock.calls[0]?.[0] as {
@@ -237,14 +239,14 @@ describe("EditDocumentDialog", () => {
 				onOpenChange={onOpenChange}
 			/>,
 		);
-		const fileInput = document.body.querySelector(
-			"input[type='file']",
-		) as HTMLInputElement | null;
-		expect(fileInput).not.toBeNull();
+		const fileInput = document.body.querySelector("input[type='file']");
+		if (!(fileInput instanceof HTMLInputElement)) {
+			throw new Error("expected hidden file input under document.body");
+		}
 		const bogus = new File(["x"], "weird.xyz", {
 			type: "application/x-not-real",
 		});
-		await user.upload(fileInput!, bogus);
+		await user.upload(fileInput, bogus);
 
 		expect(mocks.ingestMutate).not.toHaveBeenCalled();
 		expect(screen.getByText(/not a supported type/i)).toBeInTheDocument();
@@ -267,8 +269,10 @@ describe("EditDocumentDialog", () => {
 		const footerClose = screen
 			.getAllByRole("button", { name: /Close/ })
 			.find((b) => b.textContent?.trim() === "Close");
-		expect(footerClose).toBeDefined();
-		await user.click(footerClose!);
+		if (!footerClose) {
+			throw new Error("expected a footer button with visible text 'Close'");
+		}
+		await user.click(footerClose);
 		expect(onOpenChange).toHaveBeenCalledWith(false);
 	});
 });

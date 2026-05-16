@@ -90,7 +90,9 @@ describe("VisibilityPicker — value → view derivation", () => {
 
 	it("disables Only-You and surfaces the 'View as' hint when no principal is in flight", () => {
 		viewAsState.current = null;
-		principalsState.data = [makePrincipal({ principalId: "alice@example.com" })];
+		principalsState.data = [
+			makePrincipal({ principalId: "alice@example.com" }),
+		];
 		render(
 			<VisibilityPicker workspace="ws-1" value={null} onChange={() => {}} />,
 		);

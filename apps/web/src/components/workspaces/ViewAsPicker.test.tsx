@@ -120,7 +120,9 @@ describe("ViewAsPicker", () => {
 	});
 
 	it("registers the active workspace on mount and clears it on unmount", () => {
-		mocks.principalsState.data = [makePrincipal({ principalId: "alice@example.com" })];
+		mocks.principalsState.data = [
+			makePrincipal({ principalId: "alice@example.com" }),
+		];
 		const { unmount } = render(<ViewAsPicker workspace="ws-1" />);
 		expect(mocks.setActiveWorkspaceId).toHaveBeenCalledWith("ws-1");
 		mocks.setActiveWorkspaceId.mockClear();
@@ -136,7 +138,9 @@ describe("ViewAsPicker", () => {
 		mocks.viewAsState.current = null;
 		render(<ViewAsPicker workspace="ws-1" />);
 		await waitFor(() => {
-			expect(mocks.setViewAsPrincipal).toHaveBeenCalledWith("alice@example.com");
+			expect(mocks.setViewAsPrincipal).toHaveBeenCalledWith(
+				"alice@example.com",
+			);
 		});
 		expect(mocks.invalidateQueries).toHaveBeenCalledWith({
 			queryKey: ["workspaces", "ws-1"],
