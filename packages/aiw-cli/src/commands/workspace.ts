@@ -25,12 +25,11 @@ const list = defineCommand({
 			"/api/v1/workspaces",
 			WorkspaceListSchema,
 		);
-		emit(ctx.output, res.data, (rows: Workspace[]) =>
+		emit(ctx.output, res.items, (rows: Workspace[]) =>
 			renderTable(rows, [
-				{ header: "ID", value: (r) => r.id },
+				{ header: "ID", value: (r) => r.workspaceId },
 				{ header: "NAME", value: (r) => r.name },
 				{ header: "KIND", value: (r) => r.kind ?? "" },
-				{ header: "BACKEND", value: (r) => r.backend ?? "" },
 				{ header: "RLAC", value: (r) => (r.rlacEnabled ? "on" : "off") },
 			]),
 		);
@@ -62,7 +61,7 @@ const create = defineCommand({
 		emit(
 			ctx.output,
 			res,
-			(w: Workspace) => `Created workspace "${w.name}" (${w.id}).`,
+			(w: Workspace) => `Created workspace "${w.name}" (${w.workspaceId}).`,
 		);
 	},
 });
@@ -80,17 +79,17 @@ const remove = defineCommand({
 		await request(
 			ctx.request,
 			`/api/v1/workspaces/${encodeURIComponent(args.id)}`,
-			// 204 / empty body is OK — schema is permissive
+			// Tolerate 204 / empty body alongside JSON envelopes; we only
+			// surface the success line below.
 			WorkspaceSchema.partial().passthrough(),
 			{ method: "DELETE" },
 		).catch((err) => {
-			// Some routes return 204 No Content; tolerate that.
 			if (err?.code === "invalid_response") return undefined;
 			throw err;
 		});
 		emit(
 			ctx.output,
-			{ id: args.id, deleted: true },
+			{ workspaceId: args.id, deleted: true },
 			() => `Deleted workspace ${args.id}.`,
 		);
 	},

@@ -1,5 +1,6 @@
 import * as p from "@clack/prompts";
 import { defineCommand } from "citty";
+import { z } from "zod";
 import {
 	defaultConfigLocation,
 	type Profile,
@@ -10,6 +11,29 @@ import {
 import { HttpError, request } from "../http.js";
 import { fail, info, success, warn } from "../output.js";
 import { WhoAmISchema } from "../types.js";
+
+/**
+ * Shape of the runtime's `/auth/config` response. Reports which auth
+ * schemes the runtime will accept on the wire so the CLI can warn
+ * upfront when a user is about to paste a key into a runtime that
+ * isn't configured for `auth.mode: apiKey` or `any`.
+ *
+ * We only project the bits the CLI uses; new fields land transparently
+ * via passthrough().
+ */
+const AuthConfigSchema = z
+	.object({
+		modes: z
+			.object({
+				apiKey: z.boolean().optional(),
+				oidc: z.boolean().optional(),
+				login: z.boolean().optional(),
+			})
+			.passthrough()
+			.optional(),
+	})
+	.passthrough();
+type AuthConfigResponse = z.infer<typeof AuthConfigSchema>;
 
 /**
  * Normalize an API key string before it lands in the config file.
@@ -93,6 +117,28 @@ export const loginCommand = defineCommand({
 			process.exit(2);
 		}
 
+		// Probe the runtime's auth modes before we ask for a key. This
+		// catches the common dev-loop footgun where `workbench.yaml` has
+		// no `auth:` block — the schema default is `auth.mode: disabled`,
+		// which makes the resolver reject ANY bearer token with
+		// "token did not match any configured auth scheme" and leaves
+		// the user staring at an opaque 401. With a probe, we can tell
+		// them the runtime simply doesn't accept keys at all.
+		const authProbe = await probeAuthConfig(url);
+		if (authProbe) {
+			const acceptsApiKey = authProbe.modes?.apiKey === true;
+			const acceptsOidc = authProbe.modes?.oidc === true;
+			if (!acceptsApiKey && !acceptsOidc) {
+				warn(
+					"Runtime reports `auth.mode: disabled` (no apiKey, no oidc). Any bearer token will be rejected; you can skip the API key prompt and call the runtime anonymously. Set `auth.mode: apiKey` in workbench.yaml if you want key-based auth.",
+				);
+			} else if (!acceptsApiKey && acceptsOidc) {
+				warn(
+					"Runtime reports `auth.mode: oidc` only — pasted API keys will be rejected. Mint a key under a runtime configured for `auth.mode: apiKey` or `any`, or use the browser login flow.",
+				);
+			}
+		}
+
 		const rawKey =
 			args["api-key"] ||
 			(interactive
@@ -153,6 +199,7 @@ function hintFor401(message: string): string {
 	if (m.includes("did not match any configured auth scheme")) {
 		return [
 			"The runtime rejected the bearer token. Likely causes:",
+			"  • the runtime is in `auth.mode: disabled` (the schema default; set by `npm run dev` when workbench.yaml has no `auth:` block) — no verifier exists, so every bearer token fails. Run `aiw login` again with no API key, OR add `auth: { mode: apiKey }` to runtimes/typescript/workbench.yaml",
 			`  • the pasted key doesn't start with "${EXPECTED_KEY_PREFIX}" (full form: ${EXPECTED_KEY_PREFIX}<prefix>_<secret>)`,
 			"  • the runtime is in `auth.mode: oidc` only — mint a key under a runtime configured for apiKey or `any`",
 			"  • whitespace, quotes, or a `Bearer ` prefix sneaked in (the CLI now trims these — re-run `aiw login`)",
@@ -171,4 +218,28 @@ function hintFor401(message: string): string {
 		return "The token prefix matched a stored key but the secret didn't. The pasted value is likely truncated or has been tampered with.";
 	}
 	return "Run `aiw whoami` once the runtime is reachable.";
+}
+
+/**
+ * Probe `/auth/config` (which is always anonymous-allow, even under
+ * `anonymousPolicy: reject`, because the UI calls it before it has
+ * any credentials) and return the auth-mode summary. Returns `null`
+ * when the endpoint is unreachable or returns a non-JSON shape — the
+ * caller treats that as "couldn't determine" and falls back to the
+ * normal flow.
+ */
+async function probeAuthConfig(
+	url: string,
+): Promise<AuthConfigResponse | null> {
+	try {
+		const res = await fetch(`${url.replace(/\/+$/, "")}/auth/config`, {
+			headers: { Accept: "application/json" },
+		});
+		if (!res.ok) return null;
+		const body = await res.json();
+		const parsed = AuthConfigSchema.safeParse(body);
+		return parsed.success ? parsed.data : null;
+	} catch {
+		return null;
+	}
 }

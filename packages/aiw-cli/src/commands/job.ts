@@ -24,15 +24,20 @@ const status = defineCommand({
 		);
 		emit(ctx.output, job, (j: Job) => {
 			const lines: string[] = [];
-			lines.push(`id        ${j.id}`);
+			lines.push(`id        ${j.jobId}`);
 			if (j.kind) lines.push(`kind      ${j.kind}`);
-			lines.push(`status    ${j.state ?? j.status ?? "unknown"}`);
-			if (typeof j.progress === "number") {
-				lines.push(`progress  ${(j.progress * 100).toFixed(1)}%`);
+			lines.push(`status    ${j.status ?? "unknown"}`);
+			if (typeof j.processed === "number") {
+				const total = j.total ?? null;
+				lines.push(
+					`progress  ${j.processed}${total !== null ? `/${total}` : ""}`,
+				);
 			}
+			if (j.knowledgeBaseId) lines.push(`kb        ${j.knowledgeBaseId}`);
+			if (j.documentId) lines.push(`document  ${j.documentId}`);
 			if (j.createdAt) lines.push(`created   ${j.createdAt}`);
-			if (j.completedAt) lines.push(`done      ${j.completedAt}`);
-			if (j.error) lines.push(`error     ${j.error}`);
+			if (j.updatedAt) lines.push(`updated   ${j.updatedAt}`);
+			if (j.errorMessage) lines.push(`error     ${j.errorMessage}`);
 			return lines.join("\n");
 		});
 	},

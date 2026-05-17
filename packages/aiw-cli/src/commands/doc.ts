@@ -1,14 +1,26 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { defineCommand } from "citty";
-import type { z } from "zod";
+import { z } from "zod";
 import { loadContext } from "../context.js";
 import { request } from "../http.js";
 import { emit } from "../output.js";
 import { DocumentSchema } from "../types.js";
 
-const UploadResponseSchema = DocumentSchema.partial().passthrough();
-type UploadResponse = z.infer<typeof UploadResponseSchema>;
+/**
+ * The ingest route returns either a sync `{ document, chunks, ... }`
+ * envelope or an async `{ job, ... }` envelope depending on the
+ * runtime config. Project both shapes — whichever the runtime gave us
+ * gets rendered.
+ */
+const UploadResponseSchema = z
+	.object({
+		document: DocumentSchema.optional(),
+		chunks: z.number().optional(),
+		job: z.object({ jobId: z.string().optional() }).passthrough().optional(),
+		outcome: z.string().optional(),
+	})
+	.passthrough();
 
 const upload = defineCommand({
 	meta: {
@@ -50,12 +62,16 @@ const upload = defineCommand({
 			UploadResponseSchema,
 			{ method: "POST", body: form },
 		);
-		emit(
-			ctx.output,
-			res,
-			(d: UploadResponse) =>
-				`Uploaded ${basename(args.file)} → document ${d.id ?? "(no id)"}.`,
-		);
+		emit(ctx.output, res, (r) => {
+			const file = basename(args.file);
+			if (r.job?.jobId) {
+				return `Queued ${file} → job ${r.job.jobId}. Run \`aiw job status ${r.job.jobId} --workspace ${ws}\` to follow.`;
+			}
+			if (r.document?.documentId) {
+				return `Uploaded ${file} → document ${r.document.documentId}${r.chunks ? ` (${r.chunks} chunks)` : ""}.`;
+			}
+			return `Uploaded ${file}.`;
+		});
 	},
 });
 

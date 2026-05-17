@@ -42,11 +42,12 @@ const list = defineCommand({
 			`/api/v1/workspaces/${encodeURIComponent(ws)}/knowledge-bases`,
 			KnowledgeBaseListSchema,
 		);
-		emit(ctx.output, res.data, (rows: KnowledgeBase[]) =>
+		emit(ctx.output, res.items, (rows: KnowledgeBase[]) =>
 			renderTable(rows, [
-				{ header: "ID", value: (r) => r.id },
+				{ header: "ID", value: (r) => r.knowledgeBaseId },
 				{ header: "NAME", value: (r) => r.name },
-				{ header: "COLLECTION", value: (r) => r.collectionName ?? "" },
+				{ header: "STATUS", value: (r) => r.status ?? "" },
+				{ header: "COLLECTION", value: (r) => r.vectorCollection ?? "" },
 			]),
 		);
 	},
@@ -74,7 +75,8 @@ const create = defineCommand({
 		emit(
 			ctx.output,
 			res,
-			(kb: KnowledgeBase) => `Created knowledge base "${kb.name}" (${kb.id}).`,
+			(kb: KnowledgeBase) =>
+				`Created knowledge base "${kb.name}" (${kb.knowledgeBaseId}).`,
 		);
 	},
 });

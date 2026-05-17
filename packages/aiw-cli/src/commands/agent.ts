@@ -21,15 +21,23 @@ const list = defineCommand({
 			`/api/v1/workspaces/${encodeURIComponent(ws)}/agents`,
 			AgentListSchema,
 		);
-		emit(ctx.output, res.data, (rows: Agent[]) =>
+		emit(ctx.output, res.items, (rows: Agent[]) =>
 			renderTable(rows, [
-				{ header: "ID", value: (r) => r.id },
+				{ header: "ID", value: (r) => r.agentId },
 				{ header: "NAME", value: (r) => r.name },
-				{ header: "PERSONA", value: (r) => r.persona ?? "" },
+				{
+					header: "DESCRIPTION",
+					value: (r) => truncate(r.description ?? "", 60),
+				},
 			]),
 		);
 	},
 });
+
+function truncate(s: string, max: number): string {
+	if (s.length <= max) return s;
+	return `${s.slice(0, max - 1)}…`;
+}
 
 export const agentCommand = defineCommand({
 	meta: { name: "agent", description: "Manage agents." },
