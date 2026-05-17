@@ -89,8 +89,19 @@ export async function rawRequest(
 		Accept: "application/json",
 		...(opts.headers ?? {}),
 	};
-	if (ctx.profile.apiKey && !headers.Authorization) {
-		headers.Authorization = `Bearer ${ctx.profile.apiKey}`;
+	// OIDC bearer takes precedence over API key when both are present
+	// — the user can flip between API-key and OIDC auth without
+	// stomping the other slot. Caller-supplied headers still win
+	// (used by the device-flow login command, which talks to the
+	// runtime before any credentials are saved).
+	if (!headers.Authorization) {
+		const oidcToken = ctx.profile.oidc?.accessToken;
+		if (oidcToken) {
+			const scheme = ctx.profile.oidc?.tokenType ?? "Bearer";
+			headers.Authorization = `${scheme} ${oidcToken}`;
+		} else if (ctx.profile.apiKey) {
+			headers.Authorization = `Bearer ${ctx.profile.apiKey}`;
+		}
 	}
 	const init: RequestInit = {
 		method: opts.method ?? "GET",

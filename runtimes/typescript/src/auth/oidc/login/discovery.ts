@@ -1,9 +1,15 @@
 /**
  * OIDC discovery for the browser-login flow.
  *
- * The verifier only needs `jwks_uri`; the login flow additionally
- * needs `authorization_endpoint`, `token_endpoint`, and optionally
- * `end_session_endpoint` for RP-initiated logout.
+ * The verifier only needs `jwks_uri`; the browser-login flow
+ * additionally needs `authorization_endpoint`, `token_endpoint`, and
+ * optionally `end_session_endpoint` for RP-initiated logout.
+ *
+ * The CLI device-flow (RFC 8628) needs `device_authorization_endpoint`
+ * — surfaced as optional because not every IdP advertises it. When
+ * absent, the `/auth/device/*` proxy endpoints respond with a clean
+ * 501 so callers see "this IdP doesn't speak device flow" instead of
+ * a generic crash.
  */
 
 export interface OidcEndpoints {
@@ -11,6 +17,7 @@ export interface OidcEndpoints {
 	readonly tokenEndpoint: string;
 	readonly endSessionEndpoint: string | null;
 	readonly jwksUri: string;
+	readonly deviceAuthorizationEndpoint: string | null;
 }
 
 export type FetchLike = (
@@ -40,7 +47,17 @@ export async function fetchOidcEndpoints(
 		typeof doc.end_session_endpoint === "string"
 			? doc.end_session_endpoint
 			: null;
-	return { authorizationEndpoint, tokenEndpoint, endSessionEndpoint, jwksUri };
+	const deviceAuthorizationEndpoint =
+		typeof doc.device_authorization_endpoint === "string"
+			? doc.device_authorization_endpoint
+			: null;
+	return {
+		authorizationEndpoint,
+		tokenEndpoint,
+		endSessionEndpoint,
+		jwksUri,
+		deviceAuthorizationEndpoint,
+	};
 }
 
 function str(doc: Record<string, unknown>, field: string): string {

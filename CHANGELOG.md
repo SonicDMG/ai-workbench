@@ -29,6 +29,23 @@ release — they will be called out under **Changed** below.
 
 ### Added
 
+- **OIDC device-flow login (RFC 8628).** `aiw login --oidc` opens a
+  device-flow grant against the runtime's new
+  `/auth/device/authorize` + `/auth/device/token` proxy. The runtime
+  fronts the configured IdP's device endpoints (auto-discovered from
+  the OIDC discovery doc), so the CLI never needs the IdP issuer URL
+  and the IdP client secret stays server-side. The resulting JWT is
+  what the existing OIDC verifier already validates — no new
+  verifier path on either side. Profiles persist the access token,
+  optional refresh token, and expiry under a new `oidc` block; the
+  HTTP client prefers the OIDC bearer over the API key when both
+  are present. Runtime responds `501 device_flow_not_supported`
+  when the IdP doesn't advertise a device endpoint, and
+  `/auth/config` exposes `modes.device` so the CLI knows up front.
+  `auth.device.authorize` + `auth.device.token` join the audit-
+  action union (documented in [`docs/audit.md`](./docs/audit.md)).
+  ([`packages/aiw-cli/src/commands/login-oidc.ts`](./packages/aiw-cli/src/commands/login-oidc.ts),
+  [`runtimes/typescript/src/routes/auth.ts`](./runtimes/typescript/src/routes/auth.ts))
 - **E2E coverage for settings + RLAC + CLI live API.** Three new
   Playwright specs (`settings.spec.ts`, `rlac.spec.ts`) cover the
   workspace-settings RLAC toggle (revealing/hiding the principals +

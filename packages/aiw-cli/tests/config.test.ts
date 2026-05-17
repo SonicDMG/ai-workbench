@@ -135,6 +135,28 @@ describe("resolveProfile precedence", () => {
 		expect(r.profile.apiKey).toBe("k-dev");
 	});
 
+	it("carries through stored OIDC credentials so the HTTP client can use them", () => {
+		const oidcCfg: Config = {
+			active: "oidc-profile",
+			profiles: {
+				"oidc-profile": {
+					url: "http://api",
+					oidc: {
+						accessToken: "oidc.jwt.token",
+						refreshToken: "rt-1",
+						expiresAt: "2027-01-01T00:00:00.000Z",
+						tokenType: "Bearer",
+					},
+				},
+			},
+		};
+		const r = resolveProfile(oidcCfg, { env: {} as NodeJS.ProcessEnv });
+		expect(r.profile.oidc?.accessToken).toBe("oidc.jwt.token");
+		expect(r.profile.oidc?.refreshToken).toBe("rt-1");
+		expect(r.profile.oidc?.tokenType).toBe("Bearer");
+		expect(r.profile.apiKey).toBeUndefined();
+	});
+
 	it("AIW_API_URL works like --url", () => {
 		const r = resolveProfile(cfg, {
 			env: { AIW_API_URL: "http://env-url" } as NodeJS.ProcessEnv,

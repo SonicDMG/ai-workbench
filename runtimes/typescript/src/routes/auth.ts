@@ -37,7 +37,9 @@ import { parseCookie, serializeCookie } from "../auth/oidc/login/cookie.js";
 import type { OidcEndpoints } from "../auth/oidc/login/discovery.js";
 import {
 	exchangeAuthorizationCode,
+	pollDeviceCode,
 	refreshAccessToken,
+	requestDeviceAuthorization,
 } from "../auth/oidc/login/exchange.js";
 import type { PendingLoginStore } from "../auth/oidc/login/pending.js";
 import {
@@ -75,17 +77,29 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 		const hasOidcLogin =
 			(mode === "oidc" || mode === "any") &&
 			opts.config.oidc?.client !== undefined;
+		// Device flow rides on the same OIDC client config as browser
+		// login, plus the IdP discovery doc having a
+		// `device_authorization_endpoint`. The CLI consumes this flag
+		// to decide whether to expose `aiw login --oidc`.
+		const hasDeviceFlow =
+			hasOidcLogin && opts.endpoints?.deviceAuthorizationEndpoint != null;
 		return c.json({
 			modes: {
 				apiKey: mode === "apiKey" || mode === "any",
 				oidc: mode === "oidc" || mode === "any",
 				login: hasOidcLogin,
+				device: hasDeviceFlow,
 			},
 			loginPath: hasOidcLogin ? "/auth/login" : null,
 			// Phase 3c: advertised so the UI knows to schedule silent
 			// refresh and to attempt one on a 401. Tied to login config —
 			// if browser login isn't wired up, refresh isn't either.
 			refreshPath: hasOidcLogin ? "/auth/refresh" : null,
+			// CLI device-flow proxy paths (RFC 8628). Null when the IdP
+			// doesn't advertise a device_authorization_endpoint so the
+			// CLI can fall back cleanly to API-key auth.
+			deviceAuthorizePath: hasDeviceFlow ? "/auth/device/authorize" : null,
+			deviceTokenPath: hasDeviceFlow ? "/auth/device/token" : null,
 		});
 	});
 
@@ -94,7 +108,15 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 	// gets a clean answer instead of silently wrong behavior.
 	const clientCfg = opts.config.oidc?.client;
 	if (!clientCfg || !opts.endpoints || !opts.cookie || !opts.pending) {
-		for (const p of ["/login", "/callback", "/me", "/refresh", "/logout"]) {
+		for (const p of [
+			"/login",
+			"/callback",
+			"/me",
+			"/refresh",
+			"/logout",
+			"/device/authorize",
+			"/device/token",
+		]) {
 			app.all(p, (c) => c.json({ error: { code: "not_configured" } }, 404));
 		}
 		return app;
@@ -350,6 +372,189 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 			details: { scheme: "oidc" },
 		});
 		return c.json({ postLogoutPath: clientCfg.postLogoutPath });
+	});
+
+	// OIDC device-flow (RFC 8628) proxy for the `aiw` CLI.
+	//
+	// The runtime fronts the IdP's device endpoints so the CLI never
+	// needs the issuer URL, the client secret stays server-side, and
+	// the token format the CLI receives is exactly what the existing
+	// OIDC verifier already validates — no new verifier path.
+	//
+	// Both routes return 501 cleanly when the IdP doesn't advertise
+	// `device_authorization_endpoint` in its discovery doc, so the CLI
+	// can fall back to the API-key flow with an actionable error
+	// instead of silently waiting on a never-arriving response.
+
+	app.post("/device/authorize", async (c) => {
+		const deviceEndpoint = endpoints.deviceAuthorizationEndpoint;
+		if (!deviceEndpoint) {
+			return c.json(
+				{
+					error: {
+						code: "device_flow_not_supported",
+						message:
+							"The configured IdP does not advertise a device_authorization_endpoint. Use API-key auth (`aiw login`, then paste a key from the web UI) instead.",
+					},
+				},
+				501,
+			);
+		}
+		try {
+			const dev = await requestDeviceAuthorization({
+				deviceAuthorizationEndpoint: deviceEndpoint,
+				clientId: clientCfg.clientId,
+				scopes: clientCfg.scopes,
+			});
+			audit(c, {
+				action: "auth.device.authorize",
+				outcome: "success",
+				details: { user_code: dev.user_code },
+			});
+			// Pass the IdP envelope through verbatim — the CLI relies on
+			// the RFC 8628 field names. `interval` defaults to 5s per the
+			// spec if the IdP didn't supply one; we surface that on the
+			// way out so the CLI doesn't have to know.
+			return c.json({
+				device_code: dev.device_code,
+				user_code: dev.user_code,
+				verification_uri: dev.verification_uri,
+				verification_uri_complete: dev.verification_uri_complete,
+				expires_in: dev.expires_in,
+				interval: dev.interval ?? 5,
+			});
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			logger.warn({ err: message }, "device authorization failed");
+			audit(c, {
+				action: "auth.device.authorize",
+				outcome: "failure",
+				details: { reason: message },
+			});
+			return c.json(
+				{
+					error: {
+						code: "device_authorize_failed",
+						message,
+					},
+				},
+				502,
+			);
+		}
+	});
+
+	app.post("/device/token", async (c) => {
+		if (!endpoints.deviceAuthorizationEndpoint) {
+			return c.json(
+				{
+					error: {
+						code: "device_flow_not_supported",
+						message:
+							"The configured IdP does not advertise a device_authorization_endpoint.",
+					},
+				},
+				501,
+			);
+		}
+		let body: { device_code?: unknown };
+		try {
+			body = (await c.req.json()) as { device_code?: unknown };
+		} catch {
+			return c.json(
+				{
+					error: {
+						code: "invalid_request",
+						message: "request body must be JSON `{ device_code: string }`",
+					},
+				},
+				400,
+			);
+		}
+		const deviceCode =
+			typeof body.device_code === "string" ? body.device_code : null;
+		if (!deviceCode) {
+			return c.json(
+				{
+					error: {
+						code: "invalid_request",
+						message: "device_code is required",
+					},
+				},
+				400,
+			);
+		}
+
+		try {
+			const outcome = await pollDeviceCode({
+				tokenEndpoint: endpoints.tokenEndpoint,
+				clientId: clientCfg.clientId,
+				clientSecret: opts.clientSecret,
+				deviceCode,
+			});
+
+			if (outcome.kind === "success") {
+				audit(c, {
+					action: "auth.device.token",
+					outcome: "success",
+				});
+				return c.json({
+					access_token: outcome.tokens.access_token,
+					token_type: outcome.tokens.token_type,
+					expires_in: outcome.tokens.expires_in,
+					refresh_token: outcome.tokens.refresh_token,
+					scope: outcome.tokens.scope,
+				});
+			}
+
+			if (outcome.kind === "pending") {
+				// Stay in the IdP's 400 + JSON-body envelope so the CLI
+				// can branch on `error` exactly like it would talking to
+				// the IdP directly.
+				return c.json(
+					{
+						error: {
+							code: outcome.error,
+							message:
+								outcome.error === "slow_down"
+									? "Polling too quickly — increase the interval and retry."
+									: "Authorization is still pending. Continue polling.",
+						},
+					},
+					400,
+				);
+			}
+
+			// Terminal error from the IdP.
+			audit(c, {
+				action: "auth.device.token",
+				outcome: "failure",
+				details: { reason: outcome.error },
+			});
+			return c.json(
+				{
+					error: {
+						code: outcome.error,
+						message: `IdP rejected the device-code exchange: ${outcome.error}`,
+					},
+				},
+				// Surface IdP-side rejections as 400 (client must fix
+				// something — typically retry the device-authorize flow
+				// after `expired_token` / `access_denied`).
+				400,
+			);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			logger.warn({ err: message }, "device token poll failed");
+			return c.json(
+				{
+					error: {
+						code: "device_token_failed",
+						message,
+					},
+				},
+				502,
+			);
+		}
 	});
 
 	return app;

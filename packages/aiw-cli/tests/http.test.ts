@@ -54,6 +54,41 @@ describe("request", () => {
 		);
 	});
 
+	it("prefers an oidc accessToken over the apiKey when both are present", async () => {
+		mockFetch.mockResolvedValueOnce(
+			new Response(JSON.stringify({ ok: true }), { status: 200 }),
+		);
+		const oidcProfile: Profile = {
+			url: "http://api.example",
+			apiKey: "legacy-key",
+			oidc: { accessToken: "oidc.jwt.token", tokenType: "Bearer" },
+		};
+		await request({ profile: oidcProfile }, "/api/v1/ping", schema);
+		const call = mockFetch.mock.calls[0];
+		if (!call) throw new Error("fetch was not called");
+		const init = call[1] as RequestInit;
+		expect((init.headers as Record<string, string>).Authorization).toBe(
+			"Bearer oidc.jwt.token",
+		);
+	});
+
+	it("honors a non-default oidc tokenType when set", async () => {
+		mockFetch.mockResolvedValueOnce(
+			new Response(JSON.stringify({ ok: true }), { status: 200 }),
+		);
+		const oidcProfile: Profile = {
+			url: "http://api.example",
+			oidc: { accessToken: "dpop.token.value", tokenType: "DPoP" },
+		};
+		await request({ profile: oidcProfile }, "/api/v1/ping", schema);
+		const call = mockFetch.mock.calls[0];
+		if (!call) throw new Error("fetch was not called");
+		const init = call[1] as RequestInit;
+		expect((init.headers as Record<string, string>).Authorization).toBe(
+			"DPoP dpop.token.value",
+		);
+	});
+
 	it("JSON-encodes object bodies and adds the content-type", async () => {
 		mockFetch.mockResolvedValueOnce(
 			new Response(JSON.stringify({ ok: true }), { status: 200 }),

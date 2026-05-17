@@ -11,6 +11,7 @@ import {
 import { HttpError, request } from "../http.js";
 import { fail, info, success, warn } from "../output.js";
 import { WhoAmISchema } from "../types.js";
+import { runDeviceFlowLogin } from "./login-oidc.js";
 
 /**
  * Shape of the runtime's `/auth/config` response. Reports which auth
@@ -28,6 +29,7 @@ const AuthConfigSchema = z
 				apiKey: z.boolean().optional(),
 				oidc: z.boolean().optional(),
 				login: z.boolean().optional(),
+				device: z.boolean().optional(),
 			})
 			.passthrough()
 			.optional(),
@@ -80,6 +82,11 @@ export const loginCommand = defineCommand({
 			type: "boolean",
 			description: "Skip the call to /auth/me after saving credentials",
 		},
+		oidc: {
+			type: "boolean",
+			description:
+				"Use the OIDC device-flow (RFC 8628) login instead of pasting an API key.",
+		},
 	},
 	async run({ args }) {
 		const interactive = process.stdin.isTTY && !args["api-key"];
@@ -115,6 +122,22 @@ export const loginCommand = defineCommand({
 		if (!url) {
 			fail("--url is required when stdin is not a TTY.");
 			process.exit(2);
+		}
+
+		// OIDC device-flow branch — handed off to a dedicated module
+		// because the polling lifecycle is non-trivial. Probes the
+		// runtime first so we can fail with an actionable message if
+		// the runtime doesn't speak device flow.
+		if (args.oidc) {
+			const probe = await probeAuthConfig(url);
+			if (probe && probe.modes?.device === false) {
+				fail(
+					"The runtime reports it doesn't support OIDC device flow. Use `aiw login` (API key) instead, or point at a runtime that has OIDC configured with a device-aware IdP.",
+				);
+				process.exit(2);
+			}
+			await runDeviceFlowLogin({ url, profileName });
+			return;
 		}
 
 		// Probe the runtime's auth modes before we ask for a key. This

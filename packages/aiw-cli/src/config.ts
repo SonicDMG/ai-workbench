@@ -14,11 +14,29 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 
+/**
+ * Persisted OIDC bearer credentials. Populated by `aiw login --oidc`
+ * after the device-flow grant completes. `tokenType` defaults to
+ * `"Bearer"`; `refreshToken` is optional (some IdPs issue them, some
+ * don't); `expiresAt` is an ISO-8601 timestamp so the CLI can print a
+ * "your token expired, re-run aiw login" hint without decoding the
+ * JWT itself.
+ */
+const OidcCredentialsSchema = z.object({
+	accessToken: z.string().min(1),
+	refreshToken: z.string().min(1).optional(),
+	expiresAt: z.string().min(1).optional(),
+	tokenType: z.string().default("Bearer"),
+});
+
 const ProfileSchema = z.object({
 	url: z.string().url(),
 	apiKey: z.string().min(1).optional(),
+	oidc: OidcCredentialsSchema.optional(),
 	defaultWorkspace: z.string().optional(),
 });
+
+export type OidcCredentials = z.infer<typeof OidcCredentialsSchema>;
 
 const ConfigSchema = z.object({
 	active: z.string().optional(),
@@ -124,6 +142,7 @@ export function resolveProfile(
 	const merged: Profile = {
 		url,
 		apiKey,
+		oidc: stored?.oidc,
 		defaultWorkspace: stored?.defaultWorkspace,
 	};
 

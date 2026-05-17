@@ -215,6 +215,7 @@ async function buildAppWithLogin(
 				tokenEndpoint: `${ISSUER}/token`,
 				endSessionEndpoint: null,
 				jwksUri: `${ISSUER}/jwks`,
+				deviceAuthorizationEndpoint: null,
 			},
 			clientSecret: null,
 			cookie,

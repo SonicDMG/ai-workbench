@@ -59,6 +59,8 @@ export type AuditAction =
 	| "auth.login"
 	| "auth.logout"
 	| "auth.refresh"
+	| "auth.device.authorize"
+	| "auth.device.token"
 	// RLAC prototype audit actions.
 	| "principal.create"
 	| "principal.update"
@@ -102,6 +104,15 @@ export interface AuditDetails {
 	readonly scopes?: string;
 	/** RLAC principal id (workspace-scoped). */
 	readonly principalId?: string;
+	/**
+	 * Device-flow user code (the short alphanumeric code the operator
+	 * types into their browser). Recorded on `auth.device.authorize`
+	 * so the audit trail can correlate a /device/authorize call with
+	 * its eventual /device/token poll outcome without holding the
+	 * device_code (which would be enough material to complete the
+	 * grant).
+	 */
+	readonly user_code?: string;
 }
 
 export interface AuditEventInput {
