@@ -183,6 +183,7 @@ export function KnowledgeBaseExplorerPage() {
 							variant="brand"
 							size="sm"
 							onClick={() => setIngestOpen(true)}
+							title="Upload one or more files into this knowledge base. Files are deduped by content hash and chunked + embedded automatically."
 						>
 							<Upload className="h-4 w-4" /> Ingest
 						</Button>

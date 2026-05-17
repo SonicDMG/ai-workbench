@@ -11,6 +11,18 @@ release — they will be called out under **Changed** below.
 
 ### Added
 
+- **"What's new" modal + discoverability tooltips** — the header
+  carries a sparkles trigger that opens a per-release release-notes
+  dialog. Auto-opens once per `APP_VERSION` (dismissal persists under
+  `aiw:wn:${APP_VERSION}` in `localStorage`) and stays available on
+  demand via the trigger. Content lives in
+  [`apps/web/src/lib/whats-new-content.ts`](./apps/web/src/lib/whats-new-content.ts)
+  as a typed array so the doc isn't parsed at runtime. Plus three
+  hover tooltips on commonly-missed operator actions: the KB explorer
+  **Ingest** button, the Agents **From template** button, and the
+  API-keys **New key** button. The workspace-settings Access-control
+  Preview chip already carried its own tooltip and is unchanged.
+  ([`apps/web/src/components/onboarding/WhatsNewModal.tsx`](./apps/web/src/components/onboarding/WhatsNewModal.tsx))
 - **MCP write expansion** — three new write tools land on the MCP
   façade: `create_knowledge_base`, `delete_knowledge_base`, and
   `run_agent`. The first two wrap the same `KnowledgeBaseService`

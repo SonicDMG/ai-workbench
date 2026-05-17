@@ -142,7 +142,11 @@ function AgentsCard({ workspace }: { workspace: string }) {
 					</p>
 				</div>
 				<div className="flex items-center gap-2">
-					<Button variant="secondary" onClick={() => setTemplating(true)}>
+					<Button
+						variant="secondary"
+						onClick={() => setTemplating(true)}
+						title="Spin up a tuned agent from the template catalog — each template ships a persona, system prompt, and tool-use guidance you can edit after creation."
+					>
 						<Sparkles className="h-4 w-4" />
 						From template
 					</Button>

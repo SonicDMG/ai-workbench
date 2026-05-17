@@ -3,6 +3,10 @@ import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { ThemeSwitcher } from "@/components/layout/ThemeSwitcher";
+import {
+	WhatsNewModal,
+	WhatsNewTrigger,
+} from "@/components/onboarding/WhatsNewModal";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -50,6 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 					</Link>
 					<WorkspaceSwitcher currentWorkspaceId={currentWorkspaceId} />
 					<nav className="flex shrink-0 items-center gap-1 text-sm">
+						<WhatsNewTrigger />
 						<ThemeSwitcher />
 						<UserMenu />
 						<a
@@ -66,6 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 			<main className="app-backdrop mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
 				{children}
 			</main>
+			<WhatsNewModal />
 			<footer className="border-t border-[#c6c6c6] bg-white dark:border-slate-800 dark:bg-slate-900">
 				<div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:text-slate-400">
 					<span>

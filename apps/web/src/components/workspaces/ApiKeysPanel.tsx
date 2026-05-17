@@ -89,6 +89,7 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 						variant="brand"
 						className="min-w-0 flex-1 sm:flex-none"
 						onClick={() => setCreateOpen(true)}
+						title="Mint a workspace-scoped bearer token. Pick read or read+write scope at creation; the secret value is shown exactly once after the key lands."
 					>
 						<Plus className="h-4 w-4" />
 						New key
