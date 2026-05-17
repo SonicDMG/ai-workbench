@@ -29,6 +29,20 @@ release — they will be called out under **Changed** below.
 
 ### Added
 
+- **E2E coverage for settings + RLAC + CLI live API.** Three new
+  Playwright specs (`settings.spec.ts`, `rlac.spec.ts`) cover the
+  workspace-settings RLAC toggle (revealing/hiding the principals +
+  audit panels) and the principals-panel CRUD dialog. A new
+  vitest subprocess spec (`packages/aiw-cli/tests/cli-live-api.test.ts`)
+  drives the compiled `aiw` binary against a Node `http` stub
+  mimicking the runtime's `/auth/config`, `/auth/me`, and
+  `/api/v1/workspaces` endpoints so the bearer-wiring, config-file
+  precedence, and JSON-output envelope are exercised end-to-end
+  without spawning the full runtime. A new `e2e/_fixtures.ts`
+  helper stamps the "What's new" modal as dismissed via
+  `addInitScript` so existing specs (golden-path, agent-templates,
+  ingest) no longer have their first click intercepted by the
+  modal's Radix overlay.
 - **"What's new" modal + discoverability tooltips** — the header
   carries a sparkles trigger that opens a per-release release-notes
   dialog. Auto-opens once per `APP_VERSION` (dismissal persists under

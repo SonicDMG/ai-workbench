@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./_fixtures";
 
 // Coverage for the ingest queue dialog (apps/web/src/components/
 // workspaces/IngestQueueDialog.tsx). The dialog has a non-trivial

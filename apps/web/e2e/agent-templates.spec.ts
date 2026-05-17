@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./_fixtures";
 
 // Coverage for the agent template gallery (PR #174 / ADR 0003) end
 // to end: a fresh workspace lands with Bobby + Maven auto-seeded,
