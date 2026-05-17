@@ -26,6 +26,7 @@ import { ApiError } from "../../lib/errors.js";
 import type { AppEnv } from "../../lib/types.js";
 import { handleMcpRequest } from "../../mcp/server.js";
 import type { IngestService } from "../../services/ingest-service.js";
+import type { KnowledgeBaseService } from "../../services/knowledge-base-service.js";
 
 /**
  * Project the request's {@link AuthContext} onto the scope set the
@@ -64,6 +65,14 @@ export interface McpRouteDeps {
 	 * write tool (read tools still register normally).
 	 */
 	readonly ingestService: IngestService | null;
+	/**
+	 * Shared knowledge-base service. Drives the `create_knowledge_base`
+	 * and `delete_knowledge_base` MCP write tools — same instance the
+	 * REST `/knowledge-bases` route uses, so the collection-provision +
+	 * rollback semantics are identical across front doors. Null
+	 * disables both write tools (read tools still register normally).
+	 */
+	readonly knowledgeBaseService: KnowledgeBaseService | null;
 }
 
 /**
@@ -117,6 +126,7 @@ export function mcpRoutes(deps: McpRouteDeps): OpenAPIHono<AppEnv> {
 				chatConfig: deps.chatConfig,
 				exposeChat: deps.mcpConfig.exposeChat,
 				ingestService: deps.ingestService,
+				knowledgeBaseService: deps.knowledgeBaseService,
 				subjectScopes,
 				onToolInvoke: (info) => {
 					audit(c, {

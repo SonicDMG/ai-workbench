@@ -33,6 +33,20 @@
  *                              `ingest_text` on `ingestService` —
  *                              both write tools are present or
  *                              absent together.
+ *   - `create_knowledge_base`  write — provision a new KB bound to
+ *                              existing chunking + embedding services.
+ *                              Wraps the same `KnowledgeBaseService`
+ *                              the REST `POST /knowledge-bases` route
+ *                              uses, so MCP and REST create paths run
+ *                              the same collection-provision and
+ *                              rollback dance.
+ *   - `delete_knowledge_base`  write — drop the underlying vector
+ *                              collection (for owned KBs) and remove
+ *                              the control-plane row. Idempotent —
+ *                              re-deleting a missing KB returns a
+ *                              `not_found` outcome instead of erroring.
+ *                              Co-gated with `create_knowledge_base`
+ *                              on `knowledgeBaseService`.
  *   - `chat_send`              optional, gated on `mcp.exposeChat`
  *                              + `chat` config; appends a user turn
  *                              to an agent's conversation, runs the
@@ -41,6 +55,15 @@
  *                              block (streaming would require MCP
  *                              progress notifications which most
  *                              clients don't surface yet)
+ *   - `run_agent`              optional, co-gated with `chat_send`;
+ *                              one-call form that resolves (or
+ *                              creates) a conversation bound to a
+ *                              stored agent and runs a turn through
+ *                              the same orchestration helper. Returns
+ *                              the new/reused conversation id alongside
+ *                              the assistant text so callers can
+ *                              follow up without juggling chat
+ *                              creation themselves.
  *
  * Auth is the same as every other `/api/v1/workspaces/*` route: the
  * app-level workspace authz wrapper runs before this handler, so a
@@ -51,22 +74,22 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
-import { assemblePrompt } from "../chat/prompt.js";
-import { retrieveContext } from "../chat/retrieval.js";
 import type { ChatService } from "../chat/types.js";
 import type { ChatConfig } from "../config/schema.js";
-import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../control-plane/defaults.js";
+import { ControlPlaneNotFoundError } from "../control-plane/errors.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
 import { CHUNK_TEXT_KEY } from "../ingest/payload-keys.js";
-import { logger } from "../lib/logger.js";
+import { ApiError } from "../lib/errors.js";
 import { resolveKb } from "../routes/api-v1/kb-descriptor.js";
 import { dispatchSearch } from "../routes/api-v1/search-dispatch.js";
 import { isUserVisibleMessage } from "../routes/api-v1/serdes/index.js";
 import { cascadeDeleteRagDocument } from "../services/document-cascade.js";
 import type { IngestService } from "../services/ingest-service.js";
+import type { KnowledgeBaseService } from "../services/knowledge-base-service.js";
 import { VERSION } from "../version.js";
+import { runAgentTurn } from "./run-agent.js";
 
 /**
  * Refuse a write-tool invocation when the calling subject doesn't
@@ -179,6 +202,17 @@ export interface McpServerDeps {
 	 * footprint is identical to the public REST `POST /ingest` body.
 	 */
 	readonly ingestService: IngestService | null;
+	/**
+	 * Optional knowledge-base service. When supplied, the MCP server
+	 * registers the `create_knowledge_base` and `delete_knowledge_base`
+	 * write tools. Same instance as the REST `/knowledge-bases` route
+	 * uses, so MCP and REST KB lifecycle calls run the same
+	 * collection-provision and rollback dance.
+	 *
+	 * Null disables both tools (older runtimes / fixtures that don't
+	 * wire the service still load the read tools cleanly).
+	 */
+	readonly knowledgeBaseService: KnowledgeBaseService | null;
 	/**
 	 * Privilege tiers the caller carries, projected from the request's
 	 * {@link AuthContext}. Used by the write tools (`ingest_text`,
@@ -618,12 +652,29 @@ export function buildMcpServer(
 		registerDeleteDocumentTool(server, workspaceId, deps);
 	}
 
+	if (deps.knowledgeBaseService) {
+		registerCreateKnowledgeBaseTool(
+			server,
+			workspaceId,
+			deps.knowledgeBaseService,
+			deps.subjectScopes,
+		);
+		registerDeleteKnowledgeBaseTool(
+			server,
+			workspaceId,
+			deps.knowledgeBaseService,
+			deps.subjectScopes,
+		);
+	}
+
 	if (deps.exposeChat && deps.chatService && deps.chatConfig) {
-		registerChatTool(server, workspaceId, {
+		const chatDeps: ChatToolDeps = {
 			...deps,
 			chatService: deps.chatService,
 			chatConfig: deps.chatConfig,
-		});
+		};
+		registerChatTool(server, workspaceId, chatDeps);
+		registerRunAgentTool(server, workspaceId, chatDeps);
 	}
 
 	return server;
@@ -873,7 +924,7 @@ function registerChatTool(
 		{
 			title: "Send a chat message",
 			description:
-				"Persist a user turn in an agent-owned conversation, retrieve grounding context across the conversation's KB filter, run the configured chat-completion model, persist the assistant reply, and return the assistant text. Returns the assistant content as a single text block (streaming via MCP progress isn't surfaced by most clients yet).",
+				"Persist a user turn in an agent-owned conversation, retrieve grounding context across the conversation's KB filter, run the configured chat-completion model, persist the assistant reply, and return the assistant text. Use `run_agent` when you want the tool to resolve or create the conversation for you. Returns the assistant content as a single text block (streaming via MCP progress isn't surfaced by most clients yet).",
 			inputSchema: {
 				agentId: z.string().uuid(),
 				chatId: z.string().uuid(),
@@ -892,70 +943,387 @@ function registerChatTool(
 					content: [{ type: "text", text: `chat '${chatId}' not found` }],
 				};
 			}
-			const userRecord = await deps.store.appendChatMessage(
-				workspaceId,
-				chatId,
-				{ role: "user", content },
-			);
-			const { chunks } = await retrieveContext(
+			const outcome = await runAgentTurn(
 				{
 					store: deps.store,
 					drivers: deps.drivers,
 					embedders: deps.embedders,
-					logger,
+					chatService: deps.chatService,
+					chatConfig: deps.chatConfig,
 				},
 				{
 					workspaceId,
+					agentId,
+					chatId,
+					content,
 					knowledgeBaseIds: chat.knowledgeBaseIds,
-					query: content,
-					retrievalK: deps.chatConfig.retrievalK,
 				},
 			);
-			const history = await deps.store.listChatMessages(workspaceId, chatId);
-			const prompt = assemblePrompt({
-				systemPrompt:
-					deps.chatConfig.systemPrompt ?? DEFAULT_AGENT_SYSTEM_PROMPT,
-				chunks,
-				history,
-				userTurn: content,
-			});
-			const completion = await deps.chatService.complete({ messages: prompt });
-			const replyText =
-				completion.finishReason === "error"
-					? (completion.errorMessage ?? "The agent couldn't answer this turn.")
-					: completion.content;
-			// Force the assistant turn strictly after the user turn so the
-			// `message_ts ASC` cluster ordering is unambiguous — the column
-			// has ms resolution and a fast model can finish in the same
-			// millisecond as the user append, which would otherwise leave
-			// the order to a random-UUID tiebreaker.
-			const userTs = Date.parse(userRecord.messageTs);
-			const assistantTs = new Date(
-				Math.max(userTs + 1, Date.now()),
-			).toISOString();
-			await deps.store.appendChatMessage(workspaceId, chatId, {
-				role: "agent",
-				authorId: agentId,
-				messageTs: assistantTs,
-				content: replyText,
-				tokenCount: completion.tokenCount,
-				metadata: {
-					model: deps.chatService.modelId,
-					finish_reason: completion.finishReason,
-					...(chunks.length > 0 && {
-						context_document_ids: chunks.map((c) => c.chunkId).join(","),
-						context_chunks: JSON.stringify(
-							chunks.map((c) => [c.chunkId, c.knowledgeBaseId, c.documentId]),
-						),
-					}),
-					...(completion.errorMessage && {
-						error_message: completion.errorMessage,
-					}),
-				},
-			});
 			return {
-				isError: completion.finishReason === "error",
-				content: [{ type: "text", text: replyText }],
+				isError: outcome.finishReason === "error",
+				content: [{ type: "text", text: outcome.replyText }],
+			};
+		},
+	);
+}
+
+/**
+ * Wire `create_knowledge_base` onto the MCP server. Wraps the same
+ * {@link KnowledgeBaseService.create} call the REST
+ * `POST /knowledge-bases` route uses — so the collection-provision
+ * + rollback dance runs identically across the two front doors.
+ *
+ * Outcomes mirror the REST route:
+ *   - **created**       — KB row + (for owned mode) the underlying
+ *                        vector collection are both in place; the tool
+ *                        returns the new `knowledgeBaseId`, the resolved
+ *                        `vectorCollection`, and the `owned` flag.
+ *   - **kb_name_taken** — another KB in the workspace already binds
+ *                        this name. Returned as `isError: true` with
+ *                        a recognizable code so the caller can branch.
+ *   - **collection_name_taken** — owned-mode create where the chosen
+ *                        `name` collides with an existing data-plane
+ *                        collection. The KB row is NOT written.
+ *
+ * Other validation errors (missing chunking/embedding service, attach
+ * mode mismatches, vector-dimension drift) propagate as MCP tool
+ * errors with the underlying message — the caller learns enough to
+ * fix the call without us re-implementing every shape check here.
+ */
+function registerCreateKnowledgeBaseTool(
+	server: McpServer,
+	workspaceId: string,
+	knowledgeBaseService: KnowledgeBaseService,
+	subjectScopes: readonly string[] | null,
+): void {
+	server.registerTool(
+		"create_knowledge_base",
+		{
+			title: "Create a knowledge base",
+			description:
+				'Provision a new knowledge base in this workspace, bound to existing chunking + embedding services. Owned KBs (default) auto-provision a vector collection named after `name`; pass `attach: true` plus `vectorCollection` to bind to a pre-existing data-plane collection instead. Returns `outcome: "created"` plus the new `knowledgeBaseId` on success, or `isError: true` with a recognizable code on `kb_name_taken` / `collection_name_taken` / validation failures. **Requires the `write` scope on the calling key.**',
+			inputSchema: {
+				name: z.string().min(1).max(120),
+				chunkingServiceId: z.string().uuid(),
+				embeddingServiceId: z.string().uuid(),
+				description: z.string().nullable().optional(),
+				rerankingServiceId: z.string().uuid().nullable().optional(),
+				language: z.string().nullable().optional(),
+				attach: z.boolean().optional(),
+				vectorCollection: z.string().nullable().optional(),
+			},
+		},
+		async ({
+			name,
+			chunkingServiceId,
+			embeddingServiceId,
+			description,
+			rerankingServiceId,
+			language,
+			attach,
+			vectorCollection,
+		}) => {
+			const denial = denyIfMissingScope(
+				subjectScopes,
+				"write",
+				"create_knowledge_base",
+			);
+			if (denial) return denial;
+			try {
+				const outcome = await knowledgeBaseService.create(workspaceId, {
+					name,
+					chunkingServiceId,
+					embeddingServiceId,
+					...(description !== undefined && { description }),
+					...(rerankingServiceId !== undefined && { rerankingServiceId }),
+					...(language !== undefined && { language }),
+					...(attach !== undefined && { attach }),
+					...(vectorCollection !== undefined && { vectorCollection }),
+				});
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(
+								{
+									outcome: "created",
+									knowledgeBaseId: outcome.record.knowledgeBaseId,
+									name: outcome.record.name,
+									vectorCollection: outcome.record.vectorCollection,
+									owned: outcome.record.owned,
+									chunkingServiceId: outcome.record.chunkingServiceId,
+									embeddingServiceId: outcome.record.embeddingServiceId,
+									rerankingServiceId: outcome.record.rerankingServiceId,
+									language: outcome.record.language,
+									status: outcome.record.status,
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			} catch (err) {
+				if (err instanceof ApiError) {
+					return {
+						isError: true,
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify(
+									{
+										outcome: "error",
+										code: err.code,
+										message: err.message,
+									},
+									null,
+									2,
+								),
+							},
+						],
+					};
+				}
+				if (err instanceof ControlPlaneNotFoundError) {
+					return {
+						isError: true,
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify(
+									{
+										outcome: "not_found",
+										message: err.message,
+									},
+									null,
+									2,
+								),
+							},
+						],
+					};
+				}
+				throw err;
+			}
+		},
+	);
+}
+
+/**
+ * Wire `delete_knowledge_base` onto the MCP server. Wraps the same
+ * {@link KnowledgeBaseService.delete} call the REST
+ * `DELETE /knowledge-bases/{id}` route uses, so owned KBs drop the
+ * underlying vector collection first and attached KBs are detached
+ * without touching the collection (consistent with REST semantics).
+ *
+ * Outcomes:
+ *   - **deleted**   — the KB row existed and is gone (along with the
+ *                    collection for owned KBs).
+ *   - **not_found** — no KB matched the id. Returned as a non-error
+ *                    text content so an agent doing speculative
+ *                    cleanup doesn't have to branch on `isError`.
+ */
+function registerDeleteKnowledgeBaseTool(
+	server: McpServer,
+	workspaceId: string,
+	knowledgeBaseService: KnowledgeBaseService,
+	subjectScopes: readonly string[] | null,
+): void {
+	server.registerTool(
+		"delete_knowledge_base",
+		{
+			title: "Delete a knowledge base",
+			description:
+				'Remove a knowledge base from this workspace. For owned KBs, the underlying vector collection is dropped first; attached KBs are detached without touching the collection (consistent with the REST DELETE semantics). Idempotent — re-deleting a missing KB returns `outcome: "not_found"` rather than erroring. **Requires the `write` scope on the calling key.**',
+			inputSchema: {
+				knowledgeBaseId: z.string().uuid(),
+			},
+		},
+		async ({ knowledgeBaseId }) => {
+			const denial = denyIfMissingScope(
+				subjectScopes,
+				"write",
+				"delete_knowledge_base",
+			);
+			if (denial) return denial;
+			try {
+				await knowledgeBaseService.delete(workspaceId, knowledgeBaseId);
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(
+								{ outcome: "deleted", knowledgeBaseId },
+								null,
+								2,
+							),
+						},
+					],
+				};
+			} catch (err) {
+				if (err instanceof ControlPlaneNotFoundError) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify(
+									{ outcome: "not_found", knowledgeBaseId },
+									null,
+									2,
+								),
+							},
+						],
+					};
+				}
+				throw err;
+			}
+		},
+	);
+}
+
+/**
+ * Wire `run_agent` onto the MCP server. The one-call form of
+ * `chat_send` — accepts an `agentId` (which the caller already has
+ * from `list_agents` / `get_agent`) and either resumes an existing
+ * conversation or creates a new one bound to the agent's
+ * `knowledgeBaseIds`. Drives the same orchestration helper
+ * `chat_send` uses, so retrieval, prompt assembly, completion, and
+ * persistence are pixel-identical between the two tools.
+ *
+ * Wire envelope:
+ *   - **success** — `{ outcome: "completed", conversationId, content,
+ *                    finishReason, tokenCount, contextChunkIds }`.
+ *   - **agent_not_found** — `isError: true`, the agent id didn't match
+ *                    any agent in the workspace.
+ *   - **chat_not_found** — `isError: true`, the supplied `conversationId`
+ *                    isn't a conversation for this agent.
+ *   - **completion_error** — `isError: true`, the chat model returned
+ *                    `finishReason: "error"`. The text is still
+ *                    persisted (consistent with `chat_send`).
+ */
+function registerRunAgentTool(
+	server: McpServer,
+	workspaceId: string,
+	deps: ChatToolDeps,
+): void {
+	server.registerTool(
+		"run_agent",
+		{
+			title: "Run an agent",
+			description:
+				"One-call agent invocation: load the agent by id, resume or create a conversation bound to the agent's KB set, run a single user turn through the retrieve → prompt → complete → persist pipeline, and return the assistant reply alongside the conversation id so the caller can follow up. Pass `conversationId` to extend an existing chat; omit it to create a fresh conversation. Returns the structured outcome (with `finishReason` and `tokenCount`) rather than a bare text block so callers can branch programmatically. Honors the agent's stored `systemPrompt` when present.",
+			inputSchema: {
+				agentId: z.string().uuid(),
+				content: z.string().min(1).max(32_000),
+				conversationId: z.string().uuid().optional(),
+				title: z.string().min(1).max(120).optional(),
+			},
+		},
+		async ({ agentId, content, conversationId, title }) => {
+			const agent = await deps.store.getAgent(workspaceId, agentId);
+			if (!agent) {
+				return {
+					isError: true,
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(
+								{
+									outcome: "agent_not_found",
+									agentId,
+									message: `No agent ${agentId} in this workspace.`,
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			}
+
+			let chatId = conversationId ?? null;
+			let knowledgeBaseIds: readonly string[] = agent.knowledgeBaseIds;
+			if (chatId) {
+				const existing = await deps.store.getConversation(
+					workspaceId,
+					agentId,
+					chatId,
+				);
+				if (!existing) {
+					return {
+						isError: true,
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify(
+									{
+										outcome: "chat_not_found",
+										conversationId: chatId,
+										agentId,
+										message: `Conversation ${chatId} not found for agent ${agentId}.`,
+									},
+									null,
+									2,
+								),
+							},
+						],
+					};
+				}
+				knowledgeBaseIds = existing.knowledgeBaseIds;
+			} else {
+				const created = await deps.store.createConversation(
+					workspaceId,
+					agentId,
+					{
+						...(title !== undefined && { title }),
+						knowledgeBaseIds: agent.knowledgeBaseIds,
+					},
+				);
+				chatId = created.conversationId;
+			}
+
+			const outcome = await runAgentTurn(
+				{
+					store: deps.store,
+					drivers: deps.drivers,
+					embedders: deps.embedders,
+					chatService: deps.chatService,
+					chatConfig: deps.chatConfig,
+				},
+				{
+					workspaceId,
+					agentId,
+					chatId,
+					content,
+					knowledgeBaseIds,
+					systemPrompt: agent.systemPrompt,
+				},
+			);
+
+			return {
+				isError: outcome.finishReason === "error",
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								outcome:
+									outcome.finishReason === "error"
+										? "completion_error"
+										: "completed",
+								conversationId: chatId,
+								agentId,
+								content: outcome.replyText,
+								finishReason: outcome.finishReason,
+								tokenCount: outcome.tokenCount,
+								contextChunkIds: outcome.contextChunkIds,
+								...(outcome.errorMessage && {
+									errorMessage: outcome.errorMessage,
+								}),
+							},
+							null,
+							2,
+						),
+					},
+				],
 			};
 		},
 	);

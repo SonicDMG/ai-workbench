@@ -35,6 +35,7 @@ import { principalRoutes } from "../routes/api-v1/principals.js";
 import { rerankingServiceRoutes } from "../routes/api-v1/reranking-services.js";
 import { workspaceRoutes } from "../routes/api-v1/workspaces.js";
 import { createIngestService } from "../services/ingest-service.js";
+import { createKnowledgeBaseService } from "../services/knowledge-base-service.js";
 import { RoutePluginRegistry } from "./registry.js";
 import type { RoutePlugin, RoutePluginContext } from "./types.js";
 
@@ -72,6 +73,16 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 		jobs: ctx.jobs,
 		replicaId: ctx.replicaId,
 		ingestSemaphore: ctx.ingestSemaphore,
+	});
+	// Single `KnowledgeBaseService` instance shared between the
+	// MCP plugin (powers `create_knowledge_base` / `delete_knowledge_base`)
+	// and the Connect plugin's verify smoke test. The service is
+	// stateless above the underlying store + drivers — sharing keeps
+	// the two front doors using the same collection-provision /
+	// rollback path in production.
+	const knowledgeBaseService = createKnowledgeBaseService({
+		store: ctx.store,
+		drivers: ctx.drivers,
 	});
 	return [
 		{
@@ -174,6 +185,7 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					chatConfig: ctx.chatConfig,
 					mcpConfig: ctx.mcpConfig,
 					ingestService,
+					knowledgeBaseService,
 				}),
 		},
 		{
@@ -197,6 +209,7 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					chatService: ctx.chatService,
 					chatConfig: ctx.chatConfig,
 					ingestService,
+					knowledgeBaseService,
 				}),
 		},
 		// RLAC prototype: principal CRUD + policy compile-preview + audit.

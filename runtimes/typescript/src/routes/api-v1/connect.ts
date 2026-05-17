@@ -53,6 +53,7 @@ import {
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
 import type { IngestService } from "../../services/ingest-service.js";
+import type { KnowledgeBaseService } from "../../services/knowledge-base-service.js";
 import { subjectScopesFromAuth } from "./mcp.js";
 
 export interface ConnectRouteDeps {
@@ -75,6 +76,7 @@ export interface ConnectRouteDeps {
 	readonly chatService?: ChatService | null;
 	readonly chatConfig?: ChatConfig | null;
 	readonly ingestService?: IngestService | null;
+	readonly knowledgeBaseService?: KnowledgeBaseService | null;
 }
 
 const DEFAULT_API_KEY_ENV_VAR = "WORKBENCH_API_KEY";
@@ -235,6 +237,7 @@ export function connectRoutes(deps: ConnectRouteDeps): OpenAPIHono<AppEnv> {
 				chatConfig: deps.chatConfig ?? null,
 				exposeChat: deps.mcpConfig.exposeChat,
 				ingestService: deps.ingestService ?? null,
+				knowledgeBaseService: deps.knowledgeBaseService ?? null,
 				// Verify only exercises `tools/list`; that surface
 				// doesn't trip the write-tool scope gate. We still
 				// project the real subject's scopes onto the in-process

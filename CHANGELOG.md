@@ -11,7 +11,20 @@ release — they will be called out under **Changed** below.
 
 ### Added
 
-- _Nothing yet._
+- **MCP write expansion** — three new write tools land on the MCP
+  façade: `create_knowledge_base`, `delete_knowledge_base`, and
+  `run_agent`. The first two wrap the same `KnowledgeBaseService`
+  the REST `/knowledge-bases` route uses, so the collection-provision
+  and rollback dance runs identically across MCP and REST. `run_agent`
+  is a one-call form of `chat_send` — it resolves (or creates) a
+  conversation bound to the agent's KB set and drives the same
+  orchestration helper, returning a structured envelope with the
+  conversation id so callers can follow up without juggling chat
+  lifecycle. KB writes require the `write` scope; `run_agent`
+  follows the same `read`-passes convention as `chat_send` since
+  its mutations are scoped to one conversation.
+  ([`runtimes/typescript/src/mcp/server.ts`](./runtimes/typescript/src/mcp/server.ts),
+  [`runtimes/typescript/src/mcp/run-agent.ts`](./runtimes/typescript/src/mcp/run-agent.ts))
 
 ## [0.1.0] — 2026-05-17
 

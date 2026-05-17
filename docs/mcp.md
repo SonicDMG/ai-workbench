@@ -67,8 +67,8 @@ The MCP server enforces it on the **write tools** today:
 
 | Tool | Required scope |
 |---|---|
-| `ingest_text`, `delete_document` | `write` |
-| `search_kb`, `list_*`, `chat_send` | `read` (passes any authenticated caller) |
+| `ingest_text`, `delete_document`, `create_knowledge_base`, `delete_knowledge_base` | `write` |
+| `search_kb`, `list_*`, `get_agent`, `chat_send`, `run_agent` | `read` (passes any authenticated caller) |
 
 A key minted with `scopes: ["read"]` will see read tools work
 normally; a write-tool call returns `isError: true` with a JSON body
@@ -91,13 +91,18 @@ reason strings.
 | Name | Args | Returns |
 |------|------|---------|
 | `list_knowledge_bases` | none | JSON array of `{ knowledgeBaseId, name, description, status, language }` |
+| `list_agents` | none | JSON array of `{ agentId, name, description, knowledgeBaseIds, llmServiceId, rerankEnabled }` |
+| `get_agent` | `{ agentId }` | Full agent configuration: prompts, tool ids, KB bindings, reranking overrides. |
 | `list_documents` | `{ knowledgeBaseId, limit? }` | JSON array of document metadata (`documentId`, `sourceFilename`, `status`, `chunkTotal`, `contentHash`, `ingestedAt`) |
 | `search_kb` | `{ knowledgeBaseId, text? \| vector?, topK?, hybrid?, rerank? }` | JSON array of search hits (`chunkId`, `score`, `documentId`, `content`) |
-| `list_chats` | none | JSON array of chat summaries (`chatId`, `title`, `knowledgeBaseIds`, `createdAt`) |
+| `list_chats` | `{ agentId }` | JSON array of chat summaries (`chatId`, `agentId`, `title`, `knowledgeBaseIds`, `createdAt`) |
 | `list_chat_messages` | `{ chatId }` | Oldest-first message log (`messageId`, `role`, `content`, `messageTs`, `metadata`) |
 | `ingest_text` | `{ knowledgeBaseId, text, sourceFilename?, sourceDocId?, metadata?, overwriteOnNameConflict? }` | JSON envelope with one of three `outcome` values: `completed` (new document — `documentId`, `sourceFilename`, `contentHash`, `chunks`), `duplicate` (content-hash match — pipeline did not run; returns the existing `documentId`), or `name_conflict` (`isError: true` — filename matched but bytes differ; retry with `overwriteOnNameConflict: true` or pick a new name). Runs the same dedup + chunk + embed + upsert pipeline as the REST `POST /ingest`. Always synchronous from the MCP caller's POV. **Requires the `write` scope on the calling key** — read-only keys see `isError: true` + `outcome: "denied"` instead. |
 | `delete_document` | `{ knowledgeBaseId, documentId }` | JSON object with `outcome`: `deleted` (`documentId`, `chunksDropped`) or `not_found` (no row matched the id — returned without `isError` so speculative cleanup doesn't need to branch). Wraps the same cascade helper the REST `DELETE /documents/{id}` route uses; vector chunks come down first, then the control-plane row. **Requires the `write` scope on the calling key.** |
-| `chat_send` *(opt-in)* | `{ chatId, content }` | The assistant's reply as a single text block. Persists both turns through the runtime's global chat service; the system prompt falls back to `DEFAULT_AGENT_SYSTEM_PROMPT` when `chat.systemPrompt` is unset. |
+| `create_knowledge_base` | `{ name, chunkingServiceId, embeddingServiceId, description?, rerankingServiceId?, language?, attach?, vectorCollection? }` | JSON envelope with `outcome: "created"` plus the new `knowledgeBaseId`, resolved `vectorCollection`, and `owned` flag. Wraps the same `KnowledgeBaseService.create` the REST `POST /knowledge-bases` route uses — so the collection-provision + rollback dance runs identically across front doors. Validation failures (`kb_name_taken`, `collection_name_taken`, embedding/dimension mismatch) return `isError: true` with a recognizable `code`. **Requires the `write` scope on the calling key.** |
+| `delete_knowledge_base` | `{ knowledgeBaseId }` | JSON object with `outcome`: `deleted` or `not_found` (idempotent — re-deleting a missing KB returns `not_found` without `isError`). For owned KBs, drops the underlying vector collection first; attached KBs are detached without touching the collection. **Requires the `write` scope on the calling key.** |
+| `chat_send` *(opt-in)* | `{ agentId, chatId, content }` | The assistant's reply as a single text block. Persists both turns through the runtime's global chat service; the system prompt falls back to `DEFAULT_AGENT_SYSTEM_PROMPT` when `chat.systemPrompt` is unset. Use `run_agent` when you want the tool to resolve or create the conversation for you. |
+| `run_agent` *(opt-in)* | `{ agentId, content, conversationId?, title? }` | JSON envelope `{ outcome, conversationId, agentId, content, finishReason, tokenCount, contextChunkIds }`. One-call agent invocation — resolves (or creates) a conversation bound to the agent's KB set, then drives the same retrieval → prompt → complete → persist pipeline as `chat_send`. Honors the agent's stored `systemPrompt`. Returns `outcome: "agent_not_found"` / `"chat_not_found"` / `"completion_error"` for failure shapes; `"completed"` on success. |
 
 All tool results are returned as a single MCP `text` content item
 containing JSON; clients parse it into native objects. This keeps

@@ -26,6 +26,7 @@ import { resolveKb } from "../src/routes/api-v1/kb-descriptor.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
 import { SecretResolver } from "../src/secrets/provider.js";
 import { createIngestService } from "../src/services/ingest-service.js";
+import { createKnowledgeBaseService } from "../src/services/knowledge-base-service.js";
 import {
 	type FakeChatService,
 	makeFakeChatService,
@@ -50,6 +51,12 @@ async function makeMcpHarness(opts?: {
 	 * `tools/list` — the existing read-only test still passes.
 	 */
 	withIngest?: boolean;
+	/**
+	 * Wire a real knowledge-base service so `create_knowledge_base` and
+	 * `delete_knowledge_base` are registered. When false (default),
+	 * those tools are absent from `tools/list`.
+	 */
+	withKnowledgeBaseService?: boolean;
 	/**
 	 * Scope set to project onto the in-process MCP server. `undefined`
 	 * defaults to `null` (no scope gate — legacy / pre-scopes
@@ -77,6 +84,10 @@ async function makeMcpHarness(opts?: {
 			})
 		: null;
 
+	const knowledgeBaseService = opts?.withKnowledgeBaseService
+		? createKnowledgeBaseService({ store, drivers })
+		: null;
+
 	const server = buildMcpServer(ws.uid, {
 		store,
 		drivers,
@@ -85,6 +96,7 @@ async function makeMcpHarness(opts?: {
 		chatConfig: TEST_CHAT_CONFIG,
 		exposeChat: opts?.exposeChat ?? false,
 		ingestService,
+		knowledgeBaseService,
 		subjectScopes: opts?.subjectScopes ?? null,
 	});
 
@@ -713,6 +725,347 @@ describe("MCP server tools", () => {
 			expect(messages).toHaveLength(2);
 			expect(messages[0]?.content).toBe("hi");
 			expect(messages[1]?.content).toBe("echo: hi");
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("create_knowledge_base is co-gated with delete_knowledge_base on the KB service", async () => {
+		const off = await makeMcpHarness();
+		try {
+			const names = (await off.client.listTools()).tools.map((t) => t.name);
+			expect(names).not.toContain("create_knowledge_base");
+			expect(names).not.toContain("delete_knowledge_base");
+		} finally {
+			await off.cleanup();
+		}
+
+		const on = await makeMcpHarness({ withKnowledgeBaseService: true });
+		try {
+			const names = (await on.client.listTools()).tools.map((t) => t.name);
+			expect(names).toContain("create_knowledge_base");
+			expect(names).toContain("delete_knowledge_base");
+		} finally {
+			await on.cleanup();
+		}
+	});
+
+	test("create_knowledge_base provisions a new KB row + collection", async () => {
+		const h = await makeMcpHarness({ withKnowledgeBaseService: true });
+		try {
+			const chunk = await h.store.createChunkingService(h.workspaceId, {
+				name: "c",
+				engine: "langchain_ts",
+			});
+			const embed = await h.store.createEmbeddingService(h.workspaceId, {
+				name: "e",
+				provider: "fake",
+				modelName: "m",
+				embeddingDimension: 4,
+			});
+
+			const result = await h.client.callTool({
+				name: "create_knowledge_base",
+				arguments: {
+					name: "FromMcp",
+					chunkingServiceId: chunk.chunkingServiceId,
+					embeddingServiceId: embed.embeddingServiceId,
+				},
+			});
+			const payload = JSON.parse(textContent(result as never)) as {
+				outcome: string;
+				knowledgeBaseId: string;
+				name: string;
+				vectorCollection: string | null;
+				owned: boolean;
+			};
+			expect(payload.outcome).toBe("created");
+			expect(payload.name).toBe("FromMcp");
+			expect(payload.vectorCollection).toBe("FromMcp");
+			expect(payload.owned).toBe(true);
+			expect(payload.knowledgeBaseId).toMatch(/[0-9a-f-]{36}/);
+
+			// list_knowledge_bases sees the new KB.
+			const list = JSON.parse(
+				textContent(
+					(await h.client.callTool({
+						name: "list_knowledge_bases",
+						arguments: {},
+					})) as never,
+				),
+			) as Array<{ knowledgeBaseId: string; name: string }>;
+			expect(list).toHaveLength(1);
+			expect(list[0]?.knowledgeBaseId).toBe(payload.knowledgeBaseId);
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("create_knowledge_base reports kb_name_taken on a duplicate name", async () => {
+		const h = await makeMcpHarness({ withKnowledgeBaseService: true });
+		try {
+			const chunk = await h.store.createChunkingService(h.workspaceId, {
+				name: "c",
+				engine: "langchain_ts",
+			});
+			const embed = await h.store.createEmbeddingService(h.workspaceId, {
+				name: "e",
+				provider: "fake",
+				modelName: "m",
+				embeddingDimension: 4,
+			});
+			const args = {
+				name: "Docs",
+				chunkingServiceId: chunk.chunkingServiceId,
+				embeddingServiceId: embed.embeddingServiceId,
+			};
+			await h.client.callTool({
+				name: "create_knowledge_base",
+				arguments: args,
+			});
+			const second = (await h.client.callTool({
+				name: "create_knowledge_base",
+				arguments: args,
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+			expect(second.isError).toBe(true);
+			const payload = JSON.parse(second.content[0]?.text ?? "{}") as {
+				outcome: string;
+				code: string;
+			};
+			expect(payload.outcome).toBe("error");
+			expect(payload.code).toBe("kb_name_taken");
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("delete_knowledge_base removes a KB and is idempotent on re-delete", async () => {
+		const h = await makeMcpHarness({ withKnowledgeBaseService: true });
+		try {
+			const chunk = await h.store.createChunkingService(h.workspaceId, {
+				name: "c",
+				engine: "langchain_ts",
+			});
+			const embed = await h.store.createEmbeddingService(h.workspaceId, {
+				name: "e",
+				provider: "fake",
+				modelName: "m",
+				embeddingDimension: 4,
+			});
+			const created = JSON.parse(
+				textContent(
+					(await h.client.callTool({
+						name: "create_knowledge_base",
+						arguments: {
+							name: "ToDelete",
+							chunkingServiceId: chunk.chunkingServiceId,
+							embeddingServiceId: embed.embeddingServiceId,
+						},
+					})) as never,
+				),
+			) as { knowledgeBaseId: string };
+
+			const first = (await h.client.callTool({
+				name: "delete_knowledge_base",
+				arguments: { knowledgeBaseId: created.knowledgeBaseId },
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+			expect(first.isError).toBeFalsy();
+			const firstPayload = JSON.parse(first.content[0]?.text ?? "{}") as {
+				outcome: string;
+			};
+			expect(firstPayload.outcome).toBe("deleted");
+
+			// Idempotent re-delete returns not_found, not an error.
+			const second = (await h.client.callTool({
+				name: "delete_knowledge_base",
+				arguments: { knowledgeBaseId: created.knowledgeBaseId },
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+			expect(second.isError).toBeFalsy();
+			const secondPayload = JSON.parse(second.content[0]?.text ?? "{}") as {
+				outcome: string;
+			};
+			expect(secondPayload.outcome).toBe("not_found");
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("create_knowledge_base / delete_knowledge_base refuse when caller is missing the `write` scope", async () => {
+		const h = await makeMcpHarness({
+			withKnowledgeBaseService: true,
+			subjectScopes: ["read"],
+		});
+		try {
+			const createResult = (await h.client.callTool({
+				name: "create_knowledge_base",
+				arguments: {
+					name: "Nope",
+					chunkingServiceId: "11111111-2222-4333-8444-555555555555",
+					embeddingServiceId: "11111111-2222-4333-8444-666666666666",
+				},
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+			expect(createResult.isError).toBe(true);
+			const createPayload = JSON.parse(
+				createResult.content[0]?.text ?? "{}",
+			) as { outcome: string; code: string; required: string };
+			expect(createPayload.outcome).toBe("denied");
+			expect(createPayload.code).toBe("scope_required");
+			expect(createPayload.required).toBe("write");
+
+			const deleteResult = (await h.client.callTool({
+				name: "delete_knowledge_base",
+				arguments: {
+					knowledgeBaseId: "11111111-2222-4333-8444-777777777777",
+				},
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+			expect(deleteResult.isError).toBe(true);
+			const deletePayload = JSON.parse(
+				deleteResult.content[0]?.text ?? "{}",
+			) as { outcome: string; code: string; required: string };
+			expect(deletePayload.outcome).toBe("denied");
+			expect(deletePayload.code).toBe("scope_required");
+			expect(deletePayload.required).toBe("write");
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("run_agent is co-gated with chat_send on exposeChat", async () => {
+		const off = await makeMcpHarness();
+		try {
+			const names = (await off.client.listTools()).tools.map((t) => t.name);
+			expect(names).not.toContain("run_agent");
+		} finally {
+			await off.cleanup();
+		}
+		const on = await makeMcpHarness({ exposeChat: true });
+		try {
+			const names = (await on.client.listTools()).tools.map((t) => t.name);
+			expect(names).toContain("run_agent");
+		} finally {
+			await on.cleanup();
+		}
+	});
+
+	test("run_agent creates a new conversation and returns the structured outcome", async () => {
+		const h = await makeMcpHarness({ exposeChat: true });
+		try {
+			const agent = await h.store.createAgent(h.workspaceId, {
+				name: "Helper",
+			});
+			const result = await h.client.callTool({
+				name: "run_agent",
+				arguments: { agentId: agent.agentId, content: "hello" },
+			});
+			const payload = JSON.parse(textContent(result as never)) as {
+				outcome: string;
+				conversationId: string;
+				agentId: string;
+				content: string;
+				finishReason: string;
+			};
+			expect(payload.outcome).toBe("completed");
+			expect(payload.agentId).toBe(agent.agentId);
+			expect(payload.content).toBe("echo: hello");
+			expect(payload.finishReason).toBe("stop");
+			expect(payload.conversationId).toMatch(/[0-9a-f-]{36}/);
+
+			// The conversation now exists and carries the turn pair.
+			const chats = await h.store.listConversations(
+				h.workspaceId,
+				agent.agentId,
+			);
+			expect(chats).toHaveLength(1);
+			const messages = await h.store.listChatMessages(
+				h.workspaceId,
+				payload.conversationId,
+			);
+			expect(messages.map((m) => `${m.role}:${m.content}`)).toEqual([
+				"user:hello",
+				"agent:echo: hello",
+			]);
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("run_agent resumes an existing conversation when conversationId is supplied", async () => {
+		const h = await makeMcpHarness({ exposeChat: true });
+		try {
+			const agent = await h.store.createAgent(h.workspaceId, {
+				name: "Helper",
+			});
+			const chat = await h.store.createConversation(
+				h.workspaceId,
+				agent.agentId,
+				{ title: "existing" },
+			);
+
+			const result = await h.client.callTool({
+				name: "run_agent",
+				arguments: {
+					agentId: agent.agentId,
+					conversationId: chat.conversationId,
+					content: "follow up",
+				},
+			});
+			const payload = JSON.parse(textContent(result as never)) as {
+				conversationId: string;
+				outcome: string;
+			};
+			expect(payload.conversationId).toBe(chat.conversationId);
+			expect(payload.outcome).toBe("completed");
+
+			const chats = await h.store.listConversations(
+				h.workspaceId,
+				agent.agentId,
+			);
+			// Should reuse, not create a second conversation.
+			expect(chats).toHaveLength(1);
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("run_agent reports agent_not_found for an unknown agent id", async () => {
+		const h = await makeMcpHarness({ exposeChat: true });
+		try {
+			const result = (await h.client.callTool({
+				name: "run_agent",
+				arguments: {
+					agentId: "11111111-2222-4333-8444-555555555555",
+					content: "noop",
+				},
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+			expect(result.isError).toBe(true);
+			const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+				outcome: string;
+			};
+			expect(payload.outcome).toBe("agent_not_found");
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("run_agent reports chat_not_found when conversationId doesn't belong to the agent", async () => {
+		const h = await makeMcpHarness({ exposeChat: true });
+		try {
+			const agent = await h.store.createAgent(h.workspaceId, {
+				name: "Helper",
+			});
+			const result = (await h.client.callTool({
+				name: "run_agent",
+				arguments: {
+					agentId: agent.agentId,
+					conversationId: "11111111-2222-4333-8444-555555555555",
+					content: "noop",
+				},
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+			expect(result.isError).toBe(true);
+			const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+				outcome: string;
+			};
+			expect(payload.outcome).toBe("chat_not_found");
 		} finally {
 			await h.cleanup();
 		}
