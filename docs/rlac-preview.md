@@ -2,9 +2,10 @@
 
 > **Preview feature.** Row-Level Access Control on Documents landed
 > as a prototype in [#237](https://github.com/datastax/ai-workbench/pull/237)
-> and is labeled **Preview** in 0.1.0. The API and audit-log shapes
-> may change before 0.2; do not rely on either staying stable across
-> 0.1.x patches.
+> and is labeled **Preview** in 0.1.0. The policy DSL is intentionally
+> narrow (visibility-list semantics only) and may grow new primitives.
+> The **audit-log shape** is now stable as of 0.2.0 — see
+> [Audit log → Shape](#shape--stable-as-of-020) below.
 
 ## What it does
 
@@ -64,30 +65,69 @@ the table and may change input/output shapes in 0.2.
 ## Audit log
 
 Every policy decision emits an entry the UI surfaces in
-**Workspace settings → Policy audit**. The shape is **not stable** —
-in particular, the `decision` field may grow new variants and the
-timestamps may shift granularity. Treat this as observational, not as
-something to wire alerts against, until it leaves Preview.
+**Workspace settings → Policy audit**.
 
-## Known limitations in 0.1.0
+### Shape — stable as of 0.2.0
+
+```
+{
+  workspaceId:        string,        // UUID
+  auditDay:           "YYYY-MM-DD",
+  ts:                 ISO-8601 UTC,  // "…T…Z" with ms precision
+  decisionId:         string,        // UUID
+  principalId:        string | null, // null when no principal applied
+  knowledgeBaseId:    string,        // UUID
+  resourceId:         string,        // documentId today
+  action:             "list" | "get" | "search" | "ingest" |
+                      "update" | "delete",
+  decision:           "allow" | "deny" | "filter",
+  reason:             string,
+  compiledFilterJson: string | null,
+}
+```
+
+The field set, JSON types, and the `action` / `decision` enum
+membership are **stable across minor releases starting with 0.2.0**.
+SIEM ingestion and operator alerting can rely on these without
+parsing tool-specific reason strings.
+
+**Evolution policy.** Additive changes — new optional fields, new
+enum members — are non-breaking and may land in any minor release.
+Renaming or removing a field requires a minor-version deprecation
+window: the change must be announced under **Changed** in
+[`CHANGELOG.md`](../CHANGELOG.md) one minor release before it lands.
+
+For breaking evolutions, the runtime keeps a
+[`PolicyAuditRecordV1`](../runtimes/typescript/src/control-plane/types.ts)
+alias for the current shape; a future `V2` lands alongside V1 so
+integrators can migrate on their own cadence.
+
+The lock is enforced by
+[`audit-shape-lock.test.ts`](../runtimes/typescript/tests/policy/audit-shape-lock.test.ts)
+— if you add a field to `PolicyAuditRecord`, update the lock test
+and the table above in the same PR.
+
+## Known limitations
 
 - Only applies to Documents. Agents, conversations, and other
   resources are not row-filtered.
 - The visibility list is the only policy primitive shipping. Rich
   predicates (group hierarchies, deny lists, time-bounded visibility)
-  are post-0.1.0.
-- Audit log shape may change without a deprecation window during
-  Preview.
-- No `aiw` CLI helpers for principals or policies in 0.1.0.
+  are post-0.2.
+- No `aiw` CLI helpers for principals or policies yet.
 
 ## Roadmap signals
 
-We're tracking these for the next minor releases (0.2.x / 0.3.x):
+We're tracking these for the next minor releases (0.3.x and beyond):
 
 - RLAC on conversations + agents.
-- API stability commitment + a deprecation window for the audit log
-  shape.
+- Rich predicates (group hierarchies, deny lists, time-bounded
+  visibility) layered on top of the current visibility-list primitive.
 - `aiw principal {list,create,delete}` and `aiw policy preview`
   commands.
 - Test fixtures + scenarios pinned in `conformance/scenarios.json` so
   Python/Java runtimes can implement the same predicate semantics.
+
+The audit-log shape itself has stabilized as of 0.2 — see the
+**Shape — stable as of 0.2.0** subsection above for the contract and
+the evolution policy.

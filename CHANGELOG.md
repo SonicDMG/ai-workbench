@@ -9,6 +9,24 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+### Changed
+
+- **RLAC audit-log shape is now stable.** The `PolicyAuditRecord`
+  field set, JSON types, and the `PolicyAction` / `PolicyDecision`
+  enum membership are committed across minor releases starting with
+  0.2.0. Additive changes are non-breaking; renames/removals require
+  a minor-version deprecation window announced under **Changed**.
+  A new `PolicyAuditRecordV1` type alias re-exports the current
+  shape so future breaking evolutions can land as `V2` alongside V1
+  without breaking integrators. Locked by
+  [`audit-shape-lock.test.ts`](./runtimes/typescript/tests/policy/audit-shape-lock.test.ts).
+  ([`docs/rlac-preview.md`](./docs/rlac-preview.md#audit-log),
+  [`runtimes/typescript/src/control-plane/types.ts`](./runtimes/typescript/src/control-plane/types.ts))
+- **RLAC scope clarification.** The Preview label now covers only
+  the policy DSL (visibility-list semantics only). The audit log is
+  no longer marked unstable, and the doc redirects integrators to
+  the new Audit-log shape table for the canonical wire shape.
+
 ### Added
 
 - **"What's new" modal + discoverability tooltips** — the header

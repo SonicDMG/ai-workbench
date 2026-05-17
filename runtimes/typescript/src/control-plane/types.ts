@@ -469,6 +469,20 @@ export type PolicyAction =
  * RLAC: a single policy-decision audit record. Persisted append-only to
  * `wb_policy_audit_by_workspace`. The route layer emits one per call
  * via the policy enforcer.
+ *
+ * **Stability (0.2.0+).** The field set, JSON types, and the
+ * {@link PolicyAction} / {@link PolicyDecision} enum membership are
+ * stable across minor releases. Field additions are non-breaking and
+ * permitted in minor releases; removals or renames require a minor-
+ * version deprecation window (announced under **Changed** in
+ * `CHANGELOG.md`). Locked by
+ * `runtimes/typescript/tests/policy/audit-shape-lock.test.ts`.
+ *
+ * **Versioning convention.** Should the shape ever need a breaking
+ * evolution, introduce a sibling `PolicyAuditRecordV2` and keep the
+ * `PolicyAuditRecordV1` alias re-export below in lockstep with the
+ * frozen baseline. Integrators can pin against `V1` for as long as
+ * they need the legacy shape.
  */
 export interface PolicyAuditRecord {
 	readonly workspaceId: string;
@@ -483,6 +497,14 @@ export interface PolicyAuditRecord {
 	readonly reason: string;
 	readonly compiledFilterJson: string | null;
 }
+
+/**
+ * V1 audit-record alias. Re-exported so future breaking evolutions can
+ * land alongside this baseline (a `PolicyAuditRecordV2`) without
+ * silently changing the meaning of `PolicyAuditRecord` for integrators
+ * that pinned the version-suffixed name.
+ */
+export type PolicyAuditRecordV1 = PolicyAuditRecord;
 
 /** Index row in `wb_rag_documents_by_knowledge_base_and_status`. */
 export interface RagDocumentStatusEntry {
