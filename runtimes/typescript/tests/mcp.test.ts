@@ -166,6 +166,8 @@ describe("MCP server tools", () => {
 			const { tools } = await h.client.listTools();
 			const names = tools.map((t) => t.name).sort();
 			expect(names).toEqual([
+				"get_agent",
+				"list_agents",
 				"list_chat_messages",
 				"list_chats",
 				"list_documents",

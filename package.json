@@ -1,7 +1,7 @@
 {
 	"name": "ai-workbench",
-	"version": "0.0.0",
-	"description": "AI Workbench monorepo — polyglot green-box runtimes (TypeScript default) plus shared conformance harness.",
+	"version": "0.1.0",
+	"description": "AI Workbench monorepo — polyglot green-box runtimes (TypeScript default) plus shared conformance harness and aiw-cli.",
 	"private": true,
 	"license": "MIT",
 	"type": "module",
@@ -9,7 +9,7 @@
 		"node": ">=22.0.0"
 	},
 	"scripts": {
-		"setup": "npm ci && npm run install:ts && npm run install:web",
+		"setup": "npm ci && npm run install:ts && npm run install:web && npm run install:cli",
 		"start": "npm run build:web && npm --prefix runtimes/typescript run dev",
 		"lint": "biome check . && npm run lint:guard",
 		"lint:guard": "node scripts/check-api-error-helper.mjs",
@@ -20,17 +20,24 @@
 		"dev:web": "npm --prefix apps/web run dev",
 		"build": "npm --prefix runtimes/typescript run build",
 		"build:web": "npm --prefix apps/web run build",
+		"build:cli": "npm --prefix packages/aiw-cli run build",
 		"test": "npm --prefix runtimes/typescript run test",
 		"test:web": "npm --prefix apps/web test",
-		"typecheck": "npm --prefix runtimes/typescript run typecheck && npm --prefix apps/web run typecheck",
-		"check": "npm run lint && npm run typecheck && npm test && npm run test:web && npm run build",
+		"test:cli": "npm --prefix packages/aiw-cli test",
+		"typecheck": "npm --prefix runtimes/typescript run typecheck && npm --prefix apps/web run typecheck && npm --prefix packages/aiw-cli run typecheck",
+		"check": "npm run lint && npm run typecheck && npm test && npm run test:web && npm run test:cli && npm run build && npm run build:cli",
 		"conformance:mock": "npm --prefix runtimes/typescript run conformance:mock",
 		"conformance:regenerate": "npm --prefix runtimes/typescript run conformance:regenerate",
 		"smoke:astra": "npm --prefix runtimes/typescript run smoke:astra",
+		"changeset": "changeset",
+		"version-packages": "changeset version",
+		"release": "npm run check && changeset publish",
 		"install:ts": "npm --prefix runtimes/typescript ci",
-		"install:web": "npm --prefix apps/web ci"
+		"install:web": "npm --prefix apps/web ci",
+		"install:cli": "npm --prefix packages/aiw-cli ci"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.4.15"
+		"@biomejs/biome": "^2.4.15",
+		"@changesets/cli": "^2.27.10"
 	}
 }

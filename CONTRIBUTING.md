@@ -84,6 +84,50 @@ npm --prefix apps/web run test:e2e
   should have a regression test that fails on `main`.
 - **Don't skip hooks** (`--no-verify` / `--no-gpg-sign`). If a hook
   fails, fix the underlying issue.
+- **Add a changeset** when your PR has user-visible impact (CLI,
+  API, UI, docs that change the contract). See the "Releasing"
+  section below.
+
+## Releasing
+
+Starting with 0.1.0 the repo follows
+[semver](https://semver.org/) and uses
+[Changesets](https://github.com/changesets/changesets) to assemble
+the [`CHANGELOG.md`](./CHANGELOG.md). Branch and tag policy:
+
+- **Trunk-based.** `main` is always releasable. No long-lived
+  release branches.
+- **Tags drive releases.** Pushing a tag matching `v<X>.<Y>.<Z>` to
+  `main` triggers
+  [`.github/workflows/release.yml`](./.github/workflows/release.yml),
+  which builds + publishes the npm package, pushes the Docker image
+  to GHCR, and attaches single-binary CLI builds to the GitHub
+  Release.
+- **One release per minor for backports** — we'll cut
+  `release/0.<minor>` branches only when there are real external
+  users on an older minor. None today.
+
+Per-PR workflow:
+
+```bash
+# Inside your feature branch
+npm run changeset       # interactive — pick affected packages + bump
+# commit the generated .changeset/*.md file along with your PR
+```
+
+Cutting a release:
+
+```bash
+npm run version-packages  # apply pending changesets, bump versions,
+                          # regenerate CHANGELOG.md
+git push                  # land the version bump
+git tag v0.<minor>.<patch>
+git push --tags           # release.yml fires
+```
+
+Pre-`1.0`, **any user-visible change can land in a minor**. We will
+still document breaking changes loudly in the CHANGELOG. After 1.0
+the usual semver guarantees apply.
 
 ## When you change the API contract
 

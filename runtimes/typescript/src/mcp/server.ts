@@ -9,6 +9,8 @@
  * The tools exposed are deliberately a subset of the full HTTP API:
  *
  *   - `list_knowledge_bases`   read-only KB metadata
+ *   - `list_agents`            read-only agent metadata for the workspace
+ *   - `get_agent`              one agent's full configuration
  *   - `list_documents`         paginated documents in a KB
  *   - `search_kb`              vector / hybrid / rerank search
  *   - `list_chats`             agent-scoped conversation metadata
@@ -376,6 +378,88 @@ export function buildMcpServer(
 			}));
 			return {
 				content: [{ type: "text", text: JSON.stringify(summary, null, 2) }],
+			};
+		},
+	);
+
+	server.registerTool(
+		"list_agents",
+		{
+			title: "List agents in this workspace",
+			description:
+				"Enumerate the workspace's agents. Returns each agent's id, name, description, KBs the agent grounds on, and bound LLM service id (or null when the runtime-level chat config is used). Pair with `list_chats` to discover ongoing conversations for an agent and `list_chat_messages` to replay one.",
+			inputSchema: {},
+		},
+		async () => {
+			const rows = await deps.store.listAgents(workspaceId);
+			const summary = rows.map((a) => ({
+				agentId: a.agentId,
+				name: a.name,
+				description: a.description,
+				knowledgeBaseIds: [...a.knowledgeBaseIds],
+				llmServiceId: a.llmServiceId,
+				rerankEnabled: a.rerankEnabled,
+			}));
+			return {
+				content: [{ type: "text", text: JSON.stringify(summary, null, 2) }],
+			};
+		},
+	);
+
+	server.registerTool(
+		"get_agent",
+		{
+			title: "Get a single agent's configuration",
+			description:
+				"Return the full configuration of one agent — system prompt, user prompt, tool ids, KBs, and reranking overrides. Use this when an MCP client needs to render or audit an agent's setup before invoking it via `chat_send`.",
+			inputSchema: {
+				agentId: z.string().uuid(),
+			},
+		},
+		async ({ agentId }) => {
+			const row = await deps.store.getAgent(workspaceId, agentId);
+			if (!row) {
+				return {
+					isError: true,
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(
+								{
+									outcome: "not_found",
+									agentId,
+									message: `No agent ${agentId} in this workspace.`,
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			}
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								agentId: row.agentId,
+								name: row.name,
+								description: row.description,
+								systemPrompt: row.systemPrompt,
+								userPrompt: row.userPrompt,
+								toolIds: [...row.toolIds],
+								knowledgeBaseIds: [...row.knowledgeBaseIds],
+								llmServiceId: row.llmServiceId,
+								rerankEnabled: row.rerankEnabled,
+								rerankingServiceId: row.rerankingServiceId,
+								rerankMaxResults: row.rerankMaxResults,
+							},
+							null,
+							2,
+						),
+					},
+				],
 			};
 		},
 	);

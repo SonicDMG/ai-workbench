@@ -1,5 +1,14 @@
 # AI Workbench — Java runtime
 
+> **Status in 0.1.0: Experimental contrib.** This runtime is a 501
+> scaffold — every `/api/v1/*` route returns HTTP 501. It is not
+> production-ready and is not bundled into the Docker image. The
+> supported runtime for 0.1.0 is
+> [`runtimes/typescript/`](../typescript/README.md). Contributors
+> working on implementations are welcome; see
+> [`CONTRIBUTING.md`](../../CONTRIBUTING.md) for the conformance
+> harness that keeps Python/Java parity testable.
+
 One of N language **green boxes** for AI Workbench. A Spring Boot app
 that exposes the same `/api/v1/*` surface as the TypeScript runtime,
 talking to Astra via

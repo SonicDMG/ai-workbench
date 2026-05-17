@@ -36,6 +36,9 @@ jobs:
       - name: Install web app deps
         run: npm --prefix apps/web ci --no-audit --no-fund
 
+      - name: Install aiw-cli deps
+        run: npm --prefix packages/aiw-cli ci --no-audit --no-fund
+
       - name: Lint (Biome, root)
         run: npm run lint
 
@@ -62,6 +65,14 @@ jobs:
 
       - name: Build (web)
         run: npm --prefix apps/web run build
+
+      - name: Build (aiw-cli)
+        # Build before test so the subprocess smoke spec can exercise
+        # the compiled `dist/cli.js` (it skips itself when absent).
+        run: npm --prefix packages/aiw-cli run build
+
+      - name: Test (aiw-cli, vitest + subprocess smoke)
+        run: npm --prefix packages/aiw-cli test
 
       # The web client's typed API surface
       # (`apps/web/src/lib/api-types.generated.ts`) is generated from

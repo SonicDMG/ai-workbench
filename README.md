@@ -1,10 +1,17 @@
 # AI Workbench
 
+[![Status: Beta · v0.1.0](https://img.shields.io/badge/status-Beta%20%C2%B7%20v0.1.0-f59e0b)](./CHANGELOG.md)
 [![CI](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/ci.yml?branch=main&label=CI)](https://github.com/datastax/ai-workbench/actions/workflows/ci.yml)
 [![Runtimes](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/runtimes.yml?branch=main&label=Runtimes)](https://github.com/datastax/ai-workbench/actions/workflows/runtimes.yml)
 [![Secret scan](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/secret-scan.yml?branch=main&label=Secret%20scan)](https://github.com/datastax/ai-workbench/actions/workflows/secret-scan.yml)
 [![Node 22+](https://img.shields.io/badge/node-%3E=22-blue)](./.nvmrc)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+
+> **0.1.0 is an internal beta.** APIs, schemas, and UI surfaces may
+> change between minor versions until 1.0. See
+> [`CHANGELOG.md`](./CHANGELOG.md) for what's in this release and
+> [`docs/whats-new-0.1.0.md`](./docs/whats-new-0.1.0.md) for the
+> narrative tour.
 
 AI Workbench is a self-hosted app for building and operating
 retrieval-backed AI applications on DataStax Astra. It gives you a
@@ -36,6 +43,8 @@ Data API commands from the browser.
 - npm
 - Optional: an Astra account and the `astra` CLI if you want the app to
   discover your database defaults automatically
+- Optional: install the [`aiw` CLI](./packages/aiw-cli/README.md) for
+  scripting against a running runtime (`npm install -g @ai-workbench/cli`)
 
 ### Start The App
 
@@ -116,15 +125,16 @@ details below are here when you need to understand or extend the system.
 <details>
 <summary>Runtime model</summary>
 
-The TypeScript runtime is the production path today. It serves the UI,
-implements the full `/api/v1/*` contract, and is the runtime bundled
-into the Docker image.
+| Runtime | Status in 0.1.0 | Notes |
+|---|---|---|
+| TypeScript (`runtimes/typescript`) | **Supported** | Production path — serves the UI + full `/api/v1/*` contract; bundled into the Docker image. |
+| Python (`runtimes/python`) | **Experimental contrib** | FastAPI scaffold; all `/api/v1/*` routes return 501 until handlers reach parity. No stability guarantee. |
+| Java (`runtimes/java`) | **Experimental contrib** | Spring Boot scaffold; same 501-stub pattern. No Maven Central release yet. |
 
-Python and Java runtimes live under [`runtimes/`](runtimes/) as preview
-green-box scaffolds. They boot, expose operational endpoints, and return
-HTTP 501 for versioned API routes until their handlers reach parity.
-The shared conformance harness keeps the contract testable across
-language implementations.
+The shared conformance harness under [`conformance/`](conformance/)
+keeps the contract testable across language implementations, so
+contributors can pick up Python / Java work without inventing test
+infrastructure.
 
 </details>
 
@@ -159,12 +169,15 @@ For the full model, see [`docs/architecture.md`](docs/architecture.md).
 ```text
 ai-workbench/
 ├── apps/web/                 # Vite + React UI
+├── packages/
+│   └── aiw-cli/              # @ai-workbench/cli — `aiw` binary
 ├── runtimes/
 │   ├── typescript/           # Default production runtime
-│   ├── python/               # FastAPI preview runtime
-│   └── java/                 # Spring Boot preview runtime
+│   ├── python/               # FastAPI experimental contrib
+│   └── java/                 # Spring Boot experimental contrib
 ├── conformance/              # Cross-runtime contract harness
 ├── docs/                     # Product, architecture, and ops docs
+├── CHANGELOG.md              # Keep-a-Changelog history
 ├── package.json              # Root orchestration scripts
 └── biome.json                # Shared lint/format config
 ```
