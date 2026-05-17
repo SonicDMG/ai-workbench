@@ -35,7 +35,9 @@ test("chat: pick agent, create conversation, land in the composer", async ({
 	// Page chrome — heading + the descriptor paragraph that references
 	// the workspace name. The page H1 is just "Chat"; the workspace
 	// name renders inside the paragraph below it.
-	await expect(page.getByRole("heading", { level: 1, name: "Chat" })).toBeVisible();
+	await expect(
+		page.getByRole("heading", { level: 1, name: "Chat" }),
+	).toBeVisible();
 
 	// Bobby + Maven are auto-seeded by the workspace POST. The agent
 	// picker is a native <select> with accessible name "Agent" — the
@@ -48,7 +50,9 @@ test("chat: pick agent, create conversation, land in the composer", async ({
 	// pair). EmptyConversationPane references the agent by name, so
 	// the next-step button copy is stable.
 	await expect(
-		page.getByText("Pick a conversation from the left, or start a new one with"),
+		page.getByText(
+			"Pick a conversation from the left, or start a new one with",
+		),
 	).toBeVisible();
 
 	// Sidebar empty state pre-conversation.
@@ -60,18 +64,25 @@ test("chat: pick agent, create conversation, land in the composer", async ({
 	// the URL and remounts ConversationThread under the same agent.
 	await page.getByRole("button", { name: /Start a conversation/ }).click();
 
-	await expect(page).toHaveURL(/\?agent=[0-9a-f-]{36}&conversation=[0-9a-f-]{36}/);
+	await expect(page).toHaveURL(
+		/\?agent=[0-9a-f-]{36}&conversation=[0-9a-f-]{36}/,
+	);
 
 	// ConversationThread mounts. We pin three landmarks the thread
 	// owns: the empty-message hint, the composer form, and the Send
 	// button. The composer placeholder includes the active agent name,
 	// which we don't hardcode — `Ask <agent>… (Enter to send)`.
 	await expect(page.getByText(/^No messages yet/)).toBeVisible();
-	await expect(page.getByRole("form", { name: "Send a message" })).toBeVisible();
+	await expect(
+		page.getByRole("form", { name: "Send a message" }),
+	).toBeVisible();
 
 	const composer = page.getByRole("textbox", { name: "Message" });
 	await expect(composer).toBeVisible();
-	await expect(composer).toHaveAttribute("placeholder", /^Ask .+… \(Enter to send\)$/);
+	await expect(composer).toHaveAttribute(
+		"placeholder",
+		/^Ask .+… \(Enter to send\)$/,
+	);
 
 	await expect(page.getByRole("button", { name: /^Send$/ })).toBeVisible();
 	await expect(page.getByRole("button", { name: /^Delete$/ })).toBeVisible();

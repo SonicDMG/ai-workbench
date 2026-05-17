@@ -37,7 +37,9 @@ test("whats-new modal: auto-opens, dismissal persists, header trigger reopens", 
 	// catches both a content-render regression and an accidental
 	// content-module export break.
 	for (const item of WHATS_NEW_HIGHLIGHTS) {
-		await expect(dialog.getByRole("heading", { name: item.title })).toBeVisible();
+		await expect(
+			dialog.getByRole("heading", { name: item.title }),
+		).toBeVisible();
 	}
 
 	// Dismissing via the brand "Got it" button persists
@@ -67,7 +69,9 @@ test("whats-new modal: auto-opens, dismissal persists, header trigger reopens", 
 	// the modal subscribes to.
 	await trigger.click();
 	await expect(dialog).toBeVisible();
+	const firstHighlight = WHATS_NEW_HIGHLIGHTS[0];
+	if (!firstHighlight) throw new Error("WHATS_NEW_HIGHLIGHTS is empty");
 	await expect(
-		dialog.getByRole("heading", { name: WHATS_NEW_HIGHLIGHTS[0]!.title }),
+		dialog.getByRole("heading", { name: firstHighlight.title }),
 	).toBeVisible();
 });
