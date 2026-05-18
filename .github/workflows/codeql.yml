@@ -49,7 +49,7 @@ jobs:
           gradle-version: '8.14.3'
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@458d36d7d4f47d0dd16ca424c1d3cda0060f1360 # v3.35.5
+        uses: github/codeql-action/init@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -58,9 +58,12 @@ jobs:
       - name: Manual build (Java)
         if: matrix.build-mode == 'manual'
         working-directory: runtimes/java
-        run: gradle build -x test --no-daemon
+        # `clean` + `--no-build-cache` force javac to actually run so the CodeQL
+        # Java extractor sees source compilations. Without these, a cache hit on
+        # :compileJava produces an empty database and analysis fails.
+        run: gradle clean build -x test --no-build-cache --no-daemon
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@458d36d7d4f47d0dd16ca424c1d3cda0060f1360 # v3.35.5
+        uses: github/codeql-action/analyze@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         with:
           category: "/language:${{ matrix.language }}"
