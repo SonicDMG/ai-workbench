@@ -101,8 +101,10 @@ runtime beyond a trusted loopback or private admin network.
   / API gateway. See [`docs/configuration.md`](./configuration.md).
 - **Keep dependency automation on.** CI runs lint/typecheck/test/build,
   coverage, secret scanning, Docker smoke, Playwright, Python/Java
-  scaffold tests, and Dependabot updates. GitHub CodeQL default setup
-  covers code scanning for this repo.
+  scaffold tests, and Dependabot updates. Code scanning runs via
+  [`.github/workflows/codeql.yml`](../.github/workflows/codeql.yml)
+  (CodeQL advanced setup) across the TypeScript, Python, and Java
+  runtimes.
 
 ## Browser posture
 
