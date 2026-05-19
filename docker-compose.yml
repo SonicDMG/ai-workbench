@@ -20,12 +20,10 @@ services:
       # Bundled in the image — pins the control plane to file driver
       # rooted at /var/lib/workbench (mounted below).
       WORKBENCH_CONFIG: /app/examples/workbench.docker.yaml
-    env_file:
+    env_file: .env
       # Optional. `.env` carries ASTRA_DB_* / HUGGINGFACE_API_KEY /
       # other workspace credential refs. Compose v2 honors `required:
       # false` so the stack still boots without a `.env`.
-      - path: .env
-        required: false
     volumes:
       - workbench-data:/var/lib/workbench
     restart: unless-stopped
