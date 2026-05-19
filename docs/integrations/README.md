@@ -25,9 +25,9 @@ All of the recipes assume:
 
 - **A running workspace** in AI Workbench with at least one knowledge base.
   See the [overview](../overview.md) and [quickstart](../../README.md#quickstart).
-- **MCP enabled on the runtime** — set `mcp.enabled: true` in
-  `workbench.yaml` (or pass it via env). The Connect tab warns you up-top
-  if it's still off. See [`mcp.md`](../mcp.md) for the full surface.
+- **MCP enabled on the runtime** — on by default (`mcp.enabled: true`).
+  The Connect tab warns you up-top if it's been disabled via
+  `mcp.enabled: false`. See [`mcp.md`](../mcp.md) for the full surface.
 - **A workspace API key** — issue one from the workspace's API-keys card.
   The Connect UI shows the env var name the snippets reference
   (`WORKBENCH_API_KEY` by default). The plaintext token is returned **once**

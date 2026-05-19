@@ -190,8 +190,9 @@ limits (one-document delete only, no KB CRUD).
 
 - **`ImportError: MCPStreamableHTTPTool`.** `agent-framework` is still
   in preview — pin to a recent release (`pip install -U agent-framework`).
-- **404 from the MCP endpoint.** MCP is off on the runtime. Set
-  `mcp.enabled: true` in `workbench.yaml` and restart.
+- **404 from the MCP endpoint.** MCP is on by default; a 404 means
+  someone set `mcp.enabled: false` in `workbench.yaml`. Remove that
+  line (or flip it to `true`) and restart.
 - **401 on every tool call.** Wrong / revoked bearer token, or the
   workspace id in the path doesn't match the key's workspace.
 - **Agent never calls workbench tools.** Confirm the `instructions`

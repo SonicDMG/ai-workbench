@@ -100,12 +100,13 @@ runtime:
 # Optional — exposes the workspace's read surface as a Model Context
 # Protocol server at /api/v1/workspaces/{w}/mcp so external agents
 # (Claude Code, Cursor, hosted MCP gateways) can use the workspace
-# as a context backend. Off by default — enable explicitly. See
+# as a context backend. **On by default** (shares the same auth gate
+# as the rest of /api/v1/*); set `enabled: false` to disable. See
 # docs/mcp.md.
 #
 # mcp:
-#   enabled: true
+#   enabled: false        # uncomment to turn the MCP route off
 #   # Also expose `chat_send`, which appends a turn to an agent-owned
 #   # conversation through the runtime's global chat service.
 #   # Requires the `chat:` block above.
-#   exposeChat: false
+#   exposeChat: true

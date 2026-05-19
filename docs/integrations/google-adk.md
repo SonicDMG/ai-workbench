@@ -156,8 +156,9 @@ limits (one-document delete only, no KB CRUD).
 
 - **`ImportError: StreamableHTTPConnectionParams`.** `google-adk` < 1.0;
   upgrade.
-- **404 from the MCP endpoint.** MCP is off on the runtime. Set
-  `mcp.enabled: true` in `workbench.yaml` and restart.
+- **404 from the MCP endpoint.** MCP is on by default; a 404 means
+  someone set `mcp.enabled: false` in `workbench.yaml`. Remove that
+  line (or flip it to `true`) and restart.
 - **401 on every tool call.** Wrong / revoked bearer token, or the
   workspace id in the path doesn't match the key's workspace.
 - **`adk web` hangs on tool call.** Streaming behind a buffering proxy.

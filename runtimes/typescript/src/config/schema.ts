@@ -406,11 +406,18 @@ const ChatSchema = z.object({
  * (Claude / Cursor / Continue / hosted gateways) can connect over
  * Streamable HTTP and use the workspace as a context backend.
  *
- * Default off so existing deployments don't accidentally expand
- * their attack surface. Enable explicitly via `mcp.enabled: true`.
+ * Default ON: the MCP route shares the `/api/v1/*` auth middleware
+ * and the same workspace-scoped authz wrapper as the REST API, so
+ * enabling it does not expand the security boundary — it just
+ * exposes the existing read surface over a second protocol. The
+ * Connect tab and the integration recipes assume MCP is reachable;
+ * shipping it off-by-default forced every fresh install through an
+ * extra config edit before the docs worked. Disable explicitly
+ * (`mcp.enabled: false`) for deployments that want to keep the
+ * surface narrower than the REST API.
  */
 const McpSchema = z.object({
-	enabled: z.boolean().default(false),
+	enabled: z.boolean().default(true),
 	/**
 	 * Surface the chat tool (`chat_send`) which appends a turn to an
 	 * agent-owned conversation and returns the assistant reply.
@@ -455,7 +462,7 @@ export const ConfigSchema = z
 		auth: AuthSchema,
 		seedWorkspaces: z.array(SeedWorkspaceSchema).default([]),
 		chat: ChatSchema.optional(),
-		mcp: McpSchema.default({ enabled: false, exposeChat: false }),
+		mcp: McpSchema.default({ enabled: true, exposeChat: false }),
 	})
 	.superRefine((cfg, ctx) => {
 		if (cfg.runtime.environment === "production") {

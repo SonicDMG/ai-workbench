@@ -11,6 +11,19 @@ release — they will be called out under **Changed** below.
 
 ### Changed
 
+- **MCP façade is on by default.** `mcp.enabled` now defaults to
+  `true` so the Connect tab recipes (LangGraph, Google ADK, CrewAI,
+  Microsoft Agent Framework, watsonx Path A) work against a fresh
+  install without an extra config edit. The route still sits behind
+  the standard `/api/v1/*` auth middleware and the workspace-scoped
+  authz wrapper, so the security boundary is unchanged — disabling
+  the route never broadened or narrowed what the auth gate allows.
+  Operators who want a narrower surface than the REST API can set
+  `mcp.enabled: false` explicitly. `mcp.exposeChat` still defaults
+  to `false` so MCP clients don't accidentally rack up inference
+  cost. ([`runtimes/typescript/src/config/schema.ts`](./runtimes/typescript/src/config/schema.ts),
+  [`docs/mcp.md`](./docs/mcp.md),
+  [`docs/configuration.md`](./docs/configuration.md))
 - **RLAC audit-log shape is now stable.** The `PolicyAuditRecord`
   field set, JSON types, and the `PolicyAction` / `PolicyDecision`
   enum membership are committed across minor releases starting with

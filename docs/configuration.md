@@ -400,9 +400,11 @@ documents.
 ## `mcp` *(optional)*
 
 Toggles the Model Context Protocol façade at
-`/api/v1/workspaces/{w}/mcp`. Off by default — when disabled the
-route returns `404` so the surface isn't probeable. See
-[`mcp.md`](mcp.md) for the full feature walkthrough.
+`/api/v1/workspaces/{w}/mcp`. **On by default** — it sits behind the
+same auth middleware as the REST API, so it does not widen the
+security boundary. Set `enabled: false` to take the route down (it
+will then return `404`). See [`mcp.md`](mcp.md) for the full
+feature walkthrough.
 
 ```yaml
 mcp:
@@ -412,7 +414,7 @@ mcp:
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
-| `enabled` | bool | `false` | When false, MCP is not exposed at all. |
+| `enabled` | bool | `true` | When false, MCP is not exposed at all. |
 | `exposeChat` | bool | `false` | Adds the `chat_send` MCP tool. Requires the `chat:` block; silently skipped when chat is unset. |
 
 ## `auth`

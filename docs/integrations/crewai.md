@@ -135,8 +135,9 @@ The model will pick `ingest_text` based on the instruction. See
 
 - **`MCPServerAdapter` raises on `transport: "streamable-http"`.**
   `crewai-tools` < 0.34 only supports stdio. Upgrade.
-- **404 from the MCP endpoint.** MCP is off on the runtime. Set
-  `mcp.enabled: true` in `workbench.yaml` and restart.
+- **404 from the MCP endpoint.** MCP is on by default; a 404 means
+  someone set `mcp.enabled: false` in `workbench.yaml`. Remove that
+  line (or flip it to `true`) and restart.
 - **401 on every tool call.** Wrong / revoked bearer token, or the
   workspace id in the path doesn't match the key's workspace.
 - **The crew hangs after `kickoff()`.** Streaming responses behind a

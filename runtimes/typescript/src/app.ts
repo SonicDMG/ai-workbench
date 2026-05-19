@@ -456,7 +456,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			opts.store,
 			opts.readiness,
 			opts.astraCli ?? null,
-			opts.mcpConfig ?? null,
+			opts.mcpConfig ?? { enabled: true, exposeChat: false },
 			opts.astraCliInventoryFn,
 			ingestSemaphore,
 			metrics,
@@ -493,7 +493,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		ingestSemaphore,
 		chatService: opts.chatService ?? null,
 		chatConfig: opts.chatConfig ?? null,
-		mcpConfig: opts.mcpConfig ?? { enabled: false, exposeChat: false },
+		mcpConfig: opts.mcpConfig ?? { enabled: true, exposeChat: false },
 		replicaId,
 		extractors,
 	};

@@ -290,12 +290,14 @@ describe("operational routes", () => {
 		expect(body).toEqual({ available: false, reason: "binary-not-found" });
 	});
 
-	test("GET /features defaults mcp.enabled to false (and baseUrl null) when no mcpConfig is passed", async () => {
+	test("GET /features defaults mcp.enabled to true when no mcpConfig is passed", async () => {
 		const { app } = makeApp();
-		const res = await app.request("/features");
+		const res = await app.request("http://runtime.local:8080/features");
 		expect(res.status).toBe(200);
 		const body = await json(res);
-		expect(body).toEqual({ mcp: { enabled: false, baseUrl: null } });
+		expect(body).toEqual({
+			mcp: { enabled: true, baseUrl: "http://runtime.local:8080" },
+		});
 	});
 
 	test("GET /features reflects mcpConfig.enabled and derives baseUrl from the inbound URL", async () => {

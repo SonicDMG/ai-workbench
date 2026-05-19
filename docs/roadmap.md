@@ -377,7 +377,7 @@ walkthrough.
 - **Auth.** Reuses the shared workspace-route authz wrapper, so a
   scoped workspace API key for workspace A cannot call MCP tools on
   workspace B.
-- **Off by default.** `mcp.enabled: true` opts in.
+- **On by default.** `mcp.enabled: false` opts out.
 
 Tools deliberately don't include write operations
 (`ingest`, KB CRUD, workspace CRUD) yet — see "Next steps" for

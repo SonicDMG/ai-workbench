@@ -1280,9 +1280,9 @@ as `POST /agents`. Audit event `agent.create` carries the
 
 Optional [Model Context Protocol](https://modelcontextprotocol.io)
 façade. Speaks Streamable HTTP (the modern MCP transport) with
-JSON-RPC payloads. Off by default; enable via
-`mcp.enabled: true` in `workbench.yaml`. See [`mcp.md`](mcp.md) for
-the full walkthrough.
+JSON-RPC payloads. On by default (`mcp.enabled: true`); set
+`mcp.enabled: false` in `workbench.yaml` to take the route down.
+See [`mcp.md`](mcp.md) for the full walkthrough.
 
 | Method | Status | Body |
 |---|---|---|

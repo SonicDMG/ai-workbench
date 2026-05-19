@@ -8,24 +8,25 @@ workspace's read surface (KB search, documents, chats) as MCP
 tools and resources; it never sees the raw HTTP API or has to
 implement client code beyond the standard MCP SDK.
 
-The façade is **off by default**. Enable explicitly via the
-`mcp:` block in `workbench.yaml` to avoid surprising operators
-who weren't planning to expand their attack surface.
+The façade is **on by default**. It shares the `/api/v1/*` auth
+middleware and the workspace-scoped authz wrapper, so enabling it
+does not widen the security boundary — it just exposes the existing
+read surface over a second protocol. Disable explicitly with
+`mcp.enabled: false` if you want a narrower surface than the REST API.
 
 ## Quick start
 
-1. Add to `workbench.yaml`:
+1. Make sure `mcp.enabled` is not set to `false` in `workbench.yaml`
+   (the default is `true`). Optionally surface the `chat_send` tool:
    ```yaml
    mcp:
-     enabled: true
      # Optional: also expose `chat_send`, which routes a message
      # through the runtime's global chat service. Inherits the
      # `chat:` block; the tool is silently skipped when chat is
      # unconfigured.
-     exposeChat: false
+     exposeChat: true
    ```
-2. Restart the runtime.
-3. Point an MCP client at
+2. Point an MCP client at
    `http://<your-runtime>/api/v1/workspaces/{workspaceId}/mcp`.
 
 The endpoint speaks
@@ -37,13 +38,13 @@ session id, no per-client state survives between requests.
 
 ```yaml
 mcp:
-  enabled: true | false      # default: false
+  enabled: true | false      # default: true
   exposeChat: true | false   # default: false; ignored when chat is unset
 ```
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `enabled` | `false` | When false the MCP route returns `404 not_found` so the surface isn't probeable. |
+| `enabled` | `true` | When false the MCP route returns `404 not_found` so the surface isn't probeable. |
 | `exposeChat` | `false` | Adds the `chat_send` tool. Requires the `chat:` block; without it the tool is silently skipped. |
 
 ## Auth
@@ -214,7 +215,7 @@ allows plain HTTP local addresses.
 
 | Symptom | Why | Fix |
 |---|---|---|
-| `404 not_found` from `/.../mcp` | `mcp.enabled: false` (the default). | Set `mcp.enabled: true`. |
+| `404 not_found` from `/.../mcp` | `mcp.enabled: false` was set explicitly (the default is `true`). | Remove `mcp.enabled: false` from `workbench.yaml` (or flip it to `true`). |
 | `404 workspace_not_found` | Path workspace id doesn't exist. | Check the workspace id. |
 | `401` / `403` | Caller lacks access. | Verify the API key scope (workspace match). |
 | `chat_send` tool isn't registered | `exposeChat: false`, OR `chat:` is unset. | Set `exposeChat: true` AND wire the `chat:` block. |

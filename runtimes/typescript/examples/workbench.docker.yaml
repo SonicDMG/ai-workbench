@@ -66,9 +66,11 @@ controlPlane:
 #   maxOutputTokens: 1024
 #   retrievalK: 6
 
-# Optional — exposes the workspace as a Model Context Protocol server
-# at /api/v1/workspaces/{w}/mcp. Off by default. See docs/mcp.md.
+# The workspace is exposed as a Model Context Protocol server at
+# /api/v1/workspaces/{w}/mcp by default — same auth gate as the
+# rest of /api/v1/*. Override the block to turn it off or to surface
+# the chat tool. See docs/mcp.md.
 #
 # mcp:
-#   enabled: true
-#   exposeChat: false
+#   enabled: false       # uncomment to disable the MCP route
+#   exposeChat: true     # uncomment to surface the `chat_send` tool

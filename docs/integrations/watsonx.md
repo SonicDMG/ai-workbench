@@ -14,8 +14,8 @@ that matches your runtime state:
 
 | Path | When | Trade-offs |
 |---|---|---|
-| **A — Register as an MCP server** | `mcp.enabled: true` on the runtime | Cleanest. One config, every read/write tool the workspace exposes shows up in the agent. Updates automatically as we add tools. |
-| **B — Import the REST API as a custom tool** | Any runtime. Doesn't need MCP. | More verbose. One Builder "tool" per operation in `/api/v1/openapi.json`. Useful if you want fine-grained control over which routes the agent can call. |
+| **A — Register as an MCP server** | `mcp.enabled` is `true` (the default) | Cleanest. One config, every read/write tool the workspace exposes shows up in the agent. Updates automatically as we add tools. |
+| **B — Import the REST API as a custom tool** | Any runtime, including when `mcp.enabled: false`. | More verbose. One Builder "tool" per operation in `/api/v1/openapi.json`. Useful if you want fine-grained control over which routes the agent can call. |
 
 You can run **both** against the same workspace — A for retrieval-shaped
 calls the agent makes mid-conversation, B for back-office routes (KB
@@ -138,11 +138,12 @@ in AI Workbench's API-keys card cuts off both surfaces at once.
 
 ## Troubleshooting
 
-- **Builder says "MCP server didn't respond" on Save.** Most likely
-  `mcp.enabled: false` on the runtime — set it true and restart. Also
-  check that Builder can actually reach the URL (no VPN-only access,
-  no Cloudflare quick-tunnel SSE buffering — see
-  [`mcp.md`](../mcp.md#tunnelling-and-reverse-proxy-notes)).
+- **Builder says "MCP server didn't respond" on Save.** MCP is on by
+  default, so this usually means someone explicitly set
+  `mcp.enabled: false` on the runtime — remove that line (or flip it
+  to `true`) and restart. Also check that Builder can actually reach
+  the URL (no VPN-only access, no Cloudflare quick-tunnel SSE
+  buffering — see [`mcp.md`](../mcp.md#tunnelling-and-reverse-proxy-notes)).
 - **Builder lists zero tools after importing OpenAPI.** Confirm the
   Source URL returns JSON in a browser; the Server URL value can't
   carry trailing slashes; the Auth header is in the per-tool form,
