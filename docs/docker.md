@@ -12,7 +12,7 @@ curl -O https://raw.githubusercontent.com/datastax/ai-workbench/main/docker-comp
 docker compose up
 ```
 
-Open [http://localhost:8080](http://localhost:8080). The first
+Open `http://localhost:8080`. The first
 `compose up` pulls
 `ghcr.io/datastax/ai-workbench:latest` (multi-arch — amd64 and
 arm64). Subsequent boots are near-instant.
