@@ -87,4 +87,10 @@ ENV APP_VERSION=${APP_VERSION} \
 EXPOSE 8080
 USER node
 
+# `wget` ships in node:22-alpine. The runtime's /healthz returns 200
+# once the HTTP server is listening; /readyz also gates on config
+# load, but the simpler liveness signal is what `docker ps` reports.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
+  CMD wget -qO- http://localhost:8080/healthz || exit 1
+
 CMD ["node", "dist/root.js"]

@@ -37,7 +37,33 @@ Data API commands from the browser.
 
 ## Run Locally
 
-### Prerequisites
+### Run with Docker (fastest)
+
+The shortest path to a running AI Workbench. Requires Docker (Docker
+Desktop on macOS / Windows, Docker Engine on Linux) — no Node install
+needed.
+
+```bash
+curl -O https://raw.githubusercontent.com/datastax/ai-workbench/main/docker-compose.yml
+docker compose up
+```
+
+Open [http://localhost:8080](http://localhost:8080). Data persists in
+a named Docker volume across `docker compose down` / `up` cycles;
+reset with `docker compose down -v`.
+
+To connect to Astra DB or enable HuggingFace chat, drop a `.env` file
+next to `docker-compose.yml` (start from
+[`.env.example`](./.env.example)). The full Docker guide —
+overrides, building from source, backups, troubleshooting — lives in
+[`docs/docker.md`](docs/docker.md).
+
+### Run from source
+
+Use this path if you're contributing to AI Workbench or want the Vite
+dev server with hot reload.
+
+Prerequisites:
 
 - Node.js 22+
 - npm
@@ -45,8 +71,6 @@ Data API commands from the browser.
   discover your database defaults automatically
 - Optional: install the [`aiw` CLI](./packages/aiw-cli/README.md) for
   scripting against a running runtime (`npm install -g @ai-workbench/cli`)
-
-### Start The App
 
 ```bash
 npm run setup

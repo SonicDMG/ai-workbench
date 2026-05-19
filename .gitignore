@@ -24,6 +24,11 @@ runtimes/typescript/workbench.yaml
 # etc.) can't be added by accident.
 .playwright-mcp/
 
+# Per-developer compose overrides — `docker-compose.override.yml` is
+# auto-merged on top of `docker-compose.yml` when present. See
+# `docker-compose.override.yml.example` for the template.
+docker-compose.override.yml
+
 # Local-only Claude Code settings (per-developer)
 .claude/settings.local.json
 .claude/launch.json

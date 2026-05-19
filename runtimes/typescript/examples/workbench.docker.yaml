@@ -1,0 +1,74 @@
+# Container default config used by the published `docker-compose.yml`
+# at the repo root. Pins the control plane to the file driver rooted
+# at `/var/lib/workbench`, which compose mounts as a named volume so
+# state survives `docker compose down` / `up` cycles. Reset with
+# `docker compose down -v`.
+#
+# Why not auto-detect like `examples/workbench.yaml`?
+#   The auto-detect file driver writes to `./.workbench-data/` (CWD-
+#   relative), which inside the container is `/app/.workbench-data` —
+#   the image's writable layer, not a mounted volume. Pinning `root`
+#   here makes persistence explicit and survivable.
+#
+# Override paths:
+#   - Astra control plane: copy this file, set `controlPlane.driver:
+#     astra` (see examples/workbench.production.yaml), point
+#     WORKBENCH_CONFIG at the copy via docker-compose.override.yml.
+#   - Different on-disk layout: bind-mount your own yaml and set
+#     WORKBENCH_CONFIG accordingly.
+#
+# See docs/docker.md and docs/configuration.md.
+
+version: 1
+
+runtime:
+  port: 8080
+  logLevel: info
+
+controlPlane:
+  driver: file
+  root: /var/lib/workbench
+
+# Workspace credentials are still resolved from process env at use
+# time. To create an Astra-backed workspace through the UI / API,
+# drop ASTRA_DB_API_ENDPOINT and ASTRA_DB_APPLICATION_TOKEN into
+# `.env` next to docker-compose.yml — no yaml edit needed.
+
+# Optional — auth enforcement. Default is `disabled` + `allow`, which
+# matches pre-auth behavior (everything anonymous, routes don't
+# enforce). Uncomment ONE stanza to turn enforcement on. See
+# docs/auth.md for the full matrix.
+#
+# Workspace-scoped API keys (Phase 2):
+# auth:
+#   mode: apiKey
+#   anonymousPolicy: reject
+#   # bootstrapTokenRef: env:WB_BOOTSTRAP_TOKEN  # rotate after setup
+#
+# OIDC bearer tokens (Phase 3) — JWT signatures verified against the
+# issuer's JWKS at request time. Use `mode: any` to accept apiKey AND
+# oidc simultaneously.
+# auth:
+#   mode: oidc
+#   anonymousPolicy: reject
+#   oidc:
+#     issuer: https://login.example.com/realms/workbench
+#     audience: ai-workbench
+
+# Optional — runtime-wide default chat-completion executor. Set
+# HUGGINGFACE_API_KEY in `.env` (https://huggingface.co/settings/tokens)
+# and uncomment the block below. Without `chat:` AND no LLM service
+# bound on an agent, POST .../messages returns 503 chat_disabled.
+#
+# chat:
+#   tokenRef: env:HUGGINGFACE_API_KEY
+#   model: Qwen/Qwen2.5-7B-Instruct
+#   maxOutputTokens: 1024
+#   retrievalK: 6
+
+# Optional — exposes the workspace as a Model Context Protocol server
+# at /api/v1/workspaces/{w}/mcp. Off by default. See docs/mcp.md.
+#
+# mcp:
+#   enabled: true
+#   exposeChat: false

@@ -1,0 +1,35 @@
+# Copy to `docker-compose.override.yml` (gitignored) and uncomment
+# the section you need. Compose merges this on top of the base
+# `docker-compose.yml` automatically when both files are present.
+#
+# See docs/docker.md for the full guide.
+
+services:
+  workbench:
+    # Placeholder so this file parses as a valid no-op override even
+    # if every section below is left commented out. Safe to delete
+    # once you uncomment at least one real field below.
+    environment: {}
+
+    # --- Build from source instead of pulling from GHCR ---
+    # Useful for contributors testing local changes. First-run takes
+    # a few minutes (multi-stage Node build); subsequent rebuilds use
+    # layer cache.
+    #
+    # build:
+    #   context: .
+    #   dockerfile: runtimes/typescript/Dockerfile
+
+    # --- Bind-mount a custom workbench.yaml ---
+    # Use this to point the control plane at Astra, enable auth, or
+    # tweak runtime knobs not exposed via env vars. See
+    # docs/configuration.md for the schema.
+    #
+    # environment:
+    #   WORKBENCH_CONFIG: /etc/workbench/workbench.yaml
+    # volumes:
+    #   - ./my-workbench.yaml:/etc/workbench/workbench.yaml:ro
+
+    # --- Bump log verbosity ---
+    # environment:
+    #   LOG_LEVEL: debug
