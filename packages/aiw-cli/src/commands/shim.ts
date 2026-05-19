@@ -17,9 +17,9 @@
  * juggling but brittle across Homebrew upgrades, so we warn.
  */
 import {
-	constants as fsConstants,
 	accessSync,
 	existsSync,
+	constants as fsConstants,
 	lstatSync,
 	mkdirSync,
 	readlinkSync,
@@ -39,9 +39,7 @@ function resolveShimPath(): string {
 	// resolve the same two-up walk to scripts/astra-shim.sh. Kept as a
 	// list for symmetry with the layered-layout convention used
 	// elsewhere in this package.
-	const candidates = [
-		resolve(here, "..", "..", "scripts", "astra-shim.sh"),
-	];
+	const candidates = [resolve(here, "..", "..", "scripts", "astra-shim.sh")];
 	for (const p of candidates) {
 		if (existsSync(p)) return p;
 	}
@@ -177,7 +175,14 @@ function planInstall(opts: {
 	}
 
 	const pathAdvice = adviseAboutPath(dirname(target), realAstra);
-	return { shimPath: opts.shimPath, target, mode, backup, realAstra, pathAdvice };
+	return {
+		shimPath: opts.shimPath,
+		target,
+		mode,
+		backup,
+		realAstra,
+		pathAdvice,
+	};
 }
 
 function applyPlan(plan: InstallPlan): void {
