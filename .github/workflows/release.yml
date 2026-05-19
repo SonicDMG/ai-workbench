@@ -141,6 +141,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
+          # Skip the `*.dockerbuild` artifact auto-uploaded by
+          # docker/build-push-action; we only want the CLI binaries
+          # from build-cli-binaries. Including the dockerbuild blob
+          # also makes the download step flaky (it sometimes fails
+          # the v4 retry budget) and would attach a build-internal
+          # archive to the release.
+          pattern: aiw-*
           path: artifacts
       - name: Extract release notes from CHANGELOG.md
         id: notes
