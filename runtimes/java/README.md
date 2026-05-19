@@ -25,6 +25,12 @@ UI at it — no changes needed on the UI side.
 Swagger UI. Every `/api/v1/*` route currently throws
 `NotImplementedApiError` → HTTP 501 with the canonical error envelope.
 
+The `astra-db-java` SDK is on the classpath and
+[`AstraClientConfiguration`](./src/main/java/com/datastax/aiworkbench/config/AstraClientConfiguration.java)
+produces `DataAPIClient` + `Database` beans whenever
+`ASTRA_DB_API_ENDPOINT` and `ASTRA_DB_APPLICATION_TOKEN` are set —
+ready to `@Autowired` into controllers as they're implemented.
+
 ## Prerequisites
 
 - **JDK 21** (LTS). Check with `java -version`.
@@ -146,7 +152,7 @@ same Astra responses.
 
 ```
 runtimes/java/
-├── build.gradle.kts                                           ← Spring Boot + astra-db-java (pending)
+├── build.gradle.kts                                           ← Spring Boot + astra-db-java
 ├── settings.gradle.kts
 ├── gradle.properties
 ├── README.md                                                  ← you are here
@@ -154,6 +160,9 @@ runtimes/java/
 │   ├── main/
 │   │   ├── java/com/datastax/aiworkbench/
 │   │   │   ├── WorkbenchApplication.java                      ← Spring Boot entry
+│   │   │   ├── config/
+│   │   │   │   ├── AstraProperties.java                       ← @ConfigurationProperties("astra")
+│   │   │   │   └── AstraClientConfiguration.java              ← DataAPIClient + Database beans (conditional)
 │   │   │   ├── error/
 │   │   │   │   ├── ApiError.java                              ← base + subclasses
 │   │   │   │   ├── ErrorEnvelope.java                         ← response shape

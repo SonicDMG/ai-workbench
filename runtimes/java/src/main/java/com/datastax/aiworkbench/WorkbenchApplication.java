@@ -1,7 +1,9 @@
 package com.datastax.aiworkbench;
 
+import com.datastax.aiworkbench.config.AstraProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 /**
  * AI Workbench — Java runtime.
@@ -12,6 +14,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * at it via {@code BACKEND_URL}.
  */
 @SpringBootApplication
+@EnableConfigurationProperties(AstraProperties.class)
 public class WorkbenchApplication {
 
     public static final String VERSION = "0.0.0";

@@ -25,8 +25,9 @@ dependencies {
     // OpenAPI / Swagger UI — served at /docs.
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3")
 
-    // Pin once the runtime actually calls Astra:
-    // implementation("com.datastax.astra:astra-db-java:2.+")
+    // Astra Data API client. The DataAPIClient / Database beans are exposed
+    // by AstraClientConfiguration when astra.endpoint + astra.token are set.
+    implementation("com.datastax.astra:astra-db-java:2.+")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
