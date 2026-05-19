@@ -40,6 +40,12 @@ jobs:
     name: Publish @ai-workbench/cli to npm
     needs: test
     runs-on: ubuntu-latest
+    # TODO: re-enable once the `@ai-workbench` npm scope is created
+    # and an `NPM_TOKEN` secret with publish access is added to the
+    # repo. With `if: false`, this job is skipped without blocking
+    # the downstream `github-release` job (which has been updated to
+    # no longer depend on it).
+    if: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -125,7 +131,11 @@ jobs:
 
   github-release:
     name: Create GitHub Release
-    needs: [publish-npm, build-docker, build-cli-binaries]
+    # `publish-npm` is intentionally absent from `needs` while it's
+    # gated `if: false` — a skipped job otherwise cascades to its
+    # dependents and we'd lose the GitHub Release too. Add it back
+    # the same commit that re-enables publish-npm.
+    needs: [build-docker, build-cli-binaries]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -137,8 +147,12 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           # Print the section between `## [VERSION]` and the next `## [`.
-          awk -v ver="[$VERSION]" '
-            $0 ~ "^## " ver { capture=1; next }
+          # Brackets are quoted inside the awk regex literal so the
+          # version value can be passed as a plain string via -v
+          # (awk -v strips backslashes from non-escape sequences, so
+          # `\[` injected through -v becomes a character class).
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { capture=1; next }
             capture && /^## \[/ { exit }
             capture { print }
           ' CHANGELOG.md > release-notes.md
