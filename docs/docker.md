@@ -199,10 +199,24 @@ docker run --rm -v ai-workbench_workbench-data:/data alpine \
 docker compose logs -f workbench
 ```
 
-**Pull denied / unauthorized.** Right after a first release, the GHCR
-package may still be private. The repo admin needs to mark it public
-under repo Settings → Packages → `ai-workbench` → "Change visibility".
-Until then, authenticate first:
+**Pull denied / unauthorized.** New GHCR packages default to private,
+so right after the first release the image isn't pullable without
+auth. A DataStax org member with `admin:packages` rights flips it with
+the bundled helper:
+
+```bash
+# One-time per gh login:
+gh auth refresh -s admin:packages
+
+# After the first release lands:
+npm run release:make-public
+# → "Flipped to public. `docker pull` now works without auth."
+```
+
+The script ([`scripts/ghcr-make-public.mjs`](../scripts/ghcr-make-public.mjs))
+is idempotent — re-running on an already-public package is a no-op —
+and exits with a hint if the package doesn't exist yet (no release
+has shipped). Until the flip happens, authenticate manually:
 
 ```bash
 echo $GITHUB_TOKEN | docker login ghcr.io -u <user> --password-stdin
