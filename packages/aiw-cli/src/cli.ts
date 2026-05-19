@@ -9,12 +9,14 @@
 import { defineCommand, runMain } from "citty";
 import { agentCommand } from "./commands/agent.js";
 import { chatCommand } from "./commands/chat.js";
+import { dbCommand } from "./commands/db.js";
 import { docCommand } from "./commands/doc.js";
 import { jobCommand } from "./commands/job.js";
 import { kbCommand } from "./commands/kb.js";
 import { loginCommand } from "./commands/login.js";
 import { logoutCommand } from "./commands/logout.js";
 import { searchCommand } from "./commands/search.js";
+import { shimCommand } from "./commands/shim.js";
 import { whoamiCommand } from "./commands/whoami.js";
 import { workspaceCommand } from "./commands/workspace.js";
 import { HttpError } from "./http.js";
@@ -34,11 +36,13 @@ const main = defineCommand({
 		whoami: whoamiCommand,
 		workspace: workspaceCommand,
 		kb: kbCommand,
+		db: dbCommand,
 		doc: docCommand,
 		search: searchCommand,
 		agent: agentCommand,
 		chat: chatCommand,
 		job: jobCommand,
+		shim: shimCommand,
 	},
 });
 

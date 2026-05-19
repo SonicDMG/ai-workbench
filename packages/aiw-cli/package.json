@@ -10,6 +10,7 @@
 	"main": "./dist/cli.js",
 	"files": [
 		"dist",
+		"scripts/astra-shim.sh",
 		"README.md",
 		"LICENSE"
 	],
