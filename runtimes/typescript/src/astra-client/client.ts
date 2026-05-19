@@ -10,9 +10,11 @@
 import {
 	type CreateTableColumnDefinitions,
 	DataAPIClient,
+	DataAPIHttpError,
 	DataAPIResponseError,
 	type Db,
 } from "@datastax/astra-db-ts";
+import { logger } from "../lib/logger.js";
 import type {
 	AgentRow,
 	ApiKeyLookupRow,
@@ -183,7 +185,23 @@ export interface AstraClientConfig {
 	readonly endpoint: string;
 	readonly token: string;
 	readonly keyspace: string;
+	readonly resume?: AstraResumeOptions;
 }
+
+/**
+ * Backoff knobs for the boot-time "wait for Astra to resume" loop.
+ * Defaults are sized to the typical Astra Serverless resume time
+ * (~10–30s); test code can shrink them so retries don't gate CI.
+ */
+export interface AstraResumeOptions {
+	readonly initialDelayMs?: number;
+	readonly maxDelayMs?: number;
+	readonly totalTimeoutMs?: number;
+}
+
+const DEFAULT_RESUME_INITIAL_DELAY_MS = 1000;
+const DEFAULT_RESUME_MAX_DELAY_MS = 5000;
+const DEFAULT_RESUME_TOTAL_TIMEOUT_MS = 60_000;
 
 /**
  * Open a Data API connection, ensure the four `wb_*` tables exist,
@@ -198,7 +216,7 @@ export async function openAstraClient(
 	const client = new DataAPIClient(config.token);
 	const db = client.db(config.endpoint, { keyspace: config.keyspace });
 
-	await ensureTables(db);
+	await waitForAstraResume(() => ensureTables(db), config.resume);
 
 	return {
 		workspaces: db.table<WorkspaceRow>(WORKSPACES_TABLE),
@@ -358,6 +376,71 @@ async function ensureAddedColumn(
 		if (isAlreadyHasColumnError(err)) return;
 		throw err;
 	}
+}
+
+/**
+ * Wait for Astra DB to finish resuming if a paused Serverless DB is
+ * woken up by the first request. Retries `op` on `HTTP 503 — Resuming
+ * your database` with exponential backoff up to `totalTimeoutMs`.
+ *
+ * Non-resume errors propagate immediately so bad-endpoint or bad-token
+ * failures still crash boot loudly. If the timeout elapses while the
+ * DB is still resuming, the last resume error is rethrown — the
+ * caller (top-level `main`) handles the exit.
+ */
+export async function waitForAstraResume<T>(
+	op: () => Promise<T>,
+	options: AstraResumeOptions | undefined = undefined,
+): Promise<T> {
+	const initialDelayMs =
+		options?.initialDelayMs ?? DEFAULT_RESUME_INITIAL_DELAY_MS;
+	const maxDelayMs = options?.maxDelayMs ?? DEFAULT_RESUME_MAX_DELAY_MS;
+	const totalTimeoutMs =
+		options?.totalTimeoutMs ?? DEFAULT_RESUME_TOTAL_TIMEOUT_MS;
+
+	const startedAt = Date.now();
+	let attempt = 0;
+	let delayMs = initialDelayMs;
+
+	while (true) {
+		try {
+			return await op();
+		} catch (err) {
+			if (!isAstraResumingError(err)) throw err;
+
+			const elapsedMs = Date.now() - startedAt;
+			const remainingMs = totalTimeoutMs - elapsedMs;
+			if (remainingMs <= 0) throw err;
+
+			attempt += 1;
+			const sleepMs = Math.min(delayMs, remainingMs);
+			logger.warn(
+				{ attempt, delayMs: sleepMs, totalElapsedMs: elapsedMs },
+				"Astra DB is resuming; retrying ensureTables",
+			);
+			await sleep(sleepMs);
+			delayMs = Math.min(delayMs * 2, maxDelayMs);
+		}
+	}
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => {
+		setTimeout(resolve, ms);
+	});
+}
+
+/**
+ * Classify the "DB is paused and resuming" 503 from Astra. We match
+ * both the HTTP status AND the body signature so we don't accidentally
+ * retry on unrelated 503s (gateway hiccups, maintenance).
+ */
+export function isAstraResumingError(err: unknown): boolean {
+	if (!(err instanceof DataAPIHttpError) || err.status !== 503) {
+		return false;
+	}
+	const body = err.body ?? "";
+	return body.toLowerCase().includes("resuming your database");
 }
 
 /**
