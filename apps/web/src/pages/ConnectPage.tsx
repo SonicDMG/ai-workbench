@@ -59,7 +59,7 @@ const ALL_KBS_SENTINEL = "__all__";
 export function ConnectPage() {
 	const { workspaceId } = useParams<{ workspaceId: string }>();
 	const [scopedKbId, setScopedKbId] = useState<string>(ALL_KBS_SENTINEL);
-	const [activeTab, setActiveTab] = useState<string>("langgraph");
+	const [activeTab, setActiveTab] = useState<string>("watsonx");
 
 	const ws = useWorkspace(workspaceId);
 	const kbs = useKnowledgeBases(workspaceId);
