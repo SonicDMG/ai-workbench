@@ -125,7 +125,7 @@ export function OnboardingPage() {
 						<BrandMark size={56} />
 						<div>
 							<p className="text-xs font-medium tracking-[0.08em] text-white/70">
-								DataStax, an IBM company
+								IBM
 							</p>
 							<h1 className="mt-2 text-3xl font-semibold tracking-tight">
 								Manage AI-ready data at scale

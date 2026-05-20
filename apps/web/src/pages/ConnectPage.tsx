@@ -107,8 +107,8 @@ export function ConnectPage() {
 						Plug {ws.data.name} into your agent stack
 					</h1>
 					<p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-						Copy-pasteable recipes for LangGraph, CrewAI, Google ADK, Microsoft
-						Agent Framework, and IBM watsonx Agent Builder — powered by this
+						Copy-pasteable recipes for IBM watsonx Agent Builder, LangGraph,
+						CrewAI, Google ADK, and Microsoft Agent Framework — powered by this
 						workspace's MCP endpoint.
 					</p>
 				</div>

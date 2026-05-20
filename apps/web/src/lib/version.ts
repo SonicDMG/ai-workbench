@@ -7,10 +7,4 @@
  * so the value is stable across build environments (CI, local dev,
  * Docker) and visible at code-review time.
  */
-export const APP_VERSION = "0.1.0";
-
-/**
- * The release maturity badge shown next to the product name. Drop to
- * `null` to remove the chip once we're past internal beta.
- */
-export const APP_RELEASE_STAGE: "Beta" | "GA" | null = "Beta";
+export const APP_VERSION = "0.1.1";

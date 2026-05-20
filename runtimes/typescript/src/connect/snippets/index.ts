@@ -21,6 +21,7 @@ import { buildMicrosoftAgentFrameworkSnippet } from "./microsoft-agent-framework
 import { buildWatsonxSnippet } from "./watsonx.js";
 
 const REGISTRY: readonly { id: ConnectTargetId; build: SnippetGenerator }[] = [
+	{ id: "watsonx", build: buildWatsonxSnippet },
 	{ id: "langgraph", build: buildLangGraphSnippet },
 	{ id: "crewai", build: buildCrewAiSnippet },
 	{ id: "google-adk", build: buildGoogleAdkSnippet },
@@ -28,7 +29,6 @@ const REGISTRY: readonly { id: ConnectTargetId; build: SnippetGenerator }[] = [
 		id: "microsoft-agent-framework",
 		build: buildMicrosoftAgentFrameworkSnippet,
 	},
-	{ id: "watsonx", build: buildWatsonxSnippet },
 	{ id: "mcp-raw", build: buildMcpRawSnippet },
 ];
 

@@ -16,7 +16,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
-import { APP_RELEASE_STAGE, APP_VERSION } from "@/lib/version";
+import { APP_VERSION } from "@/lib/version";
 
 export function AppShell({ children }: { children: ReactNode }) {
 	const { pathname } = useLocation();
@@ -38,17 +38,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 						<div className="hidden min-w-0 flex-col leading-none min-[390px]:flex">
 							<span className="flex items-center gap-1.5 truncate whitespace-nowrap text-sm font-semibold tracking-tight text-[#161616] group-hover:text-[#393939] dark:text-slate-100 dark:group-hover:text-white">
 								AI Workbench
-								{APP_RELEASE_STAGE ? (
-									<span
-										className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300"
-										title={`${APP_RELEASE_STAGE} · v${APP_VERSION}`}
-									>
-										{APP_RELEASE_STAGE} · v{APP_VERSION}
-									</span>
-								) : null}
+								<span
+									className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300"
+									title={`v${APP_VERSION}`}
+								>
+									v{APP_VERSION}
+								</span>
 							</span>
 							<span className="mt-0.5 hidden truncate whitespace-nowrap text-[11px] font-medium tracking-[0.02em] text-[#525252] sm:block dark:text-slate-400">
-								DataStax, an IBM company
+								IBM
 							</span>
 						</div>
 					</Link>
@@ -75,7 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 			<footer className="border-t border-[#c6c6c6] bg-white dark:border-slate-800 dark:bg-slate-900">
 				<div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:text-slate-400">
 					<span>
-						AI Workbench · DataStax, an IBM company ·{" "}
+						AI Workbench · IBM ·{" "}
 						<a
 							href="https://www.ibm.com/products/datastax"
 							target="_blank"
