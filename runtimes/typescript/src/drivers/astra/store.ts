@@ -18,11 +18,11 @@
  */
 
 import { DataAPIClient, type Db } from "@datastax/astra-db-ts";
-import { RetryingAstraFetcher } from "../../lib/astra-retrying-fetcher.js";
 import type {
 	VectorStoreRecord,
 	WorkspaceRecord,
 } from "../../control-plane/types.js";
+import { RetryingAstraFetcher } from "../../lib/astra-retrying-fetcher.js";
 import type { SecretResolver } from "../../secrets/provider.js";
 import {
 	type AdoptableCollection,

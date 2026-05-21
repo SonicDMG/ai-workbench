@@ -107,7 +107,9 @@ describe("RetryingAstraFetcher", () => {
 
 	test("only retries once — a second transient failure surfaces the second error", async () => {
 		const first = Object.assign(new Error("GOAWAY 1"), { name: "SocketError" });
-		const second = Object.assign(new Error("GOAWAY 2"), { name: "SocketError" });
+		const second = Object.assign(new Error("GOAWAY 2"), {
+			name: "SocketError",
+		});
 		const stub = vi
 			.fn()
 			.mockRejectedValueOnce(first)
@@ -125,7 +127,10 @@ describe("RetryingAstraFetcher", () => {
 		await fetcher.fetch(
 			makeInfo({
 				method: "DELETE",
-				headers: { authorization: "Bearer xyz", "content-type": "application/json" },
+				headers: {
+					authorization: "Bearer xyz",
+					"content-type": "application/json",
+				},
 				body: '{"delete":true}',
 			}),
 		);

@@ -41,11 +41,7 @@
  *   `info.mkTimeoutError()`.
  */
 
-import {
-	backoffMs,
-	isTransientNetError,
-	sleep,
-} from "./net-retry.js";
+import { backoffMs, isTransientNetError, sleep } from "./net-retry.js";
 
 /**
  * Structural subset of `@datastax/astra-db-ts`'s `FetcherRequestInfo`
