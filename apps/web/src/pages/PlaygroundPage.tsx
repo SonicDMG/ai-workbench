@@ -1309,7 +1309,10 @@ function pyKwargsFromOptions(options: Record<string, unknown>): string {
 }
 
 const JAVA_OPTIONAL_IMPORTS: ReadonlyArray<{ token: RegExp; path: string }> = [
-	{ token: /\bCollection</, path: "com.datastax.astra.client.collections.Collection" },
+	{
+		token: /\bCollection</,
+		path: "com.datastax.astra.client.collections.Collection",
+	},
 	{
 		token: /\bDocument\b/,
 		path: "com.datastax.astra.client.collections.definition.documents.Document",
