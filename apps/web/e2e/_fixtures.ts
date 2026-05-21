@@ -13,9 +13,16 @@
  */
 
 import { test as base, expect } from "@playwright/test";
+// Source the version from the same constant the app reads at build
+// time so the dismissal key stays in lockstep with release bumps.
+// Hardcoding it here is a footgun: the next version bump silently
+// breaks every spec that drives the onboarding chrome (golden-path,
+// agent-templates, ingest, etc.) because the modal opens and its
+// Radix overlay intercepts every click.
+import { APP_VERSION } from "../src/lib/version";
 
 /** Match `WHATS_NEW_VERSION` in `apps/web/src/lib/whats-new-content.ts`. */
-const WHATS_NEW_STORAGE_KEY = "aiw:wn:0.1.0";
+const WHATS_NEW_STORAGE_KEY = `aiw:wn:${APP_VERSION}`;
 
 const test = base.extend({
 	page: async ({ page }, use) => {
