@@ -28,6 +28,8 @@ describe("astra-codegen", () => {
 		expect(code).toContain('"what is RAG?"');
 		expect(code).toContain("limit: 5");
 		expect(code).toContain('keyspace: "default_keyspace"');
+		expect(code).toContain("const client = new DataAPIClient();");
+		expect(code).toContain("token: process.env.ASTRA_DB_APPLICATION_TOKEN!");
 		// No token literals — must be env-resolved.
 		expect(code).not.toContain("AstraCS:");
 	});
@@ -35,7 +37,8 @@ describe("astra-codegen", () => {
 	test("python snippet uses astrapy and the correct kwargs", () => {
 		const code = generateCode("python", sampleSnapshot);
 		expect(code).toContain("from astrapy import DataAPIClient");
-		expect(code).toContain('os.environ["ASTRA_DB_APPLICATION_TOKEN"]');
+		expect(code).toContain("client = DataAPIClient()");
+		expect(code).toContain('token=os.environ["ASTRA_DB_APPLICATION_TOKEN"]');
 		expect(code).toContain('"$vectorize": "what is RAG?"');
 		expect(code).toContain("limit=5");
 		expect(code).toContain('keyspace="default_keyspace"');
@@ -45,6 +48,12 @@ describe("astra-codegen", () => {
 		const code = generateCode("java", sampleSnapshot);
 		expect(code).toContain("com.datastax.astra.client.DataAPIClient");
 		expect(code).toContain("CollectionFindOptions");
+		expect(code).toContain(
+			"DataAPIClient client = new DataAPIClient(new DataAPIClientOptions());",
+		);
+		expect(code).toContain(
+			'new DatabaseOptions(\n    System.getenv("ASTRA_DB_APPLICATION_TOKEN"),',
+		);
 		expect(code).toContain('Sort.vectorize("what is RAG?")');
 		expect(code).toContain(".limit(5)");
 		expect(code).toContain('"default_keyspace"');

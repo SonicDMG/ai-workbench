@@ -662,6 +662,35 @@ function explainFlag(body: Record<string, unknown>): boolean {
 	return false;
 }
 
+function typeScriptDbSetup(endpoint: string, keyspace: string | null): string {
+	const optionLines = ["token: process.env.ASTRA_DB_APPLICATION_TOKEN!,"];
+	if (keyspace) optionLines.push(`keyspace: ${jsString(keyspace)},`);
+	return `const client = new DataAPIClient();
+const db = client.db(${endpoint}, {
+  ${optionLines.join("\n  ")}
+});`;
+}
+
+function pythonDbSetup(endpoint: string, keyspace: string | null): string {
+	const keyspaceLine = keyspace ? `\n    keyspace=${pyString(keyspace)},` : "";
+	return `client = DataAPIClient()
+database = client.get_database(
+    ${endpoint},
+    token=os.environ["ASTRA_DB_APPLICATION_TOKEN"],${keyspaceLine}
+)`;
+}
+
+function javaDbSetup(endpoint: string, keyspace: string | null): string {
+	const keyspaceLine = keyspace
+		? `\ndbOptions.keyspace(${javaString(keyspace)});`
+		: "";
+	return `DataAPIClient client = new DataAPIClient(new DataAPIClientOptions());
+DatabaseOptions dbOptions = new DatabaseOptions(
+    System.getenv("ASTRA_DB_APPLICATION_TOKEN"),
+    new DataAPIClientOptions());${keyspaceLine}
+Database db = client.getDatabase(${endpoint}, dbOptions);`;
+}
+
 function indentLines(value: string, indent: string): string {
 	return value
 		.split("\n")
@@ -676,13 +705,9 @@ function generateTypeScript({
 	targetName,
 }: CodeContext) {
 	const endpoint = endpointForCode(workspace, "typescript");
-	const keyspaceArg = workspace.keyspace
-		? `, { keyspace: ${jsString(workspace.keyspace)} }`
-		: "";
 	const preamble = `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
-const db = client.db(${endpoint}${keyspaceArg});
+${typeScriptDbSetup(endpoint, workspace.keyspace)}
 `;
 
 	const snippet = idiomaticTypeScript(command, targetKind, targetName);
@@ -874,14 +899,10 @@ function generatePython({
 	targetName,
 }: CodeContext) {
 	const endpoint = endpointForCode(workspace, "python");
-	const keyspaceArg = workspace.keyspace
-		? `, keyspace=${pyString(workspace.keyspace)}`
-		: "";
 	const preamble = `import os
 from astrapy import DataAPIClient
 
-client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
-database = client.get_database(${endpoint}${keyspaceArg})
+${pythonDbSetup(endpoint, workspace.keyspace)}
 `;
 
 	const snippet = idiomaticPython(command, targetKind, targetName);
@@ -1073,17 +1094,13 @@ function generateJava({
 	targetName,
 }: CodeContext) {
 	const endpoint = endpointForCode(workspace, "java");
-	const keyspaceArg = workspace.keyspace
-		? `, ${javaString(workspace.keyspace)}`
-		: "";
 
 	const snippet = idiomaticJava(command, targetKind, targetName);
 	if (snippet) {
 		const imports = javaImportsFor(snippet);
 		return `${imports}
 
-DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
-Database db = client.getDatabase(${endpoint}${keyspaceArg});
+${javaDbSetup(endpoint, workspace.keyspace)}
 
 ${snippet}
 `;
@@ -1328,7 +1345,9 @@ const JAVA_OPTIONAL_IMPORTS: ReadonlyArray<{ token: RegExp; path: string }> = [
 function javaImportsFor(snippet: string): string {
 	const lines = [
 		"import com.datastax.astra.client.DataAPIClient;",
+		"import com.datastax.astra.client.core.options.DataAPIClientOptions;",
 		"import com.datastax.astra.client.databases.Database;",
+		"import com.datastax.astra.client.databases.DatabaseOptions;",
 	];
 	for (const { token, path } of JAVA_OPTIONAL_IMPORTS) {
 		if (token.test(snippet)) {

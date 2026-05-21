@@ -169,18 +169,43 @@ function generateDeleteChunk(
 	}
 }
 
+function tsDbSetup(keyspace: string | null): string {
+	const optionLines = ["token: process.env.ASTRA_DB_APPLICATION_TOKEN!,"];
+	if (keyspace) optionLines.push(`keyspace: ${jsString(keyspace)},`);
+	return `const client = new DataAPIClient();
+const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!, {
+  ${optionLines.join("\n  ")}
+});`;
+}
+
+function pyDbSetup(keyspace: string | null): string {
+	const keyspaceLine = keyspace ? `\n    keyspace=${pyString(keyspace)},` : "";
+	return `client = DataAPIClient()
+database = client.get_database(
+    os.environ["ASTRA_DB_API_ENDPOINT"],
+    token=os.environ["ASTRA_DB_APPLICATION_TOKEN"],${keyspaceLine}
+)`;
+}
+
+function javaDbSetup(keyspace: string | null): string {
+	const keyspaceLine = keyspace
+		? `\ndbOptions.keyspace(${javaString(keyspace)});`
+		: "";
+	return `DataAPIClient client = new DataAPIClient(new DataAPIClientOptions());
+DatabaseOptions dbOptions = new DatabaseOptions(
+    System.getenv("ASTRA_DB_APPLICATION_TOKEN"),
+    new DataAPIClientOptions());${keyspaceLine}
+Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT"), dbOptions);`;
+}
+
 /* ---------------- vector_search generators ---------------- */
 
 function generateVectorSearchTypeScript(s: AstraVectorSearchSnapshot): string {
 	const text = jsString(s.query.text);
 	const collection = jsString(s.collection);
-	const keyspaceArg = s.keyspace
-		? `, { keyspace: ${jsString(s.keyspace)} }`
-		: "";
 	return `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
-const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!${keyspaceArg});
+${tsDbSetup(s.keyspace)}
 const collection = db.collection(${collection});
 
 // Server-side embedding via $vectorize — the same call AI Workbench made.
@@ -200,14 +225,10 @@ console.log(hits);
 function generateVectorSearchPython(s: AstraVectorSearchSnapshot): string {
 	const text = pyString(s.query.text);
 	const collection = pyString(s.collection);
-	const keyspaceArg = s.keyspace ? `, keyspace=${pyString(s.keyspace)}` : "";
 	return `import os
 from astrapy import DataAPIClient
 
-client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
-database = client.get_database(
-    os.environ["ASTRA_DB_API_ENDPOINT"]${keyspaceArg},
-)
+${pyDbSetup(s.keyspace)}
 collection = database.get_collection(${collection})
 
 # Server-side embedding via $vectorize — the same call AI Workbench made.
@@ -226,9 +247,10 @@ print(hits)
 function generateVectorSearchJava(s: AstraVectorSearchSnapshot): string {
 	const text = javaString(s.query.text);
 	const collection = javaString(s.collection);
-	const keyspaceCall = s.keyspace ? `, ${javaString(s.keyspace)}` : "";
 	return `import com.datastax.astra.client.DataAPIClient;
+import com.datastax.astra.client.core.options.DataAPIClientOptions;
 import com.datastax.astra.client.databases.Database;
+import com.datastax.astra.client.databases.DatabaseOptions;
 import com.datastax.astra.client.collections.Collection;
 import com.datastax.astra.client.collections.commands.options.CollectionFindOptions;
 import com.datastax.astra.client.core.query.Sort;
@@ -236,8 +258,7 @@ import com.datastax.astra.client.core.query.Filter;
 import java.util.List;
 import java.util.stream.StreamSupport;
 
-DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
-Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT")${keyspaceCall});
+${javaDbSetup(s.keyspace)}
 Collection<com.fasterxml.jackson.databind.JsonNode> collection =
     db.getCollection(${collection}, com.fasterxml.jackson.databind.JsonNode.class);
 
@@ -289,19 +310,13 @@ curl -sS -X POST "$ASTRA_DB_API_ENDPOINT/api/json/v1${keyspaceSegment}/${s.colle
  * copy-paste user-experience matches what someone would write by
  * hand. */
 
-function listChunksKeyspaceTsArg(keyspace: string | null): string {
-	return keyspace ? `, { keyspace: ${jsString(keyspace)} }` : "";
-}
-
 function generateListChunksTypeScript(s: AstraListChunksSnapshot): string {
 	const docId = jsString(s.query.documentId);
 	const collection = jsString(s.collection);
-	const keyspaceArg = listChunksKeyspaceTsArg(s.keyspace);
 	const skipLine = s.query.offset > 0 ? `\n    skip: ${s.query.offset},` : "";
 	return `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
-const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!${keyspaceArg});
+${tsDbSetup(s.keyspace)}
 const collection = db.collection(${collection});
 
 // Positional read — same call AI Workbench made for list_chunks.
@@ -320,16 +335,12 @@ console.log(chunks);
 function generateListChunksPython(s: AstraListChunksSnapshot): string {
 	const docId = pyString(s.query.documentId);
 	const collection = pyString(s.collection);
-	const keyspaceArg = s.keyspace ? `, keyspace=${pyString(s.keyspace)}` : "";
 	const skipLine =
 		s.query.offset > 0 ? `\n        skip=${s.query.offset},` : "";
 	return `import os
 from astrapy import DataAPIClient
 
-client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
-database = client.get_database(
-    os.environ["ASTRA_DB_API_ENDPOINT"]${keyspaceArg},
-)
+${pyDbSetup(s.keyspace)}
 collection = database.get_collection(${collection})
 
 # Positional read — same call AI Workbench made for list_chunks.
@@ -347,10 +358,11 @@ print(chunks)
 function generateListChunksJava(s: AstraListChunksSnapshot): string {
 	const docId = javaString(s.query.documentId);
 	const collection = javaString(s.collection);
-	const keyspaceCall = s.keyspace ? `, ${javaString(s.keyspace)}` : "";
 	const skipLine = s.query.offset > 0 ? `\n    .skip(${s.query.offset})` : "";
 	return `import com.datastax.astra.client.DataAPIClient;
+import com.datastax.astra.client.core.options.DataAPIClientOptions;
 import com.datastax.astra.client.databases.Database;
+import com.datastax.astra.client.databases.DatabaseOptions;
 import com.datastax.astra.client.collections.Collection;
 import com.datastax.astra.client.collections.commands.options.CollectionFindOptions;
 import com.datastax.astra.client.core.query.Filter;
@@ -359,8 +371,7 @@ import com.datastax.astra.client.core.query.Sort;
 import java.util.List;
 import java.util.stream.StreamSupport;
 
-DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
-Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT")${keyspaceCall});
+${javaDbSetup(s.keyspace)}
 Collection<com.fasterxml.jackson.databind.JsonNode> collection =
     db.getCollection(${collection}, com.fasterxml.jackson.databind.JsonNode.class);
 
@@ -420,9 +431,6 @@ function generateCreateCollectionTypeScript(
 	s: AstraCreateCollectionSnapshot,
 ): string {
 	const collection = jsString(s.collection);
-	const keyspaceArg = s.keyspace
-		? `, { keyspace: ${jsString(s.keyspace)} }`
-		: "";
 	const vectorLines = [
 		`dimension: ${s.options.vectorDimension},`,
 		`metric: ${jsString(s.options.vectorMetric)},`,
@@ -445,8 +453,7 @@ function generateCreateCollectionTypeScript(
 	}
 	return `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
-const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!${keyspaceArg});
+${tsDbSetup(s.keyspace)}
 
 // Provision the underlying collection — the same call AI Workbench
 // runs when you create a knowledge base in owned mode.
@@ -458,7 +465,6 @@ function generateCreateCollectionPython(
 	s: AstraCreateCollectionSnapshot,
 ): string {
 	const collection = pyString(s.collection);
-	const keyspaceArg = s.keyspace ? `, keyspace=${pyString(s.keyspace)}` : "";
 	const vector: Record<string, unknown> = {
 		dimension: s.options.vectorDimension,
 		metric: s.options.vectorMetric,
@@ -489,10 +495,7 @@ function generateCreateCollectionPython(
 	return `import os
 from astrapy import DataAPIClient
 
-client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
-database = client.get_database(
-    os.environ["ASTRA_DB_API_ENDPOINT"]${keyspaceArg},
-)
+${pyDbSetup(s.keyspace)}
 
 # Provision the underlying collection — the same call AI Workbench
 # runs when you create a knowledge base in owned mode.
@@ -507,7 +510,6 @@ function generateCreateCollectionJava(
 	s: AstraCreateCollectionSnapshot,
 ): string {
 	const collection = javaString(s.collection);
-	const keyspaceCall = s.keyspace ? `, ${javaString(s.keyspace)}` : "";
 	const lines: string[] = [
 		`CollectionDefinition def = new CollectionDefinition()`,
 		`    .vector(${s.options.vectorDimension}, SimilarityMetric.${s.options.vectorMetric.toUpperCase()})`,
@@ -528,12 +530,13 @@ function generateCreateCollectionJava(
 	const lastIdx = lines.length - 1;
 	const body = lines.map((l, i) => (i === lastIdx ? `${l};` : l)).join("\n");
 	return `import com.datastax.astra.client.DataAPIClient;
+import com.datastax.astra.client.core.options.DataAPIClientOptions;
 import com.datastax.astra.client.databases.Database;
+import com.datastax.astra.client.databases.DatabaseOptions;
 import com.datastax.astra.client.collections.definition.CollectionDefinition;
 import com.datastax.astra.client.core.vector.SimilarityMetric;
 
-DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
-Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT")${keyspaceCall});
+${javaDbSetup(s.keyspace)}
 
 // Provision the underlying collection — the same call AI Workbench
 // runs when you create a knowledge base in owned mode.
@@ -607,14 +610,10 @@ curl -sS -X POST "$ASTRA_DB_API_ENDPOINT/api/json/v1${keyspaceSegment}" \\
 
 function generateInsertChunksTypeScript(s: AstraInsertChunksSnapshot): string {
 	const collection = jsString(s.collection);
-	const keyspaceArg = s.keyspace
-		? `, { keyspace: ${jsString(s.keyspace)} }`
-		: "";
 	const docId = jsString(s.batch.documentId);
 	return `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
-const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!${keyspaceArg});
+${tsDbSetup(s.keyspace)}
 const collection = db.collection(${collection});
 
 // One chunk batch of size ${s.batch.batchSize} — the same call AI
@@ -638,15 +637,11 @@ await collection.insertMany(docs);
 
 function generateInsertChunksPython(s: AstraInsertChunksSnapshot): string {
 	const collection = pyString(s.collection);
-	const keyspaceArg = s.keyspace ? `, keyspace=${pyString(s.keyspace)}` : "";
 	const docId = pyString(s.batch.documentId);
 	return `import os
 from astrapy import DataAPIClient
 
-client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
-database = client.get_database(
-    os.environ["ASTRA_DB_API_ENDPOINT"]${keyspaceArg},
-)
+${pyDbSetup(s.keyspace)}
 collection = database.get_collection(${collection})
 
 # One chunk batch of size ${s.batch.batchSize} — the same call AI
@@ -670,10 +665,11 @@ collection.insert_many(docs)
 
 function generateInsertChunksJava(s: AstraInsertChunksSnapshot): string {
 	const collection = javaString(s.collection);
-	const keyspaceCall = s.keyspace ? `, ${javaString(s.keyspace)}` : "";
 	const docId = javaString(s.batch.documentId);
 	return `import com.datastax.astra.client.DataAPIClient;
+import com.datastax.astra.client.core.options.DataAPIClientOptions;
 import com.datastax.astra.client.databases.Database;
+import com.datastax.astra.client.databases.DatabaseOptions;
 import com.datastax.astra.client.collections.Collection;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -681,8 +677,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 
-DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
-Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT")${keyspaceCall});
+${javaDbSetup(s.keyspace)}
 Collection<JsonNode> collection = db.getCollection(${collection}, JsonNode.class);
 
 // One chunk batch of size ${s.batch.batchSize} — the same call AI
@@ -745,14 +740,10 @@ function generateDeleteByDocumentTypeScript(
 	s: AstraDeleteByDocumentSnapshot,
 ): string {
 	const collection = jsString(s.collection);
-	const keyspaceArg = s.keyspace
-		? `, { keyspace: ${jsString(s.keyspace)} }`
-		: "";
 	const docId = jsString(s.filter.documentId);
 	return `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
-const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!${keyspaceArg});
+${tsDbSetup(s.keyspace)}
 const collection = db.collection(${collection});
 
 // Cascade-delete every chunk for this document — the same call AI
@@ -766,15 +757,11 @@ function generateDeleteByDocumentPython(
 	s: AstraDeleteByDocumentSnapshot,
 ): string {
 	const collection = pyString(s.collection);
-	const keyspaceArg = s.keyspace ? `, keyspace=${pyString(s.keyspace)}` : "";
 	const docId = pyString(s.filter.documentId);
 	return `import os
 from astrapy import DataAPIClient
 
-client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
-database = client.get_database(
-    os.environ["ASTRA_DB_API_ENDPOINT"]${keyspaceArg},
-)
+${pyDbSetup(s.keyspace)}
 collection = database.get_collection(${collection})
 
 # Cascade-delete every chunk for this document — the same call AI
@@ -788,16 +775,16 @@ function generateDeleteByDocumentJava(
 	s: AstraDeleteByDocumentSnapshot,
 ): string {
 	const collection = javaString(s.collection);
-	const keyspaceCall = s.keyspace ? `, ${javaString(s.keyspace)}` : "";
 	const docId = javaString(s.filter.documentId);
 	return `import com.datastax.astra.client.DataAPIClient;
+import com.datastax.astra.client.core.options.DataAPIClientOptions;
 import com.datastax.astra.client.databases.Database;
+import com.datastax.astra.client.databases.DatabaseOptions;
 import com.datastax.astra.client.collections.Collection;
 import com.datastax.astra.client.core.query.Filters;
 import com.fasterxml.jackson.databind.JsonNode;
 
-DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
-Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT")${keyspaceCall});
+${javaDbSetup(s.keyspace)}
 Collection<JsonNode> collection = db.getCollection(${collection}, JsonNode.class);
 
 // Cascade-delete every chunk for this document — the same call AI
@@ -838,14 +825,10 @@ curl -sS -X POST "$ASTRA_DB_API_ENDPOINT/api/json/v1${keyspaceSegment}/${s.colle
 
 function generateDeleteChunkTypeScript(s: AstraDeleteChunkSnapshot): string {
 	const collection = jsString(s.collection);
-	const keyspaceArg = s.keyspace
-		? `, { keyspace: ${jsString(s.keyspace)} }`
-		: "";
 	const chunkId = jsString(s.filter.chunkId);
 	return `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
-const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!${keyspaceArg});
+${tsDbSetup(s.keyspace)}
 const collection = db.collection(${collection});
 
 // Drop a single chunk by _id — the fallback AI Workbench uses when
@@ -857,15 +840,11 @@ console.log("deleted", deletedCount);
 
 function generateDeleteChunkPython(s: AstraDeleteChunkSnapshot): string {
 	const collection = pyString(s.collection);
-	const keyspaceArg = s.keyspace ? `, keyspace=${pyString(s.keyspace)}` : "";
 	const chunkId = pyString(s.filter.chunkId);
 	return `import os
 from astrapy import DataAPIClient
 
-client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
-database = client.get_database(
-    os.environ["ASTRA_DB_API_ENDPOINT"]${keyspaceArg},
-)
+${pyDbSetup(s.keyspace)}
 collection = database.get_collection(${collection})
 
 # Drop a single chunk by _id — the fallback AI Workbench uses when
@@ -877,16 +856,16 @@ print("deleted", result.deleted_count)
 
 function generateDeleteChunkJava(s: AstraDeleteChunkSnapshot): string {
 	const collection = javaString(s.collection);
-	const keyspaceCall = s.keyspace ? `, ${javaString(s.keyspace)}` : "";
 	const chunkId = javaString(s.filter.chunkId);
 	return `import com.datastax.astra.client.DataAPIClient;
+import com.datastax.astra.client.core.options.DataAPIClientOptions;
 import com.datastax.astra.client.databases.Database;
+import com.datastax.astra.client.databases.DatabaseOptions;
 import com.datastax.astra.client.collections.Collection;
 import com.datastax.astra.client.core.query.Filters;
 import com.fasterxml.jackson.databind.JsonNode;
 
-DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
-Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT")${keyspaceCall});
+${javaDbSetup(s.keyspace)}
 Collection<JsonNode> collection = db.getCollection(${collection}, JsonNode.class);
 
 // Drop a single chunk by _id — the fallback AI Workbench uses when

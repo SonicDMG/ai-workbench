@@ -132,7 +132,7 @@ describe("PlaygroundPage", () => {
 			isLoading: false,
 		} as unknown as ReturnType<typeof useKnowledgeBases>);
 
-		renderAt();
+		const rendered = renderAt();
 		expect(
 			screen.getByRole("heading", { name: /Data API Playground/i }),
 		).toBeInTheDocument();
@@ -146,5 +146,11 @@ describe("PlaygroundPage", () => {
 		expect(
 			screen.getByRole("heading", { name: /Client code/i }),
 		).toBeInTheDocument();
+		expect(rendered.container.textContent).toContain(
+			"const client = new DataAPIClient();",
+		);
+		expect(rendered.container.textContent).toContain(
+			"token: process.env.ASTRA_DB_APPLICATION_TOKEN!",
+		);
 	});
 });
