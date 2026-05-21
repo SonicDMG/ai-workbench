@@ -1079,13 +1079,8 @@ function generateJava({
 
 	const snippet = idiomaticJava(command, targetKind, targetName);
 	if (snippet) {
-		return `import com.datastax.astra.client.DataAPIClient;
-import com.datastax.astra.client.databases.Database;
-import com.datastax.astra.client.collections.Collection;
-import com.datastax.astra.client.collections.definition.documents.Document;
-import com.datastax.astra.client.tables.Table;
-import com.datastax.astra.client.tables.definition.rows.Row;
-import java.util.List;
+		const imports = javaImportsFor(snippet);
+		return `${imports}
 
 DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
 Database db = client.getDatabase(${endpoint}${keyspaceArg});
@@ -1311,6 +1306,33 @@ function pyKwargsFromOptions(options: Record<string, unknown>): string {
 		parts.push(`${pyKey}=${pyValue(value)}`);
 	}
 	return parts.join(", ");
+}
+
+const JAVA_OPTIONAL_IMPORTS: ReadonlyArray<{ token: RegExp; path: string }> = [
+	{ token: /\bCollection</, path: "com.datastax.astra.client.collections.Collection" },
+	{
+		token: /\bDocument\b/,
+		path: "com.datastax.astra.client.collections.definition.documents.Document",
+	},
+	{ token: /\bTable</, path: "com.datastax.astra.client.tables.Table" },
+	{
+		token: /\bRow\b/,
+		path: "com.datastax.astra.client.tables.definition.rows.Row",
+	},
+	{ token: /\bList[<.]/, path: "java.util.List" },
+];
+
+function javaImportsFor(snippet: string): string {
+	const lines = [
+		"import com.datastax.astra.client.DataAPIClient;",
+		"import com.datastax.astra.client.databases.Database;",
+	];
+	for (const { token, path } of JAVA_OPTIONAL_IMPORTS) {
+		if (token.test(snippet)) {
+			lines.push(`import ${path};`);
+		}
+	}
+	return lines.join("\n");
 }
 
 function javaTextBlock(value: unknown): string {
