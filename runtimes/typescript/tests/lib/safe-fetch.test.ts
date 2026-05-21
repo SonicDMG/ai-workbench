@@ -126,7 +126,6 @@ describe("safeFetch", () => {
 				method: "POST",
 				body: stream,
 				// Node's fetch requires duplex when sending a stream body.
-				// @ts-expect-error -- node-fetch-specific init field
 				duplex: "half",
 			}),
 		).rejects.toBe(goaway);

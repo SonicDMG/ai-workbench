@@ -18,6 +18,7 @@
  */
 
 import { DataAPIClient, type Db } from "@datastax/astra-db-ts";
+import { RetryingAstraFetcher } from "../../lib/astra-retrying-fetcher.js";
 import type {
 	VectorStoreRecord,
 	WorkspaceRecord,
@@ -329,7 +330,13 @@ export interface AstraVectorStoreDriverOptions {
 }
 
 const defaultDbFactory: DbFactory = (workspace, endpoint, token) => {
-	const client = new DataAPIClient(token);
+	// See `lib/astra-retrying-fetcher.ts` — one bounded retry on
+	// transient network errors (HTTP/2 GOAWAY, ECONNRESET, undici
+	// timeouts) keeps vector-store calls resilient to LB-driven
+	// connection rotations on Astra's edge.
+	const client = new DataAPIClient(token, {
+		httpOptions: { client: "custom", fetcher: new RetryingAstraFetcher() },
+	});
 	const keyspace = workspace.keyspace ?? undefined;
 	return client.db(
 		endpoint,

@@ -14,6 +14,7 @@ import {
 	DataAPIResponseError,
 	type Db,
 } from "@datastax/astra-db-ts";
+import { RetryingAstraFetcher } from "../lib/astra-retrying-fetcher.js";
 import { logger } from "../lib/logger.js";
 import type {
 	AgentRow,
@@ -213,7 +214,15 @@ const DEFAULT_RESUME_TOTAL_TIMEOUT_MS = 60_000;
 export async function openAstraClient(
 	config: AstraClientConfig,
 ): Promise<TablesBundle> {
-	const client = new DataAPIClient(config.token);
+	// Custom `fetcher` wraps Astra's default-equivalent fetch path with
+	// one retry on transient network errors (HTTP/2 GOAWAY, ECONNRESET,
+	// undici timeouts). Without it, the steady drip of LB-driven
+	// connection rotations on Astra's edge surfaces as 500s on
+	// `/ingest/file` and other multi-call routes — see
+	// `lib/astra-retrying-fetcher.ts` for the full rationale.
+	const client = new DataAPIClient(config.token, {
+		httpOptions: { client: "custom", fetcher: new RetryingAstraFetcher() },
+	});
 	const db = client.db(config.endpoint, { keyspace: config.keyspace });
 
 	await waitForAstraResume(() => ensureTables(db), config.resume);

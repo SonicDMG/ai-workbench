@@ -65,13 +65,19 @@ export function QueueRow({
 		<li className="flex items-start gap-3 px-3 py-2 text-sm">
 			<StatusGlyph status={item.status} />
 			<div className="min-w-0 flex-1">
-				<div className="flex items-center gap-2">
-					<FileTypeBadge sourceFilename={item.relativePath} />
-					<span className="truncate font-medium text-slate-900 dark:text-slate-100">
+				<div className="flex min-w-0 items-center gap-2">
+					<FileTypeBadge
+						sourceFilename={item.relativePath}
+						className="shrink-0"
+					/>
+					<span
+						className="truncate font-medium text-slate-900 dark:text-slate-100"
+						title={item.relativePath}
+					>
 						{item.relativePath}
 					</span>
 				</div>
-				<div className="mt-0.5 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+				<div className="mt-0.5 flex min-w-0 items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
 					<span>{formatFileSize(item.file.size)}</span>
 					{item.status === "running" ? (
 						<span className="tabular-nums">

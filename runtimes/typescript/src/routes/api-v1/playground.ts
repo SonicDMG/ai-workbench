@@ -14,6 +14,7 @@ import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { WorkspaceRecord } from "../../control-plane/types.js";
 import { WorkspaceMisconfiguredError } from "../../drivers/vector-store.js";
+import { RetryingAstraFetcher } from "../../lib/astra-retrying-fetcher.js";
 import { ApiError } from "../../lib/errors.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import type { AppEnv } from "../../lib/types.js";
@@ -175,7 +176,15 @@ export function playgroundRoutes(
 
 			const endpoint = await resolveEndpoint(workspace, secrets);
 			const token = await resolveToken(workspace, secrets);
-			const db = new DataAPIClient(token).db(
+			// One bounded retry on transient network errors — see
+			// `lib/astra-retrying-fetcher.ts`. Same wiring as the
+			// control-plane and vector-store DataAPIClient instances.
+			const db = new DataAPIClient(token, {
+				httpOptions: {
+					client: "custom",
+					fetcher: new RetryingAstraFetcher(),
+				},
+			}).db(
 				endpoint,
 				workspace.keyspace ? { keyspace: workspace.keyspace } : {},
 			);
