@@ -72,6 +72,14 @@ export function useAsyncIngestFile(
 
 /**
  * Poll a job until it hits a terminal state (`succeeded` / `failed`).
+ *
+ * `refetchIntervalInBackground: true` keeps the poller alive when the
+ * browser tab is unfocused. Without it, TanStack Query suspends the
+ * interval on blur, which stalls the {@link IngestQueueDialog} drain
+ * loop — it only advances to the next file when the poller observes a
+ * terminal status, so the entire queue freezes until the user refocuses
+ * the tab. A KB ingest can take many minutes; users routinely switch
+ * tabs and don't expect progress to halt.
  */
 export function useJobPoller(
 	workspaceId: string | undefined,
@@ -95,5 +103,6 @@ export function useJobPoller(
 				? false
 				: intervalMs;
 		},
+		refetchIntervalInBackground: true,
 	});
 }
