@@ -72,10 +72,18 @@ function collectConfigSecretRefs(
 	}
 
 	if (config.chat?.tokenRef) {
+		// Advisory, not fatal: the wizard's whole reason to exist is to
+		// let a fresh install boot with `chat.tokenRef: env:HUGGINGFACE_API_KEY`
+		// in the dev config and then write that key via POST /setup/env.
+		// A fatal preflight here would brick the wizard before the user
+		// could use it. When the ref doesn't resolve, `buildChatService`
+		// degrades to `null` and the agent send routes already return
+		// `503 chat_disabled` — same UX as a runtime booted without any
+		// `chat:` block at all.
 		out.push({
 			path: "chat.tokenRef",
 			ref: config.chat.tokenRef,
-			required: true,
+			required: false,
 		});
 	}
 
