@@ -9,6 +9,8 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-22
+
 ### Added
 
 - **Conformance coverage for the chat surface.** The chat / agent
@@ -319,5 +321,6 @@ These were scoped for 0.1.0 but deferred to keep the release focused:
   flow.
 - Discoverability tooltips + "What's new in 0.1.0" modal in the web UI.
 
-[Unreleased]: https://github.com/datastax/ai-workbench/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/datastax/ai-workbench/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/datastax/ai-workbench/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/datastax/ai-workbench/releases/tag/v0.1.0
