@@ -31,35 +31,62 @@ export const WHATS_NEW_VERSION = APP_VERSION;
  */
 export const WHATS_NEW_HIGHLIGHTS: readonly WhatsNewItem[] = [
 	{
-		title: "aiw CLI",
+		title: "First-run setup wizard",
 		summary:
-			"Drive the workbench from your terminal: `aiw login`, `workspace`, `kb`, `doc upload`, `search`, `agent`, `chat`, `job`. Profiles live in ~/.aiw/config.json.",
+			"Fresh installs land on a guided onboarding flow that captures Astra and HuggingFace credentials, writes them to a managed `.env` in the workbench-data volume (mode 0600, allow-listed keys only), and restarts the runtime so the new values take effect — no shell access required.",
+		link: {
+			label: "Open onboarding",
+			href: "/onboarding",
+		},
+	},
+	{
+		title: "System status page",
+		summary:
+			"New /status route renders live traffic-light cards for the control-plane probe, chat-provider probe, ingest queue, and the last 100 error envelopes (no PII). Polled every 10 seconds so a stuck install is visible without grepping container logs.",
+		link: {
+			label: "Open /status",
+			href: "/status",
+		},
+	},
+	{
+		title: "Error envelopes carry remediation hints",
+		summary:
+			"Every API error now ships with a one-line `hint` and a `docs` link drawn from a 67-entry registry. The web UI surfaces them in toasts; the new `aiw doctor --explain <code>` prints the long-form entry; the full catalog lives at docs/errors.md.",
+		link: {
+			label: "Browse the error catalog",
+			href: "https://github.com/datastax/ai-workbench/blob/main/docs/errors.md",
+		},
+	},
+	{
+		title: "CLI: aiw doctor, status, profile, completion",
+		summary:
+			"`aiw doctor` runs a PASS/WARN/FAIL pre-flight checklist; `aiw status` is the one-line health probe; `aiw profile {ls,use,rm}` manages stored credential profiles; `aiw completion {bash,zsh,fish}` emits a shell completion script. Every command supports stable JSON output and documented exit codes.",
 		link: {
 			label: "Read the CLI README",
 			href: "https://github.com/datastax/ai-workbench/tree/main/packages/aiw-cli#readme",
 		},
 	},
 	{
-		title: "MCP read tools",
+		title: "Curated Prometheus metrics + Grafana starter",
 		summary:
-			"External MCP clients can now discover workspace agents via `list_agents` / `get_agent` without leaving the protocol. Ingest + delete write tools already shipped earlier.",
+			"Five new metric families land at /metrics: chat requests by provider + outcome, stream tokens, ingest documents, search requests by mode, search latency. A drop-in Grafana dashboard JSON ships at docs/observability/grafana-workbench.json.",
 		link: {
-			label: "MCP docs",
-			href: "https://github.com/datastax/ai-workbench/blob/main/docs/mcp.md",
+			label: "Production guide",
+			href: "https://github.com/datastax/ai-workbench/blob/main/docs/production.md",
 		},
 	},
 	{
-		title: "RLAC on Documents (Preview)",
+		title: "Opt-in anonymous telemetry",
 		summary:
-			"Enable Row-Level Access Control per workspace from the settings page. Define principals, run the policy preview, watch decisions in the audit log. API + audit shape may still change before GA.",
+			"Off by default. Enable with WORKBENCH_TELEMETRY=1 / AIW_TELEMETRY=1 and (optionally) point at a sink. Strictly categorical fields only — install id, version, event name, error code. No request bodies, paths, names, or secrets ever leave the process.",
 		link: {
-			label: "Read the Preview guide",
-			href: "https://github.com/datastax/ai-workbench/blob/main/docs/rlac-preview.md",
+			label: "Event catalog + opt-out",
+			href: "https://github.com/datastax/ai-workbench/blob/main/docs/telemetry.md",
 		},
 	},
 	{
-		title: "Skeleton loaders + a11y polish",
+		title: "Conformance now covers chat",
 		summary:
-			"List and table pages render shimmer placeholders instead of layout-jumping spinners; shared loading / error / empty states announce themselves through live regions for assistive tech.",
+			"A new FixtureChatService replays scripted token streams so the SSE happy path + agent message CRUD are pinned in the cross-runtime conformance harness. SSE response bodies normalize into a deterministic array of {event, data} records.",
 	},
 ];
