@@ -29,6 +29,8 @@
 		"conformance:mock": "npm --prefix runtimes/typescript run conformance:mock",
 		"conformance:regenerate": "npm --prefix runtimes/typescript run conformance:regenerate",
 		"smoke:astra": "npm --prefix runtimes/typescript run smoke:astra",
+		"docs:errors": "npm --prefix runtimes/typescript run docs:errors",
+		"docs:errors:check": "npm --prefix runtimes/typescript run docs:errors:check",
 		"changeset": "changeset",
 		"version-packages": "changeset version",
 		"release": "npm run check && changeset publish",

@@ -77,6 +77,27 @@ const TracingSchema = z
 
 export type TracingConfig = z.infer<typeof TracingSchema>;
 
+/**
+ * Opt-in anonymous usage telemetry. Off by default. Events carry only
+ * the runtime's anonymous install id, the version, and a small fixed
+ * set of allow-listed fields (event name, command name, error code) —
+ * see `docs/telemetry.md`. Wired-but-dark when `url` is null: the
+ * emitter constructs events but skips the network call, which lets
+ * tests cover the schema without standing up a sink.
+ *
+ * Env overrides:
+ *   - `WORKBENCH_TELEMETRY=1` flips `enabled` on regardless of YAML.
+ *   - `WORKBENCH_TELEMETRY_URL=https://…` overrides `url`.
+ */
+const TelemetrySchema = z
+	.object({
+		enabled: z.boolean().default(false),
+		url: z.string().url().nullable().default(null),
+	})
+	.default({ enabled: false, url: null });
+
+export type TelemetryConfig = z.infer<typeof TelemetrySchema>;
+
 const RuntimeSchema = z
 	.object({
 		// `development` preserves the local-friendly defaults. Set
@@ -137,6 +158,8 @@ const RuntimeSchema = z
 		maxConcurrentIngestJobs: z.number().int().positive().default(4),
 		// OpenTelemetry tracing — see TracingSchema above.
 		tracing: TracingSchema,
+		// Opt-in anonymous telemetry — see TelemetrySchema above.
+		telemetry: TelemetrySchema,
 	})
 	.default({
 		environment: "development",
@@ -152,6 +175,7 @@ const RuntimeSchema = z
 		blockPrivateNetworkEndpoints: false,
 		maxConcurrentIngestJobs: 4,
 		tracing: { enabled: false, serviceName: null, exporterUrl: null },
+		telemetry: { enabled: false, url: null },
 	});
 
 /**

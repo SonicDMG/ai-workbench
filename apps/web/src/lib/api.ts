@@ -49,6 +49,8 @@ import {
 	ErrorEnvelopeSchema,
 	type Features,
 	FeaturesSchema,
+	type HealthDetails,
+	HealthDetailsSchema,
 	type JobRecord,
 	JobRecordSchema,
 	type KbIngestAsyncOrDuplicate,
@@ -65,6 +67,7 @@ import {
 	LlmServicePageSchema,
 	type LlmServiceRecord,
 	LlmServiceRecordSchema,
+	type ManagedEnvKey,
 	type PlaygroundCommandInput,
 	type PlaygroundCommandResponse,
 	PlaygroundCommandResponseSchema,
@@ -78,12 +81,18 @@ import {
 	RagDocumentPageSchema,
 	type RagDocumentRecord,
 	RagDocumentRecordSchema,
+	type RecentErrorsResponse,
+	RecentErrorsResponseSchema,
 	RerankingServicePageSchema,
 	type RerankingServiceRecord,
 	RerankingServiceRecordSchema,
 	type SendChatMessageInput,
 	type SendChatMessageResponse,
 	SendChatMessageResponseSchema,
+	type SetupEnvResponse,
+	SetupEnvResponseSchema,
+	type SetupStatus,
+	SetupStatusSchema,
 	type TestConnectionResult,
 	TestConnectionResultSchema,
 	type UpdateAgentInput,
@@ -365,6 +374,114 @@ export const api = {
 			return parsed.success ? parsed.data : null;
 		} catch {
 			return null;
+		}
+	},
+
+	/**
+	 * Setup-wizard status. Reports whether the runtime needs first-run
+	 * configuration, whether the wizard's managed env file is writable,
+	 * and which credential families are already present in the shell
+	 * environment. Lives outside `/api/v1` so the wizard can render
+	 * before any workspace exists.
+	 */
+	/**
+	 * Deep backend health snapshot. Used by the `/status` page to render
+	 * traffic-light cards. Returns `null` on transport error or schema
+	 * mismatch so the page degrades to "unreachable" without breaking.
+	 */
+	getHealthDetails: async (): Promise<HealthDetails | null> => {
+		try {
+			const res = await fetch("/health/details", {
+				credentials: "include",
+				headers: { accept: "application/json" },
+			});
+			if (!res.ok) return null;
+			const body = (await res.json()) as unknown;
+			const parsed = HealthDetailsSchema.safeParse(body);
+			return parsed.success ? parsed.data : null;
+		} catch {
+			return null;
+		}
+	},
+
+	/**
+	 * Snapshot of the runtime's in-memory recent-errors ring buffer
+	 * (last 100, newest first). Used by the `/status` page; safe to
+	 * poll because the endpoint is unauthenticated and reads from an
+	 * in-process buffer (no DB calls).
+	 */
+	getRecentErrors: async (): Promise<RecentErrorsResponse | null> => {
+		try {
+			const res = await fetch("/health/recent-errors", {
+				credentials: "include",
+				headers: { accept: "application/json" },
+			});
+			if (!res.ok) return null;
+			const body = (await res.json()) as unknown;
+			const parsed = RecentErrorsResponseSchema.safeParse(body);
+			return parsed.success ? parsed.data : null;
+		} catch {
+			return null;
+		}
+	},
+
+	getSetupStatus: async (): Promise<SetupStatus | null> => {
+		try {
+			const res = await fetch("/setup-status", {
+				credentials: "include",
+				headers: { accept: "application/json" },
+			});
+			if (!res.ok) return null;
+			const body = (await res.json()) as unknown;
+			const parsed = SetupStatusSchema.safeParse(body);
+			return parsed.success ? parsed.data : null;
+		} catch {
+			return null;
+		}
+	},
+
+	/**
+	 * Write the wizard-managed `.env` file. Only the documented
+	 * allow-list (`ASTRA_DB_API_ENDPOINT`, `ASTRA_DB_APPLICATION_TOKEN`,
+	 * `HUGGINGFACE_API_KEY`) is accepted server-side; anything else
+	 * triggers `validation_error`. A successful response means the
+	 * file is on disk — the runtime still needs a restart to pick it
+	 * up; call `postSetupRestart` next.
+	 */
+	postSetupEnv: async (
+		values: Partial<Record<ManagedEnvKey, string>>,
+	): Promise<SetupEnvResponse> => {
+		const res = await fetch("/setup/env", {
+			method: "POST",
+			credentials: "include",
+			headers: {
+				"content-type": "application/json",
+				accept: "application/json",
+			},
+			body: JSON.stringify({ values }),
+		});
+		const body = (await res.json()) as unknown;
+		if (!res.ok) {
+			throw new Error(formatApiError(body));
+		}
+		return SetupEnvResponseSchema.parse(body);
+	},
+
+	/**
+	 * Trigger a graceful shutdown so Docker's `restart: unless-stopped`
+	 * brings the runtime back with the wizard-written env in place.
+	 * Returns 202 immediately; the caller is expected to poll
+	 * `/readyz` until it comes back up.
+	 */
+	postSetupRestart: async (): Promise<void> => {
+		const res = await fetch("/setup/restart", {
+			method: "POST",
+			credentials: "include",
+			headers: { accept: "application/json" },
+		});
+		if (!res.ok && res.status !== 202) {
+			const body = (await res.json().catch(() => null)) as unknown;
+			throw new Error(formatApiError(body));
 		}
 	},
 

@@ -1,9 +1,10 @@
 import { ArrowLeft, ArrowRight, CheckCircle2, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { AgentTemplateGallery } from "@/components/agents/AgentTemplateGallery";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { CredentialsStep } from "@/components/onboarding/CredentialsStep";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -25,20 +26,39 @@ import {
 import { useAstraCliInfo } from "@/hooks/useAstraCliInfo";
 import { useAstraCliInventory } from "@/hooks/useAstraCliInventory";
 import { useAgents } from "@/hooks/useConversations";
+import { useSetupStatus } from "@/hooks/useSetupStatus";
 import { useCreateWorkspace, useWorkspaces } from "@/hooks/useWorkspaces";
 import { api, formatApiError } from "@/lib/api";
 import type { WorkspaceKind } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 
-type Step = "kind" | "details" | "agents";
+type Step = "credentials" | "kind" | "details" | "agents";
 
 export function OnboardingPage() {
 	const navigate = useNavigate();
 	const { data: workspaces } = useWorkspaces();
 	const { data: astraCli } = useAstraCliInfo();
 	const { data: astraCliInventory } = useAstraCliInventory();
+	const { data: setupStatus, isFetched: setupStatusFetched } = useSetupStatus();
 	const create = useCreateWorkspace();
+	// Show the credentials step on a fresh install when the wizard can
+	// help — i.e. nothing's been configured via the shell, the managed
+	// env file is writable, and no workspace exists yet. Once we know
+	// the answer (setupStatusFetched), we flip the step to "credentials"
+	// or stay on "kind". Default to "kind" so old runtimes that don't
+	// expose /setup-status still render normally.
+	const needsCredentials =
+		setupStatus !== null &&
+		setupStatus !== undefined &&
+		!setupStatus.setupComplete &&
+		!setupStatus.hasAstraCreds &&
+		setupStatus.managedEnv.writable;
 	const [step, setStep] = useState<Step>("kind");
+	useEffect(() => {
+		if (setupStatusFetched && needsCredentials) {
+			setStep((prev) => (prev === "kind" ? "credentials" : prev));
+		}
+	}, [setupStatusFetched, needsCredentials]);
 	// Default to Astra: it's the recommended (and production-grade)
 	// backend, and the astra-cli auto-detection logic + workspace
 	// test-connection flow downstream all assume the user picked
@@ -151,27 +171,47 @@ export function OnboardingPage() {
 			)}
 
 			<div className="mb-8 flex items-center gap-3">
+				{needsCredentials ? (
+					<>
+						<StepDot
+							index={1}
+							label="Credentials"
+							active={step === "credentials"}
+							done={step !== "credentials"}
+						/>
+						<div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+					</>
+				) : null}
 				<StepDot
-					index={1}
+					index={needsCredentials ? 2 : 1}
 					label="Backend"
 					active={step === "kind"}
-					done={step !== "kind"}
+					done={step === "details" || step === "agents"}
 				/>
 				<div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
 				<StepDot
-					index={2}
+					index={needsCredentials ? 3 : 2}
 					label="Details"
 					active={step === "details"}
 					done={step === "agents"}
 				/>
 				<div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
 				<StepDot
-					index={3}
+					index={needsCredentials ? 4 : 3}
 					label="Agents"
 					active={step === "agents"}
 					done={false}
 				/>
 			</div>
+
+			{step === "credentials" && setupStatus ? (
+				<CredentialsStep
+					astraCli={astraCli}
+					managedEnvPath={setupStatus.managedEnv.path}
+					onSkip={() => setStep("kind")}
+					onComplete={() => setStep("kind")}
+				/>
+			) : null}
 
 			{step === "kind" ? (
 				<Card>

@@ -91,6 +91,7 @@ interface OAIStreamChunk {
 
 export class OpenAIChatService implements ChatService {
 	readonly modelId: string;
+	readonly providerId = "openai";
 	private readonly apiKey: string;
 	private readonly maxOutputTokens: number;
 	private readonly baseUrl: string;
@@ -102,6 +103,16 @@ export class OpenAIChatService implements ChatService {
 		this.maxOutputTokens = opts.maxOutputTokens;
 		this.baseUrl = opts.baseUrl ?? DEFAULT_BASE_URL;
 		this.fetchImpl = opts.fetchImpl ?? safeFetch;
+	}
+
+	async ping(options?: { readonly signal?: AbortSignal }): Promise<void> {
+		const res = await this.fetchImpl(`${this.baseUrl}/models`, {
+			headers: { authorization: `Bearer ${this.apiKey}` },
+			signal: options?.signal,
+		});
+		if (!res.ok) {
+			throw new Error(`OpenAI /models returned ${res.status}`);
+		}
 	}
 
 	async complete(request: ChatCompletionRequest): Promise<ChatCompletion> {

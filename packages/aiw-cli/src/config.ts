@@ -51,7 +51,31 @@ export interface ConfigLocation {
 	readonly file: string;
 }
 
-export function defaultConfigLocation(): ConfigLocation {
+/**
+ * Resolve where the CLI's profile file lives. Priority:
+ *
+ *   1. `AIW_CONFIG_HOME` — explicit override (CI, tests).
+ *   2. `WORKBENCH_DATA_DIR` — set by the bundled Docker compose so
+ *      profiles persist across `compose down/up` in the same named
+ *      volume that already holds control-plane state. Resolves to
+ *      `<WORKBENCH_DATA_DIR>/cli`.
+ *   3. `~/.aiw` — host-side default.
+ *
+ * The directory is created with mode `0700` and the file with `0600`
+ * on the first write (see {@link writeConfig}).
+ */
+export function defaultConfigLocation(
+	env: NodeJS.ProcessEnv = process.env,
+): ConfigLocation {
+	const override = env.AIW_CONFIG_HOME?.trim();
+	if (override) {
+		return { dir: override, file: join(override, "config.json") };
+	}
+	const dataDir = env.WORKBENCH_DATA_DIR?.trim();
+	if (dataDir) {
+		const dir = join(dataDir, "cli");
+		return { dir, file: join(dir, "config.json") };
+	}
 	const dir = join(homedir(), ".aiw");
 	return { dir, file: join(dir, "config.json") };
 }

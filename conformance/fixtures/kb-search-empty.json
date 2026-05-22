@@ -212,6 +212,8 @@
 				"body": {
 					"error": {
 						"code": "validation_error",
+						"docs": "docs/errors.md#validation-error",
+						"hint": "Request body or query string failed schema validation; see the message for the offending field.",
 						"message": "exactly one of 'vector' or 'text' must be provided",
 						"requestId": "{{REQID_1}}"
 					}

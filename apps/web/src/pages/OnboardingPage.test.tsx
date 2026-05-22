@@ -17,6 +17,12 @@ vi.mock("@/hooks/useAstraCliInfo", () => ({
 vi.mock("@/hooks/useAstraCliInventory", () => ({
 	useAstraCliInventory: vi.fn(),
 }));
+vi.mock("@/hooks/useSetupStatus", () => ({
+	useSetupStatus: vi.fn(() => ({
+		data: null,
+		isFetched: true,
+	})),
+}));
 vi.mock("@/hooks/useConversations", () => ({
 	// Onboarding step 3 fetches the seeded agent list to filter the
 	// template gallery; step 1/2 (covered here) never reach it.

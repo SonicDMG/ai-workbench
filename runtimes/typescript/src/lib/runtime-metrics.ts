@@ -30,6 +30,37 @@ export interface RuntimeMetrics {
 	readonly rateLimitRejections: Counter;
 	readonly ingestActive: Gauge;
 	readonly ingestQueued: Gauge;
+	/**
+	 * `workbench_chat_requests_total{provider, outcome}` —
+	 *   provider ∈ { huggingface, openai, fixture, … } (low cardinality;
+	 *     matches `ChatService.providerId`).
+	 *   outcome ∈ { stop, length, tool_calls, error }.
+	 */
+	readonly chatRequests: Counter;
+	/**
+	 * `workbench_chat_stream_tokens_total{direction}` —
+	 *   direction ∈ { in, out }. `in` is request prompt tokens reported
+	 *   by the provider (when available); `out` is emitted tokens.
+	 */
+	readonly chatStreamTokens: Counter;
+	/**
+	 * `workbench_ingest_documents_total{outcome}` —
+	 *   outcome ∈ { ok, failed, skipped }. KB id is intentionally NOT a
+	 *   label — workspaces with thousands of KBs would blow up the
+	 *   cardinality; per-KB rollups live in the application DB.
+	 */
+	readonly ingestDocuments: Counter;
+	/**
+	 * `workbench_search_requests_total{mode, outcome}` —
+	 *   mode ∈ { vector, hybrid, vector_rerank, hybrid_rerank }.
+	 *   outcome ∈ { ok, error }.
+	 */
+	readonly searchRequests: Counter;
+	/**
+	 * `workbench_search_duration_seconds{mode}` — server-side wall-clock
+	 * latency for the dispatched search.
+	 */
+	readonly searchDuration: Histogram;
 }
 
 export function buildRuntimeMetrics(): RuntimeMetrics {
@@ -65,6 +96,37 @@ export function buildRuntimeMetrics(): RuntimeMetrics {
 			"Number of ingest workers waiting on the concurrency cap.",
 		),
 	);
+	const chatRequests = registry.register(
+		new Counter(
+			"workbench_chat_requests_total",
+			"Chat completion requests, labeled by provider and outcome.",
+		),
+	);
+	const chatStreamTokens = registry.register(
+		new Counter(
+			"workbench_chat_stream_tokens_total",
+			"Tokens emitted by chat completions, by direction (in / out).",
+		),
+	);
+	const ingestDocuments = registry.register(
+		new Counter(
+			"workbench_ingest_documents_total",
+			"Documents processed by the ingest worker, labeled by outcome.",
+		),
+	);
+	const searchRequests = registry.register(
+		new Counter(
+			"workbench_search_requests_total",
+			"Knowledge-base search requests, labeled by mode and outcome.",
+		),
+	);
+	const searchDuration = registry.register(
+		new Histogram(
+			"workbench_search_duration_seconds",
+			"Wall-clock duration of dispatched search calls, labeled by mode.",
+			DEFAULT_HTTP_BUCKETS_SECONDS,
+		),
+	);
 	return {
 		registry,
 		httpRequests,
@@ -72,6 +134,11 @@ export function buildRuntimeMetrics(): RuntimeMetrics {
 		rateLimitRejections,
 		ingestActive,
 		ingestQueued,
+		chatRequests,
+		chatStreamTokens,
+		ingestDocuments,
+		searchRequests,
+		searchDuration,
 	};
 }
 

@@ -26,6 +26,7 @@ import type { EmbedderFactory } from "../embeddings/factory.js";
 import type { ExtractorRegistry } from "../ingest/extractors/index.js";
 import type { IngestSemaphore } from "../jobs/ingest-semaphore.js";
 import type { JobStore } from "../jobs/store.js";
+import type { RuntimeMetrics } from "../lib/runtime-metrics.js";
 import type { AppEnv } from "../lib/types.js";
 import type { SecretResolver } from "../secrets/provider.js";
 
@@ -58,6 +59,13 @@ export interface RoutePluginContext {
 	 * back the multipart `/ingest/file` route.
 	 */
 	readonly extractors: ExtractorRegistry;
+	/**
+	 * Optional runtime metrics registry. When present, plugins (search,
+	 * chat dispatch, ingest worker) emit counters/histograms; when
+	 * `undefined` they no-op via optional chaining. Optional so tests
+	 * that don't care about metrics can omit it.
+	 */
+	readonly metrics?: RuntimeMetrics;
 }
 
 export interface RoutePlugin {

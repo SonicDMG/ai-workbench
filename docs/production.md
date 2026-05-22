@@ -67,9 +67,40 @@ runtime beyond a trusted loopback or private admin network.
   and status family (`2xx`/`4xx`/`5xx`) to keep cardinality bounded.
   Rate-limit rejections are counted by key type, and the ingest
   semaphore exposes `workbench_ingest_workers_{active,queued}` gauges.
+  Domain counters added in 0.2:
+  | Metric | Labels |
+  |---|---|
+  | `workbench_chat_requests_total` | `provider`, `outcome` (stop / length / tool_calls / error / stream_ok) |
+  | `workbench_chat_stream_tokens_total` | `direction` (in / out) |
+  | `workbench_ingest_documents_total` | `outcome` (ok / failed) |
+  | `workbench_search_requests_total` | `mode` (vector / hybrid / *_rerank), `outcome` (ok / error) |
+  | `workbench_search_duration_seconds` | `mode` |
+
+  A starter Grafana dashboard with rows for HTTP, chat, ingest, and
+  search lives at
+  [`docs/observability/grafana-workbench.json`](./observability/grafana-workbench.json) —
+  import via **Dashboards → Import → Upload JSON**, pick your
+  Prometheus datasource at the prompt. The dashboard targets the
+  metric names verbatim; no recording rules required.
+
+  Two deeper-health endpoints land alongside the metrics: `GET
+  /health/details` returns probe results for the control plane and
+  chat provider (`{status, detail, durationMs}`), and `GET
+  /health/recent-errors` returns the last 100 error envelopes (code,
+  status, method, route pattern, request id, timestamp — no PII).
+  Both are unauthenticated.
+
   Inbound `traceparent` headers are honored when valid (the trace id
   becomes the request id) and a fresh W3C `traceparent` is emitted on
   every response so service meshes can correlate.
+- **Opt-in anonymous telemetry.** Off by default. Enable via
+  `WORKBENCH_TELEMETRY=1` (env wins over `runtime.telemetry.enabled`
+  in YAML) and point at a sink with `WORKBENCH_TELEMETRY_URL`;
+  without a URL the emitter runs in dark mode (events are constructed
+  but never sent). The CLI has the same posture under
+  `AIW_TELEMETRY` / `AIW_TELEMETRY_URL`. Strictly categorical fields
+  only — see the full event catalog + no-PII guarantee in
+  [`docs/telemetry.md`](./telemetry.md).
 - **Enable OpenTelemetry tracing** when the deployment has a
   collector. The runtime always creates manual SERVER spans through
   `@opentelemetry/api` (no-op when no SDK is registered), so flipping

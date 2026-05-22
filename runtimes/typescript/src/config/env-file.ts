@@ -7,8 +7,10 @@
  * instead of adding a dotenv dependency.
  *
  * Resolution:
- *   1. If `WORKBENCH_ENV_FILE` is set, load that exact path. Missing
- *      file is fatal — the user asked for it explicitly.
+ *   1. If `WORKBENCH_ENV_FILE` is set, load that exact path. A
+ *      missing file is logged as "absent" (not fatal): the setup
+ *      wizard writes to this path on first run, so a fresh-install
+ *      container legitimately boots before the file exists.
  *   2. Otherwise walk up from the process's working directory looking
  *      for `.env`. Stops at the first match, at a directory containing
  *      `.git/` (the repo root), or after 10 levels (safety net).
@@ -29,14 +31,18 @@ const MAX_WALK = 10;
 
 export interface EnvFileResult {
 	readonly path: string | null;
-	readonly source: "explicit" | "walked" | "none";
+	readonly source: "explicit" | "explicit-absent" | "walked" | "none";
 }
 
 export function loadDotEnv(): EnvFileResult {
 	const explicit = process.env.WORKBENCH_ENV_FILE;
 	if (explicit && explicit.length > 0) {
-		loadEnvFile(explicit);
-		return { path: resolve(explicit), source: "explicit" };
+		const abs = resolve(explicit);
+		if (!existsSync(abs)) {
+			return { path: abs, source: "explicit-absent" };
+		}
+		loadEnvFile(abs);
+		return { path: abs, source: "explicit" };
 	}
 
 	const found = walkForEnv(process.cwd());

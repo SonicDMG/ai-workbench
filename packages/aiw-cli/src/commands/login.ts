@@ -8,8 +8,16 @@ import {
 	setProfile,
 	writeConfig,
 } from "../config.js";
+import { ExitCode } from "../exit-codes.js";
 import { HttpError, request } from "../http.js";
-import { fail, info, success, warn } from "../output.js";
+import {
+	emit,
+	fail,
+	info,
+	parseOutputFormat,
+	success,
+	warn,
+} from "../output.js";
 import { WhoAmISchema } from "../types.js";
 import { runDeviceFlowLogin } from "./login-oidc.js";
 
@@ -87,9 +95,12 @@ export const loginCommand = defineCommand({
 			description:
 				"Use the OIDC device-flow (RFC 8628) login instead of pasting an API key.",
 		},
+		output: { type: "string", description: "human | json" },
 	},
 	async run({ args }) {
-		const interactive = process.stdin.isTTY && !args["api-key"];
+		const format = parseOutputFormat(args.output);
+		const interactive =
+			process.stdin.isTTY && !args["api-key"] && format === "human";
 
 		const profileName =
 			args.profile?.trim() ||
@@ -121,7 +132,7 @@ export const loginCommand = defineCommand({
 
 		if (!url) {
 			fail("--url is required when stdin is not a TTY.");
-			process.exit(2);
+			process.exit(ExitCode.USAGE_ERROR);
 		}
 
 		// OIDC device-flow branch — handed off to a dedicated module
@@ -134,7 +145,7 @@ export const loginCommand = defineCommand({
 				fail(
 					"The runtime reports it doesn't support OIDC device flow. Use `aiw login` (API key) instead, or point at a runtime that has OIDC configured with a device-aware IdP.",
 				);
-				process.exit(2);
+				process.exit(ExitCode.USAGE_ERROR);
 			}
 			await runDeviceFlowLogin({ url, profileName });
 			return;
@@ -184,25 +195,43 @@ export const loginCommand = defineCommand({
 		const current = await readConfig(loc);
 		const next = setProfile(current, profileName, profile);
 		await writeConfig(next, loc);
-		success(`Saved profile "${profileName}" at ${loc.file}.`);
+		if (format === "human") {
+			success(`Saved profile "${profileName}" at ${loc.file}.`);
+		}
 
-		if (args["no-verify"]) return;
-		if (!apiKey) {
-			info("No API key supplied; skipping /auth/me verification.");
+		const result = {
+			profile: profileName,
+			url,
+			configPath: loc.file,
+			verified: false as boolean,
+			scopes: undefined as string[] | undefined,
+		};
+
+		if (args["no-verify"] || !apiKey) {
+			if (format === "human" && !apiKey) {
+				info("No API key supplied; skipping /auth/me verification.");
+			}
+			if (format === "json") emit(format, result, () => "");
 			return;
 		}
 
 		try {
-			await request({ profile }, "/auth/me", WhoAmISchema);
-			success("API key accepted by the runtime.");
+			const me = await request({ profile }, "/auth/me", WhoAmISchema);
+			result.verified = true;
+			result.scopes = me.scopes;
+			if (format === "human") success("API key accepted by the runtime.");
 		} catch (err: unknown) {
-			fail(`Saved the profile but /auth/me failed: ${describe(err)}.`);
-			if (err instanceof HttpError && err.status === 401) {
-				info(hintFor401(err.message));
-			} else {
-				info("Run `aiw whoami` once the runtime is reachable.");
+			const msg = `Saved the profile but /auth/me failed: ${describe(err)}.`;
+			if (format === "human") {
+				fail(msg);
+				if (err instanceof HttpError && err.status === 401) {
+					info(hintFor401(err.message));
+				} else {
+					info("Run `aiw whoami` once the runtime is reachable.");
+				}
 			}
 		}
+		if (format === "json") emit(format, result, () => "");
 	},
 });
 

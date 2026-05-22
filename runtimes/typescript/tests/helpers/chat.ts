@@ -53,6 +53,7 @@ export function makeFakeChatService(
 
 	return {
 		modelId,
+		providerId: "fake",
 		calls,
 		streamCalls,
 		async complete(request) {

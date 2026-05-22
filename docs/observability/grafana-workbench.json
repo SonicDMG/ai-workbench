@@ -1,0 +1,171 @@
+{
+	"annotations": { "list": [] },
+	"editable": true,
+	"graphTooltip": 1,
+	"schemaVersion": 39,
+	"style": "dark",
+	"tags": ["ai-workbench"],
+	"templating": {
+		"list": [
+			{
+				"name": "datasource",
+				"type": "datasource",
+				"query": "prometheus",
+				"label": "Prometheus",
+				"current": {
+					"selected": true,
+					"text": "Prometheus",
+					"value": "Prometheus"
+				}
+			}
+		]
+	},
+	"title": "AI Workbench — starter dashboard",
+	"uid": "ai-workbench-starter",
+	"version": 1,
+	"refresh": "30s",
+	"time": { "from": "now-1h", "to": "now" },
+	"panels": [
+		{
+			"type": "row",
+			"title": "HTTP",
+			"gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+			"collapsed": false
+		},
+		{
+			"type": "timeseries",
+			"title": "Requests / sec by route",
+			"datasource": { "type": "prometheus", "uid": "$datasource" },
+			"gridPos": { "x": 0, "y": 1, "w": 12, "h": 8 },
+			"targets": [
+				{
+					"expr": "sum by (route) (rate(workbench_http_requests_total[5m]))",
+					"legendFormat": "{{route}}"
+				}
+			]
+		},
+		{
+			"type": "timeseries",
+			"title": "p95 latency by route (s)",
+			"datasource": { "type": "prometheus", "uid": "$datasource" },
+			"gridPos": { "x": 12, "y": 1, "w": 12, "h": 8 },
+			"targets": [
+				{
+					"expr": "histogram_quantile(0.95, sum by (route, le) (rate(workbench_http_request_duration_seconds_bucket[5m])))",
+					"legendFormat": "{{route}}"
+				}
+			]
+		},
+		{
+			"type": "stat",
+			"title": "4xx / 5xx rate",
+			"datasource": { "type": "prometheus", "uid": "$datasource" },
+			"gridPos": { "x": 0, "y": 9, "w": 12, "h": 4 },
+			"targets": [
+				{
+					"expr": "sum by (status) (rate(workbench_http_requests_total{status=~\"4xx|5xx\"}[5m]))",
+					"legendFormat": "{{status}}"
+				}
+			]
+		},
+		{
+			"type": "stat",
+			"title": "Rate-limit rejections / sec",
+			"datasource": { "type": "prometheus", "uid": "$datasource" },
+			"gridPos": { "x": 12, "y": 9, "w": 12, "h": 4 },
+			"targets": [
+				{
+					"expr": "sum(rate(workbench_rate_limit_rejections_total[5m]))"
+				}
+			]
+		},
+		{
+			"type": "row",
+			"title": "Chat",
+			"gridPos": { "x": 0, "y": 13, "w": 24, "h": 1 },
+			"collapsed": false
+		},
+		{
+			"type": "timeseries",
+			"title": "Chat requests / sec by provider + outcome",
+			"datasource": { "type": "prometheus", "uid": "$datasource" },
+			"gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+			"targets": [
+				{
+					"expr": "sum by (provider, outcome) (rate(workbench_chat_requests_total[5m]))",
+					"legendFormat": "{{provider}} {{outcome}}"
+				}
+			]
+		},
+		{
+			"type": "timeseries",
+			"title": "Stream tokens / sec (out)",
+			"datasource": { "type": "prometheus", "uid": "$datasource" },
+			"gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+			"targets": [
+				{
+					"expr": "sum by (direction) (rate(workbench_chat_stream_tokens_total[5m]))",
+					"legendFormat": "{{direction}}"
+				}
+			]
+		},
+		{
+			"type": "row",
+			"title": "Ingest",
+			"gridPos": { "x": 0, "y": 22, "w": 24, "h": 1 },
+			"collapsed": false
+		},
+		{
+			"type": "timeseries",
+			"title": "Documents ingested / sec by outcome",
+			"datasource": { "type": "prometheus", "uid": "$datasource" },
+			"gridPos": { "x": 0, "y": 23, "w": 12, "h": 8 },
+			"targets": [
+				{
+					"expr": "sum by (outcome) (rate(workbench_ingest_documents_total[5m]))",
+					"legendFormat": "{{outcome}}"
+				}
+			]
+		},
+		{
+			"type": "timeseries",
+			"title": "Ingest workers (active vs queued)",
+			"datasource": { "type": "prometheus", "uid": "$datasource" },
+			"gridPos": { "x": 12, "y": 23, "w": 12, "h": 8 },
+			"targets": [
+				{ "expr": "workbench_ingest_workers_active", "legendFormat": "active" },
+				{ "expr": "workbench_ingest_workers_queued", "legendFormat": "queued" }
+			]
+		},
+		{
+			"type": "row",
+			"title": "Search",
+			"gridPos": { "x": 0, "y": 31, "w": 24, "h": 1 },
+			"collapsed": false
+		},
+		{
+			"type": "timeseries",
+			"title": "Search requests / sec by mode + outcome",
+			"datasource": { "type": "prometheus", "uid": "$datasource" },
+			"gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 },
+			"targets": [
+				{
+					"expr": "sum by (mode, outcome) (rate(workbench_search_requests_total[5m]))",
+					"legendFormat": "{{mode}} {{outcome}}"
+				}
+			]
+		},
+		{
+			"type": "timeseries",
+			"title": "p95 search latency by mode (s)",
+			"datasource": { "type": "prometheus", "uid": "$datasource" },
+			"gridPos": { "x": 12, "y": 32, "w": 12, "h": 8 },
+			"targets": [
+				{
+					"expr": "histogram_quantile(0.95, sum by (mode, le) (rate(workbench_search_duration_seconds_bucket[5m])))",
+					"legendFormat": "{{mode}}"
+				}
+			]
+		}
+	]
+}

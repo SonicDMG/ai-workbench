@@ -1255,3 +1255,87 @@ export const PolicyAuditRecordSchema = z.object({
 });
 export type PolicyAuditRecord = z.infer<typeof PolicyAuditRecordSchema>;
 export const PolicyAuditPageSchema = paginatedSchema(PolicyAuditRecordSchema);
+
+/**
+ * Setup-wizard envelope returned by `GET /setup-status`. Mirrors the
+ * runtime's `SetupStatusBody` interface; mirror new fields here in
+ * the same PR or the schema parse will silently drop them.
+ */
+export const SetupStatusSchema = z.object({
+	setupComplete: z.boolean(),
+	workspacesCount: z.number(),
+	controlPlane: z.object({
+		kind: z.string(),
+		healthy: z.boolean(),
+	}),
+	hasChatProvider: z.boolean(),
+	hasAstraCreds: z.boolean(),
+	managedEnv: z.object({
+		path: z.string(),
+		writable: z.boolean(),
+		present: z.boolean(),
+	}),
+});
+export type SetupStatus = z.infer<typeof SetupStatusSchema>;
+
+/** Allow-listed keys the wizard is permitted to persist. */
+export const MANAGED_ENV_KEYS = [
+	"ASTRA_DB_API_ENDPOINT",
+	"ASTRA_DB_APPLICATION_TOKEN",
+	"HUGGINGFACE_API_KEY",
+] as const;
+export type ManagedEnvKey = (typeof MANAGED_ENV_KEYS)[number];
+
+export const SetupEnvResponseSchema = z.object({
+	ok: z.boolean(),
+	managedEnv: z.object({
+		path: z.string(),
+		writable: z.boolean(),
+		present: z.boolean(),
+	}),
+	written: z.array(z.string()),
+	restartRequired: z.boolean(),
+});
+export type SetupEnvResponse = z.infer<typeof SetupEnvResponseSchema>;
+
+/** Result of a single backend probe (`probeControlPlane` / `probeChatProvider`). */
+export const ProbeResultSchema = z.object({
+	status: z.enum(["ok", "degraded", "down"]),
+	detail: z.string(),
+	durationMs: z.number(),
+});
+export type ProbeResult = z.infer<typeof ProbeResultSchema>;
+
+/** Envelope returned by `GET /health/details`. */
+export const HealthDetailsSchema = z.object({
+	controlPlane: ProbeResultSchema,
+	chat: ProbeResultSchema,
+	ingest: z
+		.object({
+			active: z.number(),
+			queued: z.number(),
+			capacity: z.number(),
+		})
+		.nullable(),
+	recentErrors: z.object({
+		capacity: z.number(),
+		count: z.number(),
+	}),
+});
+export type HealthDetails = z.infer<typeof HealthDetailsSchema>;
+
+export const RecentErrorEntrySchema = z.object({
+	ts: z.string(),
+	code: z.string(),
+	status: z.number(),
+	method: z.string(),
+	routePattern: z.string(),
+	requestId: z.string(),
+});
+export type RecentErrorEntry = z.infer<typeof RecentErrorEntrySchema>;
+
+export const RecentErrorsResponseSchema = z.object({
+	capacity: z.number(),
+	entries: z.array(RecentErrorEntrySchema),
+});
+export type RecentErrorsResponse = z.infer<typeof RecentErrorsResponseSchema>;

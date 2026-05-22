@@ -107,9 +107,12 @@ describe("loadDotEnv", () => {
 		}
 	});
 
-	test("explicit WORKBENCH_ENV_FILE pointing at a missing file throws", () => {
-		process.env.WORKBENCH_ENV_FILE = join(root, "does-not-exist.env");
-		expect(() => loadDotEnv()).toThrow();
+	test("explicit WORKBENCH_ENV_FILE pointing at a missing file returns explicit-absent (setup wizard writes it on first run)", () => {
+		const missing = join(root, "does-not-exist.env");
+		process.env.WORKBENCH_ENV_FILE = missing;
+		const result = loadDotEnv();
+		expect(result.source).toBe("explicit-absent");
+		expect(result.path).toBe(missing);
 	});
 
 	test("pre-existing process.env values win over .env entries", () => {

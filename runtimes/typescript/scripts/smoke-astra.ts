@@ -95,6 +95,7 @@ async function main(): Promise<void> {
 			blockPrivateNetworkEndpoints: false,
 			maxConcurrentIngestJobs: 4,
 			tracing: { enabled: false, serviceName: null, exporterUrl: null },
+			telemetry: { enabled: false, url: null },
 		},
 		controlPlane: {
 			driver: "astra" as const,

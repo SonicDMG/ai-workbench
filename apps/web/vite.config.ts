@@ -61,6 +61,46 @@ export default defineConfig({
 				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
 				changeOrigin: true,
 			},
+			"/health": {
+				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
+				changeOrigin: true,
+			},
+			"/setup-status": {
+				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
+				changeOrigin: true,
+			},
+			"/setup": {
+				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
+				changeOrigin: true,
+			},
+			"/error-codes": {
+				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
+				changeOrigin: true,
+			},
+			"/astra-cli": {
+				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
+				changeOrigin: true,
+			},
+			"/features": {
+				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
+				changeOrigin: true,
+			},
+			"/readyz": {
+				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
+				changeOrigin: true,
+			},
+			"/healthz": {
+				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
+				changeOrigin: true,
+			},
+			"/version": {
+				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
+				changeOrigin: true,
+			},
+			"/metrics": {
+				target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
+				changeOrigin: true,
+			},
 		},
 	},
 	build: {

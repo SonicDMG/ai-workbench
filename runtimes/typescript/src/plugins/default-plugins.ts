@@ -73,6 +73,7 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 		jobs: ctx.jobs,
 		replicaId: ctx.replicaId,
 		ingestSemaphore: ctx.ingestSemaphore,
+		metrics: ctx.metrics,
 	});
 	// Single `KnowledgeBaseService` instance shared between the
 	// MCP plugin (powers `create_knowledge_base` / `delete_knowledge_base`)
@@ -127,6 +128,7 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					secrets: ctx.secrets,
 					chatService: ctx.chatService,
 					chatConfig: ctx.chatConfig,
+					metrics: ctx.metrics,
 				}),
 		},
 		{
@@ -157,6 +159,7 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					store: ctx.store,
 					drivers: ctx.drivers,
 					embedders: ctx.embedders,
+					metrics: ctx.metrics,
 				}),
 		},
 		{

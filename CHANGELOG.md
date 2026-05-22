@@ -9,6 +9,156 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+### Added
+
+- **Conformance coverage for the chat surface.** The chat / agent
+  message routes were previously excluded from the cross-runtime
+  conformance harness because chat completion depended on an upstream
+  LLM API. The runtime now ships a tiny `FixtureChatService`
+  ([`runtimes/typescript/src/chat/fixture.ts`](./runtimes/typescript/src/chat/fixture.ts))
+  that replays a scripted reply (sync) and a scripted token stream
+  (async); scenarios opt in via a new optional `chatScript` field in
+  [`conformance/scenarios.json`](./conformance/scenarios.json) that
+  the regen + drift harness wires through `createApp({chatService:
+  new FixtureChatService(scenario.chatScript)})`. The runner now
+  detects `text/event-stream` bodies and parses them via a shared
+  `parseSseBody` helper ([`conformance/runner.mjs`](./conformance/runner.mjs))
+  into a deterministic array of `{event, data}` records, so SSE
+  fixtures normalize cleanly through the existing UUID / timestamp
+  rules. Two new committed fixtures, `chat-message-sync` and
+  `chat-message-stream`, pin the user + assistant wire shape +
+  metadata for both delivery modes. Drift guard picks them up
+  automatically.
+- **Opt-in anonymous telemetry (wired-but-dark by default).** The
+  runtime and CLI gain a tiny telemetry surface, off unless explicitly
+  enabled. Posture: off by default; `WORKBENCH_TELEMETRY=1` /
+  `AIW_TELEMETRY=1` flips it on; `WORKBENCH_TELEMETRY_URL` /
+  `AIW_TELEMETRY_URL` points at a sink. When enabled without a URL,
+  the emitter constructs events and logs `telemetry: dark mode (no
+  sink configured)` but never sends anything — operators can verify
+  the wiring before standing up a sink. Three event types: `runtime_start`
+  (controlPlane, authMode, environment, hasChat, chatProvider),
+  `error` from `app.onError` (code + status), `command_run` from the
+  CLI's top-level wrapper (subcommand name only, never argument
+  values), plus a CLI-side `error` (code + exit). Every event carries
+  an anonymous install id persisted at `$WORKBENCH_DATA_DIR/.install-id`
+  (runtime) or `$AIW_CONFIG_HOME/.install-id` (CLI). Wire format is a
+  fire-and-forget `POST` with a 2 s timeout — network failures never
+  block the runtime or the CLI. New
+  [`docs/telemetry.md`](./docs/telemetry.md) is the canonical event
+  catalog and no-PII guarantee. New runtime config block
+  `runtime.telemetry: { enabled, url }` (env vars win over YAML).
+  ([`runtimes/typescript/src/lib/telemetry.ts`](./runtimes/typescript/src/lib/telemetry.ts),
+  [`packages/aiw-cli/src/telemetry.ts`](./packages/aiw-cli/src/telemetry.ts),
+  [`docs/telemetry.md`](./docs/telemetry.md))
+- **Observability surfaces: `/health/details`, `/health/recent-errors`,
+  curated metrics, Grafana starter dashboard, web `/status` page.**
+  Two new unauthenticated read-only endpoints surface deep backend
+  health: `GET /health/details` returns `{controlPlane, chat, ingest,
+  recentErrors}` with per-probe `{status: ok|degraded|down, detail,
+  durationMs}`; `GET /health/recent-errors` exposes an in-memory ring
+  buffer (cap 100, newest first) of the last error envelopes —
+  `code`, `status`, `method`, matched route pattern, request id,
+  timestamp, no PII. Five new Prometheus families land at
+  `/metrics`: `workbench_chat_requests_total{provider,outcome}`,
+  `workbench_chat_stream_tokens_total{direction}`,
+  `workbench_ingest_documents_total{outcome}`,
+  `workbench_search_requests_total{mode,outcome}`,
+  `workbench_search_duration_seconds{mode}`. `ChatService` now
+  declares `providerId` (`"huggingface"`, `"openai"`, …) and an
+  optional `ping()` (HF `whoami-v2`, OpenAI `/models`) that powers
+  the chat probe. A starter Grafana dashboard with rows for HTTP,
+  chat, ingest, and search is committed at
+  [`docs/observability/grafana-workbench.json`](./docs/observability/grafana-workbench.json) —
+  drop-in via Dashboards → Import. The web UI gains a `/status`
+  route (lazy-loaded [`apps/web/src/pages/StatusPage.tsx`](./apps/web/src/pages/StatusPage.tsx))
+  rendering traffic-light cards for each probe + the recent-errors
+  table, polled every 10 seconds.
+  ([`runtimes/typescript/src/lib/health-probes.ts`](./runtimes/typescript/src/lib/health-probes.ts),
+  [`runtimes/typescript/src/lib/recent-errors.ts`](./runtimes/typescript/src/lib/recent-errors.ts),
+  [`runtimes/typescript/src/lib/runtime-metrics.ts`](./runtimes/typescript/src/lib/runtime-metrics.ts),
+  [`runtimes/typescript/src/routes/operational.ts`](./runtimes/typescript/src/routes/operational.ts),
+  [`docs/production.md`](./docs/production.md))
+- **First-run setup wizard + managed credentials file.** New
+  unauthenticated `GET /setup-status` reports whether the runtime
+  needs first-run configuration (`setupComplete`, `workspacesCount`,
+  `controlPlane`, `hasAstraCreds`, `hasChatProvider`, `managedEnv`).
+  New `POST /setup/env` atomically writes a wizard-managed dotenv
+  file (allow-list: `ASTRA_DB_API_ENDPOINT`,
+  `ASTRA_DB_APPLICATION_TOKEN`, `HUGGINGFACE_API_KEY`) to
+  `$WORKBENCH_DATA_DIR/.env` with mode `0600`; `POST /setup/restart`
+  triggers graceful shutdown so the bundled compose `restart:
+  unless-stopped` brings the runtime back with the new values
+  loaded. Both mutation routes accept the bootstrap token, or run
+  unauthenticated only while `auth.mode === "disabled"` AND no
+  workspaces exist (the fresh-install window). The web onboarding
+  page gains a new "Credentials" step 0 driven by
+  [`apps/web/src/components/onboarding/CredentialsStep.tsx`](./apps/web/src/components/onboarding/CredentialsStep.tsx)
+  that posts to the new routes, polls `/readyz`, and advances to the
+  existing backend/details/agents flow. The compose file sets
+  `WORKBENCH_DATA_DIR` and `WORKBENCH_ENV_FILE` so the wizard's
+  output is auto-loaded on the next boot. `WORKBENCH_ENV_FILE` is
+  no longer fatal-on-absent — fresh containers boot with no managed
+  file and the wizard writes it.
+  ([`runtimes/typescript/src/routes/setup.ts`](./runtimes/typescript/src/routes/setup.ts),
+  [`runtimes/typescript/src/setup/managed-env.ts`](./runtimes/typescript/src/setup/managed-env.ts),
+  [`apps/web/src/pages/OnboardingPage.tsx`](./apps/web/src/pages/OnboardingPage.tsx),
+  [`docker-compose.yml`](./docker-compose.yml))
+- **CLI: `aiw doctor`, `aiw status`, `aiw profile`, `aiw completion`.**
+  Pre-flight diagnostics (`aiw doctor`) run a fixed checklist —
+  profile resolution, runtime reachability, `/readyz`, `/auth/me`,
+  MCP feature flag, Astra-CLI auto-discovery — and exit 0 / 1 / 2
+  on pass / fail / warn-only. `aiw doctor --explain <code>` prints
+  the runtime's error-registry entry for a given code (fetched live
+  from `/error-codes`). `aiw status` is the one-line counterpart for
+  scripted health probes. `aiw profile {ls,use,rm}` manages the
+  CLI's stored credential profiles without re-running `login`. `aiw
+  completion {bash,zsh,fish}` emits a hand-rolled shell-completion
+  script (citty has no generator); covers top-level verbs and one
+  level of subcommands.
+  ([`packages/aiw-cli/src/commands/doctor.ts`](./packages/aiw-cli/src/commands/doctor.ts),
+  [`packages/aiw-cli/src/commands/status.ts`](./packages/aiw-cli/src/commands/status.ts),
+  [`packages/aiw-cli/src/commands/profile.ts`](./packages/aiw-cli/src/commands/profile.ts),
+  [`packages/aiw-cli/src/commands/completion.ts`](./packages/aiw-cli/src/commands/completion.ts))
+- **CLI: documented exit codes, retries, timeouts, container-aware
+  config path.** Scripts wrapping `aiw` can now branch on stable exit
+  codes (`OK`, `RUNTIME_ERROR`, `USAGE_ERROR`, `AUTH_ERROR`,
+  `NOT_FOUND`, `CONFLICT`, `UNAVAILABLE`) derived from the server's
+  error code first, then HTTP status. `request()` in
+  [`packages/aiw-cli/src/http.ts`](./packages/aiw-cli/src/http.ts) now
+  enforces a 10-second timeout (override via
+  `AIW_REQUEST_TIMEOUT_MS`) and retries network failures once
+  (`AIW_REQUEST_RETRIES`); 4xx/5xx are never retried. `HttpError`
+  carries the envelope's `hint`, `docs`, and `requestId`, and
+  [`packages/aiw-cli/src/output.ts`](./packages/aiw-cli/src/output.ts)
+  renders them as indented follow-up lines under the `✗` bullet.
+  Profiles now live at `$WORKBENCH_DATA_DIR/cli/config.json` when the
+  CLI runs inside the bundled compose container (override with
+  `AIW_CONFIG_HOME`) so they survive `docker compose down/up` in the
+  same volume that holds control-plane state.
+  ([`packages/aiw-cli/src/exit-codes.ts`](./packages/aiw-cli/src/exit-codes.ts),
+  [`packages/aiw-cli/src/http.ts`](./packages/aiw-cli/src/http.ts),
+  [`packages/aiw-cli/src/config.ts`](./packages/aiw-cli/src/config.ts),
+  [`packages/aiw-cli/README.md`](./packages/aiw-cli/README.md))
+- **Error code registry + remediation hints in every API envelope.**
+  Every error response now carries optional `hint` (one-line
+  remediation) and `docs` (relative path under the docs root,
+  e.g. `docs/errors.md#workspace-not-found`) alongside the existing
+  `code` / `message` / `requestId`. Hints come from a single registry
+  at [`runtimes/typescript/src/lib/error-codes.ts`](./runtimes/typescript/src/lib/error-codes.ts);
+  the runtime auto-fills them whenever a thrown `ApiError` (or a
+  control-plane error mapped to a registered code) matches an entry,
+  so route handlers don't restate the hint at every throw site. New
+  unauthenticated read-only `GET /error-codes` endpoint returns the
+  registry as JSON for tooling (CLI `--explain`, web `/status` page,
+  external dashboards). The new [`docs/errors.md`](./docs/errors.md)
+  is generated from the registry via `npm run docs:errors`; a vitest
+  drift guard fails CI if it goes stale or if a thrown code is
+  unregistered. ([`runtimes/typescript/src/lib/error-codes.ts`](./runtimes/typescript/src/lib/error-codes.ts),
+  [`runtimes/typescript/src/lib/errors.ts`](./runtimes/typescript/src/lib/errors.ts),
+  [`runtimes/typescript/src/routes/operational.ts`](./runtimes/typescript/src/routes/operational.ts),
+  [`docs/errors.md`](./docs/errors.md))
+
 ### Changed
 
 - **MCP façade is on by default.** `mcp.enabled` now defaults to

@@ -4351,6 +4351,16 @@ export interface components {
 				message: string;
 				/** @example 01HY2Z... */
 				requestId: string;
+				/**
+				 * @description One-line remediation paired with this code in the runtime's error registry. Present whenever the code is registered.
+				 * @example The workspace does not exist or your principal cannot see it; run `aiw workspace list` to verify.
+				 */
+				hint?: string;
+				/**
+				 * @description Relative path (under the docs root) to the long-form explanation of this code. Present whenever the code is registered.
+				 * @example docs/errors.md#workspace-not-found
+				 */
+				docs?: string;
 			};
 		};
 		AstraCliInfo:

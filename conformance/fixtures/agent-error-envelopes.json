@@ -69,6 +69,8 @@
 				"body": {
 					"error": {
 						"code": "conflict",
+						"docs": "docs/errors.md#conflict",
+						"hint": "The resource already exists or its state changed underneath you; refetch and retry.",
 						"message": "agent with id '{{UUID_2}}' already exists",
 						"requestId": "{{REQID_1}}"
 					}
@@ -87,6 +89,8 @@
 				"body": {
 					"error": {
 						"code": "agent_not_found",
+						"docs": "docs/errors.md#agent-not-found",
+						"hint": "The agent does not exist in this workspace; create one before sending messages.",
 						"message": "agent '{{UUID_3}}' not found",
 						"requestId": "{{REQID_2}}"
 					}

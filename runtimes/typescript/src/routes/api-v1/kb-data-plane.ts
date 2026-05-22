@@ -48,10 +48,20 @@ export interface KbDataPlaneDeps {
 	readonly store: ControlPlaneStore;
 	readonly drivers: VectorStoreDriverRegistry;
 	readonly embedders: EmbedderFactory;
+	readonly metrics?: import("../../lib/runtime-metrics.js").RuntimeMetrics;
+}
+
+/** Pick the low-cardinality `mode` label for a search request. */
+function searchMode(body: {
+	readonly hybrid?: boolean;
+	readonly rerank?: boolean;
+}): string {
+	const lane = body.hybrid ? "hybrid" : "vector";
+	return body.rerank ? `${lane}_rerank` : lane;
 }
 
 export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
-	const { store, drivers, embedders } = deps;
+	const { store, drivers, embedders, metrics } = deps;
 	const app = makeOpenApi();
 
 	app.openapi(
@@ -209,13 +219,29 @@ export function kbDataPlaneRoutes(deps: KbDataPlaneDeps): OpenAPIHono<AppEnv> {
 			}
 			const driver = drivers.for(workspace);
 			const ctx = { workspace, descriptor };
-			const hits = await dispatchSearch({
-				ctx,
-				driver,
-				body: mergedBody,
-				embedders,
-			});
-			return c.json(toMutableHits(hits), 200);
+			const mode = searchMode(mergedBody);
+			const start = process.hrtime.bigint();
+			try {
+				const hits = await dispatchSearch({
+					ctx,
+					driver,
+					body: mergedBody,
+					embedders,
+				});
+				metrics?.searchRequests.inc({ mode, outcome: "ok" });
+				metrics?.searchDuration.observe(
+					{ mode },
+					Number(process.hrtime.bigint() - start) / 1e9,
+				);
+				return c.json(toMutableHits(hits), 200);
+			} catch (err) {
+				metrics?.searchRequests.inc({ mode, outcome: "error" });
+				metrics?.searchDuration.observe(
+					{ mode },
+					Number(process.hrtime.bigint() - start) / 1e9,
+				);
+				throw err;
+			}
 		},
 	);
 

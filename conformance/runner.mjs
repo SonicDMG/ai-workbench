@@ -27,6 +27,49 @@
 import { normalize } from "./normalize.mjs";
 
 /**
+ * Parse a `text/event-stream` body into a deterministic array of
+ * `{event?, data}` records so the fixture captures the structure
+ * rather than a raw stringified blob. Blank lines delimit events;
+ * within an event, `event:` and `data:` lines map onto fields. When
+ * `data:` parses as JSON we keep the parsed value; otherwise the
+ * raw string. Unknown SSE fields are ignored — they don't affect
+ * the wire contract any runtime must produce.
+ *
+ * Exported so the TS-runtime harness + the drift test + the Python
+ * port can share the same parser shape.
+ */
+export function parseSseBody(text) {
+	const events = [];
+	if (typeof text !== "string" || text.length === 0) return events;
+	const blocks = text.split(/\r?\n\r?\n/);
+	for (const block of blocks) {
+		if (!block.trim()) continue;
+		let event;
+		const dataLines = [];
+		for (const line of block.split(/\r?\n/)) {
+			if (line.startsWith("event:")) {
+				event = line.slice("event:".length).trim();
+			} else if (line.startsWith("data:")) {
+				dataLines.push(line.slice("data:".length).trim());
+			}
+			// Other SSE fields (id, retry, comments) are intentionally
+			// ignored — they don't shape the contract conformance checks.
+		}
+		const raw = dataLines.join("\n");
+		let data = raw;
+		if (raw.length > 0) {
+			try {
+				data = JSON.parse(raw);
+			} catch {
+				// non-JSON SSE payloads (rare for this API surface) stay as string
+			}
+		}
+		events.push({ ...(event ? { event } : {}), data });
+	}
+	return events;
+}
+
+/**
  * Resolve `$N.field.subfield` against the prior captured raw responses.
  */
 function resolveValue(template, rawResponses) {

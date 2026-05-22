@@ -1,4 +1,5 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+import type { ChatService } from "../chat/types.js";
 import {
 	type AstraCliInfo,
 	type AstraCliInventory,
@@ -6,9 +7,12 @@ import {
 } from "../config/astra-cli.js";
 import type { McpConfig } from "../config/schema.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
+import { listErrorCodes } from "../lib/error-codes.js";
 import { errorEnvelope } from "../lib/errors.js";
+import { probeChatProvider, probeControlPlane } from "../lib/health-probes.js";
 import { makeOpenApi } from "../lib/openapi.js";
 import { resolvePublicBaseUrl } from "../lib/public-url.js";
+import type { RecentErrorBuffer } from "../lib/recent-errors.js";
 import type { RuntimeMetrics } from "../lib/runtime-metrics.js";
 import type { AppEnv } from "../lib/types.js";
 import {
@@ -50,6 +54,13 @@ export function operationalRoutes(
 	// `/metrics` endpoint. Absent in tests that don't care about the
 	// metrics surface, so the registry stays out of pin-style snapshots.
 	metrics?: RuntimeMetrics,
+	// Optional chat service — when present, `/health/details` probes it
+	// alongside the control plane. Tests usually leave this null.
+	chatService: ChatService | null = null,
+	// Optional ring buffer of recent error envelopes — when present,
+	// `/health/recent-errors` returns the snapshot. App-side wiring in
+	// `app.ts` feeds it from the `onError` handler.
+	recentErrors?: RecentErrorBuffer,
 ): OpenAPIHono<AppEnv> {
 	const app = makeOpenApi();
 
@@ -228,6 +239,50 @@ export function operationalRoutes(
 				},
 				200,
 			),
+	);
+
+	app.get("/error-codes", (c) =>
+		c.json(
+			{
+				codes: listErrorCodes().map((entry) => ({
+					code: entry.code,
+					defaultStatus: entry.defaultStatus,
+					hint: entry.hint,
+					docs: `docs/errors.md#${entry.docsAnchor}`,
+				})),
+			},
+			200,
+		),
+	);
+
+	app.get("/health/details", async (c) => {
+		const [controlPlane, chat] = await Promise.all([
+			probeControlPlane(store),
+			probeChatProvider(chatService),
+		]);
+		const ingest = ingestSemaphore ? ingestSemaphore.stats() : null;
+		return c.json(
+			{
+				controlPlane,
+				chat,
+				ingest,
+				recentErrors: {
+					capacity: recentErrors?.capacity ?? 0,
+					count: recentErrors?.snapshot().length ?? 0,
+				},
+			},
+			200,
+		);
+	});
+
+	app.get("/health/recent-errors", (c) =>
+		c.json(
+			{
+				capacity: recentErrors?.capacity ?? 0,
+				entries: recentErrors?.snapshot() ?? [],
+			},
+			200,
+		),
 	);
 
 	app.openapi(

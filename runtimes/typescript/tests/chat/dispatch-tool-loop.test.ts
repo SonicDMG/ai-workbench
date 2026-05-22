@@ -40,6 +40,7 @@ import { makeFakeEmbedderFactory } from "../helpers/embedder.js";
  */
 class ScriptedToolChatService implements ChatService {
 	readonly modelId = "scripted-tool-test";
+	readonly providerId = "scripted";
 	readonly calls: ChatCompletionRequest[] = [];
 	private readonly script: ChatCompletion[];
 

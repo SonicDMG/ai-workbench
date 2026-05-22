@@ -444,5 +444,69 @@
 				"path": "/api/v1/workspaces/$1.workspaceId/agents/$3.agentId"
 			}
 		]
+	},
+	{
+		"slug": "chat-message-sync",
+		"description": "Synchronous POST /agents/{a}/conversations/{c}/messages happy path against the fixture chat provider. Creates an agent without an llmServiceId so dispatch falls through to the runtime's global ChatService — which the conformance harness injects as a FixtureChatService driven by the per-scenario `chatScript`. Pins the user + assistant message wire shape, including persisted token counts and finish_reason.",
+		"chatScript": {
+			"reply": "fixture reply",
+			"tokenCount": 5
+		},
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents",
+				"body": { "name": "fixture-agent" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations",
+				"body": { "title": "fixture thread" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations/$3.conversationId/messages",
+				"body": { "content": "hello fixture" }
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations/$3.conversationId/messages"
+			}
+		]
+	},
+	{
+		"slug": "chat-message-stream",
+		"description": "Server-sent events happy path for POST /agents/{a}/conversations/{c}/messages/stream. The FixtureChatService emits the scripted token stream; the harness parses the SSE body into a deterministic array of {event, data} records via conformance/runner.parseSseBody so the captured fixture is stable across runs.",
+		"chatScript": {
+			"tokens": ["hi", " from", " fixture"],
+			"tokenCount": 3
+		},
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents",
+				"body": { "name": "fixture-stream-agent" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations",
+				"body": { "title": "stream thread" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations/$3.conversationId/messages/stream",
+				"body": { "content": "hello stream" }
+			}
+		]
 	}
 ]

@@ -79,10 +79,19 @@ export interface AgentRouteDeps {
 	readonly chatService: ChatService | null;
 	/** Mirrors the runtime config; controls retrieval / persona defaults. */
 	readonly chatConfig: ChatConfig | null;
+	readonly metrics?: import("../../lib/runtime-metrics.js").RuntimeMetrics;
 }
 
 export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
-	const { store, drivers, embedders, secrets, chatService, chatConfig } = deps;
+	const {
+		store,
+		drivers,
+		embedders,
+		secrets,
+		chatService,
+		chatConfig,
+		metrics,
+	} = deps;
 	const app = makeOpenApi();
 
 	/* ---------------- Agent CRUD ---------------- */
@@ -661,30 +670,40 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 				);
 			}
 			const body = c.req.valid("json");
-			const { user, assistant } = await dispatchAgentSend(
-				{
-					store,
-					drivers,
-					embedders,
-					secrets,
-					logger,
-					chatService,
-					chatConfig,
-				},
-				{
-					workspaceId,
-					agent: resolved.agent,
-					conversation: resolved.conversation,
-				},
-				{ content: body.content },
-			);
-			return c.json(
-				{
-					user: toChatMessageWire(user),
-					assistant: toChatMessageWire(assistant),
-				},
-				201,
-			);
+			const provider = chatService?.providerId ?? "unknown";
+			try {
+				const { user, assistant } = await dispatchAgentSend(
+					{
+						store,
+						drivers,
+						embedders,
+						secrets,
+						logger,
+						chatService,
+						chatConfig,
+					},
+					{
+						workspaceId,
+						agent: resolved.agent,
+						conversation: resolved.conversation,
+					},
+					{ content: body.content },
+				);
+				const outcome =
+					(assistant.metadata as { finish_reason?: string } | null)
+						?.finish_reason ?? "stop";
+				metrics?.chatRequests.inc({ provider, outcome });
+				return c.json(
+					{
+						user: toChatMessageWire(user),
+						assistant: toChatMessageWire(assistant),
+					},
+					201,
+				);
+			} catch (err) {
+				metrics?.chatRequests.inc({ provider, outcome: "error" });
+				throw err;
+			}
 		},
 	);
 
@@ -758,6 +777,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 			const body = c.req.valid("json");
 			const userContent = body.content;
 
+			const provider = chatService?.providerId ?? "unknown";
 			return streamSSE(c, async (stream) => {
 				try {
 					await dispatchAgentSendStream(
@@ -787,7 +807,9 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 								JSON.stringify(toChatMessageWire(record)),
 						},
 					);
+					metrics?.chatRequests.inc({ provider, outcome: "stream_ok" });
 				} catch (err) {
+					metrics?.chatRequests.inc({ provider, outcome: "error" });
 					// Once `streamSSE` has flushed headers we can't return a
 					// typed JSON envelope, so we emit the same shape inside
 					// a dedicated `stream-error` event. Codes match the

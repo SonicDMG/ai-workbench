@@ -25,6 +25,9 @@ import { WorkspacesPage } from "@/pages/WorkspacesPage";
 const OnboardingPage = lazy(() =>
 	import("@/pages/OnboardingPage").then((m) => ({ default: m.OnboardingPage })),
 );
+const StatusPage = lazy(() =>
+	import("@/pages/StatusPage").then((m) => ({ default: m.StatusPage })),
+);
 const WorkspaceDetailPage = lazy(() =>
 	import("@/pages/WorkspaceDetailPage").then((m) => ({
 		default: m.WorkspaceDetailPage,
@@ -92,6 +95,7 @@ function RoutedView() {
 				<Routes>
 					<Route path="/" element={<WorkspacesPage />} />
 					<Route path="/onboarding" element={<OnboardingPage />} />
+					<Route path="/status" element={<StatusPage />} />
 					<Route
 						path="/workspaces/:workspaceId"
 						element={<WorkspaceDetailPage />}

@@ -20,6 +20,16 @@ services:
       # Bundled in the image — pins the control plane to file driver
       # rooted at /var/lib/workbench (mounted below).
       WORKBENCH_CONFIG: /app/examples/workbench.docker.yaml
+      # Persistent volume root. Used by:
+      #   - the file-driver control plane (above)
+      #   - the setup wizard's managed env file at $WORKBENCH_DATA_DIR/.env
+      #   - the `aiw` CLI's profile store at $WORKBENCH_DATA_DIR/cli/config.json
+      WORKBENCH_DATA_DIR: /var/lib/workbench
+      # Auto-load the wizard-written env file on every boot. When the
+      # file doesn't exist yet (fresh install) the runtime still starts
+      # — `WORKBENCH_ENV_FILE` is only fatal if explicitly set AND
+      # missing-on-disk; the wizard creates it before /setup/restart.
+      WORKBENCH_ENV_FILE: /var/lib/workbench/.env
     env_file: .env
       # Optional. `.env` carries ASTRA_DB_* / HUGGINGFACE_API_KEY /
       # other workspace credential refs. Compose v2 honors `required:

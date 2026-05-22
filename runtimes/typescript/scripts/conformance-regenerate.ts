@@ -17,9 +17,13 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error — mjs import without types; it's intentional.
-import { runScenario } from "../../../conformance/runner.mjs";
+import { parseSseBody, runScenario } from "../../../conformance/runner.mjs";
 import { createApp } from "../src/app.js";
 import { AuthResolver } from "../src/auth/resolver.js";
+import {
+	type FixtureChatScript,
+	FixtureChatService,
+} from "../src/chat/fixture.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
@@ -36,6 +40,7 @@ const FIXTURES_DIR = resolve(REPO_ROOT, "conformance/fixtures");
 interface Scenario {
 	readonly slug: string;
 	readonly description?: string;
+	readonly chatScript?: FixtureChatScript;
 	readonly steps: ReadonlyArray<{
 		readonly method: string;
 		readonly path: string;
@@ -43,7 +48,7 @@ interface Scenario {
 	}>;
 }
 
-async function fetcherForFreshApp(): Promise<
+async function fetcherForFreshApp(scenario: Scenario): Promise<
 	(
 		method: string,
 		path: string,
@@ -63,6 +68,9 @@ async function fetcherForFreshApp(): Promise<
 		anonymousPolicy: "allow",
 		verifiers: [],
 	});
+	const chatService = scenario.chatScript
+		? new FixtureChatService(scenario.chatScript)
+		: null;
 	const app = createApp({
 		store,
 		drivers,
@@ -75,6 +83,7 @@ async function fetcherForFreshApp(): Promise<
 		// deterministic mockEmbed; other runtimes implement the same
 		// stand-in to diff cleanly.
 		embedders: makeFakeEmbedderFactory(),
+		chatService,
 	});
 	return async (method, path, body) => {
 		const init: RequestInit = { method };
@@ -85,7 +94,10 @@ async function fetcherForFreshApp(): Promise<
 		const res = await app.request(path, init);
 		const contentType = res.headers.get("content-type") ?? "";
 		let parsedBody: unknown = null;
-		if (contentType.includes("application/json")) {
+		if (contentType.includes("text/event-stream")) {
+			const text = await res.text();
+			parsedBody = parseSseBody(text);
+		} else if (contentType.includes("application/json")) {
 			const text = await res.text();
 			parsedBody = text ? JSON.parse(text) : null;
 		} else {
@@ -101,7 +113,7 @@ async function main(): Promise<void> {
 	const scenarios = JSON.parse(scenariosRaw) as Scenario[];
 
 	for (const scenario of scenarios) {
-		const fetcher = await fetcherForFreshApp();
+		const fetcher = await fetcherForFreshApp(scenario);
 		const normalizedCaptures = await runScenario(scenario, fetcher);
 		const fixturePath = resolve(FIXTURES_DIR, `${scenario.slug}.json`);
 		const payload = {

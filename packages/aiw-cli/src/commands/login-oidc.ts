@@ -24,6 +24,7 @@ import {
 	setProfile,
 	writeConfig,
 } from "../config.js";
+import { ExitCode } from "../exit-codes.js";
 import { fail, info, success, warn } from "../output.js";
 
 interface DeviceAuthorization {
@@ -118,12 +119,12 @@ async function startDeviceAuthorization(
 		fail(
 			"The runtime's OIDC IdP doesn't advertise a device-authorization endpoint. Use `aiw login` (API key) instead, or configure an IdP that supports RFC 8628 (Auth0 / Okta / Keycloak / Google all do by default).",
 		);
-		process.exit(2);
+		process.exit(ExitCode.USAGE_ERROR);
 	}
 	if (!res.ok) {
 		const text = await res.text();
 		fail(`Device authorization failed (${res.status}): ${text}`);
-		process.exit(2);
+		process.exit(ExitCode.USAGE_ERROR);
 	}
 	const body = (await res.json()) as Partial<DeviceAuthorization>;
 	if (
@@ -135,7 +136,7 @@ async function startDeviceAuthorization(
 		fail(
 			"Runtime returned an unexpected device-authorization shape — missing device_code / user_code / verification_uri / expires_in.",
 		);
-		process.exit(2);
+		process.exit(ExitCode.USAGE_ERROR);
 	}
 	return {
 		device_code: body.device_code,
@@ -173,7 +174,7 @@ async function pollForToken(
 				if (typeof body.access_token !== "string") {
 					spinner.stop("Runtime returned no access_token.");
 					fail("Token response missing `access_token`.");
-					process.exit(2);
+					process.exit(ExitCode.USAGE_ERROR);
 				}
 				spinner.stop("Login approved.");
 				return {
@@ -200,22 +201,22 @@ async function pollForToken(
 			if (code === "expired_token") {
 				spinner.stop("Device code expired.");
 				fail("The login code expired — re-run `aiw login --oidc`.");
-				process.exit(2);
+				process.exit(ExitCode.USAGE_ERROR);
 			}
 			if (code === "access_denied") {
 				spinner.stop("Login denied.");
 				fail("The login was denied in the browser.");
-				process.exit(2);
+				process.exit(ExitCode.USAGE_ERROR);
 			}
 			spinner.stop("Device-flow login failed.");
 			fail(`Runtime returned ${res.status} ${code ?? "unknown"}: ${text}`);
-			process.exit(2);
+			process.exit(ExitCode.USAGE_ERROR);
 		}
 		// Loop exited because the device code expired while we were
 		// polling — surface a clear hint to the user.
 		spinner.stop("Device code expired before approval.");
 		fail("Login timed out — re-run `aiw login --oidc` to start over.");
-		process.exit(2);
+		process.exit(ExitCode.USAGE_ERROR);
 	} finally {
 		spinner.stop();
 	}

@@ -26,13 +26,29 @@ export interface HuggingFaceChatServiceOptions {
 
 export class HuggingFaceChatService implements ChatService {
 	readonly modelId: string;
+	readonly providerId = "huggingface";
 	private readonly client: InferenceClient;
+	private readonly token: string;
 	private readonly maxOutputTokens: number;
 
 	constructor(opts: HuggingFaceChatServiceOptions) {
 		this.modelId = opts.modelId;
+		this.token = opts.token;
 		this.client = new InferenceClient(opts.token);
 		this.maxOutputTokens = opts.maxOutputTokens;
+	}
+
+	async ping(options?: { readonly signal?: AbortSignal }): Promise<void> {
+		// `whoami-v2` is HF's cheapest authed call — confirms the token
+		// is valid without spending inference budget. Returns 200 with
+		// a JSON profile, 401 on revoked / missing token.
+		const res = await fetch("https://huggingface.co/api/whoami-v2", {
+			headers: { authorization: `Bearer ${this.token}` },
+			signal: options?.signal,
+		});
+		if (!res.ok) {
+			throw new Error(`HuggingFace whoami-v2 returned ${res.status}`);
+		}
 	}
 
 	async complete(request: ChatCompletionRequest): Promise<ChatCompletion> {

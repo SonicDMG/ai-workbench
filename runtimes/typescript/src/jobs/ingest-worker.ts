@@ -27,6 +27,7 @@ export interface IngestWorkerDeps {
 	readonly drivers: VectorStoreDriverRegistry;
 	readonly embedders: EmbedderFactory;
 	readonly jobs: JobStore;
+	readonly metrics?: import("../lib/runtime-metrics.js").RuntimeMetrics;
 }
 
 export interface IngestWorkerArgs {
@@ -63,18 +64,28 @@ export function buildIngestScheduler(deps: IngestWorkerDeps): JobScheduler {
 				workspaceId,
 				job.knowledgeBaseId,
 			);
-			const result = await runKbIngest(
-				{ store: deps.store, drivers: deps.drivers, embedders: deps.embedders },
-				{
-					workspace: resolved.workspace,
-					knowledgeBase: resolved.knowledgeBase,
-					descriptor: resolved.descriptor,
-					documentId: job.documentId,
-				},
-				input,
-				(p) => heartbeat({ processed: p.processed, total: p.total }),
-			);
-			return { chunks: result.chunks };
+			try {
+				const result = await runKbIngest(
+					{
+						store: deps.store,
+						drivers: deps.drivers,
+						embedders: deps.embedders,
+					},
+					{
+						workspace: resolved.workspace,
+						knowledgeBase: resolved.knowledgeBase,
+						descriptor: resolved.descriptor,
+						documentId: job.documentId,
+					},
+					input,
+					(p) => heartbeat({ processed: p.processed, total: p.total }),
+				);
+				deps.metrics?.ingestDocuments.inc({ outcome: "ok" });
+				return { chunks: result.chunks };
+			} catch (err) {
+				deps.metrics?.ingestDocuments.inc({ outcome: "failed" });
+				throw err;
+			}
 		},
 	);
 	return scheduler;

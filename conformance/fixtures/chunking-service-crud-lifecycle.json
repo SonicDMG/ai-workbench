@@ -183,6 +183,8 @@
 				"body": {
 					"error": {
 						"code": "chunking_service_not_found",
+						"docs": "docs/errors.md#chunking-service-not-found",
+						"hint": "The chunking service is not configured in this workspace.",
 						"message": "chunking service '{{UUID_2}}' not found",
 						"requestId": "{{REQID_1}}"
 					}

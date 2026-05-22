@@ -53,12 +53,19 @@ import {
 import { logger } from "./lib/logger.js";
 import { makeOpenApi } from "./lib/openapi.js";
 import { rateLimit } from "./lib/rate-limit.js";
+import { createRecentErrorBuffer } from "./lib/recent-errors.js";
 import { generateReplicaId } from "./lib/replica-id.js";
 import { requestId } from "./lib/request-id.js";
 import { requestLogger } from "./lib/request-logger.js";
-import { buildRuntimeMetrics, requestMetrics } from "./lib/runtime-metrics.js";
+import {
+	buildRuntimeMetrics,
+	requestMetrics,
+	routeLabel,
+} from "./lib/runtime-metrics.js";
 import { safeErrorMessage } from "./lib/safe-error.js";
 import { SCALAR_CDN_PINNED, securityHeaders } from "./lib/security-headers.js";
+import type { TelemetryEmitter } from "./lib/telemetry.js";
+import { noopTelemetryEmitter } from "./lib/telemetry.js";
 import { requestTracing } from "./lib/tracing.js";
 import type { AppEnv } from "./lib/types.js";
 import { buildDefaultRoutePlugins } from "./plugins/default-plugins.js";
@@ -67,6 +74,7 @@ import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
 import { authLoginRoutes } from "./routes/auth.js";
 import type { ReadinessSignal } from "./routes/operational.js";
 import { operationalRoutes } from "./routes/operational.js";
+import { setupRoutes } from "./routes/setup.js";
 import type { SecretResolver } from "./secrets/provider.js";
 import { isSpaPath, type UiAssets } from "./ui/assets.js";
 import { VERSION } from "./version.js";
@@ -199,6 +207,26 @@ export interface AppOptions {
 	 * extractor surface deterministic.
 	 */
 	readonly extractors?: ExtractorRegistry;
+	/**
+	 * Mirrors the parsed `auth` config block; used by the setup-wizard
+	 * routes' inline auth gate. Required when {@link triggerRestart}
+	 * is provided, otherwise unused.
+	 */
+	readonly authConfig?: AuthConfig;
+	/**
+	 * Production runtimes pass a thunk that triggers graceful shutdown
+	 * (typically `process.kill(process.pid, "SIGTERM")` so the existing
+	 * SIGTERM handler runs). When omitted, `/setup/restart` returns 503
+	 * `setup_restart_unavailable` — useful for tests that don't want
+	 * the process to actually exit.
+	 */
+	readonly triggerRestart?: () => void;
+	/**
+	 * Optional telemetry emitter. When omitted the runtime mounts a
+	 * no-op, so tests that don't care about telemetry can skip the
+	 * field. Production wires the real one from `root.ts`.
+	 */
+	readonly telemetry?: TelemetryEmitter;
 }
 
 const DEFAULT_API_RATE_LIMIT: Required<
@@ -450,6 +478,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	app.use("/api/v1/workspaces/:workspaceId", writeScopeGate);
 	app.use("/api/v1/workspaces/:workspaceId/*", writeScopeGate);
 
+	const recentErrors = createRecentErrorBuffer();
 	app.route(
 		"/",
 		operationalRoutes(
@@ -460,8 +489,36 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			opts.astraCliInventoryFn,
 			ingestSemaphore,
 			metrics,
+			opts.chatService ?? null,
+			recentErrors,
 		),
 	);
+
+	// Setup-wizard routes (mounts before /api/v1/* so they bypass the
+	// workspace auth middleware; they apply their own gate). Always
+	// mounted — /setup-status is read-only and useful even when the
+	// runtime is fully configured; the mutation routes degrade with a
+	// 503 if `triggerRestart` was not provided.
+	if (opts.authConfig) {
+		app.route(
+			"/",
+			setupRoutes({
+				store: opts.store,
+				auth: opts.authConfig,
+				secrets: opts.secrets,
+				chatConfigured: opts.chatService != null,
+				triggerRestart:
+					opts.triggerRestart ??
+					(() => {
+						throw new ApiError(
+							"setup_restart_unavailable",
+							"This runtime did not register a restart hook (likely a test build).",
+							503,
+						);
+					}),
+			}),
+		);
+	}
 
 	if (opts.login) {
 		app.route(
@@ -496,6 +553,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		mcpConfig: opts.mcpConfig ?? { enabled: true, exposeChat: false },
 		replicaId,
 		extractors,
+		metrics,
 	};
 	const plugins = opts.routePlugins ?? buildDefaultRoutePlugins(routePluginCtx);
 	for (const plugin of plugins.list()) {
@@ -544,25 +602,45 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		);
 	});
 
+	const telemetry = opts.telemetry ?? noopTelemetryEmitter();
+	const recordError = (
+		c: Context<AppEnv>,
+		code: string,
+		status: number,
+	): void => {
+		recentErrors.record({
+			code,
+			status,
+			method: c.req.method,
+			routePattern: routeLabel(c),
+			requestId: c.get("requestId") ?? "unknown",
+		});
+		telemetry.emit("error", { code, status });
+	};
+
 	app.onError((err, c) => {
 		if (err instanceof UnauthorizedError) {
 			auditApiAuthDenied(c, err);
 			c.header("WWW-Authenticate", err.scheme);
+			recordError(c, err.code, err.status);
 			return c.json(errorEnvelope(c, err.code, err.message), err.status);
 		}
 		if (err instanceof ForbiddenError) {
 			auditApiAuthDenied(c, err);
+			recordError(c, err.code, err.status);
 			return c.json(errorEnvelope(c, err.code, err.message), err.status);
 		}
 		const mapped = mapControlPlaneError(err);
 		if (mapped) {
+			recordError(c, mapped.code, mapped.status);
 			return c.json(
 				errorEnvelope(c, mapped.code, mapped.message),
 				mapped.status,
 			);
 		}
 		if (err instanceof ApiError) {
-			return c.json(errorEnvelope(c, err.code, err.message), err.status);
+			recordError(c, err.code, err.status);
+			return c.json(errorEnvelope(c, err), err.status);
 		}
 		logger.error(
 			{
@@ -579,6 +657,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 			},
 			"unhandled request error",
 		);
+		recordError(c, "internal_error", 500);
 		return c.json(
 			errorEnvelope(c, "internal_error", "internal server error"),
 			500,

@@ -104,6 +104,7 @@ export interface IngestServiceDeps {
 	 * starting work. Synchronous ingest is unaffected.
 	 */
 	readonly ingestSemaphore: IngestSemaphore;
+	readonly metrics?: import("../lib/runtime-metrics.js").RuntimeMetrics;
 }
 
 export interface IngestService {
@@ -116,7 +117,15 @@ export interface IngestService {
 }
 
 export function createIngestService(deps: IngestServiceDeps): IngestService {
-	const { store, drivers, embedders, jobs, replicaId, ingestSemaphore } = deps;
+	const {
+		store,
+		drivers,
+		embedders,
+		jobs,
+		replicaId,
+		ingestSemaphore,
+		metrics,
+	} = deps;
 
 	return {
 		async ingest(workspaceId, knowledgeBaseId, input, opts) {
@@ -231,7 +240,7 @@ export function createIngestService(deps: IngestServiceDeps): IngestService {
 				});
 				void runBounded(ingestSemaphore, () =>
 					runKbIngestJob({
-						deps: { store, drivers, embedders, jobs },
+						deps: { store, drivers, embedders, jobs, metrics },
 						workspaceId,
 						jobId: job.jobId,
 						replicaId,

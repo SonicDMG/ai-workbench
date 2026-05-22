@@ -1,0 +1,142 @@
+{
+	"slug": "chat-message-stream",
+	"description": "Server-sent events happy path for POST /agents/{a}/conversations/{c}/messages/stream. The FixtureChatService emits the scripted token stream; the harness parses the SSE body into a deterministic array of {event, data} records via conformance/runner.parseSseBody so the captured fixture is stable across runs.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentials": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"rlacEnabled": false,
+					"updatedAt": "{{TS}}",
+					"url": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"name": "fixture-stream-agent"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents"
+			},
+			"response": {
+				"body": {
+					"agentId": "{{UUID_2}}",
+					"createdAt": "{{TS}}",
+					"description": null,
+					"knowledgeBaseIds": [],
+					"llmServiceId": null,
+					"name": "fixture-stream-agent",
+					"rerankEnabled": false,
+					"rerankMaxResults": null,
+					"rerankingServiceId": null,
+					"systemPrompt": null,
+					"updatedAt": "{{TS}}",
+					"userPrompt": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"title": "stream thread"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents/{{UUID_2}}/conversations"
+			},
+			"response": {
+				"body": {
+					"agentId": "{{UUID_2}}",
+					"conversationId": "{{UUID_3}}",
+					"createdAt": "{{TS}}",
+					"knowledgeBaseIds": [],
+					"title": "stream thread",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"content": "hello stream"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents/{{UUID_2}}/conversations/{{UUID_3}}/messages/stream"
+			},
+			"response": {
+				"body": [
+					{
+						"data": {
+							"chatId": "{{UUID_3}}",
+							"content": "hello stream",
+							"messageId": "{{UUID_4}}",
+							"messageTs": "{{TS}}",
+							"metadata": {},
+							"role": "user",
+							"tokenCount": null,
+							"workspaceId": "{{UUID_1}}"
+						},
+						"event": "user-message"
+					},
+					{
+						"data": {
+							"delta": "hi"
+						},
+						"event": "token"
+					},
+					{
+						"data": {
+							"delta": " from"
+						},
+						"event": "token"
+					},
+					{
+						"data": {
+							"delta": " fixture"
+						},
+						"event": "token"
+					},
+					{
+						"data": {
+							"chatId": "{{UUID_3}}",
+							"content": "hi from fixture",
+							"messageId": "{{UUID_5}}",
+							"messageTs": "{{TS}}",
+							"metadata": {
+								"finish_reason": "stop",
+								"model": "fixture-test-model"
+							},
+							"role": "agent",
+							"tokenCount": 3,
+							"workspaceId": "{{UUID_1}}"
+						},
+						"event": "done"
+					}
+				],
+				"status": 200
+			},
+			"step": 4
+		}
+	]
+}

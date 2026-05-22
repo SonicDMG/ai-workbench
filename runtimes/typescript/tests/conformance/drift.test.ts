@@ -16,9 +16,13 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 // @ts-expect-error — pure JS module
-import { runScenario } from "../../../../conformance/runner.mjs";
+import { parseSseBody, runScenario } from "../../../../conformance/runner.mjs";
 import { createApp } from "../../src/app.js";
 import { AuthResolver } from "../../src/auth/resolver.js";
+import {
+	type FixtureChatScript,
+	FixtureChatService,
+} from "../../src/chat/fixture.js";
 import { MemoryControlPlaneStore } from "../../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../../src/drivers/registry.js";
@@ -33,6 +37,7 @@ const CONFORMANCE_ROOT = resolve(HERE, "../../../../conformance");
 interface Scenario {
 	readonly slug: string;
 	readonly description?: string;
+	readonly chatScript?: FixtureChatScript;
 	readonly steps: readonly unknown[];
 }
 
@@ -52,7 +57,7 @@ async function loadFixture(slug: string): Promise<unknown> {
 	return JSON.parse(raw);
 }
 
-function freshFetcher() {
+function freshFetcher(scenario: Scenario) {
 	const store = new MemoryControlPlaneStore();
 	const drivers = new VectorStoreDriverRegistry(
 		new Map([["mock", new MockVectorStoreDriver()]]),
@@ -63,12 +68,16 @@ function freshFetcher() {
 		anonymousPolicy: "allow",
 		verifiers: [],
 	});
+	const chatService = scenario.chatScript
+		? new FixtureChatService(scenario.chatScript)
+		: null;
 	const app = createApp({
 		store,
 		drivers,
 		secrets,
 		auth,
 		embedders: makeFakeEmbedderFactory(),
+		chatService,
 	});
 	return async (method: string, path: string, body?: unknown) => {
 		const init: RequestInit = { method };
@@ -79,7 +88,10 @@ function freshFetcher() {
 		const res = await app.request(path, init);
 		const contentType = res.headers.get("content-type") ?? "";
 		let parsedBody: unknown = null;
-		if (contentType.includes("application/json")) {
+		if (contentType.includes("text/event-stream")) {
+			const text = await res.text();
+			parsedBody = parseSseBody(text);
+		} else if (contentType.includes("application/json")) {
 			const text = await res.text();
 			parsedBody = text ? JSON.parse(text) : null;
 		} else {
@@ -105,7 +117,7 @@ describe("conformance drift guard", async () => {
 
 	for (const scenario of scenarios) {
 		test(`scenario '${scenario.slug}' matches its fixture`, async () => {
-			const captures = await runScenario(scenario, freshFetcher());
+			const captures = await runScenario(scenario, freshFetcher(scenario));
 			const fixture = (await loadFixture(scenario.slug)) as {
 				slug: string;
 				captures: unknown[];

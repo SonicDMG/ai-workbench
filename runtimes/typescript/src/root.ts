@@ -26,6 +26,7 @@ import { runKbIngestJob } from "./jobs/ingest-worker.js";
 import { JobOrphanSweeper } from "./jobs/sweeper.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
 import { generateReplicaId } from "./lib/replica-id.js";
+import { buildTelemetryEmitter } from "./lib/telemetry.js";
 import { initOtelFromConfig, type OtelHandle } from "./lib/tracing.js";
 import { setEndpointEgressPolicy } from "./openapi/schemas.js";
 import { AstraCliSecretProvider } from "./secrets/astra-cli.js";
@@ -34,6 +35,7 @@ import { FileSecretProvider } from "./secrets/file.js";
 import { assertConfigSecretsResolvable } from "./secrets/preflight.js";
 import { SecretResolver } from "./secrets/provider.js";
 import { buildUiAssets, resolveUiDir } from "./ui/assets.js";
+import { VERSION } from "./version.js";
 
 async function main(): Promise<void> {
 	// Load .env (repo-root by default) before anything reads `process.env`.
@@ -169,6 +171,11 @@ async function main(): Promise<void> {
 		);
 	}
 
+	const telemetry = buildTelemetryEmitter({
+		config: config.runtime.telemetry,
+		version: VERSION,
+	});
+
 	const app = createApp({
 		store,
 		drivers,
@@ -196,6 +203,14 @@ async function main(): Promise<void> {
 			trustProxyHeaders: config.runtime.trustProxyHeaders,
 		},
 		replicaId,
+		authConfig: config.auth,
+		triggerRestart: () => {
+			// Fire the existing SIGTERM handler so the graceful-shutdown
+			// path (drain readiness, close stores, exit) runs unchanged.
+			// Docker's `restart: unless-stopped` brings the container back.
+			process.kill(process.pid, "SIGTERM");
+		},
+		telemetry,
 	});
 
 	// Cross-replica orphan-sweeper. Off by default — clustered
@@ -252,6 +267,13 @@ async function main(): Promise<void> {
 			},
 			"ai-workbench listening",
 		);
+		telemetry.emit("runtime_start", {
+			controlPlane: config.controlPlane.driver,
+			authMode: config.auth.mode,
+			environment: config.runtime.environment,
+			hasChat: chatService !== null,
+			chatProvider: chatService?.providerId ?? null,
+		});
 	});
 
 	// Graceful shutdown: stop accepting new connections, wait for

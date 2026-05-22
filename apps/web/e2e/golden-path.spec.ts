@@ -1,4 +1,5 @@
 import { expect, test } from "./_fixtures";
+import { skipCredentialsStep } from "./_helpers";
 
 // End-to-end golden path:
 //
@@ -34,6 +35,7 @@ test("golden path: onboard → services → knowledge base → upsert → run qu
 	//    already-running dev server with existing workspaces, so `/`
 	//    is not guaranteed to be a first-run redirect.
 	await page.goto("/onboarding");
+	await skipCredentialsStep(page);
 	await expect(
 		page.getByRole("heading", { name: "Choose a backend" }),
 	).toBeVisible();

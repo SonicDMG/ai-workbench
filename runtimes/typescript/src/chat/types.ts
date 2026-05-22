@@ -164,12 +164,34 @@ export interface ChatStreamOptions {
 	readonly signal?: AbortSignal;
 }
 
+export interface ChatProviderPingOptions {
+	readonly signal?: AbortSignal;
+}
+
 export interface ChatService {
 	/**
 	 * Identifier surfaced on persisted assistant messages
 	 * (`metadata.model`). Used by the UI to attribute the reply.
 	 */
 	readonly modelId: string;
+	/**
+	 * Short, stable name of the provider behind this service
+	 * (`"huggingface"`, `"openai"`, `"fixture"`, …). Used as a low-
+	 * cardinality label on `workbench_chat_*` metrics so we can break
+	 * down request counts and latencies by provider. Renaming an
+	 * existing value is a metric break.
+	 */
+	readonly providerId: string;
+	/**
+	 * Optional cheap liveness probe (e.g. HF `whoami-v2`, OpenAI
+	 * `models`). Used by `aiw doctor` and `GET /health/details` to
+	 * surface "is the provider reachable from this runtime?" without
+	 * running a full completion. Implementations should:
+	 *   - honour `signal.aborted` so the caller's timeout works,
+	 *   - never throw for transport-layer issues — the probe consumer
+	 *     classifies status from the rejection itself.
+	 */
+	ping?(options?: ChatProviderPingOptions): Promise<void>;
 	complete(request: ChatCompletionRequest): Promise<ChatCompletion>;
 
 	/**

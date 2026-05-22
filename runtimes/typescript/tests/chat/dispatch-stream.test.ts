@@ -44,6 +44,7 @@ function deferred<T>(): Deferred<T> {
  */
 class GatedStreamingChatService implements ChatService {
 	readonly modelId = "fake-stream-gated";
+	readonly providerId = "fake";
 	readonly gate = deferred<void>();
 	readonly calls: ChatCompletionRequest[] = [];
 
@@ -127,6 +128,7 @@ async function waitFor(
  */
 class ToolCallingChatService implements ChatService {
 	readonly modelId = "fake-tool-calling";
+	readonly providerId = "fake";
 	readonly calls: ChatCompletionRequest[] = [];
 
 	async complete(): Promise<ChatCompletion> {

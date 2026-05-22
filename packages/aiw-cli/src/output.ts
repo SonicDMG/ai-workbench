@@ -80,8 +80,29 @@ export function warn(message: string): void {
 	process.stderr.write(`${pc.yellow("!")} ${message}\n`);
 }
 
-export function fail(message: string): void {
+export interface FailDetails {
+	readonly hint?: string;
+	readonly docs?: string;
+	readonly requestId?: string;
+}
+
+/**
+ * Render an error to stderr. Top line is the bullet + message; if the
+ * registry attached a hint and/or docs link to the envelope, those
+ * land on indented follow-up lines so a `grep ✗` still surfaces the
+ * primary message while a human sees the full remediation block.
+ */
+export function fail(message: string, details: FailDetails = {}): void {
 	process.stderr.write(`${pc.red("✗")} ${message}\n`);
+	if (details.hint) {
+		process.stderr.write(`  ${pc.yellow("hint:")} ${details.hint}\n`);
+	}
+	if (details.docs) {
+		process.stderr.write(`  ${pc.dim("docs:")} ${details.docs}\n`);
+	}
+	if (details.requestId) {
+		process.stderr.write(`  ${pc.dim("request id:")} ${details.requestId}\n`);
+	}
 }
 
 function pad(value: string, width: number): string {

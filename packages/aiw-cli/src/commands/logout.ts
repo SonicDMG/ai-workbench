@@ -5,7 +5,8 @@ import {
 	readConfig,
 	writeConfig,
 } from "../config.js";
-import { fail, success } from "../output.js";
+import { ExitCode } from "../exit-codes.js";
+import { emit, fail, parseOutputFormat, success } from "../output.js";
 
 export const logoutCommand = defineCommand({
 	meta: {
@@ -18,29 +19,33 @@ export const logoutCommand = defineCommand({
 			description:
 				"Profile to remove (default: the active one). Use 'all' to clear every profile.",
 		},
+		output: { type: "string", description: "human | json" },
 	},
 	async run({ args }) {
+		const format = parseOutputFormat(args.output);
 		const loc = defaultConfigLocation();
 		const config = await readConfig(loc);
 		const name = args.profile?.trim();
 
 		if (name === "all") {
 			await writeConfig({ active: undefined, profiles: {} }, loc);
-			success("Cleared all profiles.");
+			if (format === "json") emit(format, { removed: "all" }, () => "");
+			else success("Cleared all profiles.");
 			return;
 		}
 
 		const target = name || config.active;
 		if (!target) {
 			fail("No active profile, and no --profile given.");
-			process.exit(2);
+			process.exit(ExitCode.USAGE_ERROR);
 		}
 		if (!config.profiles[target]) {
 			fail(`Profile "${target}" not found.`);
-			process.exit(2);
+			process.exit(ExitCode.USAGE_ERROR);
 		}
 		const next = deleteProfile(config, target);
 		await writeConfig(next, loc);
-		success(`Removed profile "${target}".`);
+		if (format === "json") emit(format, { removed: target }, () => "");
+		else success(`Removed profile "${target}".`);
 	},
 });

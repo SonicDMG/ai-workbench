@@ -91,6 +91,8 @@
 				"body": {
 					"error": {
 						"code": "validation_error",
+						"docs": "docs/errors.md#validation-error",
+						"hint": "Request body or query string failed schema validation; see the message for the offending field.",
 						"message": "keyId: Invalid UUID",
 						"requestId": "{{REQID_1}}"
 					}
