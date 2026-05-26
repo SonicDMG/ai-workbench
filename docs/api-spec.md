@@ -80,10 +80,20 @@ All error responses share one envelope:
   "error": {
     "code": "workspace_not_found",
     "message": "workspace '<workspaceId>' not found",
-    "requestId": "b48e…"
+    "requestId": "b48e…",
+    "hint": "Check the workspace ID in your URL — `aiw workspace list` shows the IDs the runtime knows about.",
+    "docs": "docs/errors.md#workspace-not-found"
   }
 }
 ```
+
+`hint` is a one-line remediation drawn from the error-code registry
+([`runtimes/typescript/src/lib/error-codes.ts`](../runtimes/typescript/src/lib/error-codes.ts)),
+and `docs` points at a section of the docs root. Both are optional —
+older codes that aren't yet in the registry omit them. The complete
+registry is also reachable at runtime via
+[`GET /error-codes`](#get-error-codes) and rendered for humans in
+[`docs/errors.md`](errors.md).
 
 Codes are stable, lowercase, `snake_case`. Messages are
 human-readable and may change. Currently emitted:
@@ -130,9 +140,14 @@ canonical error envelope:
 ```
 
 Operational routes (`/`, `/healthz`, `/readyz`, `/version`,
-`/features`, `/metrics`, `/astra-cli`, `/astra-cli/profiles`,
-`/docs`, `/api/v1/openapi.json`) bypass the middleware so
-load balancers and ops tooling can always reach them.
+`/features`, `/metrics`, `/health/details`, `/health/recent-errors`,
+`/error-codes`, `/setup-status`, `/setup/env`, `/setup/restart`,
+`/astra-cli`, `/astra-cli/profiles`, `/docs`,
+`/api/v1/openapi.json`) bypass the middleware so load balancers and
+ops tooling can always reach them. `/setup/env` and `/setup/restart`
+additionally require the bootstrap token unless the runtime is in
+the fresh-install window (`auth.mode === "disabled"` AND no
+workspaces exist); see [Setup wizard](#setup-wizard) below.
 
 API-key issuance, OIDC bearer verification, browser OIDC login, and
 silent token refresh are all implemented. All verifier modes flow
@@ -214,12 +229,78 @@ echoes secrets.
 
 ### `GET /metrics`
 
-Prometheus exposition (`text/plain; version=0.0.4`). HTTP request
-counter + duration histogram labeled by method, matched route
-pattern, and status family (`2xx`/`4xx`/`5xx`); ingest semaphore
-gauges (`workbench_ingest_workers_{active,queued}`); rate-limit
-rejections by key type. No auth — same precedent as
-`/healthz` / `/readyz`.
+Prometheus exposition (`text/plain; version=0.0.4`). No auth — same
+precedent as `/healthz` / `/readyz`. Families:
+
+- HTTP request counter + duration histogram labeled by method,
+  matched route pattern, and status family (`2xx`/`4xx`/`5xx`)
+- Ingest semaphore gauges (`workbench_ingest_workers_{active,queued}`)
+- Rate-limit rejections by key type
+- `workbench_chat_requests_total{provider,outcome}` — chat completions
+  per provider, terminal outcome
+- `workbench_chat_stream_tokens_total{direction}` — streamed token
+  count, `direction` is `in` / `out`
+- `workbench_ingest_documents_total{outcome}` — documents fully
+  processed by terminal outcome
+- `workbench_search_requests_total{mode,outcome}` and
+  `workbench_search_duration_seconds{mode}` — KB search calls and
+  latency, `mode` is `vector` / `hybrid` / `rerank` / `text`
+
+### `GET /health/details`
+
+Deep health snapshot. Returns `{controlPlane, chat, ingest,
+recentErrors}` with per-probe `{status: "ok"|"degraded"|"down",
+detail, durationMs}`. The chat probe calls `ChatService.ping()`
+(HuggingFace `whoami-v2`, OpenAI `/models`) when a chat provider
+is configured. No auth.
+
+### `GET /health/recent-errors`
+
+In-memory ring buffer of the last error envelopes (cap 100, newest
+first): `code`, `status`, `method`, matched route pattern,
+`requestId`, `timestamp`. No PII. No auth — same posture as
+`/healthz`. Drives the [web `/status` page](production.md#health-and-recent-errors).
+
+### `GET /error-codes`
+
+Returns the error-code registry as JSON for tooling — every
+registered code with its default `message`, `hint`, and `docs`
+fields. Powers `aiw doctor --explain <code>`, the web `/status`
+page, and external dashboards. No auth.
+
+### Setup wizard
+
+First-run configuration routes used by the web onboarding flow.
+Both mutation routes accept the bootstrap token, or run
+unauthenticated only during the fresh-install window
+(`auth.mode === "disabled"` AND zero workspaces).
+
+#### `GET /setup-status`
+
+```json
+{
+  "setupComplete": false,
+  "workspacesCount": 0,
+  "controlPlane": "file",
+  "hasAstraCreds": false,
+  "hasChatProvider": false,
+  "managedEnv": { "exists": false, "path": "/data/.env" }
+}
+```
+
+#### `POST /setup/env`
+
+Atomically writes a wizard-managed dotenv file at
+`$WORKBENCH_DATA_DIR/.env` (mode `0600`). Allow-list:
+`ASTRA_DB_API_ENDPOINT`, `ASTRA_DB_APPLICATION_TOKEN`,
+`HUGGINGFACE_API_KEY`. Any other key returns
+`400 unsupported_setup_key`.
+
+#### `POST /setup/restart`
+
+Triggers graceful shutdown so the bundled compose
+`restart: unless-stopped` brings the runtime back with the new
+values loaded. Returns `202` immediately and begins draining.
 
 ### `GET /astra-cli`
 
@@ -241,8 +322,12 @@ Scalar-rendered OpenAPI reference UI. Human-facing.
 
 ### `GET /api/v1/openapi.json`
 
-Machine-readable OpenAPI 3.1 document. Generated from the route
-definitions — always in sync with the running runtime.
+Machine-readable OpenAPI 3.1 document. Generated from the
+`@hono/zod-openapi` route definitions registered under `/api/v1/*`.
+The operational, setup, and `/auth/*` surfaces are mounted via plain
+Hono routers (not OpenAPI routers) and are therefore documented
+narratively here instead of in the generated spec; treat this file
+as the canonical reference for those.
 
 ---
 
@@ -1290,15 +1375,16 @@ See [`mcp.md`](mcp.md) for the full walkthrough.
 | any | 404 `not_found` | When `mcp.enabled` is false |
 | any | 404 `workspace_not_found` | When the path workspace doesn't exist |
 
-Tools surfaced (read-mostly, ground external agents in workspace
-context):
+The full tool catalogue (read + write surfaces, scopes, JSON-Schema
+inputs) is documented in [`mcp.md`](mcp.md). At a glance:
 
-- `list_knowledge_bases`
-- `list_documents`
-- `search_kb` (vector / hybrid / rerank)
-- `list_chats`
-- `list_chat_messages`
-- `chat_send` *(only when `mcp.exposeChat: true` and `chat:` is configured)*
+- **Read** — `list_knowledge_bases`, `list_documents`, `search_kb`
+  (vector / hybrid / rerank), `list_agents`, `get_agent`,
+  `list_chats`, `list_chat_messages`
+- **Write** — `ingest_text`, `delete_document`,
+  `create_knowledge_base`, `delete_knowledge_base`
+- **Chat-gated** — `chat_send`, `run_agent` *(only when
+  `mcp.exposeChat: true` and `chat:` is configured)*
 
 Auth flows through the regular `/api/v1/*` middleware plus the
 shared workspace-route authorization wrapper, so workspace scoping is
@@ -1334,10 +1420,18 @@ See [`roadmap.md`](roadmap.md) for the phase plan.
 
 ## OpenAPI
 
-The generated document at `/api/v1/openapi.json` is always in sync
-with the running runtime (routes register their Zod schemas directly).
-Share it with downstream tooling (client generators, API gateway
-configs, etc.).
+The generated document at `/api/v1/openapi.json` covers the
+`/api/v1/*` resource routes (workspaces, knowledge bases, agents,
+chat, search, jobs, MCP tools, etc.) and stays in sync with the
+running runtime — those routes register their Zod schemas through
+`@hono/zod-openapi`. Share it with downstream tooling (client
+generators, API gateway configs, etc.).
+
+The operational (`/healthz`, `/readyz`, `/metrics`, `/health/*`,
+`/error-codes`), setup (`/setup-*`), and `/auth/*` surfaces are
+mounted as plain Hono routers and are documented in this file
+narratively (and in [`auth.md`](auth.md) for `/auth/*`); they will
+not appear in the generated spec.
 
 To consume locally:
 

@@ -2,10 +2,10 @@
 
 > **Preview feature.** Row-Level Access Control on Documents landed
 > as a prototype in [#237](https://github.com/datastax/ai-workbench/pull/237)
-> and is labeled **Preview** in 0.1.0. The policy DSL is intentionally
-> narrow (visibility-list semantics only) and may grow new primitives.
-> The **audit-log shape** is now stable as of 0.2.0 — see
-> [Audit log → Shape](#shape--stable-as-of-020) below.
+> and has been labeled **Preview** since 0.1.0. The policy DSL is
+> intentionally narrow (visibility-list semantics only) and may grow
+> new primitives. The **audit-log shape** is stable as of 0.2.0 —
+> see [Audit log → Shape](#shape--stable-as-of-020) below.
 
 ## What it does
 
@@ -41,7 +41,8 @@ curl -X PATCH "$RUNTIME/api/v1/workspaces/$WS" \
   -d '{"rlacEnabled": true}'
 ```
 
-The CLI doesn't expose `aiw workspace patch` yet — slated for 0.2.
+The CLI doesn't expose `aiw workspace patch` yet — tracked as a
+follow-up.
 
 ## Modeling principals + policies
 

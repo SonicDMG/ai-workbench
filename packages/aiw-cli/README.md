@@ -48,7 +48,10 @@ Profiles live at one of these paths (first match wins):
 
 The file is mode `0600` and the directory `0700`. One profile per
 runtime; switch with `--profile` or the `AIW_PROFILE` environment
-variable. Override the runtime URL per-call with `--url`.
+variable. Override the runtime URL per-call with `--url`. For
+profile-less invocations (CI, scripts) set both `AIW_API_URL` and
+`AIW_API_KEY` — the CLI uses them directly without reading or
+writing the config file.
 
 Inside the container the canonical invocation is:
 
@@ -81,7 +84,7 @@ state, so profiles survive `docker compose down/up`.
 | `aiw profile ls` | List stored profiles, mark the active one. |
 | `aiw profile use <name>` | Switch the active profile. |
 | `aiw profile rm <name>` | Delete a stored profile. |
-| `aiw status` | One-line health summary for the active profile's runtime. |
+| `aiw status` | One-line health summary for the active profile's runtime. Accepts `--url` to probe an arbitrary runtime without a stored profile. |
 | `aiw doctor` | Pre-flight diagnostics (profile / runtime / readiness / auth / MCP / Astra CLI). |
 | `aiw doctor --explain <code>` | Print the registry entry for an error code. |
 | `aiw completion {bash,zsh,fish}` | Emit a shell-completion script. |
@@ -134,9 +137,31 @@ retry — the server already decided. Tunables:
 | `AIW_REQUEST_TIMEOUT_MS` | `10000` | Per-call timeout in milliseconds. |
 | `AIW_REQUEST_RETRIES` | `1` | Retries on network/timeout errors. Set `0` to disable. |
 
-Errors carry the runtime's `hint` and `docs` fields (the server-side
-error-code registry — see [`docs/errors.md`](../../docs/errors.md))
-and are rendered as indented follow-up lines under the `✗` bullet.
+Errors carry the runtime's `hint`, `docs`, and `requestId` fields
+(the server-side error-code registry — see
+[`docs/errors.md`](../../docs/errors.md)) and are rendered as
+indented follow-up lines under the `✗` bullet. Quote the
+`requestId` when reporting issues — it ties the CLI invocation
+back to the runtime log line.
+
+## Telemetry
+
+Anonymous usage telemetry for the CLI. **Off by default.** Every
+event carries an anonymous install id, the CLI version, an event
+name, and (for `command_run`) the subcommand name only — never
+argument values.
+
+| Env var | Default | Effect |
+|---|---|---|
+| `AIW_TELEMETRY` | _unset_ | Set to `1` to construct + emit events. |
+| `AIW_TELEMETRY_URL` | _unset_ | Sink for `POST`ed events. With `AIW_TELEMETRY=1` and no URL, events log as "dark mode" — constructed and discarded, useful for verifying wiring. |
+| `AIW_INSTALL_ID_FILE` | `$AIW_CONFIG_HOME/.install-id` | Override the install-id path (lets multiple CLI installs share an id, or pin it for tests). |
+
+Two CLI event types emit: `command_run` (top-level subcommand
+name) and `error` (error code + exit code). Network failures are
+swallowed silently with a 2 s timeout — telemetry never blocks
+a command. See [`docs/telemetry.md`](../../docs/telemetry.md) for
+the runtime-side catalog and no-PII guarantee.
 
 ## Shell completion
 

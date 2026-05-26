@@ -299,6 +299,7 @@ Out of scope for now:
 | 3a | `mode: oidc` — JWT verification via JWKS; `any` mode enables both | ✅ shipped |
 | 3b | Browser OIDC login flow (PKCE) — replaces paste-a-token with `/auth/{login,callback,me,logout}` + encrypted session cookie | ✅ shipped |
 | 3c | Silent refresh via `refresh_token` grant, so users don't see mid-session re-logins | ✅ shipped |
+| 3d | CLI OIDC device-flow (RFC 8628) via `/auth/device/{authorize,token}` proxy | ✅ shipped (0.2.0) |
 | 4 | Roles + per-route enforcement; audit logging | later |
 
 Each phase is independently shippable. `disabled` stays the
@@ -430,11 +431,13 @@ flow without the operator ever pasting a token:
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /auth/config` | Tells the UI which credential surfaces are wired up |
+| `GET /auth/config` | Tells the UI (and CLI) which credential surfaces are wired up |
 | `GET /auth/login` | 302 to the IdP's authorization endpoint; stashes the PKCE verifier + state |
 | `GET /auth/callback` | Swaps `code` for tokens, self-verifies, sets the session cookie, redirects |
 | `GET /auth/me` | Current authenticated subject, or 401 |
 | `POST /auth/logout` | Clears the cookie |
+| `POST /auth/device/authorize` | Device-flow start — fronts the IdP's RFC 8628 device authorization endpoint for the CLI (Phase 3d) |
+| `POST /auth/device/token` | Device-flow poll — exchanges the `device_code` for a verified access token (Phase 3d) |
 
 ### Configuration
 
@@ -562,3 +565,68 @@ invalidates `["auth", "me"]` so the next render re-reads
 attempt on any 401: concurrent in-flight queries all wait on the
 same `/auth/refresh` call and either retry together or fall
 through to the login redirect together.
+
+## CLI device-flow login (Phase 3d, RFC 8628)
+
+`aiw login --oidc` opens an
+[OAuth 2.0 Device Authorization Grant](https://datatracker.ietf.org/doc/html/rfc8628)
+against the runtime instead of pasting an API key. The runtime
+fronts the IdP's device endpoints, so the CLI never needs the
+issuer URL and the IdP client secret stays server-side.
+
+### `/auth/config` additions
+
+```json
+{
+  "modes": { "oidc": true, "apiKey": true, "device": true },
+  "deviceAuthorizePath": "/auth/device/authorize",
+  "deviceTokenPath": "/auth/device/token"
+}
+```
+
+`modes.device` is `true` when the IdP's OIDC discovery document
+advertises a `device_authorization_endpoint`. When it isn't, both
+device routes return `501 device_flow_not_supported` and the CLI
+falls back to the paste-a-token path.
+
+### `POST /auth/device/authorize`
+
+Proxies to the IdP's device authorization endpoint, attaching the
+configured `client_id` and any default scopes server-side, and
+returns the standard RFC 8628 envelope verbatim:
+
+```json
+{
+  "device_code": "GmRhmhcxhwAzkoEqiMEg_DnyEysNkuNhszIySk9eS",
+  "user_code": "WDJB-MJHT",
+  "verification_uri": "https://login.example.com/device",
+  "verification_uri_complete": "https://login.example.com/device?user_code=WDJB-MJHT",
+  "expires_in": 600,
+  "interval": 5
+}
+```
+
+### `POST /auth/device/token`
+
+Polled by the CLI with `{ "device_code": "…" }`. Forwards
+`grant_type=urn:ietf:params:oauth:grant-type:device_code` to the
+IdP, then validates the returned access token through the same
+`OidcVerifier` the API uses (iss/aud/exp/nbf/signature). Returns
+`{ access_token, refresh_token?, expires_in }` on success and
+mirrors the IdP's `authorization_pending`, `slow_down`,
+`access_denied`, `expired_token` codes as `400` responses on
+failure.
+
+The resulting JWT is what the existing auth middleware already
+accepts as `Authorization: Bearer …` — no new verifier path
+either side of the proxy. CLI profiles persist the access token,
+optional refresh token, and expiry under a new `oidc` block; the
+HTTP client prefers the OIDC bearer over the API key when both
+are present (see
+[`packages/aiw-cli/README.md`](../packages/aiw-cli/README.md)).
+
+### Audit
+
+Both routes emit structured audit events with actions
+`auth.device.authorize` and `auth.device.token`. See
+[`audit.md`](audit.md) for the full action union.

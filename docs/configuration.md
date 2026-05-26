@@ -82,6 +82,7 @@ unknown version.
 | `blockPrivateNetworkEndpoints` | boolean | `false` | Layered SSRF defense: when `true`, operator-supplied `endpointBaseUrl` values on chunking / embedding / reranking / LLM services are rejected if they resolve to RFC1918 (`10/8`, `172.16/12`, `192.168/16`), loopback, or IPv6 unique-local hosts. Auto-flipped to `true` when `runtime.environment: production`. Default `false` so the local-Ollama / local-vLLM dev workflow keeps working; production deployments should still pair this with VPC-level egress controls. |
 | `maxConcurrentIngestJobs` | int (≥1) | `4` | Per-replica cap on in-flight ingest workers. Beyond the cap, queued jobs wait in-process for a slot rather than slamming the embedding provider's quota. Persisted job state is unaffected; raise for dedicated provisioned-throughput deployments. Surfaced as `workbench_ingest_workers_{active,queued}` on `/metrics`. |
 | `tracing` | object | (off) | OpenTelemetry tracing knobs. See [§ Tracing](#tracing). |
+| `telemetry` | object | (off) | Opt-in anonymous usage telemetry. See [§ Telemetry](#telemetry). |
 
 Production deployments should start from
 [`runtimes/typescript/examples/workbench.production.yaml`](../runtimes/typescript/examples/workbench.production.yaml).
@@ -145,6 +146,33 @@ dist/root.js`). Without `--import`, manual server spans cover every
 request but outbound HTTP / fetch / DB clients won't emit child
 spans. See [`production.md`](production.md) for the deploy-side
 walkthrough.
+
+#### Telemetry
+
+Opt-in anonymous usage telemetry. **Off by default.** When enabled
+without a sink, the runtime constructs each event and logs
+`telemetry: dark mode (no sink configured)` instead of sending —
+useful for verifying the wiring before standing up a collector.
+Network failures never block the runtime: each emit is
+fire-and-forget with a 2 s timeout.
+
+```yaml
+runtime:
+  telemetry:
+    enabled: false
+    url: null            # e.g. https://telemetry.example.com/v1/events
+```
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `enabled` | bool | `false` | Set `true` to construct + emit events. `WORKBENCH_TELEMETRY=1` is an env override; `WORKBENCH_TELEMETRY=0` disables even if YAML says `true`. |
+| `url` | URL \| null | `null` | Sink for `POST`ed events. `WORKBENCH_TELEMETRY_URL` env override. `null` + `enabled: true` is dark mode (events constructed, never sent). |
+
+Every event carries an anonymous install id persisted at
+`$WORKBENCH_DATA_DIR/.install-id`. Three event types are emitted:
+`runtime_start`, `error` (code + status, no message bodies), and
+`command_run` from the CLI wrapper. The canonical event catalog
+and no-PII guarantee live in [`telemetry.md`](telemetry.md).
 
 ### `controlPlane`
 
@@ -560,9 +588,26 @@ whether you run `npm run dev` from the repo root or from
 every other dotenv loader.
 
 **Override the path.** Set `WORKBENCH_ENV_FILE=/abs/path/to/.env` to
-skip the walk and load an explicit file (missing files fail loudly).
-Useful for production container boots where the token lives on a
-mounted secret.
+skip the walk and load an explicit file. Useful for production
+container boots where the token lives on a mounted secret. As of
+0.2.0 the override is **absent-tolerant** — a missing file is no
+longer fatal, so a fresh container can boot before the file exists
+and the first-run [setup wizard](api-spec.md#setup-wizard) can
+populate it.
+
+**Managed env file.** The setup wizard writes its allow-listed keys
+(`ASTRA_DB_API_ENDPOINT`, `ASTRA_DB_APPLICATION_TOKEN`,
+`HUGGINGFACE_API_KEY`) to `$WORKBENCH_DATA_DIR/.env` with mode
+`0600`. The bundled Docker compose sets both `WORKBENCH_DATA_DIR`
+and `WORKBENCH_ENV_FILE` to that path so the runtime auto-loads
+the file on the next boot after `POST /setup/restart`.
+
+**`WORKBENCH_DATA_DIR`.** Base directory for runtime-managed state
+files: the setup wizard's `.env`, the anonymous telemetry install
+id (`.install-id`), and the `cli/` subdirectory the bundled `aiw`
+binary uses when running inside the compose container. The compose
+file points this at the persistent volume; outside compose, defaults
+to `os.tmpdir()/ai-workbench`.
 
 **Template.** [`.env.example`](../.env.example) at the repo root is
 a committed starting point — copy to `.env` and fill in the secrets

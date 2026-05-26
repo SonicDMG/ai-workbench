@@ -149,7 +149,7 @@ details below are here when you need to understand or extend the system.
 <details>
 <summary>Runtime model</summary>
 
-| Runtime | Status in 0.1.0 | Notes |
+| Runtime | Status in 0.2.0 | Notes |
 |---|---|---|
 | TypeScript (`runtimes/typescript`) | **Supported** | Production path — serves the UI + full `/api/v1/*` contract; bundled into the Docker image. |
 | Python (`runtimes/python`) | **Experimental contrib** | FastAPI scaffold; all `/api/v1/*` routes return 501 until handlers reach parity. No stability guarantee. |

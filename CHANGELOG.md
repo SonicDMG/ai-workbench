@@ -160,40 +160,6 @@ release — they will be called out under **Changed** below.
   [`runtimes/typescript/src/lib/errors.ts`](./runtimes/typescript/src/lib/errors.ts),
   [`runtimes/typescript/src/routes/operational.ts`](./runtimes/typescript/src/routes/operational.ts),
   [`docs/errors.md`](./docs/errors.md))
-
-### Changed
-
-- **MCP façade is on by default.** `mcp.enabled` now defaults to
-  `true` so the Connect tab recipes (LangGraph, Google ADK, CrewAI,
-  Microsoft Agent Framework, watsonx Path A) work against a fresh
-  install without an extra config edit. The route still sits behind
-  the standard `/api/v1/*` auth middleware and the workspace-scoped
-  authz wrapper, so the security boundary is unchanged — disabling
-  the route never broadened or narrowed what the auth gate allows.
-  Operators who want a narrower surface than the REST API can set
-  `mcp.enabled: false` explicitly. `mcp.exposeChat` still defaults
-  to `false` so MCP clients don't accidentally rack up inference
-  cost. ([`runtimes/typescript/src/config/schema.ts`](./runtimes/typescript/src/config/schema.ts),
-  [`docs/mcp.md`](./docs/mcp.md),
-  [`docs/configuration.md`](./docs/configuration.md))
-- **RLAC audit-log shape is now stable.** The `PolicyAuditRecord`
-  field set, JSON types, and the `PolicyAction` / `PolicyDecision`
-  enum membership are committed across minor releases starting with
-  0.2.0. Additive changes are non-breaking; renames/removals require
-  a minor-version deprecation window announced under **Changed**.
-  A new `PolicyAuditRecordV1` type alias re-exports the current
-  shape so future breaking evolutions can land as `V2` alongside V1
-  without breaking integrators. Locked by
-  [`audit-shape-lock.test.ts`](./runtimes/typescript/tests/policy/audit-shape-lock.test.ts).
-  ([`docs/rlac-preview.md`](./docs/rlac-preview.md#audit-log),
-  [`runtimes/typescript/src/control-plane/types.ts`](./runtimes/typescript/src/control-plane/types.ts))
-- **RLAC scope clarification.** The Preview label now covers only
-  the policy DSL (visibility-list semantics only). The audit log is
-  no longer marked unstable, and the doc redirects integrators to
-  the new Audit-log shape table for the canonical wire shape.
-
-### Added
-
 - **OIDC device-flow login (RFC 8628).** `aiw login --oidc` opens a
   device-flow grant against the runtime's new
   `/auth/device/authorize` + `/auth/device/token` proxy. The runtime
@@ -251,6 +217,37 @@ release — they will be called out under **Changed** below.
   its mutations are scoped to one conversation.
   ([`runtimes/typescript/src/mcp/server.ts`](./runtimes/typescript/src/mcp/server.ts),
   [`runtimes/typescript/src/mcp/run-agent.ts`](./runtimes/typescript/src/mcp/run-agent.ts))
+
+### Changed
+
+- **MCP façade is on by default.** `mcp.enabled` now defaults to
+  `true` so the Connect tab recipes (LangGraph, Google ADK, CrewAI,
+  Microsoft Agent Framework, watsonx Path A) work against a fresh
+  install without an extra config edit. The route still sits behind
+  the standard `/api/v1/*` auth middleware and the workspace-scoped
+  authz wrapper, so the security boundary is unchanged — disabling
+  the route never broadened or narrowed what the auth gate allows.
+  Operators who want a narrower surface than the REST API can set
+  `mcp.enabled: false` explicitly. `mcp.exposeChat` still defaults
+  to `false` so MCP clients don't accidentally rack up inference
+  cost. ([`runtimes/typescript/src/config/schema.ts`](./runtimes/typescript/src/config/schema.ts),
+  [`docs/mcp.md`](./docs/mcp.md),
+  [`docs/configuration.md`](./docs/configuration.md))
+- **RLAC audit-log shape is now stable.** The `PolicyAuditRecord`
+  field set, JSON types, and the `PolicyAction` / `PolicyDecision`
+  enum membership are committed across minor releases starting with
+  0.2.0. Additive changes are non-breaking; renames/removals require
+  a minor-version deprecation window announced under **Changed**.
+  A new `PolicyAuditRecordV1` type alias re-exports the current
+  shape so future breaking evolutions can land as `V2` alongside V1
+  without breaking integrators. Locked by
+  [`audit-shape-lock.test.ts`](./runtimes/typescript/tests/policy/audit-shape-lock.test.ts).
+  ([`docs/rlac-preview.md`](./docs/rlac-preview.md#audit-log),
+  [`runtimes/typescript/src/control-plane/types.ts`](./runtimes/typescript/src/control-plane/types.ts))
+- **RLAC scope clarification.** The Preview label now covers only
+  the policy DSL (visibility-list semantics only). The audit log is
+  no longer marked unstable, and the doc redirects integrators to
+  the new Audit-log shape table for the canonical wire shape.
 
 ## [0.1.0] — 2026-05-17
 

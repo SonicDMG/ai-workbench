@@ -38,6 +38,15 @@ version: 1
 runtime:
   port: 8080
   logLevel: info
+  # Optional — opt-in anonymous usage telemetry. Off by default.
+  # `enabled: true` + `url: null` is "dark mode": events are
+  # constructed and logged but never POSTed, useful for verifying
+  # the wiring before pointing at a collector. WORKBENCH_TELEMETRY
+  # and WORKBENCH_TELEMETRY_URL env vars override these. See
+  # docs/telemetry.md for the event catalog + no-PII guarantee.
+  # telemetry:
+  #   enabled: false
+  #   url: null  # e.g. https://telemetry.example.com/v1/events
 
 # Optional — loaded into the memory backend at startup. Ignored by
 # `file` and `astra` backends. Only useful when you flip `driver`
