@@ -120,6 +120,173 @@ describe("assemblePrompt", () => {
 		]);
 	});
 
+	test("propagates persisted tool_calls onto the assistant turn", () => {
+		const toolCallAssistant: MessageRecord = {
+			...agentMsg("", "2026-04-28T00:00:01.000Z"),
+			toolCallPayload: {
+				toolCalls: [
+					{
+						id: "call_a",
+						name: "kb.search",
+						arguments: '{"query":"hello"}',
+					},
+				],
+			},
+		};
+		const toolResult: MessageRecord = {
+			...agentMsg("", "2026-04-28T00:00:02.000Z"),
+			role: "tool",
+			toolId: "kb.search",
+			toolResponse: {
+				toolCallId: "call_a",
+				content: "results: ...",
+			},
+		};
+		const turns = assemblePrompt({
+			systemPrompt: SYSTEM,
+			chunks: [],
+			history: [userMsg("find me docs"), toolCallAssistant, toolResult],
+			userTurn: "thanks",
+		});
+		// system, user, assistant(toolCalls), tool, user
+		expect(turns).toHaveLength(5);
+		const asst = turns[2];
+		expect(asst?.role).toBe("assistant");
+		expect(
+			(asst as { role: "assistant"; toolCalls?: readonly unknown[] }).toolCalls,
+		).toEqual([
+			{ id: "call_a", name: "kb.search", arguments: '{"query":"hello"}' },
+		]);
+		expect(turns[3]).toEqual({
+			role: "tool",
+			toolCallId: "call_a",
+			name: "kb.search",
+			content: "results: ...",
+		});
+	});
+
+	test("silently drops malformed entries in toolCallPayload", () => {
+		const malformed: MessageRecord = {
+			...agentMsg("fallback content", "2026-04-28T00:00:01.000Z"),
+			toolCallPayload: {
+				toolCalls: [
+					null,
+					{ id: 42 }, // wrong type for id
+					{ id: "ok", name: "kb.search" }, // missing arguments
+					"not-an-object",
+					{
+						id: "call_z",
+						name: "kb.search",
+						arguments: "{}",
+					},
+				],
+			},
+		};
+		const turns = assemblePrompt({
+			systemPrompt: SYSTEM,
+			chunks: [],
+			history: [userMsg("hi"), malformed],
+			userTurn: "?",
+		});
+		const asst = turns.find((t) => t.role === "assistant") as
+			| { role: "assistant"; toolCalls?: readonly { id: string }[] }
+			| undefined;
+		expect(asst?.toolCalls?.map((c) => c.id)).toEqual(["call_z"]);
+	});
+
+	test("treats null toolCallPayload and missing toolCalls array as no tool calls", () => {
+		const nullPayload: MessageRecord = {
+			...agentMsg("answer", "2026-04-28T00:00:01.000Z"),
+			toolCallPayload: null,
+		};
+		const missingArray: MessageRecord = {
+			...agentMsg("answer2", "2026-04-28T00:00:02.000Z"),
+			toolCallPayload: { somethingElse: "x" },
+		};
+		const turns = assemblePrompt({
+			systemPrompt: SYSTEM,
+			chunks: [],
+			history: [userMsg("q"), nullPayload, missingArray],
+			userTurn: "k",
+		});
+		// Both assistant turns appear as plain text.
+		const assistants = turns.filter((t) => t.role === "assistant");
+		expect(assistants.map((t) => t.content)).toEqual(["answer", "answer2"]);
+	});
+
+	test("drops tool turns missing a structurally valid toolResponse", () => {
+		const incompleteToolRow: MessageRecord = {
+			...agentMsg("", "2026-04-28T00:00:02.000Z"),
+			role: "tool",
+			toolId: "kb.search",
+			toolResponse: { toolCallId: "call_x" }, // no content
+		};
+		const noToolIdRow: MessageRecord = {
+			...agentMsg("", "2026-04-28T00:00:03.000Z"),
+			role: "tool",
+			toolId: null,
+			toolResponse: { toolCallId: "call_x", content: "x" },
+		};
+		const turns = assemblePrompt({
+			systemPrompt: SYSTEM,
+			chunks: [],
+			history: [userMsg("q"), incompleteToolRow, noToolIdRow],
+			userTurn: "k",
+		});
+		expect(turns.some((t) => t.role === "tool")).toBe(false);
+	});
+
+	test("strips orphan tool turns at the head when their assistant got trimmed", () => {
+		// Build > limit turns where the first tool's assistant gets cut off.
+		const toolCallAssistant: MessageRecord = {
+			...agentMsg("", "2026-04-28T00:00:01.000Z"),
+			toolCallPayload: {
+				toolCalls: [{ id: "call_old", name: "kb.search", arguments: "{}" }],
+			},
+		};
+		const orphanedTool: MessageRecord = {
+			...agentMsg("", "2026-04-28T00:00:02.000Z"),
+			role: "tool",
+			toolId: "kb.search",
+			toolResponse: { toolCallId: "call_old", content: "old result" },
+		};
+		const filler: MessageRecord[] = [];
+		for (let i = 0; i < 6; i++) {
+			filler.push(
+				userMsg(`u${i}`, new Date(2026, 3, 28, 1, 0, i * 2).toISOString()),
+			);
+			filler.push(
+				agentMsg(`a${i}`, new Date(2026, 3, 28, 1, 0, i * 2 + 1).toISOString()),
+			);
+		}
+		const turns = assemblePrompt({
+			systemPrompt: SYSTEM,
+			chunks: [],
+			history: [toolCallAssistant, orphanedTool, ...filler],
+			userTurn: "now",
+			historyLimit: 6,
+		});
+		// The orphaned tool turn would otherwise appear at the head of the
+		// trimmed slice — confirm it was stripped.
+		expect(turns.some((t) => t.role === "tool")).toBe(false);
+	});
+
+	test("skips role:system history entries — system is rebuilt per turn", () => {
+		const systemHistory: MessageRecord = {
+			...agentMsg("ignored", "2026-04-28T00:00:01.000Z"),
+			role: "system",
+			content: "stale system",
+		};
+		const turns = assemblePrompt({
+			systemPrompt: SYSTEM,
+			chunks: [],
+			history: [systemHistory, userMsg("q")],
+			userTurn: "k",
+		});
+		expect(turns.filter((t) => t.role === "system")).toHaveLength(1);
+		expect(turns[0]?.content).toBe(SYSTEM);
+	});
+
 	test("trims history to the most recent N turns", () => {
 		const history: MessageRecord[] = [];
 		for (let i = 0; i < 30; i++) {

@@ -136,6 +136,96 @@ describe("jobs route — GET /jobs/{jobId}", () => {
 		expect(res.status).toBe(400);
 	});
 
+	test("SSE /events returns 404 with the canonical error envelope when the job is missing", async () => {
+		const h = makeHarness();
+		const ws = await createWorkspace(h);
+		const res = await h.app.request(
+			`/api/v1/workspaces/${ws}/jobs/00000000-0000-0000-0000-000000000000/events`,
+		);
+		expect(res.status).toBe(404);
+		const body = await json(res);
+		expect(body.error.code).toBe("job_not_found");
+		expect(body.error.requestId).toBeDefined();
+	});
+
+	test("SSE /events streams every update and a terminal `done` event", async () => {
+		const h = makeHarness();
+		const ws = await createWorkspace(h);
+		const job = await h.jobs.create({
+			workspace: ws,
+			kind: "ingest",
+			jobId: randomUUID(),
+			knowledgeBaseId: randomUUID(),
+			documentId: randomUUID(),
+			total: 2,
+		});
+
+		// Open the SSE stream, read with a reader so we don't have to
+		// fully drain before the server emits the terminal event.
+		const res = await h.app.request(
+			`/api/v1/workspaces/${ws}/jobs/${job.jobId}/events`,
+		);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type") ?? "").toContain(
+			"text/event-stream",
+		);
+		const reader = res.body!.getReader();
+		const decoder = new TextDecoder();
+		let buffer = "";
+		const seenEvents: string[] = [];
+
+		async function readChunk(): Promise<void> {
+			const { value, done } = await reader.read();
+			if (done) return;
+			buffer += decoder.decode(value, { stream: true });
+		}
+
+		function drainEvents(): string[] {
+			const events: string[] = [];
+			for (;;) {
+				const idx = buffer.indexOf("\n\n");
+				if (idx === -1) break;
+				events.push(buffer.slice(0, idx));
+				buffer = buffer.slice(idx + 2);
+			}
+			return events;
+		}
+
+		// The subscribe path replays the current record immediately, so
+		// we can read the first frame without poking the store.
+		await readChunk();
+		seenEvents.push(...drainEvents());
+
+		// Now push two updates: one progress, one terminal (succeeded).
+		await h.jobs.update(ws, job.jobId, { status: "running", processed: 1 });
+		await h.jobs.update(ws, job.jobId, { status: "succeeded", processed: 2 });
+
+		// Read until we see the terminal `done` event or run out of frames.
+		for (
+			let i = 0;
+			i < 10 && !seenEvents.some((e) => e.includes("event: done"));
+			i++
+		) {
+			await readChunk();
+			seenEvents.push(...drainEvents());
+		}
+		try {
+			reader.releaseLock();
+		} catch {}
+
+		// First frame must be a `job` event with the initial state.
+		expect(seenEvents[0]).toContain("event: job");
+		expect(seenEvents[0]).toContain('"status":"pending"');
+
+		// Some subsequent frame must include the running update.
+		expect(seenEvents.some((e) => e.includes('"status":"running"'))).toBe(true);
+
+		// Final frame must be `event: done` carrying the terminal status.
+		const done = seenEvents.find((e) => e.includes("event: done"));
+		expect(done).toBeDefined();
+		expect(done).toContain('"status":"succeeded"');
+	});
+
 	test("scoped API-key cannot read jobs from a workspace it doesn't own", async () => {
 		const h = makeHarness({ authMode: "apiKey" });
 		// Two workspaces and a key scoped only to A.

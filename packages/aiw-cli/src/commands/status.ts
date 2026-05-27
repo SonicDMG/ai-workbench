@@ -17,14 +17,14 @@ import {
 import { ExitCode } from "../exit-codes.js";
 import { emit, fail, parseOutputFormat } from "../output.js";
 
-const VersionSchema = z
+export const VersionSchema = z
 	.object({
 		version: z.string().optional(),
 		commit: z.string().optional(),
 	})
 	.passthrough();
 
-const ReadySchema = z
+export const ReadySchema = z
 	.object({
 		status: z.string().optional(),
 		workspaces: z.number().optional(),
@@ -39,7 +39,7 @@ const ReadySchema = z
 	})
 	.passthrough();
 
-const FeaturesSchema = z
+export const FeaturesSchema = z
 	.object({
 		mcp: z
 			.object({
@@ -51,7 +51,7 @@ const FeaturesSchema = z
 	})
 	.passthrough();
 
-interface StatusReport {
+export interface StatusReport {
 	readonly profile: string;
 	readonly url: string;
 	readonly reachable: boolean;
@@ -67,13 +67,14 @@ interface StatusReport {
 	readonly mcpUrl: string | null;
 }
 
-async function probe<T>(
+export async function probe<T>(
 	url: string,
 	path: string,
 	schema: z.ZodType<T>,
+	fetchImpl: typeof fetch = fetch,
 ): Promise<T | null> {
 	try {
-		const res = await fetch(`${url.replace(/\/+$/, "")}${path}`, {
+		const res = await fetchImpl(`${url.replace(/\/+$/, "")}${path}`, {
 			headers: { Accept: "application/json" },
 			signal: AbortSignal.timeout(5000),
 		});
@@ -86,7 +87,7 @@ async function probe<T>(
 	}
 }
 
-function renderHuman(r: StatusReport): string {
+export function renderHuman(r: StatusReport): string {
 	if (!r.reachable) {
 		return `${pc.red("✗")} ${r.url} unreachable`;
 	}
@@ -103,6 +104,39 @@ function renderHuman(r: StatusReport): string {
 		`  ingest:     ${ingest}`,
 		`  mcp:        ${mcp}`,
 	].join("\n");
+}
+
+/**
+ * Pure shape-assembly. Pulled out of the citty `run` so a unit test
+ * can exercise the (version, ready, features) → StatusReport mapping
+ * without spawning the binary or stubbing `process.exit`.
+ */
+export function buildStatusReport(input: {
+	profile: string;
+	url: string;
+	version: z.infer<typeof VersionSchema> | null;
+	ready: z.infer<typeof ReadySchema> | null;
+	features: z.infer<typeof FeaturesSchema> | null;
+}): StatusReport {
+	const reachable = input.version !== null;
+	return {
+		profile: input.profile,
+		url: input.url,
+		reachable,
+		version: input.version?.version ?? null,
+		ready: input.ready?.status === "ready",
+		workspaces: input.ready?.workspaces ?? null,
+		ingest:
+			input.ready?.ingest && typeof input.ready.ingest.capacity === "number"
+				? {
+						active: input.ready.ingest.active ?? 0,
+						queued: input.ready.ingest.queued ?? 0,
+						capacity: input.ready.ingest.capacity,
+					}
+				: null,
+		mcpEnabled: input.features?.mcp?.enabled ?? null,
+		mcpUrl: input.features?.mcp?.baseUrl ?? null,
+	};
 }
 
 export const statusCommand = defineCommand({
@@ -135,26 +169,14 @@ export const statusCommand = defineCommand({
 			probe(url, "/readyz", ReadySchema),
 			probe(url, "/features", FeaturesSchema),
 		]);
-		const reachable = version !== null;
-		const report: StatusReport = {
+		const report = buildStatusReport({
 			profile: resolved.name,
 			url,
-			reachable,
-			version: version?.version ?? null,
-			ready: ready?.status === "ready",
-			workspaces: ready?.workspaces ?? null,
-			ingest:
-				ready?.ingest && typeof ready.ingest.capacity === "number"
-					? {
-							active: ready.ingest.active ?? 0,
-							queued: ready.ingest.queued ?? 0,
-							capacity: ready.ingest.capacity,
-						}
-					: null,
-			mcpEnabled: features?.mcp?.enabled ?? null,
-			mcpUrl: features?.mcp?.baseUrl ?? null,
-		};
+			version,
+			ready,
+			features,
+		});
 		emit(format, report, renderHuman);
-		process.exit(reachable ? ExitCode.OK : ExitCode.UNAVAILABLE);
+		process.exit(report.reachable ? ExitCode.OK : ExitCode.UNAVAILABLE);
 	},
 });

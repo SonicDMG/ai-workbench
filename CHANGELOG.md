@@ -9,6 +9,105 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-05-27
+
+Patch release focused on a test-coverage sweep. No public API or
+schema changes; safe upgrade from `0.2.0`.
+
+### Added
+
+- **Branch-complete RLAC policy evaluator tests.** The in-process
+  evaluator at [`runtimes/typescript/src/policy/evaluator.ts`](./runtimes/typescript/src/policy/evaluator.ts)
+  drives every write-path authz check, but coverage was sitting at
+  **33.9% statements / 27.5% branches** — well below the rest of the
+  policy module despite the RLAC audit shape being a stability
+  commitment as of 0.2.0. A new `evaluator.test.ts` adds 41 targeted
+  tests covering scalar resolution (literals, `$principal.<attr>`,
+  `current_principal_id()`, row column refs), every comparison
+  operator on both numbers and strings, NULL semantics, type-mismatch
+  defenses, `IN` / `ANY()` / `@>` membership against arrays and
+  `Set`s, and boolean composition (including `AND[]` and `OR[]`
+  identity edge cases). Evaluator now lands at **100% statements /
+  98% branches** — the single remaining branch is the documented
+  `NULL = NULL → true` quirk in `compare()`.
+- **Agent-resolution branch coverage.** [`agent-resolution.ts`](./runtimes/typescript/src/chat/agent-resolution.ts)
+  was at **63% statements** because the per-agent llm-service binding
+  path (HuggingFace / OpenAI construction, the 4xx surface for
+  missing credential refs and unsupported providers, the 503
+  `chat_disabled` failure mode) was only exercised indirectly through
+  dispatcher integration tests. 14 new tests now cover every failure
+  mode plus the system-prompt / KB-scope precedence rules, taking the
+  file to **100% statements**.
+- **Prompt-assembly tool-call paths.** [`prompt.ts`](./runtimes/typescript/src/chat/prompt.ts)
+  went from **65% → 100% statements**. New tests pin: persisted
+  `toolCallPayload` decode (well-formed, malformed, missing,
+  partial), tool-result row validation (`toolResponse.content` /
+  `toolCallId` / `toolId` triple required), orphan-tool stripping
+  when the matching `assistant(toolCalls)` is history-trimmed away,
+  and skipping `role:"system"` history entries.
+- **Jobs SSE route coverage.** [`routes/api-v1/jobs.ts`](./runtimes/typescript/src/routes/api-v1/jobs.ts)
+  jumped from **24% → 88% statements**. The previous suite only
+  exercised the polling GET; the new tests open a real SSE stream,
+  push two `update()` calls into the `JobStore`, and assert that
+  every update appears as a `data:` frame and a terminal `done` event
+  closes the stream. Also covers the 404 envelope on a missing job.
+- **Web hook coverage uplift.** Five hooks gained dedicated test
+  files or expansions:
+  - [`useRlac.ts`](./apps/web/src/hooks/useRlac.ts): **11.5% →
+    96%**. Covers `useRlacEnabled` precedence, principal CRUD
+    invalidation, `usePolicyCompilePreview` gating (workspaceId,
+    non-blank DSL, null-vs-undefined principal id), and `usePolicyAudit`
+    filter pass-through.
+  - [`useServices.ts`](./apps/web/src/hooks/useServices.ts): **13.6%
+    → 100%**. Covers list hooks for all three service kinds
+    (chunking / embedding / reranking), the `enabled: false` path
+    when workspaceId is undefined, and create / update / delete
+    invalidation for every kind.
+  - [`useSession.ts`](./apps/web/src/hooks/useSession.ts): **14.8%
+    → 93%**. Covers `useAuthConfig`, the `enabled` gating on
+    `useSession` against `auth/config.modes.login`, and all four
+    `useSilentRefresh` no-op branches (missing refreshPath, opaque
+    session, `canRefresh: false`) plus the 80%-of-lifetime timeout
+    schedule.
+  - [`useWorkspaces.ts`](./apps/web/src/hooks/useWorkspaces.ts):
+    **16.7% → 100%**. Covers `useWorkspace` single-fetch, the
+    enabled-on-id gate, all CRUD mutations with cache invalidation
+    + detail-cache seeding, and `useTestConnection`.
+- **CLI pure-logic extraction.** Several CLI command files were at
+  0% coverage because their tests run the compiled binary in a
+  subprocess (v8 can't instrument across process boundaries). To
+  make pure logic measurable:
+  - [`exit-codes.ts`](./packages/aiw-cli/src/exit-codes.ts) gained
+    a 55-case `tests/exit-codes.test.ts` that locks the
+    server-error-code → exit-code table and the HTTP-status
+    fallback heuristic. Public contract surface — scripts depend on
+    this. **0% → 100%**.
+  - [`commands/status.ts`](./packages/aiw-cli/src/commands/status.ts)
+    was refactored to export `buildStatusReport`, `renderHuman`,
+    and `probe` (with an injectable `fetchImpl`). 15 unit tests now
+    cover the report-shape assembly, the human renderer (every
+    fallback branch — '?' placeholders, mcp on/off, ✗/✓
+    indicator), and probe success / non-JSON / schema-rejection /
+    fetch-rejection paths.
+  - [`commands/job.ts`](./packages/aiw-cli/src/commands/job.ts)
+    extracted `renderJob`; new tests lock the human layout of the
+    `aiw job status` output.
+  - [`types.ts`](./packages/aiw-cli/src/types.ts) gained a smoke
+    suite for every wire schema — including the `passthrough()`
+    tolerance for runtime upgrades and the bare-array shape of
+    `SearchResponseSchema`. **0% → 100%**.
+
+### Coverage summary
+
+| Surface | Before | After (statements) |
+|---|---|---|
+| TS runtime | 79.5% / 70.4% branch | **80.8% / 71.9% branch** |
+| Web app | 57.1% / 50.0% funcs | **59.7% / 55.5% funcs** |
+| CLI | 18.3% | **24.2%** (`src/` excluding command files now at 82%) |
+
+Total tests: **1,912 passing** (+228 new — 1,312 runtime / 422 web /
+178 CLI).
+
 ## [0.2.0] — 2026-05-22
 
 ### Added
@@ -318,6 +417,7 @@ These were scoped for 0.1.0 but deferred to keep the release focused:
   flow.
 - Discoverability tooltips + "What's new in 0.1.0" modal in the web UI.
 
-[Unreleased]: https://github.com/datastax/ai-workbench/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/datastax/ai-workbench/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/datastax/ai-workbench/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/datastax/ai-workbench/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/datastax/ai-workbench/releases/tag/v0.1.0
