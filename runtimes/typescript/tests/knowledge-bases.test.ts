@@ -108,10 +108,12 @@ describe("execution service routes", () => {
 		expect(embedders).toHaveLength(
 			DEFAULT_WORKSPACE_SEED_SERVICES.embedding.length,
 		);
-		const openai = embedders.find((e) => e.provider === "openai");
-		expect(openai).toBeDefined();
-		expect(openai?.modelName).toBe("text-embedding-3-small");
-		expect(openai?.embeddingDimension).toBe(1536);
+		// 0.2.1 dropped the OpenAI default; the workspace seed is now
+		// just NVIDIA `nv-embedqa-e5-v5` (Astra-bundled $vectorize).
+		const nvidia = embedders.find((e) => e.provider === "nvidia");
+		expect(nvidia).toBeDefined();
+		expect(nvidia?.modelName).toBe("nvidia/nv-embedqa-e5-v5");
+		expect(nvidia?.embeddingDimension).toBe(1024);
 	});
 
 	test("CRUD round-trip on chunking-services", async () => {

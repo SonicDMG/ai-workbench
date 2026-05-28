@@ -233,23 +233,19 @@ export const DEFAULT_SERVICES: DefaultServices = {
  * Curated subset of {@link DEFAULT_SERVICES} that the workspace POST
  * handler auto-seeds into every freshly-created workspace via the
  * public API. Intentionally small — one canonical character chunker,
- * one canonical line chunker, plus the two embedders most likely to
- * match collections users already have:
- *   - OpenAI `text-embedding-3-small` (1536-dim) for new collections
- *     and most public datasets.
- *   - NVIDIA `nv-embedqa-e5-v5` (1024-dim) for Astra collections that
- *     use the bundled NIM vectorize service — seeding this is what
- *     makes "Attach existing" work out of the box for those.
- *
- * Operators can delete or replace any of them via the regular
- * service-CRUD routes; the full {@link DEFAULT_SERVICES} catalog is
- * still available for the memory-control-plane bootstrap path
- * (`buildControlPlane` with `seedWorkspaces`), which needs the broader
- * preset menu for demo / test environments.
+ * one canonical line chunker, and the NVIDIA `nv-embedqa-e5-v5`
+ * (1024-dim) embedder. NVIDIA NIM is bundled with Astra and runs
+ * server-side via `$vectorize`, so "Attach existing" works out of
+ * the box for Astra collections without forcing operators to mint
+ * an OpenAI key just for embedding. Add OpenAI / Cohere embedders
+ * explicitly via the service-CRUD routes when you want them; the
+ * full {@link DEFAULT_SERVICES} catalog is still available for the
+ * memory-control-plane bootstrap path (`buildControlPlane` with
+ * `seedWorkspaces`) when the broader preset menu is useful.
  */
 export const DEFAULT_WORKSPACE_SEED_SERVICES: DefaultServices = {
 	chunking: [RECURSIVE_CHAR_DEFAULT, LINE_ROWS_ONE],
-	embedding: [OPENAI_SMALL, NVIDIA_NV_EMBEDQA_E5_V5],
+	embedding: [NVIDIA_NV_EMBEDQA_E5_V5],
 };
 
 /** HuggingFace `mistralai/Mistral-7B-Instruct-v0.3` — the default chat

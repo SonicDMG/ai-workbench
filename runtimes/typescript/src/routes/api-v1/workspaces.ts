@@ -437,9 +437,10 @@ async function seedDefaultLlmServices(
  * Seed each freshly created workspace with the
  * {@link DEFAULT_WORKSPACE_SEED_SERVICES} starter chunking + embedding
  * services so the user can ingest content immediately without first
- * POST-ing a service config. Today this is one OpenAI embedder
- * (`text-embedding-3-small`), one recursive-character chunker, and one
- * line-based chunker.
+ * POST-ing a service config. Today this is one NVIDIA embedder
+ * (`nv-embedqa-e5-v5`, Astra-bundled $vectorize-eligible), one
+ * recursive-character chunker, and one line-based chunker. Add OpenAI
+ * / Cohere embedders via the regular service-CRUD routes when needed.
  *
  * Failures are logged but do not abort the workspace creation: a
  * workspace with no services is still a valid workspace, and the user

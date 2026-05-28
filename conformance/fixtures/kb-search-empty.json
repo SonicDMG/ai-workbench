@@ -37,35 +37,13 @@
 				"body": {
 					"items": [
 						{
-							"authType": "api_key",
-							"createdAt": "{{TS}}",
-							"credentialRef": "env:OPENAI_API_KEY",
-							"description": "Default. OpenAI `text-embedding-3-small` (1536-dim, cosine). Astra `$vectorize`-eligible — server-side embedding when the workspace uses the Astra driver.",
-							"distanceMetric": "cosine",
-							"embeddingDimension": 1536,
-							"embeddingServiceId": "{{UUID_2}}",
-							"endpointBaseUrl": null,
-							"endpointPath": null,
-							"maxBatchSize": 512,
-							"maxInputTokens": 8191,
-							"modelName": "text-embedding-3-small",
-							"name": "openai-text-embedding-3-small",
-							"provider": "openai",
-							"requestTimeoutMs": null,
-							"status": "active",
-							"supportedContent": ["text"],
-							"supportedLanguages": ["en", "multi"],
-							"updatedAt": "{{TS}}",
-							"workspaceId": "{{UUID_1}}"
-						},
-						{
 							"authType": "none",
 							"createdAt": "{{TS}}",
 							"credentialRef": null,
 							"description": "NVIDIA `nvidia/nv-embedqa-e5-v5` (1024-dim, cosine). Multilingual, retrieval-tuned. Matches the default Astra-bundled NIM embedding model — auth is handled by Astra's KMS, no client-side API key needed. Useful when attaching to a pre-existing Astra collection that uses NVIDIA vectorize.",
 							"distanceMetric": "cosine",
 							"embeddingDimension": 1024,
-							"embeddingServiceId": "{{UUID_3}}",
+							"embeddingServiceId": "{{UUID_2}}",
 							"endpointBaseUrl": null,
 							"endpointPath": null,
 							"maxBatchSize": 64,
@@ -99,7 +77,7 @@
 						{
 							"authType": "none",
 							"chunkUnit": "characters",
-							"chunkingServiceId": "{{UUID_4}}",
+							"chunkingServiceId": "{{UUID_3}}",
 							"createdAt": "{{TS}}",
 							"credentialRef": null,
 							"description": "Default. Recursive character splitter (1000 chars / 150 overlap) honoring paragraph, sentence, and word boundaries. Good for prose, markdown, mixed content.",
@@ -128,7 +106,7 @@
 						{
 							"authType": "none",
 							"chunkUnit": "rows",
-							"chunkingServiceId": "{{UUID_5}}",
+							"chunkingServiceId": "{{UUID_4}}",
 							"createdAt": "{{TS}}",
 							"credentialRef": null,
 							"description": "Line-based splitter — one row per chunk. Snaps to `\\n`, `\\r\\n`, or `\\r` boundaries. Default for CSV, JSONL, and log files where every row should be its own retrievable record.",
@@ -164,7 +142,7 @@
 		{
 			"request": {
 				"body": {
-					"chunkingServiceId": "{{UUID_4}}",
+					"chunkingServiceId": "{{UUID_3}}",
 					"embeddingServiceId": "{{UUID_2}}",
 					"name": "kb"
 				},
@@ -174,11 +152,11 @@
 			"response": {
 				"body": {
 					"astraQueries": [],
-					"chunkingServiceId": "{{UUID_4}}",
+					"chunkingServiceId": "{{UUID_3}}",
 					"createdAt": "{{TS}}",
 					"description": null,
 					"embeddingServiceId": "{{UUID_2}}",
-					"knowledgeBaseId": "{{UUID_6}}",
+					"knowledgeBaseId": "{{UUID_5}}",
 					"language": null,
 					"lexical": {
 						"analyzer": null,
@@ -206,7 +184,7 @@
 					"topK": 3
 				},
 				"method": "POST",
-				"path": "/api/v1/workspaces/{{UUID_1}}/knowledge-bases/{{UUID_6}}/search"
+				"path": "/api/v1/workspaces/{{UUID_1}}/knowledge-bases/{{UUID_5}}/search"
 			},
 			"response": {
 				"body": {
