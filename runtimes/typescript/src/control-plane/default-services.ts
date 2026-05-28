@@ -252,33 +252,40 @@ export const DEFAULT_WORKSPACE_SEED_SERVICES: DefaultServices = {
 	embedding: [OPENAI_SMALL, NVIDIA_NV_EMBEDQA_E5_V5],
 };
 
-/** OpenAI `gpt-4o-mini` — the default chat LLM auto-seeded into every
- * new workspace. Supports native function calling, which the agent
- * tool-call loop in {@link ../chat/agent-dispatch.ts} requires. */
-const OPENAI_GPT_4O_MINI: CreateLlmServiceInput = {
-	name: "openai-gpt-4o-mini",
+/** HuggingFace `mistralai/Mistral-7B-Instruct-v0.3` — the default chat
+ * LLM auto-seeded into every new workspace. Matches the runtime's
+ * default `chat.model` so a fresh install that pastes a HuggingFace
+ * token via `/settings` lights up agent chat immediately, without
+ * any LLM-service edits. The HF inference API doesn't expose native
+ * function calling, so the agent tool-call loop falls back to the
+ * retrieve-and-answer flow described in `chat/agent-dispatch.ts` —
+ * tools still execute, just not via a function-call protocol. */
+const HUGGINGFACE_MISTRAL_7B: CreateLlmServiceInput = {
+	name: "huggingface-mistral-7b-instruct",
 	description:
-		"Default. OpenAI `gpt-4o-mini` chat completion with native function calling. Used by Bobby + Maven to call the workspace tools (search_kb, list_documents, summarize_kb, etc.).",
+		"Default. HuggingFace `mistralai/Mistral-7B-Instruct-v0.3` chat completion via the HF Inference API. Used by Bobby + Maven; relies on the runtime's `chat.tokenRef` (default `env:HUGGINGFACE_API_KEY`) or a per-service credentialRef.",
 	status: "active",
-	provider: "openai",
-	modelName: "gpt-4o-mini",
-	contextWindowTokens: 128000,
+	provider: "huggingface",
+	modelName: "mistralai/Mistral-7B-Instruct-v0.3",
+	contextWindowTokens: 32768,
 	maxOutputTokens: 1024,
 	supportsStreaming: true,
-	supportsTools: true,
+	supportsTools: false,
 	authType: "api_key",
-	credentialRef: "env:OPENAI_API_KEY",
+	credentialRef: "env:HUGGINGFACE_API_KEY",
 	supportedLanguages: ["en", "multi"],
 	supportedContent: ["text"],
 };
 
 /**
  * Curated chat LLM services auto-seeded into every freshly-created
- * workspace via the public API. Currently a single OpenAI entry —
- * the agent tool-call loop needs native function calling, which only
- * the OpenAI adapter implements today. Operators can add more LLM
- * services (HuggingFace, Anthropic, etc.) via the regular service-
- * CRUD routes.
+ * workspace via the public API. Currently a single HuggingFace entry —
+ * the runtime's default chat surface and the wizard's managed env file
+ * both key off `HUGGINGFACE_API_KEY`, so an out-of-the-box install
+ * answers messages with zero LLM-service edits once a token is pasted.
+ * Operators can add more LLM services (OpenAI, Anthropic, etc.) via
+ * the regular service-CRUD routes; the form gates them as "not yet
+ * wired" so they're discoverable but not silently broken.
  */
 export const DEFAULT_WORKSPACE_SEED_LLM_SERVICES: readonly CreateLlmServiceInput[] =
-	Object.freeze([OPENAI_GPT_4O_MINI]);
+	Object.freeze([HUGGINGFACE_MISTRAL_7B]);

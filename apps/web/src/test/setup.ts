@@ -52,3 +52,26 @@ if (
 		value: shim,
 	});
 }
+
+// Radix UI Select (and other pointer-capture primitives) call
+// `hasPointerCapture` / `releasePointerCapture` / `scrollIntoView`
+// during click handling. jsdom doesn't implement them, so opening a
+// `<Select>` from a test throws `TypeError: target.hasPointerCapture
+// is not a function`. Stub the three methods on the prototype so
+// every Radix-driven test sees them.
+if (typeof window !== "undefined" && typeof Element !== "undefined") {
+	const proto = Element.prototype as Element & {
+		hasPointerCapture?: (id: number) => boolean;
+		releasePointerCapture?: (id: number) => void;
+		scrollIntoView?: () => void;
+	};
+	if (typeof proto.hasPointerCapture !== "function") {
+		proto.hasPointerCapture = () => false;
+	}
+	if (typeof proto.releasePointerCapture !== "function") {
+		proto.releasePointerCapture = () => undefined;
+	}
+	if (typeof proto.scrollIntoView !== "function") {
+		proto.scrollIntoView = () => undefined;
+	}
+}

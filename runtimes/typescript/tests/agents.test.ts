@@ -111,10 +111,14 @@ describe("agent routes", () => {
 		const names = items.map((a) => a.name).sort();
 		expect(names).toEqual(["Bobby", "Maven"]);
 
-		// Both agents are wired to the auto-seeded OpenAI chat LLM
-		// service so the tool-call loop has a function-calling-capable
-		// model out of the box. Confirm they share that same id, and
-		// that the id does point at a real LLM service in the workspace.
+		// Both agents are wired to the auto-seeded chat LLM service so
+		// the tool-call loop has a model available out of the box.
+		// Default ships HuggingFace `Mistral-7B-Instruct-v0.3` (matches
+		// the runtime's default `chat.model`); HF doesn't expose native
+		// function calling so the dispatcher falls back to the
+		// retrieve-and-answer flow described in
+		// `chat/agent-dispatch.ts`. Confirm both agents share the same
+		// id and that the id points at a real LLM service.
 		const llmIds = new Set(items.map((a) => a.llmServiceId));
 		expect(llmIds.size).toBe(1);
 		const sharedLlmId = items[0]?.llmServiceId;
@@ -127,8 +131,8 @@ describe("agent routes", () => {
 			modelName: string;
 		}>;
 		expect(llmItems.find((s) => s.llmServiceId === sharedLlmId)).toMatchObject({
-			provider: "openai",
-			modelName: "gpt-4o-mini",
+			provider: "huggingface",
+			modelName: "mistralai/Mistral-7B-Instruct-v0.3",
 		});
 
 		for (const item of items) {

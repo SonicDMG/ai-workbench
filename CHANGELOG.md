@@ -18,6 +18,40 @@ safe upgrade from `0.2.0`.
 
 ### Changed
 
+- **Default seeded LLM service is HuggingFace.** Every freshly-created
+  workspace used to be auto-seeded with an `openai-gpt-4o-mini` LLM
+  service ([control-plane/default-services.ts](./runtimes/typescript/src/control-plane/default-services.ts)),
+  which pushed operators toward an OpenAI key just to try the
+  out-of-the-box experience even though the runtime's default
+  `chat.tokenRef` already pointed at `HUGGINGFACE_API_KEY`. The seed
+  is now `huggingface-mistral-7b-instruct` pointing at
+  `mistralai/Mistral-7B-Instruct-v0.3` (matches the runtime's
+  default chat model and the wizard's managed-env allow-list), so
+  pasting a HuggingFace token at `/settings` lights up agent chat
+  with zero LLM-service edits. HF doesn't expose native function
+  calling, so the agent dispatcher falls back to the
+  retrieve-and-answer flow described in
+  [`chat/agent-dispatch.ts`](./runtimes/typescript/src/chat/agent-dispatch.ts) —
+  tools still execute, just not via a function-call protocol.
+  Existing workspaces are unaffected (only seeded on POST).
+- **LLM-service form: popular-model picker + Other (custom).**
+  [`LlmServiceForm`](./apps/web/src/components/agents/LlmServiceForm.tsx)
+  used to be a free-form `<Input>` where operators had to remember
+  the exact HF model slug
+  (e.g. `mistralai/Mistral-7B-Instruct-v0.3`). It's now a `<Select>`
+  with seven curated HuggingFace defaults — Mistral 7B v0.3
+  (default), Llama 3 / Llama 3.1, Mixtral 8x7B, Zephyr 7B, Qwen 2.5,
+  Gemma 2 — plus an **Other (custom)…** row that reveals the
+  free-form input for any other model name. Picking a popular row
+  also pre-fills the provider and a sensible `maxOutputTokens`.
+  Edit mode renders the free-form input automatically when the
+  service points at a non-popular model (existing services keep
+  working unchanged). 3 new tests
+  ([`LlmServiceForm.test.tsx`](./apps/web/src/components/agents/LlmServiceForm.test.tsx))
+  cover the picker + Other branch + edit-mode pre-fill, plus a
+  Radix-`hasPointerCapture` jsdom polyfill in the shared test
+  setup ([`src/test/setup.ts`](./apps/web/src/test/setup.ts)) so
+  other Select-driven tests work without per-file workarounds.
 - **Chat is default-on.** Previously, omitting `chat:` from
   `workbench.yaml` left chat disabled and every agent send route
   returned `503 chat_disabled`. The default flips: a fresh install
