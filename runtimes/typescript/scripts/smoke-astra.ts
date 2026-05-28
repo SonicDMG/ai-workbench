@@ -111,6 +111,14 @@ async function main(): Promise<void> {
 			acknowledgeOpenAccess: true,
 		},
 		seedWorkspaces: [],
+		chat: {
+			enabled: false as const,
+			tokenRef: "env:HUGGINGFACE_API_KEY",
+			model: "mistralai/Mistral-7B-Instruct-v0.3",
+			maxOutputTokens: 1024,
+			retrievalK: 6,
+			systemPrompt: null,
+		},
 		mcp: { enabled: false, exposeChat: false },
 	};
 

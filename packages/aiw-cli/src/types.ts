@@ -127,3 +127,61 @@ export const WhoAmISchema = z
 		scopes: z.array(z.string()).optional(),
 	})
 	.passthrough();
+
+/**
+ * RLAC sub-workspace identity. Principal IDs are workspace-scoped
+ * strings (typically OIDC `sub`, an email, or an operator-chosen
+ * handle) — not UUIDs. See `docs/rlac.md`.
+ */
+export const PrincipalSchema = z
+	.object({
+		workspaceId: z.string().optional(),
+		principalId: z.string(),
+		label: z.string().nullable().optional(),
+		attributes: z.record(z.string(), z.string()).optional(),
+		createdAt: z.string().optional(),
+		updatedAt: z.string().optional(),
+	})
+	.passthrough();
+export type Principal = z.infer<typeof PrincipalSchema>;
+
+export const PrincipalListSchema = paginated(PrincipalSchema);
+
+export const PolicyValidationIssueSchema = z
+	.object({
+		code: z.string(),
+		message: z.string(),
+		hint: z.string().optional(),
+	})
+	.passthrough();
+export type PolicyValidationIssue = z.infer<typeof PolicyValidationIssueSchema>;
+
+export const PolicyCompilePreviewSchema = z
+	.object({
+		ok: z.boolean(),
+		parseError: z.string().nullable(),
+		issues: z.array(PolicyValidationIssueSchema),
+		compiledFilter: z.unknown().nullable(),
+		principalId: z.string().nullable(),
+	})
+	.passthrough();
+export type PolicyCompilePreview = z.infer<typeof PolicyCompilePreviewSchema>;
+
+export const PolicyAuditRecordSchema = z
+	.object({
+		workspaceId: z.string().optional(),
+		auditDay: z.string().optional(),
+		ts: z.string(),
+		decisionId: z.string().optional(),
+		principalId: z.string().nullable(),
+		knowledgeBaseId: z.string().optional(),
+		resourceId: z.string().optional(),
+		action: z.string(),
+		decision: z.string(),
+		reason: z.string(),
+		compiledFilterJson: z.string().nullable().optional(),
+	})
+	.passthrough();
+export type PolicyAuditRecord = z.infer<typeof PolicyAuditRecordSchema>;
+
+export const PolicyAuditListSchema = paginated(PolicyAuditRecordSchema);

@@ -23,20 +23,32 @@ export interface BuildChatServiceDeps {
 }
 
 /**
- * Returns a {@link ChatService} when `config` is set and the token
- * resolves; returns `null` when `config` is undefined (chat opt-out),
- * or when `config` is set but the token ref does not resolve — the
- * latter case is the wizard's bootstrap path: a fresh install boots
- * with `chat.tokenRef: env:HUGGINGFACE_API_KEY` declared but the env
- * unset, the setup wizard writes the key via POST /setup/env, the
- * runtime restarts and picks up the token on the second boot. Until
- * then the agent send routes return `503 chat_disabled` (same as a
- * runtime with no `chat:` block at all).
+ * Returns a {@link ChatService} when chat is enabled and the token
+ * resolves; returns `null` when:
+ *
+ *   - `config` is null/undefined (no chat block — kept for callers
+ *     that pass `null` directly, e.g. tests),
+ *   - `config.enabled` is `false` (explicit opt-out via
+ *     `chat: { enabled: false }`), OR
+ *   - the token ref does not resolve.
+ *
+ * The token-unresolved branch is the wizard's bootstrap path: a
+ * fresh install boots with the default
+ * `chat.tokenRef: env:HUGGINGFACE_API_KEY` but the env unset; the
+ * `/settings` page writes the key via POST /setup/env, the runtime
+ * restarts and picks up the token on the second boot. Until then
+ * the agent send routes return `503 chat_disabled`.
  */
 export async function buildChatService(
 	deps: BuildChatServiceDeps,
 ): Promise<ChatService | null> {
 	if (!deps.config) return null;
+	if (deps.config.enabled === false) {
+		logger.info(
+			"chat disabled via `chat.enabled: false` — agent send routes will return 503 chat_disabled",
+		);
+		return null;
+	}
 	let token: string;
 	try {
 		token = await deps.secrets.resolve(deps.config.tokenRef);

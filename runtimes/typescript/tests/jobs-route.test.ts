@@ -169,7 +169,8 @@ describe("jobs route — GET /jobs/{jobId}", () => {
 		expect(res.headers.get("content-type") ?? "").toContain(
 			"text/event-stream",
 		);
-		const reader = res.body!.getReader();
+		if (!res.body) throw new Error("expected SSE response body");
+		const reader = res.body.getReader();
 		const decoder = new TextDecoder();
 		let buffer = "";
 		const seenEvents: string[] = [];

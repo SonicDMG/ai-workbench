@@ -26,9 +26,11 @@ import { runKbIngestJob } from "./jobs/ingest-worker.js";
 import { JobOrphanSweeper } from "./jobs/sweeper.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
 import { generateReplicaId } from "./lib/replica-id.js";
+import { executeRespawn, planRespawn } from "./lib/respawn.js";
 import { buildTelemetryEmitter } from "./lib/telemetry.js";
 import { initOtelFromConfig, type OtelHandle } from "./lib/tracing.js";
 import { setEndpointEgressPolicy } from "./openapi/schemas.js";
+import { buildRescueApp, classifyBootError } from "./rescue/app.js";
 import { AstraCliSecretProvider } from "./secrets/astra-cli.js";
 import { EnvSecretProvider } from "./secrets/env.js";
 import { FileSecretProvider } from "./secrets/file.js";
@@ -44,6 +46,12 @@ async function main(): Promise<void> {
 		logger.info(
 			{ envFile: envFile.path, source: envFile.source },
 			"loaded env file",
+		);
+	}
+	if (envFile.managedEnvPath) {
+		logger.info(
+			{ managedEnvFile: envFile.managedEnvPath },
+			"loaded managed env file (wizard / /settings)",
 		);
 	}
 
@@ -118,7 +126,46 @@ async function main(): Promise<void> {
 	// secret.
 	await assertConfigSecretsResolvable(config, secrets, { logger });
 
-	const { store, astraTables } = await controlPlaneFromConfig(config, secrets);
+	// Resolve UI up-front so the rescue app (if we need it) can serve
+	// the SPA. Resolution is pure-filesystem and can't fail in a way
+	// that needs degraded handling.
+	const uiDir = resolveUiDir(config.runtime.uiDir);
+	const ui = uiDir ? buildUiAssets(uiDir) : null;
+
+	// Control-plane init is the most common boot-failure surface:
+	// typo'd Astra endpoint (ENOTFOUND), revoked token (401), region
+	// hibernated past the resume window. Catch those classes here and
+	// pivot to a minimal "rescue" HTTP app that lets the operator
+	// paste corrected credentials via /settings instead of dying with
+	// no in-app remediation.
+	let store: Awaited<ReturnType<typeof controlPlaneFromConfig>>["store"];
+	let astraTables: Awaited<
+		ReturnType<typeof controlPlaneFromConfig>
+	>["astraTables"];
+	try {
+		({ store, astraTables } = await controlPlaneFromConfig(config, secrets));
+	} catch (bootErr) {
+		const classified = classifyBootError(bootErr);
+		logger.error(
+			{ code: classified.code, message: classified.message },
+			"control-plane init failed — entering rescue mode (HTTP server up, /api/v1/* returns 503, /settings reachable for credential fix)",
+		);
+		const rescueApp = buildRescueApp({
+			bootError: classified,
+			triggerRestart: () => triggerRespawnAndShutdown(logger),
+			ui,
+		});
+		const rescuePort = config.runtime.port;
+		serve({ fetch: rescueApp.fetch, port: rescuePort }, (info) => {
+			logger.warn(
+				{ port: info.port, bootError: classified.code },
+				"ai-workbench listening in RESCUE MODE",
+			);
+		});
+		// Keep main resolved; rescue mode runs until SIGTERM (operator
+		// fix → /setup/restart → graceful shutdown → container restart).
+		return;
+	}
 	const jobs = await buildJobStore({
 		controlPlane: config.controlPlane,
 		astraTables,
@@ -134,8 +181,6 @@ async function main(): Promise<void> {
 		trustProxyHeaders: config.runtime.trustProxyHeaders,
 	});
 
-	const uiDir = resolveUiDir(config.runtime.uiDir);
-	const ui = uiDir ? buildUiAssets(uiDir) : null;
 	if (uiDir) {
 		logger.info({ uiDir }, "ui enabled");
 	} else {
@@ -167,7 +212,7 @@ async function main(): Promise<void> {
 		logger.info({ model: chatService.modelId }, "chat service initialized");
 	} else {
 		logger.info(
-			"chat service not configured — POST /agents/{a}/conversations/{c}/messages will return 503 chat_disabled until a `chat` block is added to workbench.yaml or an LLM service is attached to the agent",
+			"chat service not configured — POST /agents/{a}/conversations/{c}/messages will return 503 chat_disabled. Paste a HuggingFace token at /settings (default `chat.tokenRef: env:HUGGINGFACE_API_KEY`), attach a per-agent LLM service, or set `chat.enabled: false` in workbench.yaml to silence intentionally.",
 		);
 	}
 
@@ -204,12 +249,7 @@ async function main(): Promise<void> {
 		},
 		replicaId,
 		authConfig: config.auth,
-		triggerRestart: () => {
-			// Fire the existing SIGTERM handler so the graceful-shutdown
-			// path (drain readiness, close stores, exit) runs unchanged.
-			// Docker's `restart: unless-stopped` brings the container back.
-			process.kill(process.pid, "SIGTERM");
-		},
+		triggerRestart: () => triggerRespawnAndShutdown(logger),
 		telemetry,
 	});
 
@@ -363,6 +403,41 @@ async function main(): Promise<void> {
  * configs keep working — but the message is loud enough that it shows
  * up in the terminal when the developer enables MCP for the first time.
  */
+/**
+ * Drive the runtime's reset path on `/setup/restart`. In container
+ * deployments (PID 1), the orchestrator brings us back — just exit.
+ * In dev / non-orchestrated modes, spawn a detached child first so
+ * the runtime actually comes back; without this, SIGTERM kills the
+ * process and `/readyz` polling loops forever.
+ */
+function triggerRespawnAndShutdown(log: {
+	info: (obj: Record<string, unknown>, msg: string) => void;
+	warn: (obj: Record<string, unknown>, msg: string) => void;
+}): void {
+	const plan = planRespawn({ pid: process.pid, containerEnv: process.env });
+	log.info({ mode: plan.mode, reason: plan.reason }, "setup/restart triggered");
+	if (plan.mode === "spawn") {
+		try {
+			const child = executeRespawn({
+				execPath: process.execPath,
+				execArgv: process.execArgv,
+				argv: process.argv,
+				cwd: process.cwd(),
+			});
+			log.info(
+				{ childPid: child.pid ?? null },
+				"spawned detached successor process; current process will now drain and exit",
+			);
+		} catch (err: unknown) {
+			log.warn(
+				{ err: err instanceof Error ? err.message : String(err) },
+				"self-respawn failed; falling back to bare SIGTERM (operator must restart by hand)",
+			);
+		}
+	}
+	process.kill(process.pid, "SIGTERM");
+}
+
 function warnOnOpenMcpAuth(config: {
 	readonly mcp: { readonly enabled: boolean };
 	readonly auth: {

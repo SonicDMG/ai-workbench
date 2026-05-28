@@ -49,9 +49,34 @@ function makeDataApiResponseError(
 const RESUME_BODY =
 	'{"message":"Resuming your database, please try again shortly."}';
 
+/**
+ * The newer Astra wire shape observed when a hibernated DB wakes up
+ * mid-cycle: status flips from 503 → 400 and the body phrasing flips
+ * from "resuming your database" → "resuming from hibernation". Both
+ * mean the same thing operationally; we have to classify both as
+ * "still resuming" or boot crashes on the second retry attempt.
+ */
+const HIBERNATION_BODY =
+	'{"message":"Your database is resuming from hibernation and will be available in the next few minutes."}';
+
 describe("isAstraResumingError", () => {
-	test("classifies the real 503 resume payload", () => {
+	test("classifies the legacy 503 resume payload", () => {
 		expect(isAstraResumingError(makeHttpError(503, RESUME_BODY))).toBe(true);
+	});
+
+	test("classifies the newer 400 'resuming from hibernation' payload", () => {
+		expect(isAstraResumingError(makeHttpError(400, HIBERNATION_BODY))).toBe(
+			true,
+		);
+	});
+
+	test("classifies a 503 carrying the hibernation phrasing too (defensive)", () => {
+		// Astra has been observed using either status with either
+		// phrasing across LB hand-offs; accept the cross-product so a
+		// future SDK consolidation doesn't regress us.
+		expect(isAstraResumingError(makeHttpError(503, HIBERNATION_BODY))).toBe(
+			true,
+		);
 	});
 
 	test("rejects 503 with an unrelated body", () => {
@@ -62,7 +87,16 @@ describe("isAstraResumingError", () => {
 		).toBe(false);
 	});
 
-	test("rejects non-503 statuses even with a resume-like body", () => {
+	test("rejects 400 with an unrelated body (a real validation error)", () => {
+		expect(
+			isAstraResumingError(
+				makeHttpError(400, '{"message":"invalid column name"}'),
+			),
+		).toBe(false);
+	});
+
+	test("rejects non-503/non-400 statuses even with a resume-like body", () => {
+		expect(isAstraResumingError(makeHttpError(401, RESUME_BODY))).toBe(false);
 		expect(isAstraResumingError(makeHttpError(502, RESUME_BODY))).toBe(false);
 		expect(isAstraResumingError(makeHttpError(504, RESUME_BODY))).toBe(false);
 	});
@@ -117,6 +151,34 @@ describe("waitForAstraResume", () => {
 		expect(op).toHaveBeenCalledTimes(3);
 		// One warn line per retry (i.e. before each non-final attempt).
 		expect(warnSpy).toHaveBeenCalledTimes(2);
+	});
+
+	test("tolerates the wire shape rotating mid-cycle (503 legacy → 400 hibernation)", async () => {
+		// Reproduces the boot crash observed in the wild: the first
+		// retry attempt got the 503 envelope, the second attempt got
+		// the newer 400/"resuming from hibernation" envelope, and the
+		// classifier rejected the second shape and bailed the loop.
+		// With both shapes classified, the loop continues to the
+		// eventual success.
+		vi.spyOn(logger, "warn").mockImplementation(() => {});
+		let calls = 0;
+		const op = vi.fn(async () => {
+			calls += 1;
+			if (calls === 1) throw makeHttpError(503, RESUME_BODY);
+			if (calls === 2) throw makeHttpError(400, HIBERNATION_BODY);
+			return "ready" as const;
+		});
+
+		const promise = waitForAstraResume(op, {
+			initialDelayMs: 10,
+			maxDelayMs: 20,
+			totalTimeoutMs: 10_000,
+		});
+		await vi.runAllTimersAsync();
+		const result = await promise;
+
+		expect(result).toBe("ready");
+		expect(op).toHaveBeenCalledTimes(3);
 	});
 
 	test("surfaces non-resume errors immediately, no retry", async () => {

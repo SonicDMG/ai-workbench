@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { BookOpen, Cog } from "lucide-react";
+import { type ReactNode, useEffect } from "react";
 import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { BrandMark } from "@/components/brand/BrandMark";
@@ -15,12 +16,14 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useSetupStatus } from "@/hooks/useSetupStatus";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
 import { APP_VERSION } from "@/lib/version";
 
 export function AppShell({ children }: { children: ReactNode }) {
 	const { pathname } = useLocation();
 	const currentWorkspaceId = currentWorkspaceIdFromPath(pathname);
+	useRescueModeRedirect();
 
 	return (
 		<div className="min-h-full flex flex-col bg-[var(--app-bg)] text-[var(--app-fg)]">
@@ -52,17 +55,27 @@ export function AppShell({ children }: { children: ReactNode }) {
 					</Link>
 					<WorkspaceSwitcher currentWorkspaceId={currentWorkspaceId} />
 					<nav className="flex shrink-0 items-center gap-1 text-sm">
-						<WhatsNewTrigger />
 						<ThemeSwitcher />
-						<UserMenu />
 						<a
 							href="/docs"
 							target="_blank"
 							rel="noreferrer"
-							className="hidden rounded-md px-3 py-1.5 text-[#525252] transition-colors hover:bg-[#f4f4f4] hover:text-[#161616] sm:inline-flex dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+							className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#525252] transition-colors hover:bg-[#f4f4f4] hover:text-[#161616] dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+							aria-label="API docs"
+							title="API docs"
 						>
-							API docs
+							<BookOpen className="h-4 w-4" />
 						</a>
+						<WhatsNewTrigger />
+						<Link
+							to="/settings"
+							className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#525252] transition-colors hover:bg-[#f4f4f4] hover:text-[#161616] dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+							aria-label="Runtime settings"
+							title="Runtime settings"
+						>
+							<Cog className="h-4 w-4" />
+						</Link>
+						<UserMenu />
 					</nav>
 				</div>
 			</header>
@@ -161,4 +174,28 @@ function currentWorkspaceIdFromPath(pathname: string): string | undefined {
 		matchPath({ path: "/workspaces/:workspaceId", end: true }, pathname) ??
 		matchPath({ path: "/workspaces/:workspaceId/*", end: false }, pathname);
 	return match?.params.workspaceId;
+}
+
+/**
+ * When the runtime is in rescue mode (control-plane init failed), redirect
+ * users from data routes to `/settings` so they immediately land on the
+ * credentials editor. Without this they'd be stuck on a workspaces list
+ * that 503s forever. Stays out of the way on `/settings`, `/onboarding`,
+ * and `/status` — those are the routes that work in rescue mode.
+ */
+function useRescueModeRedirect(): void {
+	const { data: status } = useSetupStatus();
+	const navigate = useNavigate();
+	const { pathname } = useLocation();
+	useEffect(() => {
+		if (!status?.bootError) return;
+		if (
+			pathname.startsWith("/settings") ||
+			pathname.startsWith("/onboarding") ||
+			pathname.startsWith("/status")
+		) {
+			return;
+		}
+		navigate("/settings", { replace: true });
+	}, [status?.bootError, pathname, navigate]);
 }

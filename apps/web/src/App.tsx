@@ -28,6 +28,9 @@ const OnboardingPage = lazy(() =>
 const StatusPage = lazy(() =>
 	import("@/pages/StatusPage").then((m) => ({ default: m.StatusPage })),
 );
+const SettingsPage = lazy(() =>
+	import("@/pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
+);
 const WorkspaceDetailPage = lazy(() =>
 	import("@/pages/WorkspaceDetailPage").then((m) => ({
 		default: m.WorkspaceDetailPage,
@@ -96,6 +99,7 @@ function RoutedView() {
 					<Route path="/" element={<WorkspacesPage />} />
 					<Route path="/onboarding" element={<OnboardingPage />} />
 					<Route path="/status" element={<StatusPage />} />
+					<Route path="/settings" element={<SettingsPage />} />
 					<Route
 						path="/workspaces/:workspaceId"
 						element={<WorkspaceDetailPage />}

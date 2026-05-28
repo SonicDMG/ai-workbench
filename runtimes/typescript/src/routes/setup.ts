@@ -37,7 +37,18 @@ export interface SetupRouteDeps {
 	readonly triggerRestart: () => void;
 }
 
-interface SetupStatusBody {
+/**
+ * Boot-failure classification surfaced to the SPA when the runtime
+ * came up in rescue mode (control-plane init threw). Always absent
+ * on a healthy boot — the field is purely additive so old SPA
+ * builds that don't know about it keep working.
+ */
+export interface SetupBootError {
+	readonly code: string;
+	readonly message: string;
+}
+
+export interface SetupStatusBody {
 	readonly setupComplete: boolean;
 	readonly workspacesCount: number;
 	readonly controlPlane: { kind: string; healthy: boolean };
@@ -48,6 +59,7 @@ interface SetupStatusBody {
 		writable: boolean;
 		present: boolean;
 	};
+	readonly bootError?: SetupBootError;
 }
 
 async function readSetupStatus(deps: SetupRouteDeps): Promise<SetupStatusBody> {
@@ -102,11 +114,14 @@ async function resolveBootstrapToken(
  * Inline auth gate for the mutation routes (`/setup/env`,
  * `/setup/restart`):
  *   - Always allow if a valid bootstrap token is presented.
- *   - Otherwise allow only when `auth.mode === "disabled"` AND no
- *     workspaces exist yet (the fresh-install window).
+ *   - Otherwise allow whenever `auth.mode === "disabled"` (the
+ *     single-user dev posture — no privilege boundary exists, so
+ *     `/settings` in the SPA can edit credentials post-setup too,
+ *     not just during the first-run wizard window).
+ *   - Reject everything else with 401.
  *
  * `/setup-status` is intentionally unauthenticated so the wizard
- * can render its first frame.
+ * and the settings page can render their first frame.
  */
 function setupAuthGate(deps: SetupRouteDeps): MiddlewareHandler<AppEnv> {
 	return async (c, next) => {
@@ -123,33 +138,22 @@ function setupAuthGate(deps: SetupRouteDeps): MiddlewareHandler<AppEnv> {
 				errorEnvelope(
 					c,
 					"unauthorized",
-					"Setup endpoints require the bootstrap token once setup is complete.",
-				),
-				401,
-			);
-		}
-		if (deps.auth.mode !== "disabled") {
-			return c.json(
-				errorEnvelope(
-					c,
-					"unauthorized",
 					"Setup endpoints require the bootstrap token when auth is enabled.",
 				),
 				401,
 			);
 		}
-		const status = await readSetupStatus(deps);
-		if (status.setupComplete) {
-			return c.json(
-				errorEnvelope(
-					c,
-					"forbidden",
-					"Setup is already complete; configure auth.bootstrapTokenRef to re-run the wizard.",
-				),
-				403,
-			);
+		if (deps.auth.mode === "disabled") {
+			return next();
 		}
-		return next();
+		return c.json(
+			errorEnvelope(
+				c,
+				"unauthorized",
+				"Setup endpoints require the bootstrap token when auth is enabled.",
+			),
+			401,
+		);
 	};
 }
 

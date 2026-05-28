@@ -16,12 +16,8 @@ import { OpenAIChatService } from "../../src/chat/openai.js";
 import type { ChatService } from "../../src/chat/types.js";
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../../src/control-plane/defaults.js";
 import { MemoryControlPlaneStore } from "../../src/control-plane/memory/store.js";
-import {
-	MockVectorStoreDriver,
-	mockEmbed,
-} from "../../src/drivers/mock/store.js";
+import { MockVectorStoreDriver } from "../../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../../src/drivers/registry.js";
-import { ApiError } from "../../src/lib/errors.js";
 import { logger } from "../../src/lib/logger.js";
 import {
 	type SecretProvider,
@@ -235,9 +231,12 @@ describe("resolveAgentChat — system prompt precedence", () => {
 		const deps = {
 			...f.deps,
 			chatConfig: {
-				provider: "fixture" as const,
-				systemPrompt: "runtime-level",
+				enabled: true,
+				tokenRef: "stub:hf_token",
+				model: "fixture-model",
 				maxOutputTokens: 512,
+				retrievalK: 6,
+				systemPrompt: "runtime-level",
 			},
 		};
 		const resolved = await resolveAgentChat(deps, {

@@ -1,12 +1,12 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import type { ComponentType } from "react";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-} from "@/components/ui/select";
 import { type Theme, useTheme } from "@/hooks/useTheme";
+
+const CYCLE: Readonly<Record<Theme, Theme>> = {
+	light: "dark",
+	dark: "system",
+	system: "light",
+};
 
 const ICON_BY_THEME: Record<Theme, ComponentType<{ className?: string }>> = {
 	light: Sun,
@@ -21,47 +21,27 @@ const LABEL_BY_THEME: Record<Theme, string> = {
 };
 
 /**
- * Compact Light / Dark / System picker rendered into the header.
- * Uses the same Radix Select primitive as the workspace switcher so
- * the header chrome stays visually consistent.
+ * Icon-only theme toggle. Click cycles light → dark → system → light
+ * so the header doesn't need a dropdown — matches the other
+ * icon-only header affordances (API docs, Settings, What's new,
+ * UserMenu). Tooltip names both the current mode and the next one
+ * so the cycle is discoverable without a menu.
  */
 export function ThemeSwitcher() {
 	const { theme, setTheme } = useTheme();
 	const Icon = ICON_BY_THEME[theme];
+	const next = CYCLE[theme];
+	const title = `Theme: ${LABEL_BY_THEME[theme]} (click for ${LABEL_BY_THEME[next]})`;
 
 	return (
-		<Select value={theme} onValueChange={(value) => setTheme(value as Theme)}>
-			<SelectTrigger
-				aria-label="Theme"
-				className="h-9 w-auto gap-1.5 border-slate-200 bg-slate-50 px-2.5 shadow-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-			>
-				<span className="flex items-center gap-1.5">
-					<Icon className="h-4 w-4" />
-					<span className="hidden text-xs sm:inline-block">
-						{LABEL_BY_THEME[theme]}
-					</span>
-				</span>
-			</SelectTrigger>
-			<SelectContent align="end">
-				<SelectItem value="light">
-					<span className="flex items-center gap-2">
-						<Sun className="h-4 w-4" />
-						Light
-					</span>
-				</SelectItem>
-				<SelectItem value="dark">
-					<span className="flex items-center gap-2">
-						<Moon className="h-4 w-4" />
-						Dark
-					</span>
-				</SelectItem>
-				<SelectItem value="system">
-					<span className="flex items-center gap-2">
-						<Monitor className="h-4 w-4" />
-						System
-					</span>
-				</SelectItem>
-			</SelectContent>
-		</Select>
+		<button
+			type="button"
+			onClick={() => setTheme(next)}
+			aria-label={title}
+			title={title}
+			className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#525252] transition-colors hover:bg-[#f4f4f4] hover:text-[#161616] dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+		>
+			<Icon className="h-4 w-4" />
+		</button>
 	);
 }

@@ -59,7 +59,7 @@ keeps it explicitly labeled **Preview** in the workspace settings
 card and the docs; the API and audit-log shapes may change before
 0.2.
 
-See [`docs/rlac-preview.md`](./rlac-preview.md) for the model, how to
+See [`docs/rlac.md`](./rlac.md) for the model, how to
 enable it per workspace, the View-as picker workflow, and the audit
 panel walkthrough.
 

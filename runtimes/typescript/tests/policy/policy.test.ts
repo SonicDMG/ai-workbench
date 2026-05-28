@@ -30,13 +30,17 @@ function principal(
 }
 
 describe("policy parser", () => {
-	it("parses the canonical Stefano predicate", () => {
+	it("parses the canonical Stefano predicate (admin bypass + per-principal + wildcard)", () => {
 		const ast = parsePolicy(DEFAULT_POLICY_DSL);
 		expect(ast.kind).toBe("or");
 		const orNode = ast as Extract<PredicateNode, { kind: "or" }>;
-		expect(orNode.args).toHaveLength(2);
-		expect(orNode.args[0]?.kind).toBe("any");
+		expect(orNode.args).toHaveLength(3);
+		// 1. $principal.admin = 'true' — admin attribute bypass
+		expect(orNode.args[0]?.kind).toBe("compare");
+		// 2. current_principal_id() = ANY(visible_to) — per-principal grant
 		expect(orNode.args[1]?.kind).toBe("any");
+		// 3. '*' = ANY(visible_to) — wildcard
+		expect(orNode.args[2]?.kind).toBe("any");
 	});
 
 	it("supports AND, OR, NOT, and parentheses", () => {
@@ -162,6 +166,37 @@ describe("policy evaluator — write-path checks", () => {
 	it("accepts Set values for array columns (memory store shape)", () => {
 		const row: RowContext = { visible_to: new Set(["alice"]) };
 		expect(evaluatePolicy(ast, row, principal("alice"))).toBe(true);
+	});
+
+	it("admin bypass: principal with admin:'true' sees every row regardless of visible_to", () => {
+		const adminPrincipal = principal("alice", { admin: "true" });
+		// Empty visible_to.
+		expect(evaluatePolicy(ast, { visible_to: [] }, adminPrincipal)).toBe(true);
+		// Missing visible_to.
+		expect(evaluatePolicy(ast, {}, adminPrincipal)).toBe(true);
+		// visible_to that explicitly excludes this principal.
+		expect(evaluatePolicy(ast, { visible_to: ["bob"] }, adminPrincipal)).toBe(
+			true,
+		);
+	});
+
+	it("compiler emits MATCH_ALL (empty filter) for an admin-attributed principal", () => {
+		const filter = compilePolicy(ast, {
+			id: "alice",
+			attributes: { admin: "true" },
+		});
+		// MATCH_ALL: the empty filter — no Data API constraint, every row matches.
+		expect(filter).toEqual({});
+	});
+
+	it("non-admin principal compiles to the normal visible_to $or shape", () => {
+		const filter = compilePolicy(ast, { id: "alice", attributes: {} }) as {
+			$or: Array<{ visible_to: string }>;
+		};
+		// Two branches: per-principal grant + wildcard. Admin disjunct dropped.
+		expect(filter.$or).toHaveLength(2);
+		const allowed = filter.$or.map((b) => b.visible_to).sort();
+		expect(allowed).toEqual(["*", "alice"]);
 	});
 });
 

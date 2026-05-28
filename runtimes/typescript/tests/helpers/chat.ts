@@ -109,6 +109,7 @@ async function* defaultStream(
  * and inject the {@link FakeChatService} directly.
  */
 export const TEST_CHAT_CONFIG: ChatConfig = {
+	enabled: true,
 	tokenRef: "env:TEST_HF_TOKEN",
 	model: "fake-test-model",
 	maxOutputTokens: 256,

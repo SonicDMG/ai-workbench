@@ -155,7 +155,13 @@ describe("setup routes", () => {
 		expect(res.status).toBe(401);
 	});
 
-	test("POST /setup/env refuses anonymous writes once setup is complete", async () => {
+	test("POST /setup/env allows anonymous writes post-setup when auth.mode is disabled", async () => {
+		// `auth.mode: disabled` is the single-user dev posture — no
+		// privilege boundary exists, so locking the credentials editor
+		// behind the wizard's first-run window just leaves operators
+		// with no in-app way to fix a missing HUGGINGFACE_API_KEY after
+		// they've created a workspace. The bootstrap-token gate still
+		// applies when auth is actually enabled.
 		const { app, store } = makeSetupApp({ dataDir });
 		await store.createWorkspace({ name: "ws1", kind: "mock" });
 		const res = await app.request("/setup/env", {
@@ -163,7 +169,24 @@ describe("setup routes", () => {
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ values: { HUGGINGFACE_API_KEY: "hf_x" } }),
 		});
-		expect(res.status).toBe(403);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean; written: string[] };
+		expect(body.ok).toBe(true);
+		expect(body.written).toEqual(["HUGGINGFACE_API_KEY"]);
+	});
+
+	test("POST /setup/env still requires the bootstrap token post-setup when auth.mode is enabled", async () => {
+		// Mirror of the test above for the auth-enabled posture: the
+		// 401 must persist so a non-admin browser can't update the
+		// runtime's credentials.
+		const { app, store } = makeSetupApp({ dataDir, authMode: "apiKey" });
+		await store.createWorkspace({ name: "ws1", kind: "mock" });
+		const res = await app.request("/setup/env", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ values: { HUGGINGFACE_API_KEY: "hf_x" } }),
+		});
+		expect(res.status).toBe(401);
 	});
 
 	test("POST /setup/env accepts the bootstrap token after setup completes", async () => {

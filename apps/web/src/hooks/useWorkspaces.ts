@@ -58,6 +58,14 @@ export function useUpdateWorkspace(
 		onSuccess: (ws) => {
 			qc.setQueryData(keys.workspaces.detail(workspaceId), ws);
 			qc.invalidateQueries({ queryKey: keys.workspaces.all });
+			// Flipping `rlacEnabled` can side-effect into principals
+			// (bootstrap default `admin` if none) and rag-documents
+			// (backfill `visibleTo: ["*"]` on null rows). Invalidate every
+			// workspace-scoped query so the affected panels — View-as
+			// picker, principals list, document table — refetch through
+			// the new state. Cheap: react-query refcounts the subscribers
+			// and only refetches what's actually mounted.
+			qc.invalidateQueries({ queryKey: keys.workspaces.detail(workspaceId) });
 		},
 	});
 }

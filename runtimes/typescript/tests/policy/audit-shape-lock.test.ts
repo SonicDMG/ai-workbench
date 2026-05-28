@@ -11,8 +11,7 @@
  * This test fails any unannounced enum addition / removal and any
  * audit-record key drift. Failures should be paired with one of:
  *   - a CHANGELOG entry under **Changed** announcing the field/value,
- *   - a deprecation window noted in `docs/rlac.md` (or
- *     `docs/rlac-preview.md` while Preview-labeled).
+ *   - a deprecation window noted in `docs/rlac.md`.
  *
  * For type-level forward compatibility, the shape lives at
  * {@link PolicyAuditRecord} and the V1 alias re-export at

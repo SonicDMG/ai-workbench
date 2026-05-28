@@ -147,14 +147,15 @@ describe("useSilentRefresh", () => {
 
 	it("schedules a refresh at ~80% of remaining lifetime when everything is wired", async () => {
 		vi.mocked(fetchAuthConfig).mockResolvedValueOnce(FULL_AUTH_CONFIG);
+		const expiresAt = Math.floor(Date.now() / 1000) + 600; // 600s = 10 min
 		const subject: SessionSubject = {
 			...ACTIVE_SUBJECT,
-			expiresAt: Math.floor(Date.now() / 1000) + 600, // 600s = 10 min
+			expiresAt,
 		};
 		vi.mocked(fetchSessionSubject).mockResolvedValueOnce(subject);
 		vi.mocked(refreshSession).mockResolvedValueOnce({
 			ok: true,
-			expiresAt: subject.expiresAt + 600,
+			expiresAt: expiresAt + 600,
 		});
 		const { wrapper } = makeWrapper();
 		renderHook(() => useSilentRefresh(), { wrapper });

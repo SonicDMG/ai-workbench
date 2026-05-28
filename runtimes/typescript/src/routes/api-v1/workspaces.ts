@@ -39,6 +39,7 @@ import {
 	WorkspacePageSchema,
 	WorkspaceRecordSchema,
 } from "../../openapi/schemas.js";
+import { bootstrapRlacFlipOn } from "../../policy/flip-on-bootstrap.js";
 import type { SecretResolver } from "../../secrets/provider.js";
 import { resolveKb } from "./kb-descriptor.js";
 import { toWireWorkspace } from "./serdes/index.js";
@@ -190,7 +191,37 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
 			const body = c.req.valid("json");
+			// Detect a false → true `rlacEnabled` transition so we can
+			// bootstrap the workspace into a usable state (default
+			// principal + visibility backfill) before returning. Without
+			// this, the UI silently lands in `policy_principal_required`
+			// on every doc call.
+			const previous = await store.getWorkspace(workspaceId);
+			if (!previous)
+				throw new ControlPlaneNotFoundError("workspace", workspaceId);
+			const isFlipOn =
+				body.rlacEnabled === true && previous.rlacEnabled === false;
 			const record = await store.updateWorkspace(workspaceId, body);
+			if (isFlipOn) {
+				try {
+					const summary = await bootstrapRlacFlipOn(store, workspaceId);
+					if (summary.principalCreated || summary.documentsBackfilled > 0) {
+						logger.info(
+							{ workspaceId, ...summary },
+							"RLAC flip-on bootstrap applied",
+						);
+					}
+				} catch (err) {
+					// The workspace flip itself succeeded; bootstrap is a
+					// best-effort UX assist. Surface the error in logs but
+					// don't fail the PATCH — operators can re-flip or fix
+					// principals/visibility manually.
+					logger.warn(
+						{ workspaceId, err: safeErrorMessage(err) },
+						"RLAC flip-on bootstrap failed; workspace toggle still applied",
+					);
+				}
+			}
 			return c.json(toWireWorkspace(record), 200);
 		},
 	);

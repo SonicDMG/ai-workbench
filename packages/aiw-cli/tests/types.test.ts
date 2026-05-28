@@ -12,7 +12,6 @@ import {
 	DocumentSchema,
 	JobSchema,
 	KnowledgeBaseListSchema,
-	KnowledgeBaseSchema,
 	SearchHitSchema,
 	SearchResponseSchema,
 	WhoAmISchema,

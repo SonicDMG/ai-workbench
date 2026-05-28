@@ -48,13 +48,13 @@ const EMBED_ID = "00000000-0000-4000-8000-bbbbbbbbbbbb";
 const RERANK_ID = "00000000-0000-4000-8000-cccccccccccc";
 
 const sampleEndpoint = {
-	authType: null,
+	authType: "none" as const,
 	credentialRef: null,
 	endpointBaseUrl: null,
 	endpointPath: null,
 	requestTimeoutMs: null,
 	maxBatchSize: null,
-} as const;
+};
 
 const sampleChunking: ChunkingServiceRecord = {
 	workspaceId: WORKSPACE_ID,

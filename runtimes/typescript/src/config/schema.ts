@@ -393,18 +393,32 @@ const SeedWorkspaceSchema = z.object({
 });
 
 /**
- * Chat configuration shared by all agents in this runtime. When unset
- * the chat surface still accepts user messages but answers with a
- * `chat_disabled` response — the runtime stays usable for everything
- * else.
+ * Chat configuration shared by all agents in this runtime.
  *
- * `tokenRef` resolves to the HuggingFace inference API token at
- * request time; the resolver caches the result for the lifetime of
- * the chat service. Default model is one of the most reliable hosted
- * instruction-tuned chat models on the HF Inference API.
+ * **Default ON.** A fresh install — no `chat:` block in
+ * `workbench.yaml` — boots with chat enabled and the default
+ * HuggingFace settings. `tokenRef` defaults to
+ * `env:HUGGINGFACE_API_KEY`; if that env var isn't set, the chat
+ * service degrades to `null` and the agent-send routes return
+ * `503 chat_disabled` until the operator pastes a token via
+ * `/settings` (which writes to the managed dotenv file and
+ * triggers a restart). The default lets a wired-up install start
+ * answering messages with zero config edits.
+ *
+ * To explicitly disable chat for a runtime, set:
+ *
+ *   chat:
+ *     enabled: false
+ *
+ * Default model is one of the most reliable hosted
+ * instruction-tuned chat models on the HF Inference API. The
+ * token ref is cached for the lifetime of the chat service —
+ * re-resolving on every request would be cheap for env: but
+ * expensive for future providers (vault, AWS Secrets Manager).
  */
 const ChatSchema = z.object({
-	tokenRef: SecretRef,
+	enabled: z.boolean().default(true),
+	tokenRef: SecretRef.default("env:HUGGINGFACE_API_KEY"),
 	model: z.string().min(1).default("mistralai/Mistral-7B-Instruct-v0.3"),
 	maxOutputTokens: z.number().int().positive().max(8_192).default(1_024),
 	/**
@@ -485,7 +499,7 @@ export const ConfigSchema = z
 		controlPlane: ControlPlaneSchema.default(defaultControlPlane),
 		auth: AuthSchema,
 		seedWorkspaces: z.array(SeedWorkspaceSchema).default([]),
-		chat: ChatSchema.optional(),
+		chat: ChatSchema.prefault({}),
 		mcp: McpSchema.default({ enabled: true, exposeChat: false }),
 	})
 	.superRefine((cfg, ctx) => {

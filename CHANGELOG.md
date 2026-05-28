@@ -11,11 +11,249 @@ release — they will be called out under **Changed** below.
 
 ## [0.2.1] — 2026-05-27
 
-Patch release focused on a test-coverage sweep. No public API or
-schema changes; safe upgrade from `0.2.0`.
+Headline: **RLAC on Documents graduates from Preview to GA**, with
+new `aiw principal` and `aiw policy` CLI surfaces and a wider
+test-coverage sweep behind it. No public API or schema changes;
+safe upgrade from `0.2.0`.
+
+### Changed
+
+- **Chat is default-on.** Previously, omitting `chat:` from
+  `workbench.yaml` left chat disabled and every agent send route
+  returned `503 chat_disabled`. The default flips: a fresh install
+  boots with `chat.enabled: true`,
+  `tokenRef: env:HUGGINGFACE_API_KEY`, and the canonical HF
+  defaults
+  ([`src/config/schema.ts`](./runtimes/typescript/src/config/schema.ts)).
+  When the env var isn't set, the existing degraded path applies
+  unchanged — preflight is advisory, `buildChatService` returns
+  null with a `warn` log, and the agent send routes still return
+  `503 chat_disabled` until the operator pastes a token via
+  `/settings` (which writes the managed dotenv file and triggers a
+  restart). To **opt out** of chat entirely, add the new
+  single-field block:
+
+  ```yaml
+  chat:
+    enabled: false
+  ```
+
+  Explicit `chat:` blocks in existing configs continue to work —
+  the new `enabled` field defaults to `true`, so omitting it
+  preserves prior behavior. 4 new tests
+  ([`tests/config.test.ts`](./runtimes/typescript/tests/config.test.ts)
+  + [`tests/chat/factory.test.ts`](./runtimes/typescript/tests/chat/factory.test.ts))
+  lock the four branches: default-on, explicit opt-out, unresolved
+  token (bootstrap path), and the healthy resolve.
 
 ### Added
 
+- **Rescue-mode boot.** Control-plane init throwing at startup
+  (typo'd Astra endpoint resolving to `ENOTFOUND`, revoked token
+  triggering 401, region hibernating past the resume window) used
+  to take down the whole process: the operator would see
+  `startup failed` in logs and be left with no in-app remediation
+  for credentials they'd just entered through `/settings`. The
+  runtime now wraps control-plane init in `main()` at
+  [`root.ts`](./runtimes/typescript/src/root.ts) and, on failure,
+  pivots to a minimal HTTP server
+  ([`src/rescue/app.ts`](./runtimes/typescript/src/rescue/app.ts))
+  that:
+  - serves the SPA so `/settings` actually renders,
+  - reports the classified failure via `GET /setup-status`'s new
+    optional `bootError: {code, message}` field
+    (`control_plane_dns_unresolvable`,
+    `control_plane_unauthorized`,
+    `control_plane_unreachable`,
+    `control_plane_forbidden`, or the catch-all
+    `control_plane_unavailable`),
+  - accepts `POST /setup/env` with no auth gate (rescue mode is
+    open by definition — no privilege boundary exists when the
+    control plane is down),
+  - triggers `POST /setup/restart` so the container restart policy
+    brings the runtime back with the corrected credentials,
+  - returns `503 control_plane_unavailable` on every `/api/v1/*`
+    call so callers see a clean failure instead of a 404, and
+  - returns 503 on `/healthz` and `/readyz` so external probes
+    know the runtime is degraded.
+
+  The SPA cooperates: the new
+  [`SettingsPage`](./apps/web/src/pages/SettingsPage.tsx) renders
+  a red rescue-mode banner with a tailored remediation hint per
+  error code, and
+  [`AppShell`](./apps/web/src/components/layout/AppShell.tsx)
+  redirects users from data routes to `/settings` whenever
+  `bootError` is present so the dead-end is broken on first paint.
+  12 new runtime tests
+  ([`tests/rescue/app.test.ts`](./runtimes/typescript/tests/rescue/app.test.ts))
+  + 1 new SPA test lock the contract.
+- **Header nav: icons-only + reorder.** The header `<nav>` was
+  half text-half icons (`API docs` was the lone text link). Reorder
+  to `Theme · API docs · Settings · What's new · UserMenu`, all
+  rendered as icon buttons (BookOpen for API docs, Cog for
+  settings) with `aria-label`s and tooltips for accessibility. No
+  behavior change.
+- **Runtime settings page (`/settings`).** The first-run onboarding
+  wizard captures Astra and HuggingFace credentials into a managed
+  dotenv file and disappears once setup completes. There was no
+  in-app surface to **update** those credentials afterwards — a
+  missing `HUGGINGFACE_API_KEY` left chat at `503 chat_disabled`
+  with no remediation short of shelling into the container and
+  editing the env file by hand. This release adds:
+  - A new top-level [`SettingsPage`](./apps/web/src/pages/SettingsPage.tsx)
+    at `/settings`, reachable from a gear-icon link in the header.
+    Hosts a **Runtime credentials** card with paste-and-update
+    fields for `ASTRA_DB_API_ENDPOINT`,
+    `ASTRA_DB_APPLICATION_TOKEN`, and `HUGGINGFACE_API_KEY` (the
+    same `MANAGED_ENV_KEYS` allow-list the wizard uses). Saving
+    POSTs to `/setup/env`, triggers `/setup/restart`, polls
+    `/readyz`, and reconnects automatically. Surfaces a banner
+    when `setup-status.hasChatProvider` is false so the
+    chat-disabled state is discoverable from the SPA.
+  - Backend: [`setupAuthGate`](./runtimes/typescript/src/routes/setup.ts)
+    was relaxed so `/setup/env` and `/setup/restart` accept
+    post-setup updates when `auth.mode: disabled` (the single-user
+    dev posture — no privilege boundary exists). Auth-enabled
+    deployments still require the bootstrap token, unchanged.
+  - **Dev-mode self-respawn.** `/setup/restart` previously SIGTERMed
+    the process and relied on a container restart policy to bring
+    the runtime back. In `npm run dev` / `node dist/root.js` /
+    `tsx watch` there's no orchestrator, so the SPA's `/readyz`
+    poll spun forever. A new
+    [`respawn` helper](./runtimes/typescript/src/lib/respawn.ts)
+    now detects "no orchestrator" mode (PID != 1 AND no
+    `WORKBENCH_DISABLE_SELF_RESPAWN=1` override) and spawns a
+    detached child process with the same argv + execArgv + env
+    before draining the parent. Container mode (PID 1) stays
+    unchanged — the orchestrator already does this and a stray
+    detached child wouldn't survive container teardown.
+  - **Managed env file is loaded at boot.**
+    [`loadDotEnv`](./runtimes/typescript/src/config/env-file.ts)
+    used to only walk for a project `.env`, so a HuggingFace token
+    pasted via `/settings` (which writes to
+    `.workbench-data/.env`) never reached the respawned child's
+    `process.env` — the SPA banner kept saying *"Chat is
+    unconfigured"* even after a successful save + restart. The
+    loader now additionally calls `loadEnvFile` on
+    `managedEnvLocation()` after the primary source, so the
+    managed file fills any gaps without overriding higher-priority
+    sources (process env > explicit `WORKBENCH_ENV_FILE` > managed
+    > walked `.env`). New optional `managedEnvPath` field on
+    `EnvFileResult` for the boot-time log.
+  - 6 new SPA render tests
+    ([`SettingsPage.test.tsx`](./apps/web/src/pages/SettingsPage.test.tsx))
+    + 1 new runtime gate test
+    ([`setup-routes.test.ts`](./runtimes/typescript/tests/setup-routes.test.ts))
+    + 8 respawn-helper tests
+    ([`tests/lib/respawn.test.ts`](./runtimes/typescript/tests/lib/respawn.test.ts))
+    + 3 env-loader tests
+    ([`tests/env-file.test.ts`](./runtimes/typescript/tests/env-file.test.ts))
+    lock the contract.
+- **DSL: admin bypass for the default policy.** The default policy
+  DSL applied when a KB has `policyEnabled: true` and no custom
+  predicate is now:
+
+  ```
+  $principal.admin = 'true'
+    OR current_principal_id() = ANY(visible_to)
+    OR '*' = ANY(visible_to)
+  ```
+
+  Principals carrying `admin: 'true'` see every row regardless of
+  `visible_to` — the workspace operator no longer has to add
+  themselves to every doc to read their own data. The compiler
+  evaluates the bypass clause at compile time and collapses the
+  surrounding `OR` to an empty Data API filter (MATCH_ALL) for
+  admin-attributed callers, so admin reads have no per-row
+  overhead. Non-admin principals see exactly the prior behavior:
+  the bypass clause drops out of the compiled filter, leaving the
+  same `$or` of `visible_to` grants as before. New compiler
+  short-circuit logic + `applyVisibleToFilter` sentinel handling +
+  evaluator/compiler/validator tests
+  ([`src/policy/compiler.ts`](./runtimes/typescript/src/policy/compiler.ts),
+  [`src/policy/validator.ts`](./runtimes/typescript/src/policy/validator.ts),
+  [`tests/policy/policy.test.ts`](./runtimes/typescript/tests/policy/policy.test.ts))
+  lock the contract.
+- **Header: icon-only theme toggle + Settings repositioned.** The
+  theme picker dropped its dropdown and is now a single icon
+  button that cycles light → dark → system → light; matches the
+  other icon-only header affordances. Settings (Cog) moved to the
+  right of What's New so the final order reads:
+  Theme · API docs · What's new · Settings · UserMenu.
+- **RLAC flip-on bootstrap.** Flipping a workspace's `rlacEnabled`
+  from `false` to `true` used to drop operators into a UX dead-end
+  on the in-memory / `auth.mode: disabled` quickstart: the KB list
+  was still visible, but every document call returned
+  `policy_principal_required` because (a) no principal record
+  existed, so the View-as picker didn't even render, and (b) every
+  pre-RLAC document had a null `visibleTo`, which the canonical DSL
+  treats as invisible. The PATCH handler at
+  [`routes/api-v1/workspaces.ts`](./runtimes/typescript/src/routes/api-v1/workspaces.ts)
+  now detects the false→true transition and runs
+  [`bootstrapRlacFlipOn`](./runtimes/typescript/src/policy/flip-on-bootstrap.ts):
+  - **Default principal with admin bypass.** If the workspace has
+    zero principals, creates `admin` with
+    `attributes: { admin: "true" }`. The default DSL grants
+    universal read access to admin-attributed principals (see
+    "DSL: admin bypass" below), so the operator sees every document
+    immediately without having to add themselves to each doc's
+    `visible_to`. The View-as picker auto-selects the first
+    principal alphabetically, so the next render sends
+    `x-view-as-principal: admin` on every API call.
+  - **Visibility backfill.** Every document with `visibleTo: null`
+    is upgraded to `visibleTo: ["*"]`. Documents with an explicit
+    `visibleTo` (including the empty array — a deliberate
+    "no audience" choice) are left alone.
+  - **Best-effort + idempotent.** A bootstrap failure logs `warn`
+    but doesn't fail the workspace toggle. Re-flipping is a no-op.
+
+  The web UI side cooperates by broadening `useUpdateWorkspace`'s
+  cache invalidation
+  ([`apps/web/src/hooks/useWorkspaces.ts`](./apps/web/src/hooks/useWorkspaces.ts))
+  to also invalidate the workspace-scoped query subtree, so the
+  principals list, View-as picker, and document table all refetch
+  through the post-bootstrap state. 8 new tests
+  ([`tests/policy/flip-on-bootstrap.test.ts`](./runtimes/typescript/tests/policy/flip-on-bootstrap.test.ts))
+  lock the bootstrap contract.
+- **RLAC on Documents — GA.** The audit-log shape was locked in
+  0.2.0; the in-process policy evaluator hit 100% statement coverage
+  in this release (see the next entry). With both the shape and the
+  primary code path now stable, RLAC on Documents drops the
+  `Preview` chip and graduates to GA:
+  - The amber `Preview` badge on the **Access control** card in
+    workspace settings is removed; the "Learn about the Preview
+    status →" link becomes a neutral "Learn more →"
+    ([`apps/web/src/pages/WorkspaceSettingsPage.tsx`](./apps/web/src/pages/WorkspaceSettingsPage.tsx)).
+  - [`docs/rlac-preview.md`](./docs/rlac.md) is renamed to
+    [`docs/rlac.md`](./docs/rlac.md) and reworded: the "Preview
+    feature" callout is gone, "Known limitations" is reframed as
+    "Scope of this release", and the doc gains a CLI-quickstart
+    block. Out-of-scope items (RLAC on conversations/agents, rich
+    predicates like group hierarchies or time-bounded visibility)
+    are flagged as additive 0.3.x follow-ups that won't break the
+    GA surface.
+  - The visibility-list semantics and the principal CRUD surface
+    are now part of the stable contract alongside the audit shape.
+- **`aiw principal` and `aiw policy` CLI commands.** The runtime
+  routes have existed since RLAC shipped; 0.2.1 wires the
+  long-promised CLI on top. All commands respect the active profile
+  + `--workspace` / profile `defaultWorkspace`.
+  - [`aiw principal {list,get,create,update,delete}`](./packages/aiw-cli/src/commands/principal.ts)
+    wraps `/api/v1/workspaces/{w}/principals[/{id}]`. `create` and
+    `update` accept repeatable `--attribute key=value` flags so a
+    principal's `attributes` map (the same one the policy DSL
+    queries via `$principal.<attr>`) can be set from the shell.
+  - [`aiw policy preview --dsl "..." [--principal id]`](./packages/aiw-cli/src/commands/policy.ts)
+    POSTs to `/policy/compile-preview` and surfaces the compiled
+    Data API filter alongside any validation issues — useful for
+    iterating on a DSL before flipping `rlacEnabled` on a workspace.
+  - [`aiw policy audit`](./packages/aiw-cli/src/commands/policy.ts)
+    lists recent RLAC decisions with `--principal` / `--kb` /
+    `--day` / `--limit` filters.
+  - 16 new pure-helper tests
+    ([`tests/principal-command.test.ts`](./packages/aiw-cli/tests/principal-command.test.ts),
+    [`tests/policy-command.test.ts`](./packages/aiw-cli/tests/policy-command.test.ts))
+    lock the human renderer layouts.
 - **Branch-complete RLAC policy evaluator tests.** The in-process
   evaluator at [`runtimes/typescript/src/policy/evaluator.ts`](./runtimes/typescript/src/policy/evaluator.ts)
   drives every write-path authz check, but coverage was sitting at
@@ -97,6 +335,24 @@ schema changes; safe upgrade from `0.2.0`.
     tolerance for runtime upgrades and the bare-array shape of
     `SearchResponseSchema`. **0% → 100%**.
 
+### Fixed
+
+- **Boot no longer crashes when Astra rotates wire shapes mid-resume.**
+  [`isAstraResumingError`](./runtimes/typescript/src/astra-client/client.ts)
+  used to match only the legacy 503 envelope (`"resuming your
+  database"`). Astra has been observed switching to a newer
+  400/`"resuming from hibernation"` envelope across LB hand-offs while
+  a single resume is still in progress: the first failure classifies
+  and retries, the second comes back as the new shape, the classifier
+  rejects it, and `main()` exits with a `DataAPIHttpError` instead of
+  waiting out the rest of the 60-second resume window. The classifier
+  now accepts both `503` and `400`, and matches either body phrasing,
+  so a hibernated DB resumes cleanly under either shape (or any mix of
+  them). A new
+  [`waitForAstraResume`](./runtimes/typescript/tests/astra-client/resume-retry.test.ts)
+  integration test reproduces the rotating-shape scenario directly so
+  this can't regress.
+
 ### Coverage summary
 
 | Surface | Before | After (statements) |
@@ -105,8 +361,10 @@ schema changes; safe upgrade from `0.2.0`.
 | Web app | 57.1% / 50.0% funcs | **59.7% / 55.5% funcs** |
 | CLI | 18.3% | **24.2%** (`src/` excluding command files now at 82%) |
 
-Total tests: **1,912 passing** (+228 new — 1,312 runtime / 422 web /
-178 CLI).
+Total tests: **1,932 passing** (+248 new vs 0.2.0 — 1,316 runtime /
+422 web / 194 CLI; the +16 CLI tests on top of the sweep are the
+new principal + policy renderer tests, and the +4 runtime tests
+cover the Astra wire-shape rotation fix above).
 
 ## [0.2.0] — 2026-05-22
 
@@ -341,7 +599,7 @@ Total tests: **1,912 passing** (+228 new — 1,312 runtime / 422 web /
   shape so future breaking evolutions can land as `V2` alongside V1
   without breaking integrators. Locked by
   [`audit-shape-lock.test.ts`](./runtimes/typescript/tests/policy/audit-shape-lock.test.ts).
-  ([`docs/rlac-preview.md`](./docs/rlac-preview.md#audit-log),
+  ([`docs/rlac.md`](./docs/rlac.md#audit-log),
   [`runtimes/typescript/src/control-plane/types.ts`](./runtimes/typescript/src/control-plane/types.ts))
 - **RLAC scope clarification.** The Preview label now covers only
   the policy DSL (visibility-list semantics only). The audit log is
@@ -379,8 +637,9 @@ may still change between minor versions until 1.0.
   arrives. Live regions + `aria-busy` on all shared state components.
   ([`apps/web/src/components/common/states.tsx`](./apps/web/src/components/common/states.tsx))
 - **`docs/whats-new-0.1.0.md`** — narrative tour of this release.
-- **`docs/rlac-preview.md`** — dedicated guide for the Preview-labeled
-  RLAC feature.
+- **`docs/rlac.md`** — dedicated guide for the Preview-labeled
+  RLAC feature (renamed from `docs/rlac-preview.md` when RLAC went
+  GA in 0.2.1).
 - **Changesets workflow** — every PR with user-visible impact adds a
   `.changeset/*.md` file. See
   [`CONTRIBUTING.md`](./CONTRIBUTING.md#releasing).
@@ -398,8 +657,8 @@ may still change between minor versions until 1.0.
   targets but carry no stability guarantee.
 - **RLAC on Documents** stays labeled **Preview** — the access-control
   card in workspace settings shows a `Preview` chip linking to
-  `docs/rlac-preview.md`. API and audit-log shapes may change before
-  0.2; see the doc for the deferred items.
+  `docs/rlac.md` (renamed in 0.2.1). API and audit-log shapes may
+  change before 0.2; see the doc for the deferred items.
 - **Root `package.json`** now orchestrates the new `packages/aiw-cli`
   workspace via `install:cli`, `test:cli`, `build:cli`, and includes
   it in `npm run check`.

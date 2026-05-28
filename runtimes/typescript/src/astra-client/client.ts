@@ -440,16 +440,29 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Classify the "DB is paused and resuming" 503 from Astra. We match
- * both the HTTP status AND the body signature so we don't accidentally
- * retry on unrelated 503s (gateway hiccups, maintenance).
+ * Classify the "DB is paused and resuming" envelope from Astra. We
+ * match both the HTTP status AND the body signature so we don't
+ * accidentally retry on unrelated 503s or 400s.
+ *
+ * Astra has been observed to use two wire shapes for the same
+ * underlying condition, sometimes rotating mid-resume across LB
+ * hand-offs:
+ *
+ *   - **Legacy**: `503` + body containing `"resuming your database"`.
+ *   - **Hibernation**: `400` + body containing `"resuming from
+ *     hibernation"`.
+ *
+ * Both are retried; non-matching 400s (real validation errors) and
+ * non-matching 503s (gateway hiccups, maintenance) propagate.
  */
 export function isAstraResumingError(err: unknown): boolean {
-	if (!(err instanceof DataAPIHttpError) || err.status !== 503) {
-		return false;
-	}
-	const body = err.body ?? "";
-	return body.toLowerCase().includes("resuming your database");
+	if (!(err instanceof DataAPIHttpError)) return false;
+	if (err.status !== 503 && err.status !== 400) return false;
+	const body = (err.body ?? "").toLowerCase();
+	return (
+		body.includes("resuming your database") ||
+		body.includes("resuming from hibernation")
+	);
 }
 
 /**

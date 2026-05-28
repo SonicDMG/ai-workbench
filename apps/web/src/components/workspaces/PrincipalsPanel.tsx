@@ -80,8 +80,8 @@ export function PrincipalsPanel({ workspace }: { workspace: string }) {
 			<CardContent className="p-4 pt-3">
 				{rows.length === 0 ? (
 					<div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
-						No principals yet. Seed at least one (e.g. <code>alice</code>)
-						before enabling a KB policy.
+						No principals yet. Add one (e.g. <code>alice</code>) to start
+						modeling per-user visibility.
 					</div>
 				) : (
 					<div className="overflow-x-auto">

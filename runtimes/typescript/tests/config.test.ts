@@ -327,4 +327,38 @@ describe("ConfigSchema", () => {
 			}),
 		).toThrow(/duplicate seed workspace name/);
 	});
+
+	test("chat is enabled by default with HuggingFace defaults when no `chat:` block is supplied", () => {
+		const cfg = ConfigSchema.parse({ version: 1 });
+		expect(cfg.chat.enabled).toBe(true);
+		expect(cfg.chat.tokenRef).toBe("env:HUGGINGFACE_API_KEY");
+		expect(cfg.chat.model).toBe("mistralai/Mistral-7B-Instruct-v0.3");
+		expect(cfg.chat.maxOutputTokens).toBe(1024);
+		expect(cfg.chat.retrievalK).toBe(6);
+		expect(cfg.chat.systemPrompt).toBeNull();
+	});
+
+	test("chat block accepts a single-field opt-out (`chat: { enabled: false }`)", () => {
+		const cfg = ConfigSchema.parse({
+			version: 1,
+			chat: { enabled: false },
+		});
+		expect(cfg.chat.enabled).toBe(false);
+		// Defaults still apply for the other fields — the explicit opt-out
+		// is a behavior toggle, not a shape change.
+		expect(cfg.chat.tokenRef).toBe("env:HUGGINGFACE_API_KEY");
+	});
+
+	test("explicit chat tokenRef + model override the defaults", () => {
+		const cfg = ConfigSchema.parse({
+			version: 1,
+			chat: {
+				tokenRef: "env:MY_HF_TOKEN",
+				model: "meta-llama/Llama-3.1-8B-Instruct",
+			},
+		});
+		expect(cfg.chat.enabled).toBe(true);
+		expect(cfg.chat.tokenRef).toBe("env:MY_HF_TOKEN");
+		expect(cfg.chat.model).toBe("meta-llama/Llama-3.1-8B-Instruct");
+	});
 });

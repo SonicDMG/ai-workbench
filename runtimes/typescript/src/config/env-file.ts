@@ -6,35 +6,55 @@
  * overwriting values already set in the environment. We use it
  * instead of adding a dotenv dependency.
  *
- * Resolution:
- *   1. If `WORKBENCH_ENV_FILE` is set, load that exact path. A
- *      missing file is logged as "absent" (not fatal): the setup
- *      wizard writes to this path on first run, so a fresh-install
- *      container legitimately boots before the file exists.
- *   2. Otherwise walk up from the process's working directory looking
- *      for `.env`. Stops at the first match, at a directory containing
- *      `.git/` (the repo root), or after 10 levels (safety net).
- *   3. If nothing is found, skip silently — the runtime works without
- *      a .env file (values can come from the shell, docker `-e`, K8s
- *      Secrets mounted as env vars, etc.).
+ * Resolution (each step is additive; lower-priority sources never
+ * overwrite higher-priority ones thanks to `loadEnvFile`'s
+ * no-overwrite semantics):
  *
- * Values already in `process.env` take precedence over `.env` entries,
- * matching every other dotenv loader's default and making container
- * overrides straightforward.
+ *   1. `process.env` (highest — docker `-e`, K8s Secrets, shell exports).
+ *   2. `WORKBENCH_ENV_FILE` if set — operator-managed explicit path.
+ *      A missing file is logged as "absent" (not fatal).
+ *   3. **Managed env file** written by the setup wizard and the
+ *      `/settings` page (`POST /setup/env`). Lives under
+ *      `WORKBENCH_DATA_DIR/.env` (or `WORKBENCH_MANAGED_ENV_FILE`
+ *      override). Without this loader hook, credentials pasted via
+ *      `/settings` would land on disk but never reach the next
+ *      respawn's `process.env`, and the chat factory would keep
+ *      reporting `chat_disabled`.
+ *   4. Walked `.env` (project root convention; convenience for
+ *      developer machines).
+ *
+ * If nothing is found, skip silently — the runtime works without
+ * any env file (values can come from the shell, docker `-e`, K8s
+ * Secrets mounted as env vars, etc.).
  */
 
 import { existsSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { loadEnvFile } from "node:process";
+import { managedEnvLocation } from "../setup/managed-env.js";
 
 const MAX_WALK = 10;
 
 export interface EnvFileResult {
 	readonly path: string | null;
 	readonly source: "explicit" | "explicit-absent" | "walked" | "none";
+	/**
+	 * The managed-env file written by the setup wizard /
+	 * `/settings` page. Loaded after the primary (explicit / walked)
+	 * source so its values fill any gaps but never overwrite a value
+	 * set higher up the precedence chain. Null when the file doesn't
+	 * exist yet (fresh install before the wizard has run).
+	 */
+	readonly managedEnvPath: string | null;
 }
 
 export function loadDotEnv(): EnvFileResult {
+	const primary = loadPrimary();
+	const managedEnvPath = loadManagedEnv();
+	return { ...primary, managedEnvPath };
+}
+
+function loadPrimary(): Omit<EnvFileResult, "managedEnvPath"> {
 	const explicit = process.env.WORKBENCH_ENV_FILE;
 	if (explicit && explicit.length > 0) {
 		const abs = resolve(explicit);
@@ -52,6 +72,21 @@ export function loadDotEnv(): EnvFileResult {
 	}
 
 	return { path: null, source: "none" };
+}
+
+function loadManagedEnv(): string | null {
+	const { path } = managedEnvLocation();
+	if (!existsSync(path)) return null;
+	try {
+		loadEnvFile(path);
+	} catch {
+		// Permissions or parse errors shouldn't take down boot — the
+		// runtime can still serve everything that doesn't need the
+		// managed values, and the missing-secret advisory in the
+		// preflight will surface the gap.
+		return null;
+	}
+	return path;
 }
 
 function walkForEnv(start: string): string | null {

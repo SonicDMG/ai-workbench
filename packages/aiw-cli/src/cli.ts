@@ -17,6 +17,8 @@ import { jobCommand } from "./commands/job.js";
 import { kbCommand } from "./commands/kb.js";
 import { loginCommand } from "./commands/login.js";
 import { logoutCommand } from "./commands/logout.js";
+import { policyCommand } from "./commands/policy.js";
+import { principalCommand } from "./commands/principal.js";
 import { profileCommand } from "./commands/profile.js";
 import { searchCommand } from "./commands/search.js";
 import { shimCommand } from "./commands/shim.js";
@@ -50,6 +52,8 @@ const main = defineCommand({
 		agent: agentCommand,
 		chat: chatCommand,
 		job: jobCommand,
+		principal: principalCommand,
+		policy: policyCommand,
 		shim: shimCommand,
 		completion: completionCommand,
 		doctor: doctorCommand,

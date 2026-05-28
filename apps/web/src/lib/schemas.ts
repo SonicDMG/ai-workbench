@@ -1261,6 +1261,12 @@ export const PolicyAuditPageSchema = paginatedSchema(PolicyAuditRecordSchema);
  * runtime's `SetupStatusBody` interface; mirror new fields here in
  * the same PR or the schema parse will silently drop them.
  */
+export const SetupBootErrorSchema = z.object({
+	code: z.string(),
+	message: z.string(),
+});
+export type SetupBootError = z.infer<typeof SetupBootErrorSchema>;
+
 export const SetupStatusSchema = z.object({
 	setupComplete: z.boolean(),
 	workspacesCount: z.number(),
@@ -1275,6 +1281,13 @@ export const SetupStatusSchema = z.object({
 		writable: z.boolean(),
 		present: z.boolean(),
 	}),
+	/**
+	 * Set when the runtime came up in rescue mode (control-plane
+	 * init threw). When present, `/api/v1/*` is unavailable; the SPA
+	 * should steer the user to `/settings` to fix credentials and
+	 * trigger a restart. Absent on a healthy boot.
+	 */
+	bootError: SetupBootErrorSchema.optional(),
 });
 export type SetupStatus = z.infer<typeof SetupStatusSchema>;
 

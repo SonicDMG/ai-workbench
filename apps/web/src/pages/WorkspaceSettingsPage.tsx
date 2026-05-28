@@ -411,15 +411,7 @@ function AccessControlToggle({ workspace }: { workspace: Workspace }) {
 						<ShieldCheck className="h-4 w-4" />
 					</SectionIcon>
 					<div className="min-w-0">
-						<CardTitle className="flex items-center gap-2 text-base">
-							Access control
-							<span
-								className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300"
-								title="Preview — API and audit-log shapes may change before GA. See docs/rlac-preview.md."
-							>
-								Preview
-							</span>
-						</CardTitle>
+						<CardTitle className="text-base">Access control</CardTitle>
 						<p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
 							Row-level access control. When on, every KB read is filtered
 							against each document's <code>visible_to</code> list and the
@@ -427,12 +419,12 @@ function AccessControlToggle({ workspace }: { workspace: Workspace }) {
 							available. When off, every member of the workspace sees every
 							document.{" "}
 							<a
-								href="https://github.com/datastax/ai-workbench/blob/main/docs/rlac-preview.md"
+								href="https://github.com/datastax/ai-workbench/blob/main/docs/rlac.md"
 								target="_blank"
 								rel="noreferrer"
-								className="font-medium text-amber-700 hover:underline dark:text-amber-300"
+								className="font-medium text-slate-700 hover:underline dark:text-slate-200"
 							>
-								Learn about the Preview status →
+								Learn more →
 							</a>
 						</p>
 					</div>

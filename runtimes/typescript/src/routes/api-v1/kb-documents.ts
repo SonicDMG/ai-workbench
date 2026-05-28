@@ -134,6 +134,17 @@ function applyVisibleToFilter(
 	filter: Readonly<Record<string, unknown>> | null,
 ): readonly RagDocumentRecord[] {
 	if (!filter) return docs;
+	// MATCH_ALL sentinel from the compiler (admin-bypass collapse, or
+	// every disjunct evaluated to true) — empty filter, no constraint.
+	if (Object.keys(filter).length === 0) return docs;
+	// MATCH_NONE sentinel (every disjunct evaluated to false) — return
+	// zero rows regardless of `visible_to`.
+	if (
+		Object.keys(filter).length === 1 &&
+		(filter as { _aiw_no_match?: unknown })._aiw_no_match === true
+	) {
+		return [];
+	}
 	const orBranches = (filter as { $or?: Array<Record<string, unknown>> }).$or;
 	if (orBranches) {
 		const allowed = new Set<string>();

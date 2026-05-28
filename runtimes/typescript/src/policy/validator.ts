@@ -64,12 +64,29 @@ function walk(node: PredicateNode, issues: MutableIssues): void {
 						"the filter is matched against each row independently",
 				});
 			} else if (!leftIsRow && !rightIsRow) {
-				issues.push({
-					code: "constant_only_comparison",
-					message:
-						"comparison has no row column reference — a Data API filter " +
-						"must constrain at least one row column",
-				});
+				// Principal-vs-literal (e.g. `$principal.admin = 'true'`) is
+				// a valid idiom: the compiler evaluates it at compile time
+				// against the current principal and short-circuits the
+				// surrounding OR (collapse to MATCH_ALL when true, drop the
+				// disjunct when false). It's the admin-bypass shape used by
+				// DEFAULT_POLICY_DSL. Only flag the truly degenerate
+				// literal-vs-literal case.
+				const isPrincipalVsLiteral =
+					(node.left.kind === "principal" &&
+						(node.right.kind === "literal" || node.right.kind === "func")) ||
+					(node.right.kind === "principal" &&
+						(node.left.kind === "literal" || node.left.kind === "func"));
+				const isFuncVsLiteral =
+					(node.left.kind === "func" && node.right.kind === "literal") ||
+					(node.right.kind === "func" && node.left.kind === "literal");
+				if (!isPrincipalVsLiteral && !isFuncVsLiteral) {
+					issues.push({
+						code: "constant_only_comparison",
+						message:
+							"comparison has no row column reference — a Data API filter " +
+							"must constrain at least one row column",
+					});
+				}
 			}
 			walkScalar(node.left, issues, leftIsRow);
 			walkScalar(node.right, issues, rightIsRow);
@@ -120,9 +137,22 @@ export function validatePolicy(
 
 /**
  * The default policy applied when a KB has `policyEnabled = true` and
- * no custom DSL. This is the canonical Stefano pattern: a document is
- * visible if `current_principal_id()` is in `visible_to`, OR
- * `visible_to` contains the wildcard `'*'`.
+ * no custom DSL. Three disjuncts:
+ *
+ *   1. **Admin bypass** — `$principal.admin = 'true'`. Principals
+ *      with the `admin` attribute see every document regardless of
+ *      its `visible_to`. The flip-on bootstrap sets this attribute
+ *      on the auto-created `admin` principal so the workspace
+ *      operator can see everything out of the box; operators can
+ *      promote / demote any principal by toggling the attribute.
+ *   2. **Per-principal grant** — the calling principal is listed in
+ *      the document's `visible_to`.
+ *   3. **Wildcard** — `'*'` is in `visible_to` (everyone).
+ *
+ * Adding the admin disjunct first lets the read-path short-circuit
+ * without scanning the array column. Removing the bypass on a
+ * specific KB is a per-KB custom DSL change; removing it
+ * workspace-wide is a runtime change to this constant.
  */
 export const DEFAULT_POLICY_DSL: string =
-	"current_principal_id() = ANY(visible_to) OR '*' = ANY(visible_to)";
+	"$principal.admin = 'true' OR current_principal_id() = ANY(visible_to) OR '*' = ANY(visible_to)";

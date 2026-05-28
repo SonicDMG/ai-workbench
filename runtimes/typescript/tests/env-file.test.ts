@@ -8,12 +8,24 @@ describe("loadDotEnv", () => {
 	let root: string;
 	let prevCwd: string;
 	let prevExplicit: string | undefined;
+	let prevDataDir: string | undefined;
+	let prevManagedExplicit: string | undefined;
 
 	beforeEach(() => {
 		root = mkdtempSync(join(tmpdir(), "wb-env-"));
 		prevCwd = process.cwd();
 		prevExplicit = process.env.WORKBENCH_ENV_FILE;
+		prevDataDir = process.env.WORKBENCH_DATA_DIR;
+		prevManagedExplicit = process.env.WORKBENCH_MANAGED_ENV_FILE;
 		delete process.env.WORKBENCH_ENV_FILE;
+		// Point the managed-env locator into the test dir so the
+		// fallback (`./.workbench-data/.env`) doesn't trip on the
+		// repo's actual managed file.
+		process.env.WORKBENCH_MANAGED_ENV_FILE = join(
+			root,
+			"managed-absent",
+			".env",
+		);
 		// Every test clears any env vars it sets via beforeEach state.
 	});
 
@@ -22,6 +34,11 @@ describe("loadDotEnv", () => {
 		rmSync(root, { recursive: true, force: true });
 		if (prevExplicit === undefined) delete process.env.WORKBENCH_ENV_FILE;
 		else process.env.WORKBENCH_ENV_FILE = prevExplicit;
+		if (prevDataDir === undefined) delete process.env.WORKBENCH_DATA_DIR;
+		else process.env.WORKBENCH_DATA_DIR = prevDataDir;
+		if (prevManagedExplicit === undefined)
+			delete process.env.WORKBENCH_MANAGED_ENV_FILE;
+		else process.env.WORKBENCH_MANAGED_ENV_FILE = prevManagedExplicit;
 	});
 
 	test("returns source: 'none' when no .env is found", () => {
@@ -29,7 +46,11 @@ describe("loadDotEnv", () => {
 		mkdirSync(join(root, ".git"));
 		process.chdir(root);
 		const result = loadDotEnv();
-		expect(result).toEqual({ path: null, source: "none" });
+		expect(result).toEqual({
+			path: null,
+			source: "none",
+			managedEnvPath: null,
+		});
 	});
 
 	test("loads .env from the current working directory", () => {
@@ -127,5 +148,60 @@ describe("loadDotEnv", () => {
 		} finally {
 			delete process.env[key];
 		}
+	});
+
+	test("also loads the managed env file written by /setup/env", () => {
+		// This is the bug the user hit: the wizard / `/settings` page
+		// wrote `.workbench-data/.env` with HUGGINGFACE_API_KEY, but
+		// `loadDotEnv` only walked for a project `.env` — so on
+		// respawn the new HF token never reached `process.env` and
+		// `chat_disabled` persisted.
+		const key = "__WB_ENV_TEST_MANAGED";
+		delete process.env[key];
+		const managed = join(root, "managed", ".env");
+		mkdirSync(join(root, "managed"));
+		writeFileSync(managed, `${key}=from-managed\n`);
+		process.env.WORKBENCH_MANAGED_ENV_FILE = managed;
+		mkdirSync(join(root, ".git"));
+		process.chdir(root);
+		try {
+			const result = loadDotEnv();
+			expect(result.managedEnvPath).toBe(managed);
+			expect(process.env[key]).toBe("from-managed");
+		} finally {
+			delete process.env[key];
+		}
+	});
+
+	test("primary source (walked .env) wins over managed-env for the same key", () => {
+		// Operator-explicit walked .env should beat the wizard-written
+		// managed file. Node's `loadEnvFile` is no-overwrite, and we
+		// load primary first, so the walked value sticks.
+		const key = "__WB_ENV_TEST_PRECEDENCE";
+		delete process.env[key];
+		writeFileSync(join(root, ".env"), `${key}=walked-wins\n`);
+		const managed = join(root, "managed", ".env");
+		mkdirSync(join(root, "managed"));
+		writeFileSync(managed, `${key}=from-managed\n`);
+		process.env.WORKBENCH_MANAGED_ENV_FILE = managed;
+		mkdirSync(join(root, ".git"));
+		process.chdir(root);
+		try {
+			const result = loadDotEnv();
+			expect(result.source).toBe("walked");
+			expect(result.managedEnvPath).toBe(managed);
+			expect(process.env[key]).toBe("walked-wins");
+		} finally {
+			delete process.env[key];
+		}
+	});
+
+	test("managed-env file may be absent (fresh install before wizard ran)", () => {
+		mkdirSync(join(root, ".git"));
+		process.chdir(root);
+		// Pointed at a managed path that doesn't exist — must not throw.
+		const result = loadDotEnv();
+		expect(result.managedEnvPath).toBeNull();
+		expect(result.source).toBe("none");
 	});
 });
