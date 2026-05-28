@@ -65,7 +65,8 @@ export function scopesForRole(role: Role): readonly string[] {
 /** Type guard: is `value` one of the known roles? */
 export function isRole(value: unknown): value is Role {
 	return (
-		typeof value === "string" && (ALL_ROLES as readonly string[]).includes(value)
+		typeof value === "string" &&
+		(ALL_ROLES as readonly string[]).includes(value)
 	);
 }
 

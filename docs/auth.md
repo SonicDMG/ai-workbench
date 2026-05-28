@@ -108,12 +108,21 @@ silently escalate by minting a fresh tenant outside its scope and
 operating against it. Anonymous callers and unscoped subjects
 (operator tokens) pass through.
 
-### Privilege scopes (read / write)
+### Privilege scopes (read / write / manage)
 
 Workspace API keys carry a second axis besides workspace membership:
-a privilege-scope list. Keys minted from the workspace UI today
-carry `["read"]` (default) or `["read", "write"]`; OIDC and bootstrap
-subjects carry `scopes: null`, which implicitly grants every scope.
+a privilege-scope list. Three tiers, aligned with the RBAC roles in
+`auth/roles.ts` (`viewer` / `editor` / `admin`):
+
+- **`read`** — list / fetch / search workspace content.
+- **`write`** — mutate workspace content (KBs, documents, agents,
+  services, ingest).
+- **`manage`** (0.4.0) — admin-only operations: API keys, RLAC
+  principals + policy, and workspace destroy.
+
+Keys minted before 0.4.0 back-compat to `["read", "write"]` (an
+`editor`-equivalent key); OIDC and bootstrap subjects carry
+`scopes: null`, which implicitly grants every scope.
 
 Two layers enforce it:
 
@@ -135,10 +144,19 @@ Two layers enforce it:
      KB content).
    - Calls `assertScope(c, "write")` for every other write-shaped
      request (POST/PATCH/PUT/DELETE). A read-only key on any KB CRUD,
-     document register / patch / delete, ingest, agent CRUD, service
-     CRUD, or `POST /api-keys` (issuance is itself a privilege
-     escalation in disguise) gets `403 forbidden` with `message:
+     document register / patch / delete, ingest, agent CRUD, or
+     service CRUD gets `403 forbidden` with `message:
      "authenticated subject is missing required scope 'write'"`.
+3. **REST admin gate** — `manageRouteScope()` is mounted right after
+   the write gate and requires the `manage` scope on admin-only
+   surfaces: `…/api-keys`, `…/principals`, `…/policy` (the entire CRUD
+   surface, including `GET` — listing credentials or principals is
+   itself a privileged read), and `DELETE /workspaces/{w}`. An
+   `editor` (`["read", "write"]`) key gets `403 forbidden` on these;
+   only an `admin` (`["read", "write", "manage"]`) key — or an
+   unscoped OIDC / bootstrap subject — passes. (The `rlacEnabled`
+   toggle on `PATCH /workspaces/{w}` is also admin, but it shares a
+   route with the write-level rename, so it's gated in the handler.)
 
 Anonymous callers (when `anonymousPolicy: allow`) and `scopes: null`
 subjects bypass both gates — `anonymousPolicy` is the only knob that
@@ -149,6 +167,14 @@ The gate is mount-based rather than per-route, so a freshly added
 mutating route inherits the check automatically. New "POST-as-read"
 endpoints (a future smoke-test or probe surface) add a path suffix to
 the allowlist instead of editing every call site.
+
+> **Migration (0.4.0).** Splitting `manage` out of `write` is a
+> deliberate behavior change: an existing `["read", "write"]` key that
+> previously issued API keys, administered RLAC, or deleted a
+> workspace now gets `403 forbidden` on those routes. Re-mint the key
+> with `manage` (or use an OIDC admin / bootstrap token) to restore the
+> old capability. Content mutations (KBs, documents, agents, services,
+> ingest) are unaffected — `write` still covers them.
 
 ### Header format
 

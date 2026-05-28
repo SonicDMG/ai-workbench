@@ -30,7 +30,9 @@ describe("roles → scopes", () => {
 	});
 	test("each role's scopes are a superset of the previous", () => {
 		for (let i = 1; i < ALL_ROLES.length; i++) {
-			const prev = scopesForRole(ALL_ROLES[i - 1] as (typeof ALL_ROLES)[number]);
+			const prev = scopesForRole(
+				ALL_ROLES[i - 1] as (typeof ALL_ROLES)[number],
+			);
 			const cur = scopesForRole(ALL_ROLES[i] as (typeof ALL_ROLES)[number]);
 			for (const s of prev) expect(cur).toContain(s);
 		}
@@ -61,7 +63,9 @@ describe("roleForScopes", () => {
 	test("maps exact scope sets back to a role, order-independent", () => {
 		expect(roleForScopes([SCOPE_READ])).toBe("viewer");
 		expect(roleForScopes([SCOPE_WRITE, SCOPE_READ])).toBe("editor");
-		expect(roleForScopes([SCOPE_MANAGE, SCOPE_READ, SCOPE_WRITE])).toBe("admin");
+		expect(roleForScopes([SCOPE_MANAGE, SCOPE_READ, SCOPE_WRITE])).toBe(
+			"admin",
+		);
 	});
 	test("returns null for scope sets that aren't a whole role", () => {
 		expect(roleForScopes([SCOPE_MANAGE])).toBeNull();

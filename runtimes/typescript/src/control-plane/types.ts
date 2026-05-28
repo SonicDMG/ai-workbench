@@ -123,14 +123,21 @@ export interface ApiKeyRecord {
 }
 
 /**
- * Privilege tiers an issued API key can carry. Two-tier today;
- * splitting `write` into more granular slices (e.g. `write:ingest`
- * vs `write:admin`) is intentionally deferred until the surface that
- * needs the split actually lands. Existing rows persisted before this
- * column was added back-compat to `["read", "write"]` so behavior
- * doesn't change for already-minted keys.
+ * Privilege tiers an issued API key can carry, aligned with the RBAC
+ * roles in `auth/roles.ts` (`viewer` / `editor` / `admin`):
+ *
+ *   - `read`    list + fetch + search workspace content.
+ *   - `write`   mutate workspace content (KBs, documents, agents,
+ *               services, ingest).
+ *   - `manage`  admin-only operations (API keys, RLAC principals +
+ *               policy, workspace destroy). New in 0.4.0; before it,
+ *               every mutating route gated on `write`.
+ *
+ * Existing rows persisted before the scopes column was added
+ * back-compat to `["read", "write"]` (an `editor`-equivalent key), so
+ * behavior doesn't change for already-minted keys.
  */
-export type ApiKeyScope = "read" | "write";
+export type ApiKeyScope = "read" | "write" | "manage";
 
 /**
  * Default for newly-minted keys when the caller omits `scopes`. Keeps
@@ -141,7 +148,7 @@ export const DEFAULT_API_KEY_SCOPES: readonly ApiKeyScope[] = ["read", "write"];
 
 /** Type guard for runtime parsing of arbitrary input shapes. */
 export function isApiKeyScope(value: unknown): value is ApiKeyScope {
-	return value === "read" || value === "write";
+	return value === "read" || value === "write" || value === "manage";
 }
 
 /**
@@ -159,7 +166,7 @@ export function normalizeApiKeyScopes(
 	for (const v of input) if (isApiKeyScope(v)) seen.add(v);
 	if (seen.size === 0) return DEFAULT_API_KEY_SCOPES;
 	// Deterministic order for stable comparisons + wire shape.
-	return (["read", "write"] as const).filter((s) => seen.has(s));
+	return (["read", "write", "manage"] as const).filter((s) => seen.has(s));
 }
 
 /** Embedding configuration for a vector store. */
