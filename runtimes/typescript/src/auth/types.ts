@@ -54,6 +54,14 @@ export interface AuthSubject {
 	 * the field in afterward.
 	 */
 	readonly principal?: ResolvedPrincipal | null;
+	/**
+	 * RBAC role derived from an OIDC role-claim mapping
+	 * (`auth.oidc.roleMapping`), when configured. Absent for API-key and
+	 * bootstrap subjects, and for OIDC when no mapping is set. The
+	 * principal-resolver uses it as the effective role when no
+	 * per-workspace principal record exists.
+	 */
+	readonly role?: Role;
 }
 
 /** RLAC: resolved principal for a single request. */

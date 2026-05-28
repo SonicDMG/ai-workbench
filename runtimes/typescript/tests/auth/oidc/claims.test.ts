@@ -93,3 +93,45 @@ describe("subjectFromClaims", () => {
 		expect(() => subjectWith({ email: "a@b.c" })).toThrow(/'sub' claim/);
 	});
 });
+
+describe("subjectFromClaims — RBAC role mapping (auth.oidc.roleMapping)", () => {
+	const roleMapping: NonNullable<OidcConfig["roleMapping"]> = {
+		claim: "groups",
+		values: { "wb-admins": "admin", "wb-editors": "editor" },
+		default: "viewer",
+	};
+
+	test("no mapping configured → subject carries no role", () => {
+		const subj = subjectWith({ sub: "u", wb_workspace_scopes: null });
+		expect(subj.role).toBeUndefined();
+	});
+
+	test("maps a group claim to the highest-privileged matching role", () => {
+		const subj = subjectWith(
+			{ sub: "u", groups: ["wb-editors", "wb-admins"] },
+			{ roleMapping },
+		);
+		expect(subj.role).toBe("admin");
+	});
+
+	test("a single-string claim value is mapped", () => {
+		const subj = subjectWith(
+			{ sub: "u", groups: "wb-editors" },
+			{ roleMapping },
+		);
+		expect(subj.role).toBe("editor");
+	});
+
+	test("falls back to the default (viewer floor) when the claim is absent", () => {
+		const subj = subjectWith({ sub: "u" }, { roleMapping });
+		expect(subj.role).toBe("viewer");
+	});
+
+	test("unmapped group values fall back to the configured default", () => {
+		const subj = subjectWith(
+			{ sub: "u", groups: ["random-group"] },
+			{ roleMapping: { ...roleMapping, default: "editor" } },
+		);
+		expect(subj.role).toBe("editor");
+	});
+});

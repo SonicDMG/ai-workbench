@@ -258,6 +258,17 @@ const OidcClientSchema = z.object({
 	sessionSecretRef: SecretRef.nullable().default(null),
 });
 
+const OidcRoleMappingSchema = z.object({
+	// JWT claim to read the role/group(s) from (e.g. "groups" or "role").
+	claim: z.string().min(1),
+	// Map a claim value → RBAC role. The claim may hold a single string
+	// or an array (groups); the highest-privileged matching role wins.
+	values: z.record(z.string(), z.enum(["viewer", "editor", "admin"])),
+	// Role assigned when the claim is absent or nothing matches — the
+	// safe floor.
+	default: z.enum(["viewer", "editor", "admin"]).default("viewer"),
+});
+
 const OidcSchema = z.object({
 	// Token `iss` claim; MUST match exactly. Discovery URL is derived
 	// from this when `jwksUri` isn't set.
@@ -273,6 +284,12 @@ const OidcSchema = z.object({
 	clockToleranceSeconds: z.number().int().min(0).max(300).default(30),
 	// Claim-to-field mapping.
 	claims: OidcClaimsSchema,
+	// Optional RBAC role mapping: derive a role from a token claim.
+	// When set, OIDC subjects without a per-workspace principal record
+	// get RBAC scopes from their role (viewer floor when the claim is
+	// absent). When unset, OIDC subjects keep all scopes — configure it
+	// to start enforcing RBAC on OIDC-authenticated users.
+	roleMapping: OidcRoleMappingSchema.optional(),
 	// Optional browser-login block. When present the runtime hosts
 	// the `/auth/*` endpoints.
 	client: OidcClientSchema.optional(),

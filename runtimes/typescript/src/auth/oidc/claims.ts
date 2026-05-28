@@ -11,6 +11,7 @@
 
 import type { JWTPayload } from "jose";
 import type { OidcConfig } from "../../config/schema.js";
+import type { Role } from "../../control-plane/types.js";
 import type { AuthSubject } from "../types.js";
 
 export function subjectFromClaims(
@@ -32,17 +33,55 @@ export function subjectFromClaims(
 	const scopesRaw = payload[cfg.claims.workspaceScopes];
 	const workspaceScopes = normalizeScopes(scopesRaw);
 
+	// RBAC role from the configured claim mapping, when set. Threaded
+	// onto the subject; the principal-resolver turns it into effective
+	// scopes (a per-workspace principal record still wins). Absent when
+	// no mapping is configured → OIDC subjects keep all scopes.
+	const role = cfg.roleMapping
+		? roleFromClaim(payload, cfg.roleMapping)
+		: undefined;
+
 	return {
 		type: "oidc",
 		id,
 		label,
 		workspaceScopes,
-		// OIDC subjects implicitly carry every scope today. When/if
-		// we surface a scope claim in the JWT, swap this for a parsed
-		// list. `null` means "no scope gate applies to this caller" —
-		// downstream `requireScope()` short-circuits to allow.
+		// OIDC subjects carry no privilege-scope list of their own — the
+		// resolver derives one from `role` when a mapping is configured;
+		// otherwise `null` means "no scope gate applies to this caller"
+		// and downstream `requireScope()` short-circuits to allow.
 		scopes: null,
+		...(role !== undefined ? { role } : {}),
 	};
+}
+
+const ROLE_RANK: Record<Role, number> = { viewer: 0, editor: 1, admin: 2 };
+
+/**
+ * Resolve a role from a token claim per `auth.oidc.roleMapping`. The
+ * claim may hold a single value or an array (groups); the
+ * highest-privileged matching role wins. Falls back to the mapping's
+ * `default` (the viewer floor) when nothing matches.
+ */
+function roleFromClaim(
+	payload: JWTPayload,
+	mapping: NonNullable<OidcConfig["roleMapping"]>,
+): Role {
+	const raw = payload[mapping.claim];
+	const values =
+		typeof raw === "string"
+			? [raw]
+			: Array.isArray(raw)
+				? raw.filter((x): x is string => typeof x === "string")
+				: [];
+	let best: Role | null = null;
+	for (const v of values) {
+		const mapped = mapping.values[v];
+		if (mapped && (best === null || ROLE_RANK[mapped] > ROLE_RANK[best])) {
+			best = mapped;
+		}
+	}
+	return best ?? mapping.default;
 }
 
 /**

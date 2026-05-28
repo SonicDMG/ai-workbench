@@ -169,20 +169,26 @@ export function principalResolverMiddleware(
 
 		if (resolved && auth) {
 			const { principal, fromRecord } = resolved;
-			// RBAC: an OIDC subject carries `scopes: null` (all scopes) by
-			// default. When it resolves to an *explicitly provisioned*
-			// principal record, constrain its effective scopes to the
-			// principal's role. OIDC subjects with no record keep the
-			// null/all default (B3 layers the group→role mapping + viewer
-			// floor on top). API-key subjects keep their own concrete
-			// scopes; bootstrap operators stay unrestricted.
-			const deriveScopes =
-				subject?.type === "oidc" && fromRecord && subject.scopes === null;
+			// RBAC effective-scope derivation for OIDC subjects (which carry
+			// `scopes: null` = all by default). The effective role is the
+			// per-workspace principal record's role when one exists,
+			// otherwise the role from the OIDC claim mapping (B3) if
+			// configured. With neither, scopes stay null (all) — unknown
+			// OIDC subjects aren't downgraded unless an operator opts in via
+			// `auth.oidc.roleMapping`. API-key subjects keep their own
+			// concrete scopes; bootstrap operators stay unrestricted.
+			const effectiveRole = fromRecord ? principal.role : subject?.role;
+			const derivedScopes =
+				subject?.type === "oidc" &&
+				subject.scopes === null &&
+				effectiveRole !== undefined
+					? scopesForRole(effectiveRole)
+					: undefined;
 			const nextSubject: AuthSubject = subject
 				? {
 						...subject,
 						principal,
-						...(deriveScopes ? { scopes: scopesForRole(principal.role) } : {}),
+						...(derivedScopes ? { scopes: derivedScopes } : {}),
 					}
 				: {
 						type: "apiKey",

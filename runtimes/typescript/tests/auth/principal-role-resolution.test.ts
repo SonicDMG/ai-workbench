@@ -128,4 +128,29 @@ describe("principal-resolver — RBAC scope derivation", () => {
 		const subject = await resolve(store, apiKeyAuth, workspaceId);
 		expect(subject.scopes).toEqual(["read"]);
 	});
+
+	test("OIDC claim role derives scopes when no principal record exists", async () => {
+		const store = new MemoryControlPlaneStore();
+		const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
+		const base = oidcAuth(ws.uid, "stranger");
+		// Simulate the verifier having mapped a group claim → admin.
+		const authWithClaimRole: AuthContext = {
+			...base,
+			subject: base.subject ? { ...base.subject, role: "admin" } : null,
+		};
+		const subject = await resolve(store, authWithClaimRole, ws.uid);
+		expect(subject.scopes).toEqual(["read", "write", "manage"]);
+	});
+
+	test("a per-workspace principal record overrides the OIDC claim role", async () => {
+		const { store, workspaceId } = await seed("viewer");
+		const base = oidcAuth(workspaceId, "alice");
+		const authWithClaimRole: AuthContext = {
+			...base,
+			subject: base.subject ? { ...base.subject, role: "admin" } : null,
+		};
+		const subject = await resolve(store, authWithClaimRole, workspaceId);
+		// The record's viewer role wins over the admin claim.
+		expect(subject.scopes).toEqual(["read"]);
+	});
 });

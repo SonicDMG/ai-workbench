@@ -176,6 +176,27 @@ the allowlist instead of editing every call site.
 > old capability. Content mutations (KBs, documents, agents, services,
 > ingest) are unaffected — `write` still covers them.
 
+**OIDC role mapping (opt-in).** By default OIDC subjects carry
+`scopes: null` (all scopes). Set `auth.oidc.roleMapping` to derive an
+RBAC role from a token claim and constrain those subjects:
+
+```yaml
+auth:
+  oidc:
+    roleMapping:
+      claim: groups          # token claim holding the role / group(s)
+      values:                # claim value → role
+        wb-admins: admin
+        wb-editors: editor
+      default: viewer        # role when the claim is absent / unmapped
+```
+
+The claim may be a single value or an array (groups); the
+highest-privileged match wins. A per-workspace **principal record**
+role still overrides the claim role for that workspace. With no
+`roleMapping`, OIDC behavior is unchanged (all scopes) — so this is a
+deliberate opt-in, not a silent restriction.
+
 ### Header format
 
 `Authorization: Bearer <token>` (RFC 6750). Any other scheme
