@@ -53,36 +53,38 @@ interface PopularModel {
  * other providers stay reachable through "Other (custom)" so
  * forward-compat doesn't regress. Keep this list short and
  * opinionated: it's a starter menu, not an exhaustive catalog.
+ *
+ * Every entry must be a model the HF Inference Providers router
+ * actually serves for chat — a model that isn't onboarded by any
+ * provider fails at send time with "not supported by any provider you
+ * have enabled". These are the widest-served chat models on the router
+ * (gpt-oss leads the ungated set); the config-time probe catches any
+ * custom model picked via "Other" that the caller's account can't
+ * route.
  */
 const POPULAR_MODELS: readonly PopularModel[] = [
 	{
 		provider: "huggingface",
-		modelName: "Qwen/Qwen2.5-7B-Instruct",
-		label: "Qwen 2.5 7B Instruct (default)",
+		modelName: "openai/gpt-oss-20b",
+		label: "GPT-OSS 20B (default)",
 		maxOutputTokens: 1024,
 	},
 	{
 		provider: "huggingface",
-		modelName: "meta-llama/Meta-Llama-3-8B-Instruct",
-		label: "Llama 3 8B Instruct",
-		maxOutputTokens: 1024,
-	},
-	{
-		provider: "huggingface",
-		modelName: "meta-llama/Llama-3.1-8B-Instruct",
-		label: "Llama 3.1 8B Instruct",
+		modelName: "openai/gpt-oss-120b",
+		label: "GPT-OSS 120B",
 		maxOutputTokens: 2048,
 	},
 	{
 		provider: "huggingface",
-		modelName: "HuggingFaceH4/zephyr-7b-beta",
-		label: "Zephyr 7B Beta",
-		maxOutputTokens: 1024,
+		modelName: "Qwen/Qwen3-32B",
+		label: "Qwen3 32B",
+		maxOutputTokens: 2048,
 	},
 	{
 		provider: "huggingface",
-		modelName: "google/gemma-2-9b-it",
-		label: "Gemma 2 9B (IT)",
+		modelName: "meta-llama/Llama-3.3-70B-Instruct",
+		label: "Llama 3.3 70B Instruct",
 		maxOutputTokens: 2048,
 	},
 ];
@@ -288,7 +290,7 @@ export function LlmServiceForm({
 					{showCustomModel ? (
 						<Input
 							id="llm-model-custom"
-							placeholder="e.g. Qwen/Qwen2.5-7B-Instruct"
+							placeholder="e.g. openai/gpt-oss-20b"
 							aria-invalid={errors.modelName ? true : undefined}
 							aria-label="Custom model name"
 							{...form.register("modelName")}

@@ -113,7 +113,7 @@ describe("agent routes", () => {
 
 		// Both agents are wired to the auto-seeded chat LLM service so
 		// the tool-call loop has a model available out of the box.
-		// Default ships HuggingFace `Qwen/Qwen2.5-7B-Instruct` (matches
+		// Default ships HuggingFace `openai/gpt-oss-20b` (matches
 		// the runtime's default `chat.model`); HF doesn't expose native
 		// function calling so the dispatcher falls back to the
 		// retrieve-and-answer flow described in
@@ -132,7 +132,7 @@ describe("agent routes", () => {
 		}>;
 		expect(llmItems.find((s) => s.llmServiceId === sharedLlmId)).toMatchObject({
 			provider: "huggingface",
-			modelName: "Qwen/Qwen2.5-7B-Instruct",
+			modelName: "openai/gpt-oss-20b",
 		});
 
 		for (const item of items) {

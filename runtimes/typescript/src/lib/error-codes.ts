@@ -383,7 +383,12 @@ const REGISTRY = new Map<string, ErrorCodeDescriptor>([
 	entry(
 		"llm_model_not_chat",
 		422,
-		"The HuggingFace model is not served for the chat-completion task; pick a conversational/instruct model (e.g. Qwen/Qwen2.5-7B-Instruct).",
+		"The HuggingFace model is not served for the chat-completion task; pick a conversational/instruct model (e.g. openai/gpt-oss-20b).",
+	),
+	entry(
+		"llm_model_unavailable",
+		422,
+		"No HuggingFace Inference provider serves this model for your account; enable a provider at huggingface.co/settings/inference-providers or pick a widely-served model (e.g. openai/gpt-oss-20b).",
 	),
 
 	// --- playground ---

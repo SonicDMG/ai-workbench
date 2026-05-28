@@ -1165,9 +1165,9 @@ language / content tags. See the OpenAPI spec for the full shape.
 
 ```json
 {
-  "name": "hf-qwen",
+  "name": "hf-gpt-oss",
   "provider": "huggingface",
-  "modelName": "Qwen/Qwen2.5-7B-Instruct",
+  "modelName": "openai/gpt-oss-20b",
   "credentialRef": "env:HUGGINGFACE_API_KEY",
   "maxOutputTokens": 1024
 }

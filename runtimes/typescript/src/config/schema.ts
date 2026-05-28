@@ -419,7 +419,7 @@ const SeedWorkspaceSchema = z.object({
 const ChatSchema = z.object({
 	enabled: z.boolean().default(true),
 	tokenRef: SecretRef.default("env:HUGGINGFACE_API_KEY"),
-	model: z.string().min(1).default("Qwen/Qwen2.5-7B-Instruct"),
+	model: z.string().min(1).default("openai/gpt-oss-20b"),
 	maxOutputTokens: z.number().int().positive().max(8_192).default(1_024),
 	/**
 	 * Top-K KB chunks to retrieve **per knowledge base** when assembling

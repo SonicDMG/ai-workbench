@@ -10,7 +10,11 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { isNotChatModelError } from "../../src/chat/model-probe.js";
+import {
+	classifyProbeFailure,
+	isModelUnavailableError,
+	isNotChatModelError,
+} from "../../src/chat/model-probe.js";
 
 describe("isNotChatModelError", () => {
 	test("matches the canonical HF router phrasing", () => {
@@ -52,5 +56,58 @@ describe("isNotChatModelError", () => {
 			isNotChatModelError("Model is currently loading; retry in 20s"),
 		).toBe(false);
 		expect(isNotChatModelError("401 Unauthorized: invalid token")).toBe(false);
+	});
+
+	test("does NOT match the not-routable signal (that's a different code)", () => {
+		expect(
+			isNotChatModelError(
+				"The requested model 'Qwen/Qwen2.5-7B-Instruct' is not supported by any provider you have enabled.",
+			),
+		).toBe(false);
+	});
+});
+
+describe("isModelUnavailableError", () => {
+	test("matches the router's not-supported-by-any-provider phrasing", () => {
+		expect(
+			isModelUnavailableError(
+				"Failed to perform inference: The requested model 'Qwen/Qwen2.5-7B-Instruct' is not supported by any provider you have enabled.",
+			),
+		).toBe(true);
+	});
+
+	test("matches the machine code 'model_not_supported'", () => {
+		expect(
+			isModelUnavailableError("400 Bad Request (model_not_supported)"),
+		).toBe(true);
+	});
+
+	test("does NOT match transient transport / rate-limit errors (fail-open)", () => {
+		expect(isModelUnavailableError("429 Too Many Requests")).toBe(false);
+		expect(isModelUnavailableError("fetch failed: ENOTFOUND")).toBe(false);
+		expect(
+			isModelUnavailableError("Model is currently loading; retry in 20s"),
+		).toBe(false);
+	});
+});
+
+describe("classifyProbeFailure", () => {
+	test("routes the not-a-chat-model signal to llm_model_not_chat", () => {
+		expect(classifyProbeFailure('Model "x" is not a chat model.')).toBe(
+			"llm_model_not_chat",
+		);
+	});
+
+	test("routes the not-routable signal to llm_model_unavailable", () => {
+		expect(
+			classifyProbeFailure(
+				"The requested model 'x' is not supported by any provider you have enabled.",
+			),
+		).toBe("llm_model_unavailable");
+	});
+
+	test("returns null for indeterminate failures (fail-open)", () => {
+		expect(classifyProbeFailure("429 Too Many Requests")).toBeNull();
+		expect(classifyProbeFailure("model is currently loading")).toBeNull();
 	});
 });

@@ -23,13 +23,13 @@ describe("LlmServiceForm", () => {
 		const user = userEvent.setup();
 		render(<LlmServiceForm mode="create" onSubmit={onSubmit} />);
 
-		await user.type(screen.getByLabelText(/^Name/), "  prod-qwen  ");
+		await user.type(screen.getByLabelText(/^Name/), "  prod-gpt-oss  ");
 
-		// Open the Model picker and choose the default Qwen row.
+		// Open the Model picker and choose the default GPT-OSS row.
 		await user.click(screen.getByRole("combobox", { name: /^Model/ }));
 		await user.click(
 			await screen.findByRole("option", {
-				name: /Qwen 2\.5 7B Instruct \(default\)/,
+				name: /GPT-OSS 20B \(default\)/,
 			}),
 		);
 
@@ -39,10 +39,10 @@ describe("LlmServiceForm", () => {
 
 		await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
 		expect(onSubmit).toHaveBeenCalledWith({
-			name: "prod-qwen",
+			name: "prod-gpt-oss",
 			description: null,
 			provider: "huggingface",
-			modelName: "Qwen/Qwen2.5-7B-Instruct",
+			modelName: "openai/gpt-oss-20b",
 			credentialRef: null,
 			maxOutputTokens: 1024,
 		});

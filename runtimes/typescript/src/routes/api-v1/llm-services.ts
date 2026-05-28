@@ -59,12 +59,13 @@ export function llmServiceRoutes(
 
 	/**
 	 * Config-time guard: for HuggingFace services, verify the model is
-	 * actually served for chat before persisting. Skips silently when we
-	 * can't resolve a token to probe with (no secrets resolver, no
-	 * per-service credentialRef and no chat fallback, or an unresolved
-	 * ref) — the runtime degrades to the pre-existing send-time error in
-	 * that case rather than blocking the save. Rejects with 422
-	 * `llm_model_not_chat` only on a definitive not-a-chat-model signal.
+	 * usable for chat before persisting. Skips silently when we can't
+	 * resolve a token to probe with (no secrets resolver, no per-service
+	 * credentialRef and no chat fallback, or an unresolved ref) — the
+	 * runtime degrades to the pre-existing send-time error in that case
+	 * rather than blocking the save. Rejects with 422 only on a
+	 * definitive signal: `llm_model_not_chat` (served but not for chat)
+	 * or `llm_model_unavailable` (no provider serves it).
 	 */
 	async function assertChatModelOrSkip(input: {
 		readonly provider: string;
@@ -83,10 +84,14 @@ export function llmServiceRoutes(
 		}
 		if (!token) return;
 		const outcome = await probe({ modelName: input.modelName, token });
-		if (outcome.kind === "not_chat_model") {
+		if (outcome.kind === "rejected") {
+			const lead =
+				outcome.code === "llm_model_not_chat"
+					? `HuggingFace model "${input.modelName}" is not served for the chat-completion task; pick a conversational/instruct model (e.g. openai/gpt-oss-20b).`
+					: `HuggingFace model "${input.modelName}" is not served by any Inference provider on your account; enable a provider at huggingface.co/settings/inference-providers or pick a widely-served model (e.g. openai/gpt-oss-20b).`;
 			throw new ApiError(
-				"llm_model_not_chat",
-				`HuggingFace model "${input.modelName}" is not served for the chat-completion task; pick a conversational/instruct model (e.g. Qwen/Qwen2.5-7B-Instruct). Provider detail: ${outcome.detail}`,
+				outcome.code,
+				`${lead} Provider detail: ${outcome.detail}`,
 			);
 		}
 	}

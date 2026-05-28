@@ -114,7 +114,7 @@ async function main(): Promise<void> {
 		chat: {
 			enabled: false as const,
 			tokenRef: "env:HUGGINGFACE_API_KEY",
-			model: "Qwen/Qwen2.5-7B-Instruct",
+			model: "openai/gpt-oss-20b",
 			maxOutputTokens: 1024,
 			retrievalK: 6,
 			systemPrompt: null,

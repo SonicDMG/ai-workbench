@@ -24,8 +24,8 @@ safe upgrade from `0.2.0`.
   which pushed operators toward an OpenAI key just to try the
   out-of-the-box experience even though the runtime's default
   `chat.tokenRef` already pointed at `HUGGINGFACE_API_KEY`. The seed
-  is now `huggingface-qwen2.5-7b-instruct` pointing at
-  `Qwen/Qwen2.5-7B-Instruct` (matches the runtime's default chat
+  is now `huggingface-gpt-oss-20b` pointing at
+  `openai/gpt-oss-20b` (matches the runtime's default chat
   model and the wizard's managed-env allow-list), so
   pasting a HuggingFace token at `/settings` lights up agent chat
   with zero LLM-service edits. HF doesn't expose native function
@@ -38,9 +38,10 @@ safe upgrade from `0.2.0`.
   [`LlmServiceForm`](./apps/web/src/components/agents/LlmServiceForm.tsx)
   used to be a free-form `<Input>` where operators had to remember
   the exact HF model slug
-  (e.g. `Qwen/Qwen2.5-7B-Instruct`). It's now a `<Select>`
-  with five curated HuggingFace defaults — Qwen 2.5 7B Instruct
-  (default), Llama 3 / Llama 3.1, Zephyr 7B, Gemma 2 — plus an
+  (e.g. `openai/gpt-oss-20b`). It's now a `<Select>`
+  with four curated HuggingFace defaults — GPT-OSS 20B
+  (default), GPT-OSS 120B, Qwen3 32B, Llama 3.3 70B Instruct, all
+  currently served by the HF Inference Providers router — plus an
   **Other (custom)…** row that reveals the free-form input for any
   other model name. Picking a popular row
   also pre-fills the provider and a sensible `maxOutputTokens`.
@@ -82,27 +83,33 @@ safe upgrade from `0.2.0`.
 
 ### Fixed
 
-- **Default chat model is served for chat (`"<model>" is not a chat
-  model`).** HuggingFace's Inference Providers router stopped serving
-  `mistralai/Mistral-7B-Instruct-v0.3` for the `conversational`
-  (chat-completion) task, so the prior default surfaced only at
-  send time as a cryptic `HuggingFace inference failed: … is not a
-  chat model`. The runtime default chat model, the auto-seeded LLM
+- **Default chat model is actually routable.** A HuggingFace model
+  can be unusable for chat in two distinct ways, and both used to
+  surface only at *send* time. (1) **Not a chat model** — HF's router
+  stopped serving `mistralai/Mistral-7B-Instruct-v0.3` for the
+  `conversational` task (`… is not a chat model`). (2) **Not
+  routable** — the Inference Providers router only serves models a
+  provider has onboarded, so `Qwen/Qwen2.5-7B-Instruct` (onboarded by
+  no provider) failed with `not supported by any provider you have
+  enabled`. The runtime default chat model, the auto-seeded LLM
   service, the wizard managed-env allow-list, and the form's
-  popular-model menu all now use `Qwen/Qwen2.5-7B-Instruct` — ungated
-  and served for chat — and the Mistral/Mixtral entries (same router
-  exposure) were dropped from the curated menu.
+  popular-model menu all now use **`openai/gpt-oss-20b`** — the
+  widest-served *ungated* small chat model on the router (live across
+  groq, novita, together, fireworks, and more) — so a fresh token
+  with default provider settings routes out of the box.
 - **Config-time chat-model guard.** Creating or updating a
   HuggingFace LLM service now runs a fail-open probe
   ([`src/chat/model-probe.ts`](./runtimes/typescript/src/chat/model-probe.ts))
   before persisting: a single `max_tokens: 1` chat completion that,
-  on a *definitive* not-a-chat-model signal, rejects the save with
-  `422 llm_model_not_chat` so a bad custom model (picked via **Other
-  (custom)…**) is caught at configuration time instead of when an
-  agent first replies. The probe is strictly fail-open — it only
-  runs when a credential resolves, and any transient failure
-  (network, rate limit, auth, cold-start) lets the save through
-  rather than blocking it. New unit coverage for the classifier
+  on a *definitive* signal, rejects the save so a bad custom model
+  (picked via **Other (custom)…**) is caught at configuration time
+  instead of when an agent first replies — `422 llm_model_not_chat`
+  when the model is served but not for chat, `422
+  llm_model_unavailable` when no provider serves it. The probe is
+  strictly fail-open — it only runs when a credential resolves, and
+  any transient failure (network, rate limit, auth, cold-start) lets
+  the save through rather than blocking it. New unit coverage for
+  the classifiers
   ([`tests/chat/model-probe.test.ts`](./runtimes/typescript/tests/chat/model-probe.test.ts))
   and route-level reject / allow / skip / PATCH-re-probe coverage
   ([`tests/llm-services.test.ts`](./runtimes/typescript/tests/llm-services.test.ts)).

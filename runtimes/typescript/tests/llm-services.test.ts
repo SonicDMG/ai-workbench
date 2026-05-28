@@ -275,7 +275,8 @@ describe("llm-services config-time chat-model probe", () => {
 
 	test("POST rejects a model the probe flags as not-a-chat-model (422)", async () => {
 		const probe = vi.fn<ChatModelProbe>().mockResolvedValue({
-			kind: "not_chat_model",
+			kind: "rejected",
+			code: "llm_model_not_chat",
 			detail: '"acme/not-chat" is not a chat model',
 		});
 		const { app, store } = makeProbeApp(probe);
@@ -303,6 +304,32 @@ describe("llm-services config-time chat-model probe", () => {
 		expect(await store.listLlmServices(ws.uid)).toHaveLength(0);
 	});
 
+	test("POST rejects a model no provider serves (422 llm_model_unavailable)", async () => {
+		const probe = vi.fn<ChatModelProbe>().mockResolvedValue({
+			kind: "rejected",
+			code: "llm_model_unavailable",
+			detail:
+				"The requested model 'acme/unrouted' is not supported by any provider you have enabled.",
+		});
+		const { app, store } = makeProbeApp(probe);
+		const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
+
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}/llm-services`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "unrouted",
+				provider: "huggingface",
+				modelName: "acme/unrouted",
+				credentialRef: "test:hf",
+			}),
+		});
+
+		expect(res.status).toBe(422);
+		expect((await json(res)).error.code).toBe("llm_model_unavailable");
+		expect(await store.listLlmServices(ws.uid)).toHaveLength(0);
+	});
+
 	test("POST allows a model the probe reports as served", async () => {
 		const probe = vi.fn<ChatModelProbe>().mockResolvedValue({ kind: "served" });
 		const { app, store } = makeProbeApp(probe);
@@ -314,7 +341,7 @@ describe("llm-services config-time chat-model probe", () => {
 			body: JSON.stringify({
 				name: "good",
 				provider: "huggingface",
-				modelName: "Qwen/Qwen2.5-7B-Instruct",
+				modelName: "openai/gpt-oss-20b",
 				credentialRef: "test:hf",
 			}),
 		});
@@ -377,7 +404,7 @@ describe("llm-services config-time chat-model probe", () => {
 				body: JSON.stringify({
 					name: "svc",
 					provider: "huggingface",
-					modelName: "Qwen/Qwen2.5-7B-Instruct",
+					modelName: "openai/gpt-oss-20b",
 					credentialRef: "test:hf",
 				}),
 			},
@@ -386,7 +413,8 @@ describe("llm-services config-time chat-model probe", () => {
 		const id = (await json(created)).llmServiceId;
 
 		probe.mockResolvedValueOnce({
-			kind: "not_chat_model",
+			kind: "rejected",
+			code: "llm_model_not_chat",
 			detail: '"acme/not-chat" is not a chat model',
 		});
 		const patch = await app.request(
@@ -402,7 +430,7 @@ describe("llm-services config-time chat-model probe", () => {
 		expect((await json(patch)).error.code).toBe("llm_model_not_chat");
 		// The rejected model must not have been written.
 		const after = await store.getLlmService(ws.uid, id);
-		expect(after?.modelName).toBe("Qwen/Qwen2.5-7B-Instruct");
+		expect(after?.modelName).toBe("openai/gpt-oss-20b");
 	});
 
 	test("PATCH that leaves the model untouched does not re-probe", async () => {
@@ -418,7 +446,7 @@ describe("llm-services config-time chat-model probe", () => {
 				body: JSON.stringify({
 					name: "svc",
 					provider: "huggingface",
-					modelName: "Qwen/Qwen2.5-7B-Instruct",
+					modelName: "openai/gpt-oss-20b",
 					credentialRef: "test:hf",
 				}),
 			},
