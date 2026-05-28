@@ -266,10 +266,11 @@ export const DEFAULT_WORKSPACE_SEED_SERVICES: DefaultServices = {
  * `Qwen/Qwen2.5-7B-Instruct` ("not supported by any provider you have
  * enabled" — it simply isn't onboarded by any router provider).
  *
- * The HF inference API path we use doesn't pass native function
- * calling, so the agent tool-call loop falls back to the
- * retrieve-and-answer flow described in `chat/agent-dispatch.ts` —
- * tools still execute, just not via a function-call protocol. */
+ * gpt-oss-20b is served for native function calling, and the HF
+ * adapter ([`chat/huggingface.ts`](../chat/huggingface.ts)) forwards
+ * the agent's `tools[]` and parses the model's `tool_calls`, so the
+ * dispatcher's tool loop (list_kbs → search_kb → answer) works the
+ * same way it does on the OpenAI adapter. */
 const HUGGINGFACE_GPT_OSS_20B: CreateLlmServiceInput = {
 	name: "huggingface-gpt-oss-20b",
 	description:
@@ -280,7 +281,7 @@ const HUGGINGFACE_GPT_OSS_20B: CreateLlmServiceInput = {
 	contextWindowTokens: 131072,
 	maxOutputTokens: 1024,
 	supportsStreaming: true,
-	supportsTools: false,
+	supportsTools: true,
 	authType: "api_key",
 	credentialRef: "env:HUGGINGFACE_API_KEY",
 	supportedLanguages: ["en", "multi"],

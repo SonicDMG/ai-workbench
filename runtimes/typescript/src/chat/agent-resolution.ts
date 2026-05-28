@@ -118,14 +118,12 @@ export async function resolveAgentChat(
 		logger: deps.logger,
 	};
 
-	// Tools are always advertised to the resolved chat service. The
-	// OpenAI adapter forwards them as the `tools[]` request body field
-	// and the model decides whether to call them; the HuggingFace
-	// adapter drops the field on the floor (its provider request
-	// shape doesn't carry tools today), so HF-backed agents simply
-	// answer in plain text. There's no harm in advertising regardless,
-	// and the dispatcher loop only iterates when a completion actually
-	// emits tool calls.
+	// Tools are always advertised to the resolved chat service. Both
+	// the OpenAI and HuggingFace adapters forward them as the `tools[]`
+	// request field and parse the model's `tool_calls` back out, so the
+	// model decides whether to call them. Models not served for tools
+	// just never emit any; the dispatcher loop only iterates when a
+	// completion actually emits tool calls.
 	const tools = DEFAULT_AGENT_TOOLS;
 
 	return {

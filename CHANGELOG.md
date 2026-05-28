@@ -83,6 +83,22 @@ safe upgrade from `0.2.0`.
 
 ### Fixed
 
+- **HuggingFace agents can actually call tools.** The HF chat adapter
+  ([`src/chat/huggingface.ts`](./runtimes/typescript/src/chat/huggingface.ts))
+  used to ignore the agent's advertised `tools[]` and never parse
+  `tool_calls`, so a tool-using agent (e.g. Bobby) on an HF-backed
+  model — whose persona prompt names `list_kbs`, `search_kb`,
+  `count_documents`, … — emitted its intended calls as a plain-text
+  code block that the dispatcher couldn't execute, then returned that
+  text as the answer. The adapter now forwards the OpenAI-compatible
+  `tools[]` + `tool_choice` and parses the model's structured
+  `tool_calls` (both `complete` and streaming), threading assistant
+  tool-call turns and `role: "tool"` results back through the prompt —
+  so the dispatcher's list-KBs → search → answer loop works the same
+  way it does on the OpenAI adapter. The default `openai/gpt-oss-20b`
+  is served for tools; the auto-seeded service now advertises
+  `supportsTools: true`. New unit coverage
+  ([`tests/chat/huggingface.test.ts`](./runtimes/typescript/tests/chat/huggingface.test.ts)).
 - **Default chat model is actually routable.** A HuggingFace model
   can be unusable for chat in two distinct ways, and both used to
   surface only at *send* time. (1) **Not a chat model** — HF's router

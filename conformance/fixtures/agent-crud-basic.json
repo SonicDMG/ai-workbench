@@ -57,7 +57,7 @@
 							"supportedContent": ["text"],
 							"supportedLanguages": ["en", "multi"],
 							"supportsStreaming": true,
-							"supportsTools": false,
+							"supportsTools": true,
 							"temperatureMax": null,
 							"temperatureMin": null,
 							"updatedAt": "{{TS}}",
