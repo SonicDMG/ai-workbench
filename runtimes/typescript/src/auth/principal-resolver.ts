@@ -39,6 +39,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type { AppEnv } from "../lib/types.js";
+import { DEFAULT_ROLE, scopesForRole } from "./roles.js";
 import type { AuthContext, AuthSubject, ResolvedPrincipal } from "./types.js";
 
 const VIEW_AS_HEADER = "x-view-as-principal";
@@ -68,18 +69,40 @@ function workspaceFromPath(c: Context): string | null {
 	return m?.[1] && m[1] !== "_" ? m[1] : null;
 }
 
+interface PrincipalResolution {
+	readonly principal: ResolvedPrincipal;
+	/**
+	 * True when an actual principal record backed the resolution. The
+	 * RBAC scope-derivation only fires for explicitly-provisioned
+	 * principals so an unknown OIDC subject isn't silently downgraded.
+	 */
+	readonly fromRecord: boolean;
+}
+
 async function resolvePrincipalRecord(
 	store: ControlPlaneStore,
 	workspaceId: string,
 	principalId: string,
-): Promise<ResolvedPrincipal | null> {
+): Promise<PrincipalResolution> {
 	try {
 		const record = await store.getPrincipal(workspaceId, principalId);
 		if (record) {
+			const attributes: Record<string, string> = { ...record.attributes };
+			// RLAC: surface an `admin` role as the `$principal.admin = 'true'`
+			// clause the canonical policy DSL bypasses on, so an RBAC admin
+			// also bypasses row filters without operators setting the
+			// attribute by hand. An explicit attribute is left untouched.
+			if (record.role === "admin" && attributes.admin === undefined) {
+				attributes.admin = "true";
+			}
 			return {
-				id: record.principalId,
-				workspaceId: record.workspaceId,
-				attributes: { ...record.attributes },
+				principal: {
+					id: record.principalId,
+					workspaceId: record.workspaceId,
+					attributes,
+					role: record.role,
+				},
+				fromRecord: true,
 			};
 		}
 	} catch {
@@ -87,7 +110,15 @@ async function resolvePrincipalRecord(
 		// principal context with no attributes. The DSL can still
 		// resolve `current_principal_id()`.
 	}
-	return { id: principalId, workspaceId, attributes: {} };
+	return {
+		principal: {
+			id: principalId,
+			workspaceId,
+			attributes: {},
+			role: DEFAULT_ROLE,
+		},
+		fromRecord: false,
+	};
 }
 
 export function principalResolverMiddleware(
@@ -119,41 +150,49 @@ export function principalResolverMiddleware(
 		//     subject is always present and this branch never fires.
 		const honorViewAs =
 			Boolean(viewAs) && (allowViewAs || isBootstrap || subject === null);
-		let principal: ResolvedPrincipal | null = null;
+		let resolved: PrincipalResolution | null = null;
 
 		if (honorViewAs && viewAs) {
-			principal = await resolvePrincipalRecord(opts.store, workspaceId, viewAs);
+			resolved = await resolvePrincipalRecord(opts.store, workspaceId, viewAs);
 		} else if (subject?.type === "oidc") {
-			principal = await resolvePrincipalRecord(
+			resolved = await resolvePrincipalRecord(
 				opts.store,
 				workspaceId,
 				subject.id,
 			);
 		} else if (subject?.type === "apiKey") {
 			const slug = slugify(subject.label) ?? subject.id;
-			principal = await resolvePrincipalRecord(opts.store, workspaceId, slug);
+			resolved = await resolvePrincipalRecord(opts.store, workspaceId, slug);
 		} else if (subject?.type === "bootstrap") {
-			principal = await resolvePrincipalRecord(
-				opts.store,
-				workspaceId,
-				"admin",
-			);
+			resolved = await resolvePrincipalRecord(opts.store, workspaceId, "admin");
 		}
 
-		if (principal && auth) {
-			c.set("auth", {
-				...auth,
-				subject: subject
-					? { ...subject, principal }
-					: {
-							type: "apiKey",
-							id: principal.id,
-							label: principal.id,
-							workspaceScopes: [workspaceId],
-							scopes: null,
-							principal,
-						},
-			});
+		if (resolved && auth) {
+			const { principal, fromRecord } = resolved;
+			// RBAC: an OIDC subject carries `scopes: null` (all scopes) by
+			// default. When it resolves to an *explicitly provisioned*
+			// principal record, constrain its effective scopes to the
+			// principal's role. OIDC subjects with no record keep the
+			// null/all default (B3 layers the group→role mapping + viewer
+			// floor on top). API-key subjects keep their own concrete
+			// scopes; bootstrap operators stay unrestricted.
+			const deriveScopes =
+				subject?.type === "oidc" && fromRecord && subject.scopes === null;
+			const nextSubject: AuthSubject = subject
+				? {
+						...subject,
+						principal,
+						...(deriveScopes ? { scopes: scopesForRole(principal.role) } : {}),
+					}
+				: {
+						type: "apiKey",
+						id: principal.id,
+						label: principal.id,
+						workspaceScopes: [workspaceId],
+						scopes: null,
+						principal,
+					};
+			c.set("auth", { ...auth, subject: nextSubject });
 		}
 		await next();
 	};

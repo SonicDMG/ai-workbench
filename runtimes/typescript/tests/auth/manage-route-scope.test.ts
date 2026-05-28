@@ -201,4 +201,30 @@ describe("manageRouteScope — admin surfaces require the manage scope", () => {
 		});
 		expect(res.status).toBe(200);
 	});
+
+	test("editor cannot toggle RLAC (rlacEnabled is admin-only)", async () => {
+		const h = await makeHarness();
+		const res = await h.app.request(`/api/v1/workspaces/${h.workspace}`, {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+				...authHeader(h.editorToken),
+			},
+			body: JSON.stringify({ rlacEnabled: true }),
+		});
+		expect(res.status).toBe(403);
+	});
+
+	test("admin can toggle RLAC", async () => {
+		const h = await makeHarness();
+		const res = await h.app.request(`/api/v1/workspaces/${h.workspace}`, {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+				...authHeader(h.adminToken),
+			},
+			body: JSON.stringify({ rlacEnabled: true }),
+		});
+		expect(res.status).toBe(200);
+	});
 });
