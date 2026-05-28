@@ -40,7 +40,7 @@
 		"install:cli": "npm --prefix packages/aiw-cli ci"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.4.15",
+		"@biomejs/biome": "^2.4.16",
 		"@changesets/cli": "^2.27.10"
 	}
 }
