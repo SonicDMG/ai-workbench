@@ -15,6 +15,23 @@ import {
 	VersionSchema,
 } from "../src/commands/status.js";
 
+/**
+ * picocolors disables itself when stdout isn't a TTY (the local dev
+ * box that ran these tests), but CI runners can ship with FORCE_COLOR
+ * or detect a fake TTY and emit ANSI escape codes — `pc.yellow("no")`
+ * then becomes `[33mno[39m`, breaking `.toContain("ready:
+ *      no")`. Strip once so substring assertions are
+ * environment-independent.
+ */
+function stripAnsi(s: string): string {
+	// picocolors emits SGR escapes (`ESC [<n> m`). Biome's
+	// `noControlCharactersInRegex` rule flags both the literal
+	// escape AND `\x1b` inside a regex literal, so build the
+	// matcher at runtime from `String.fromCharCode(27)`.
+	const SGR = new RegExp(`${String.fromCharCode(27)}\\[\\d+m`, "g");
+	return s.replace(SGR, "");
+}
+
 describe("buildStatusReport", () => {
 	it("marks unreachable when version probe failed", () => {
 		const r = buildStatusReport({
@@ -140,11 +157,12 @@ describe("renderHuman", () => {
 			mcpEnabled: null,
 			mcpUrl: null,
 		});
-		expect(out).toContain("version:    ?");
-		expect(out).toContain("ready:      no");
-		expect(out).toContain("workspaces: ?");
-		expect(out).toContain("ingest:     n/a");
-		expect(out).toContain("mcp:        ?");
+		const clean = stripAnsi(out);
+		expect(clean).toContain("version:    ?");
+		expect(clean).toContain("ready:      no");
+		expect(clean).toContain("workspaces: ?");
+		expect(clean).toContain("ingest:     n/a");
+		expect(clean).toContain("mcp:        ?");
 	});
 
 	it("shows mcp:off when mcpEnabled is false", () => {
