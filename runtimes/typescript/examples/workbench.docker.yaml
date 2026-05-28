@@ -56,13 +56,14 @@ controlPlane:
 #     audience: ai-workbench
 
 # Optional — runtime-wide default chat-completion executor. Set
-# HUGGINGFACE_API_KEY in `.env` (https://huggingface.co/settings/tokens)
-# and uncomment the block below. Without `chat:` AND no LLM service
+# OPENROUTER_API_KEY in `.env` (https://openrouter.ai/keys) and
+# uncomment the block below. Without `chat:` AND no LLM service
 # bound on an agent, POST .../messages returns 503 chat_disabled.
 #
 # chat:
-#   tokenRef: env:HUGGINGFACE_API_KEY
-#   model: Qwen/Qwen2.5-7B-Instruct
+#   provider: openrouter        # openrouter (default) | openai | ollama
+#   tokenRef: env:OPENROUTER_API_KEY
+#   model: openai/gpt-4o-mini
 #   maxOutputTokens: 1024
 #   retrievalK: 6
 

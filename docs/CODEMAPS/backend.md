@@ -62,8 +62,9 @@ HTTP /agents/:id/chat
   → retrieval.ts             (vector / hybrid / reranked search)
   → tools/registry.ts        (kb-search tool)
   → ChatService impl
-        ├── openai.ts        (native function calling)
-        └── huggingface.ts   (JSON-prompted tool calls)
+        ├── openai.ts        (shared OpenAI-compatible adapter)
+        ├── providers.ts     (provider registry: openrouter / openai / ollama)
+        └── model-catalog.ts (live model-picker catalog)
 ```
 
 ## Policy engine (`src/policy/`)

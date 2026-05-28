@@ -150,7 +150,7 @@ describe("setup routes", () => {
 		const res = await app.request("/setup/env", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ values: { HUGGINGFACE_API_KEY: "hf_x" } }),
+			body: JSON.stringify({ values: { OPENROUTER_API_KEY: "hf_x" } }),
 		});
 		expect(res.status).toBe(401);
 	});
@@ -159,7 +159,7 @@ describe("setup routes", () => {
 		// `auth.mode: disabled` is the single-user dev posture — no
 		// privilege boundary exists, so locking the credentials editor
 		// behind the wizard's first-run window just leaves operators
-		// with no in-app way to fix a missing HUGGINGFACE_API_KEY after
+		// with no in-app way to fix a missing OPENROUTER_API_KEY after
 		// they've created a workspace. The bootstrap-token gate still
 		// applies when auth is actually enabled.
 		const { app, store } = makeSetupApp({ dataDir });
@@ -167,12 +167,12 @@ describe("setup routes", () => {
 		const res = await app.request("/setup/env", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ values: { HUGGINGFACE_API_KEY: "hf_x" } }),
+			body: JSON.stringify({ values: { OPENROUTER_API_KEY: "hf_x" } }),
 		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { ok: boolean; written: string[] };
 		expect(body.ok).toBe(true);
-		expect(body.written).toEqual(["HUGGINGFACE_API_KEY"]);
+		expect(body.written).toEqual(["OPENROUTER_API_KEY"]);
 	});
 
 	test("POST /setup/env still requires the bootstrap token post-setup when auth.mode is enabled", async () => {
@@ -184,7 +184,7 @@ describe("setup routes", () => {
 		const res = await app.request("/setup/env", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ values: { HUGGINGFACE_API_KEY: "hf_x" } }),
+			body: JSON.stringify({ values: { OPENROUTER_API_KEY: "hf_x" } }),
 		});
 		expect(res.status).toBe(401);
 	});
@@ -202,7 +202,7 @@ describe("setup routes", () => {
 				"content-type": "application/json",
 				authorization: `Bearer ${token}`,
 			},
-			body: JSON.stringify({ values: { HUGGINGFACE_API_KEY: "hf_x" } }),
+			body: JSON.stringify({ values: { OPENROUTER_API_KEY: "hf_x" } }),
 		});
 		expect(res.status).toBe(200);
 	});

@@ -58,7 +58,7 @@ Every event has this envelope:
 ```json
 {
   "installId": "32-char-hex",
-  "version":   "0.2.0",
+  "version":   "0.3.0",
   "event":     "<name>",
   "fields":    { ... }
 }
@@ -74,7 +74,7 @@ Emitted once per boot, after the HTTP server is listening.
 | `authMode` | string | `disabled`, `apiKey`, `oidc`, `any` |
 | `environment` | string | `development`, `production` |
 | `hasChat` | boolean | `chat` block configured |
-| `chatProvider` | string \| null | `huggingface`, `openai`, … (matches `ChatService.providerId`) |
+| `chatProvider` | string \| null | `openrouter`, `openai`, `ollama` (matches `ChatService.providerId`) |
 
 ### `error` (runtime)
 

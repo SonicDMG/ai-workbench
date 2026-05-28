@@ -2,10 +2,11 @@
  * First-run credentials step.
  *
  * Collects the small allow-list the runtime needs to talk to Astra +
- * HuggingFace, POSTs them to `/setup/env` (the wizard-managed
- * dotenv file), triggers `/setup/restart`, and polls `/readyz` until
- * the runtime comes back up. Once green, hands control back to the
- * wizard's "kind" step.
+ * the chat/embedding provider (OpenRouter, or a direct OpenAI key for
+ * BYOK), POSTs them to `/setup/env` (the wizard-managed dotenv file),
+ * triggers `/setup/restart`, and polls `/readyz` until the runtime
+ * comes back up. Once green, hands control back to the wizard's "kind"
+ * step.
  *
  * The component is intentionally framework-light: all the state
  * lives here. It assumes the wizard parent has already determined
@@ -64,7 +65,8 @@ export function CredentialsStep({
 }: CredentialsStepProps) {
 	const [endpoint, setEndpoint] = useState<string>("");
 	const [token, setToken] = useState<string>("");
-	const [hfKey, setHfKey] = useState<string>("");
+	const [openrouterKey, setOpenrouterKey] = useState<string>("");
+	const [openaiKey, setOpenaiKey] = useState<string>("");
 	const [phase, setPhase] = useState<Phase>("form");
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -78,7 +80,8 @@ export function CredentialsStep({
 		const values: Partial<Record<ManagedEnvKey, string>> = {};
 		if (endpoint.trim()) values.ASTRA_DB_API_ENDPOINT = endpoint.trim();
 		if (token.trim()) values.ASTRA_DB_APPLICATION_TOKEN = token.trim();
-		if (hfKey.trim()) values.HUGGINGFACE_API_KEY = hfKey.trim();
+		if (openrouterKey.trim()) values.OPENROUTER_API_KEY = openrouterKey.trim();
+		if (openaiKey.trim()) values.OPENAI_API_KEY = openaiKey.trim();
 		if (Object.keys(values).length === 0) {
 			setErrorMessage(
 				"Provide at least one credential, or click Skip to use mock workspaces only.",
@@ -134,11 +137,11 @@ export function CredentialsStep({
 					<CardTitle>Connect credentials</CardTitle>
 				</div>
 				<CardDescription>
-					Persist Astra and HuggingFace credentials so the runtime can reach
-					them across restarts. The wizard writes them to{" "}
-					<code className="font-mono">{managedEnvPath}</code> (mode 0600, backed
-					by the workbench-data volume) and restarts the runtime so the new
-					values take effect.
+					Persist Astra and your chat provider key (OpenRouter, or a direct
+					OpenAI key) so the runtime can reach them across restarts. The wizard
+					writes them to <code className="font-mono">{managedEnvPath}</code>{" "}
+					(mode 0600, backed by the workbench-data volume) and restarts the
+					runtime so the new values take effect.
 				</CardDescription>
 				{detectedHint ? (
 					<div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-200">
@@ -179,18 +182,42 @@ export function CredentialsStep({
 					/>
 				</div>
 				<div className="space-y-2">
-					<Label htmlFor="setup-hf-key">
-						HuggingFace API key{" "}
+					<Label htmlFor="setup-openrouter-key">
+						OpenRouter API key{" "}
 						<span className="text-xs text-slate-500">
 							(optional — needed for Chat with Bobby)
 						</span>
 					</Label>
 					<Input
-						id="setup-hf-key"
+						id="setup-openrouter-key"
 						type="password"
-						placeholder="hf_…"
-						value={hfKey}
-						onChange={(e) => setHfKey(e.target.value)}
+						placeholder="sk-or-…"
+						value={openrouterKey}
+						onChange={(e) => setOpenrouterKey(e.target.value)}
+						disabled={busy}
+						autoComplete="off"
+						spellCheck={false}
+					/>
+					<p className="text-xs text-slate-500 dark:text-slate-400">
+						One key unlocks 300+ models for chat and embeddings. Running fully
+						offline? Skip this and set{" "}
+						<code className="font-mono">chat.provider: ollama</code> in
+						workbench.yaml.
+					</p>
+				</div>
+				<div className="space-y-2">
+					<Label htmlFor="setup-openai-key">
+						OpenAI API key{" "}
+						<span className="text-xs text-slate-500">
+							(optional — direct/BYOK, instead of OpenRouter)
+						</span>
+					</Label>
+					<Input
+						id="setup-openai-key"
+						type="password"
+						placeholder="sk-…"
+						value={openaiKey}
+						onChange={(e) => setOpenaiKey(e.target.value)}
 						disabled={busy}
 						autoComplete="off"
 						spellCheck={false}

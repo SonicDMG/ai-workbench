@@ -31,9 +31,18 @@ export const WHATS_NEW_VERSION = APP_VERSION;
  */
 export const WHATS_NEW_HIGHLIGHTS: readonly WhatsNewItem[] = [
 	{
+		title: "Chat moves to OpenRouter + Ollama",
+		summary:
+			'HuggingFace is retired. Chat and tool-use now run on OpenRouter by default — one key reaches 300+ models with standardized function calling — with a direct OpenAI (BYOK) path and a local Ollama provider for fully offline installs. The model picker pulls a live, tool-calling-capable catalog. Heads-up: existing LLM services with provider "huggingface" must be repointed at openrouter/openai/ollama or they fail at send time.',
+		link: {
+			label: "Configure an LLM service",
+			href: "/settings",
+		},
+	},
+	{
 		title: "First-run setup wizard",
 		summary:
-			"Fresh installs land on a guided onboarding flow that captures Astra and HuggingFace credentials, writes them to a managed `.env` in the workbench-data volume (mode 0600, allow-listed keys only), and restarts the runtime so the new values take effect — no shell access required.",
+			"Fresh installs land on a guided onboarding flow that captures Astra and your chat provider key (OpenRouter, or a direct OpenAI key), writes them to a managed `.env` in the workbench-data volume (mode 0600, allow-listed keys only), and restarts the runtime so the new values take effect — no shell access required.",
 		link: {
 			label: "Open onboarding",
 			href: "/onboarding",

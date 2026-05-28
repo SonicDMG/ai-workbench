@@ -1,9 +1,9 @@
 /**
  * Provider-agnostic chat-completion abstractions for the agent chat
  * surface. The route layer only ever talks to {@link ChatService};
- * the HuggingFace implementation in {@link ./huggingface.ts} is one
- * consumer, future providers (a fake for tests, a Cohere wrapper,
- * etc.) plug in without changing routes.
+ * the OpenAI-compatible implementation in {@link ./openai.ts} backs
+ * every wired provider (OpenRouter, OpenAI, Ollama), and a fixture
+ * plugs in for tests — all without changing routes.
  */
 
 /**
@@ -176,7 +176,7 @@ export interface ChatService {
 	readonly modelId: string;
 	/**
 	 * Short, stable name of the provider behind this service
-	 * (`"huggingface"`, `"openai"`, `"fixture"`, …). Used as a low-
+	 * (`"openrouter"`, `"openai"`, `"ollama"`, `"fixture"`, …). Used as a low-
 	 * cardinality label on `workbench_chat_*` metrics so we can break
 	 * down request counts and latencies by provider. Renaming an
 	 * existing value is a metric break.

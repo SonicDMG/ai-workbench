@@ -32,7 +32,7 @@ export interface RuntimeMetrics {
 	readonly ingestQueued: Gauge;
 	/**
 	 * `workbench_chat_requests_total{provider, outcome}` —
-	 *   provider ∈ { huggingface, openai, fixture, … } (low cardinality;
+	 *   provider ∈ { openrouter, openai, ollama, fixture, … } (low cardinality;
 	 *     matches `ChatService.providerId`).
 	 *   outcome ∈ { stop, length, tool_calls, error }.
 	 */

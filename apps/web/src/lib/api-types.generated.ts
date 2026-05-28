@@ -4311,6 +4311,48 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/api/v1/llm-models": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List selectable chat models for a provider
+		 * @description Returns tool-calling-capable models for the given provider (default: the runtime's configured chat provider). Falls back to a curated static list when the provider's catalog is unreachable (offline installs, outages).
+		 */
+		get: {
+			parameters: {
+				query?: {
+					provider?: "openrouter" | "openai" | "ollama";
+					baseUrl?: string;
+				};
+				header?: never;
+				path?: never;
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description Model catalog for the provider */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["LlmModelList"];
+					};
+				};
+			};
+		};
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5757,6 +5799,21 @@ export interface components {
 			decision: "allow" | "deny" | "filter";
 			reason: string;
 			compiledFilterJson: string | null;
+		};
+		LlmModelList: {
+			/** @example openrouter */
+			provider: string;
+			/** @enum {string} */
+			source: "live" | "fallback";
+			models: components["schemas"]["LlmModelInfo"][];
+		};
+		LlmModelInfo: {
+			/** @example openai/gpt-4o-mini */
+			id: string;
+			/** @example OpenAI: GPT-4o mini */
+			name: string;
+			supportsTools: boolean | null;
+			recommended: boolean;
 		};
 	};
 	responses: {

@@ -5,6 +5,22 @@ import { cn } from "@/lib/utils";
 
 export const Select = SelectPrimitive.Root;
 export const SelectValue = SelectPrimitive.Value;
+export const SelectGroup = SelectPrimitive.Group;
+
+export function SelectLabel({
+	className,
+	...props
+}: React.ComponentPropsWithoutRef<typeof SelectPrimitive.Label>) {
+	return (
+		<SelectPrimitive.Label
+			className={cn(
+				"px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500",
+				className,
+			)}
+			{...props}
+		/>
+	);
+}
 
 export function SelectTrigger({
 	className,
@@ -47,7 +63,9 @@ export function SelectContent({
 				)}
 				{...props}
 			>
-				<SelectPrimitive.Viewport className="p-1">
+				{/* Cap the height so large catalogs (e.g. 300+ OpenRouter
+				    models) scroll inside a compact box instead of a wall. */}
+				<SelectPrimitive.Viewport className="max-h-72 overflow-y-auto p-1">
 					{children}
 				</SelectPrimitive.Viewport>
 			</SelectPrimitive.Content>

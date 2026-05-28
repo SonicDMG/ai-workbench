@@ -984,6 +984,23 @@ export const LlmServiceRecordSchema = z.object({
 	updatedAt: z.string(),
 });
 export type LlmServiceRecord = z.infer<typeof LlmServiceRecordSchema>;
+
+/** One selectable chat model from `GET /api/v1/llm-models`. */
+export const LlmModelSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	supportsTools: z.boolean().nullable(),
+	recommended: z.boolean(),
+});
+export type LlmModel = z.infer<typeof LlmModelSchema>;
+
+/** Response of `GET /api/v1/llm-models`. */
+export const LlmModelListSchema = z.object({
+	provider: z.string(),
+	source: z.enum(["live", "fallback"]),
+	models: z.array(LlmModelSchema),
+});
+export type LlmModelList = z.infer<typeof LlmModelListSchema>;
 export const LlmServicePageSchema = paginatedSchema(LlmServiceRecordSchema);
 
 export const CreateLlmServiceInputSchema = z.object({
@@ -1280,6 +1297,13 @@ export const SetupStatusSchema = z.object({
 		path: z.string(),
 		writable: z.boolean(),
 		present: z.boolean(),
+		/**
+		 * Allow-listed keys that currently resolve to a non-empty value
+		 * (managed file or shell env). Drives the per-field "configured"
+		 * indicator on the settings page. Defaulted for back-compat with
+		 * runtimes that predate the field.
+		 */
+		configuredKeys: z.array(z.string()).default([]),
 	}),
 	/**
 	 * Set when the runtime came up in rescue mode (control-plane
@@ -1295,7 +1319,8 @@ export type SetupStatus = z.infer<typeof SetupStatusSchema>;
 export const MANAGED_ENV_KEYS = [
 	"ASTRA_DB_API_ENDPOINT",
 	"ASTRA_DB_APPLICATION_TOKEN",
-	"HUGGINGFACE_API_KEY",
+	"OPENROUTER_API_KEY",
+	"OPENAI_API_KEY",
 ] as const;
 export type ManagedEnvKey = (typeof MANAGED_ENV_KEYS)[number];
 

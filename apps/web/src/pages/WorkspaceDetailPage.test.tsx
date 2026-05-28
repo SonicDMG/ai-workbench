@@ -291,6 +291,58 @@ describe("WorkspaceDetailPage", () => {
 		).toBeInTheDocument();
 	});
 
+	it("shows the agent's bound LLM model on its summary card", () => {
+		setupBaseHooks();
+		vi.mocked(useWorkspace).mockReturnValue({
+			data: {
+				workspaceId: "00000000-0000-4000-8000-000000000001",
+				name: "research-lab",
+				kind: "astra",
+				credentials: {},
+				credentialsRef: { token: "env:T" },
+				createdAt: "2026-04-01T00:00:00.000Z",
+				updatedAt: "2026-04-01T00:00:00.000Z",
+			},
+			isLoading: false,
+			isError: false,
+			error: null,
+		} as unknown as ReturnType<typeof useWorkspace>);
+		vi.mocked(useLlmServices).mockReturnValue({
+			data: [
+				{
+					workspaceId: "00000000-0000-4000-8000-000000000001",
+					llmServiceId: "00000000-0000-4000-8000-00000000111a",
+					modelName: "openai/gpt-4o-mini",
+				},
+			],
+			isLoading: false,
+			isError: false,
+			error: null,
+		} as unknown as ReturnType<typeof useLlmServices>);
+		vi.mocked(useAgents).mockReturnValue({
+			data: [
+				agentFixture({
+					llmServiceId: "00000000-0000-4000-8000-00000000111a",
+				}),
+				// An agent with no bound service inherits the workspace default.
+				agentFixture({
+					agentId: "00000000-0000-4000-8000-00000000ma5e",
+					name: "Maven",
+					llmServiceId: null,
+				}),
+			],
+			isLoading: false,
+			isError: false,
+			error: null,
+		} as unknown as ReturnType<typeof useAgents>);
+
+		renderAt();
+
+		// Bound service → its model id; unbound agent → "default".
+		expect(screen.getByText("openai/gpt-4o-mini")).toBeInTheDocument();
+		expect(screen.getByText("default")).toBeInTheDocument();
+	});
+
 	it("opens the create-KB dialog from the knowledge-bases card header", async () => {
 		setupBaseHooks();
 		const user = userEvent.setup();

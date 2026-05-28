@@ -1,6 +1,6 @@
 {
 	"name": "ai-workbench-runtime-typescript",
-	"version": "0.2.1",
+	"version": "0.3.0",
 	"description": "AI Workbench — TypeScript runtime (default green box). Bundled with the UI.",
 	"private": true,
 	"license": "MIT",
@@ -28,7 +28,6 @@
 		"@datastax/astra-db-ts": "^2.2.1",
 		"@hono/node-server": "^2.0.4",
 		"@hono/zod-openapi": "^1.4.0",
-		"@huggingface/inference": "^4.13.18",
 		"@langchain/cohere": "^1.0.5",
 		"@langchain/core": "^1.1.48",
 		"@langchain/openai": "^1.4.7",

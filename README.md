@@ -1,13 +1,13 @@
 # AI Workbench
 
-[![Status: Beta · v0.2.1](https://img.shields.io/badge/status-Beta%20%C2%B7%20v0.2.1-f59e0b)](./CHANGELOG.md)
+[![Status: Beta · v0.3.0](https://img.shields.io/badge/status-Beta%20%C2%B7%20v0.3.0-f59e0b)](./CHANGELOG.md)
 [![CI](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/ci.yml?branch=main&label=CI)](https://github.com/datastax/ai-workbench/actions/workflows/ci.yml)
 [![Runtimes](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/runtimes.yml?branch=main&label=Runtimes)](https://github.com/datastax/ai-workbench/actions/workflows/runtimes.yml)
 [![Secret scan](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/secret-scan.yml?branch=main&label=Secret%20scan)](https://github.com/datastax/ai-workbench/actions/workflows/secret-scan.yml)
 [![Node 22+](https://img.shields.io/badge/node-%3E=22-blue)](./.nvmrc)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
-> **0.2 is an internal beta.** APIs, schemas, and UI surfaces may
+> **0.3 is an internal beta.** APIs, schemas, and UI surfaces may
 > change between minor versions until 1.0. See
 > [`CHANGELOG.md`](./CHANGELOG.md) for what's in this release; the
 > narrative tour of the prior milestone lives at
@@ -52,7 +52,7 @@ Open [http://localhost:8080](http://localhost:8080). Data persists in
 a named Docker volume across `docker compose down` / `up` cycles;
 reset with `docker compose down -v`.
 
-To connect to Astra DB or enable HuggingFace chat, drop a `.env` file
+To connect to Astra DB or enable chat (OpenRouter), drop a `.env` file
 next to `docker-compose.yml` (start from
 [`.env.example`](./.env.example)). The full Docker guide —
 overrides, building from source, backups, troubleshooting — lives in
@@ -149,7 +149,7 @@ details below are here when you need to understand or extend the system.
 <details>
 <summary>Runtime model</summary>
 
-| Runtime | Status in 0.2.0 | Notes |
+| Runtime | Status in 0.3.0 | Notes |
 |---|---|---|
 | TypeScript (`runtimes/typescript`) | **Supported** | Production path — serves the UI + full `/api/v1/*` contract; bundled into the Docker image. |
 | Python (`runtimes/python`) | **Experimental contrib** | FastAPI scaffold; all `/api/v1/*` routes return 501 until handlers reach parity. No stability guarantee. |

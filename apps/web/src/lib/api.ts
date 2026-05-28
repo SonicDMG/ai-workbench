@@ -64,6 +64,8 @@ import {
 	KnowledgeFilterPageSchema,
 	type KnowledgeFilterRecord,
 	KnowledgeFilterRecordSchema,
+	type LlmModelList,
+	LlmModelListSchema,
 	LlmServicePageSchema,
 	type LlmServiceRecord,
 	LlmServiceRecordSchema,
@@ -443,7 +445,7 @@ export const api = {
 	/**
 	 * Write the wizard-managed `.env` file. Only the documented
 	 * allow-list (`ASTRA_DB_API_ENDPOINT`, `ASTRA_DB_APPLICATION_TOKEN`,
-	 * `HUGGINGFACE_API_KEY`) is accepted server-side; anything else
+	 * `OPENROUTER_API_KEY`, `OPENAI_API_KEY`) is accepted server-side; anything else
 	 * triggers `validation_error`. A successful response means the
 	 * file is on disk — the runtime still needs a restart to pick it
 	 * up; call `postSetupRestart` next.
@@ -1086,6 +1088,18 @@ export const api = {
 			{ method: "DELETE" },
 			null,
 		),
+
+	/**
+	 * Runtime-level chat-model catalog backing the model picker. Not
+	 * workspace-scoped: mounts at `/api/v1/llm-models`. The runtime
+	 * proxies the provider's live list (OpenRouter `/models`, Ollama
+	 * `/models`) and falls back to a curated static list when the
+	 * upstream is unreachable, so this never rejects on offline installs.
+	 */
+	listLlmModels: (provider?: string): Promise<LlmModelList> => {
+		const qs = provider ? `?provider=${encodeURIComponent(provider)}` : "";
+		return request(`/llm-models${qs}`, { method: "GET" }, LlmModelListSchema);
+	},
 
 	/* -------- KB documents -------- */
 

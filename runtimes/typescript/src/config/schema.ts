@@ -397,10 +397,10 @@ const SeedWorkspaceSchema = z.object({
  *
  * **Default ON.** A fresh install — no `chat:` block in
  * `workbench.yaml` — boots with chat enabled and the default
- * HuggingFace settings. `tokenRef` defaults to
- * `env:HUGGINGFACE_API_KEY`; if that env var isn't set, the chat
+ * OpenRouter settings. `tokenRef` defaults to
+ * `env:OPENROUTER_API_KEY`; if that env var isn't set, the chat
  * service degrades to `null` and the agent-send routes return
- * `503 chat_disabled` until the operator pastes a token via
+ * `503 chat_disabled` until the operator pastes a key via
  * `/settings` (which writes to the managed dotenv file and
  * triggers a restart). The default lets a wired-up install start
  * answering messages with zero config edits.
@@ -410,16 +410,31 @@ const SeedWorkspaceSchema = z.object({
  *   chat:
  *     enabled: false
  *
- * Default model is one of the most reliable hosted
- * instruction-tuned chat models on the HF Inference API. The
- * token ref is cached for the lifetime of the chat service —
+ * Every wired `provider` is OpenAI-compatible (one adapter serves all
+ * three — see `chat/providers.ts`):
+ *   - `openrouter` (default): hosted, one key → 300+ models. `model`
+ *     is an OpenRouter id like `openai/gpt-4o-mini`.
+ *   - `openai`: direct OpenAI with the customer's own key (BYOK).
+ *   - `ollama`: a local/offline server; no credential required and
+ *     `baseUrl` defaults to `http://localhost:11434/v1`.
+ *
+ * The token ref is cached for the lifetime of the chat service —
  * re-resolving on every request would be cheap for env: but
  * expensive for future providers (vault, AWS Secrets Manager).
  */
 const ChatSchema = z.object({
 	enabled: z.boolean().default(true),
-	tokenRef: SecretRef.default("env:HUGGINGFACE_API_KEY"),
-	model: z.string().min(1).default("openai/gpt-oss-20b"),
+	provider: z.enum(["openrouter", "openai", "ollama"]).default("openrouter"),
+	tokenRef: SecretRef.default("env:OPENROUTER_API_KEY"),
+	/**
+	 * Override the provider's default base URL. `null` derives it from
+	 * `provider` (OpenRouter → `https://openrouter.ai/api/v1`, Ollama →
+	 * `http://localhost:11434/v1`, OpenAI → `https://api.openai.com/v1`).
+	 * Set this to point at a self-hosted Ollama on another host or an
+	 * OpenAI-compatible gateway.
+	 */
+	baseUrl: z.string().url().nullable().default(null),
+	model: z.string().min(1).default("openai/gpt-4o-mini"),
 	maxOutputTokens: z.number().int().positive().max(8_192).default(1_024),
 	/**
 	 * Top-K KB chunks to retrieve **per knowledge base** when assembling
@@ -427,6 +442,13 @@ const ChatSchema = z.object({
 	 * cap on total context lives in the chat service.
 	 */
 	retrievalK: z.number().int().positive().max(64).default(6),
+	/**
+	 * OpenRouter only: when `false` (the default) the runtime sends
+	 * `provider.data_collection: "deny"` so prompts route exclusively to
+	 * zero-data-retention upstreams. Flip to `true` to trade that
+	 * guarantee for the widest model availability.
+	 */
+	allowDataCollection: z.boolean().default(false),
 	/**
 	 * Override the runtime's default agent persona. `null` keeps
 	 * `DEFAULT_AGENT_SYSTEM_PROMPT` from control-plane/defaults.ts;

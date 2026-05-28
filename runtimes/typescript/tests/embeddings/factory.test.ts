@@ -80,6 +80,39 @@ describe("EmbedderFactory.forConfig", () => {
 		expect(e.dimension).toBe(1024);
 	});
 
+	test("returns an Embedder for openrouter (OpenAI-compatible, credentialed)", async () => {
+		const factory = makeEmbedderFactory({
+			secrets: resolverWith({ DOES_NOT_EXIST: "sk-or-test" }),
+		});
+		const e = await factory.forConfig(
+			cfg({
+				provider: "openrouter",
+				model: "openai/text-embedding-3-small",
+				endpoint: "https://openrouter.ai/api/v1",
+				dimension: 1536,
+			}),
+		);
+		expect(e.id).toBe("openrouter:openai/text-embedding-3-small");
+		expect(e.dimension).toBe(1536);
+	});
+
+	test("returns an Embedder for ollama with NO secret resolution (local/offline)", async () => {
+		// Empty resolver — a local Ollama server is unauthenticated, so the
+		// factory must not attempt to resolve a credential.
+		const factory = makeEmbedderFactory({ secrets: resolverWith() });
+		const e = await factory.forConfig(
+			cfg({
+				provider: "ollama",
+				model: "nomic-embed-text",
+				endpoint: "http://localhost:11434/v1",
+				dimension: 768,
+				secretRef: null,
+			}),
+		);
+		expect(e.id).toBe("ollama:nomic-embed-text");
+		expect(e.dimension).toBe(768);
+	});
+
 	describe("provider: 'mock'", () => {
 		test("returns a deterministic, network-free embedder with no secret resolution", async () => {
 			// Empty resolver — there is nothing to resolve, and we must

@@ -16,9 +16,9 @@
  *
  *  - Embedding seeds use `engine = "langchain_ts"` to match the
  *    issue-#98 schema. The actual provider call is dispatched through
- *    {@link ../embeddings/langchain.ts} (OpenAI today; Cohere on the
- *    way), and the same record is recognised by the Astra driver as
- *    `$vectorize`-eligible.
+ *    {@link ../embeddings/langchain.ts} (OpenRouter, Ollama, OpenAI,
+ *    and Cohere are wired), and the same record is recognised by the
+ *    Astra driver as `$vectorize`-eligible.
  *  - Chunking seeds use `engine = "langchain_ts"` for parity even
  *    though the in-process `recursive-char` and `line` chunkers are
  *    hand-rolled today — the engine field describes the *family*, not
@@ -125,11 +125,60 @@ const LINE_ROWS_ONE: CreateChunkingServiceInput = {
 	preserveStructure: true,
 };
 
-/** OpenAI text-embedding-3-small — the runtime default. */
+/**
+ * OpenRouter text-embedding-3-small — the runtime default, matching the
+ * default OpenRouter chat provider so one `OPENROUTER_API_KEY` powers
+ * both chat and self-managed embedding. OpenRouter proxies OpenAI's
+ * `text-embedding-3-*` family, which honours the `dimensions` truncation
+ * param, so the declared 1536-dim is exact end-to-end.
+ */
+const OPENROUTER_SMALL: CreateEmbeddingServiceInput = {
+	name: "openrouter-text-embedding-3-small",
+	description:
+		"Default. OpenRouter `openai/text-embedding-3-small` (1536-dim, cosine) via the OpenRouter embeddings API. Uses the same `OPENROUTER_API_KEY` as chat.",
+	status: "active",
+	provider: "openrouter",
+	modelName: "openai/text-embedding-3-small",
+	embeddingDimension: 1536,
+	distanceMetric: "cosine",
+	endpointBaseUrl: "https://openrouter.ai/api/v1",
+	authType: "api_key",
+	credentialRef: "env:OPENROUTER_API_KEY",
+	maxBatchSize: 512,
+	maxInputTokens: 8191,
+	supportedLanguages: ["en", "multi"],
+	supportedContent: ["text"],
+};
+
+/**
+ * Ollama `nomic-embed-text` — local/offline embedding for air-gapped
+ * installs. 768-dim and fixed (it ignores the `dimensions` param), so
+ * the declared dimension must match the model's native size. No
+ * credential: the local server is unauthenticated.
+ */
+const OLLAMA_NOMIC_EMBED: CreateEmbeddingServiceInput = {
+	name: "ollama-nomic-embed-text",
+	description:
+		"Local/offline. Ollama `nomic-embed-text` (768-dim, cosine) via a local Ollama server's OpenAI-compatible API. No API key; runs fully offline once the model is pulled.",
+	status: "active",
+	provider: "ollama",
+	modelName: "nomic-embed-text",
+	embeddingDimension: 768,
+	distanceMetric: "cosine",
+	endpointBaseUrl: "http://localhost:11434/v1",
+	authType: "none",
+	credentialRef: null,
+	maxBatchSize: 64,
+	maxInputTokens: 8192,
+	supportedLanguages: ["en", "multi"],
+	supportedContent: ["text"],
+};
+
+/** OpenAI text-embedding-3-small — direct (BYO OpenAI key). */
 const OPENAI_SMALL: CreateEmbeddingServiceInput = {
 	name: "openai-text-embedding-3-small",
 	description:
-		"Default. OpenAI `text-embedding-3-small` (1536-dim, cosine). Astra `$vectorize`-eligible — server-side embedding when the workspace uses the Astra driver.",
+		"OpenAI `text-embedding-3-small` (1536-dim, cosine) direct with your own OpenAI key. Astra `$vectorize`-eligible — server-side embedding when the workspace uses the Astra driver.",
 	status: "active",
 	provider: "openai",
 	modelName: "text-embedding-3-small",
@@ -222,6 +271,8 @@ export const DEFAULT_SERVICES: DefaultServices = {
 		LINE_ROWS_ONE,
 	],
 	embedding: [
+		OPENROUTER_SMALL,
+		OLLAMA_NOMIC_EMBED,
 		OPENAI_SMALL,
 		OPENAI_LARGE,
 		COHERE_MULTILINGUAL,
@@ -248,55 +299,47 @@ export const DEFAULT_WORKSPACE_SEED_SERVICES: DefaultServices = {
 	embedding: [NVIDIA_NV_EMBEDQA_E5_V5],
 };
 
-/** HuggingFace `openai/gpt-oss-20b` — the default chat LLM
- * auto-seeded into every new workspace. Matches the runtime's
- * default `chat.model` so a fresh install that pastes a HuggingFace
- * token via `/settings` lights up agent chat immediately, without
- * any LLM-service edits.
+/**
+ * OpenRouter `openai/gpt-4o-mini` — the default chat LLM auto-seeded
+ * into every new workspace. Matches the runtime's default `chat.model`
+ * + `chat.provider`, so a fresh install that pastes an OpenRouter key
+ * via `/settings` lights up agent chat immediately with no LLM-service
+ * edits.
  *
- * Chosen for routability, not just "is a chat model". HF's Inference
- * Providers router only serves models that a third-party provider has
- * onboarded, and `provider: "auto"` picks from the providers the
- * caller's account has enabled. `openai/gpt-oss-20b` is the
- * widest-served *ungated* small chat model on the router (live across
- * groq, novita, together, fireworks, and several more as of this
- * release), so a fresh token with default provider settings can
- * almost always route it. Two earlier defaults failed here:
- * `mistralai/Mistral-7B-Instruct-v0.3` ("is not a chat model") and
- * `Qwen/Qwen2.5-7B-Instruct` ("not supported by any provider you have
- * enabled" — it simply isn't onboarded by any router provider).
- *
- * gpt-oss-20b is served for native function calling, and the HF
- * adapter ([`chat/huggingface.ts`](../chat/huggingface.ts)) forwards
- * the agent's `tools[]` and parses the model's `tool_calls`, so the
- * dispatcher's tool loop (list_kbs → search_kb → answer) works the
- * same way it does on the OpenAI adapter. */
-const HUGGINGFACE_GPT_OSS_20B: CreateLlmServiceInput = {
-	name: "huggingface-gpt-oss-20b",
+ * OpenRouter standardizes OpenAI-shaped tool calling across every model
+ * it serves, and the OpenAI-compatible adapter
+ * ([`chat/openai.ts`](../chat/openai.ts)) forwards the agent's
+ * `tools[]` and parses the model's `tool_calls`, so the dispatcher's
+ * tool loop (list_kbs → search_kb → answer) works without any
+ * provider-specific code. `openai/gpt-4o-mini` is a cheap,
+ * widely-available, tool-capable default; operators can swap it for any
+ * OpenRouter slug (or a local Ollama model) via the service routes.
+ */
+const OPENROUTER_GPT_4O_MINI: CreateLlmServiceInput = {
+	name: "openrouter-gpt-4o-mini",
 	description:
-		"Default. HuggingFace `openai/gpt-oss-20b` chat completion via the HF Inference Providers router. Used by Bobby + Maven; relies on the runtime's `chat.tokenRef` (default `env:HUGGINGFACE_API_KEY`) or a per-service credentialRef.",
+		"Default. OpenRouter `openai/gpt-4o-mini` chat completion. Used by Bobby + Maven; relies on the runtime's `chat.tokenRef` (default `env:OPENROUTER_API_KEY`) or a per-service credentialRef.",
 	status: "active",
-	provider: "huggingface",
-	modelName: "openai/gpt-oss-20b",
-	contextWindowTokens: 131072,
+	provider: "openrouter",
+	modelName: "openai/gpt-4o-mini",
+	contextWindowTokens: 128000,
 	maxOutputTokens: 1024,
 	supportsStreaming: true,
 	supportsTools: true,
 	authType: "api_key",
-	credentialRef: "env:HUGGINGFACE_API_KEY",
+	credentialRef: "env:OPENROUTER_API_KEY",
 	supportedLanguages: ["en", "multi"],
 	supportedContent: ["text"],
 };
 
 /**
  * Curated chat LLM services auto-seeded into every freshly-created
- * workspace via the public API. Currently a single HuggingFace entry —
- * the runtime's default chat surface and the wizard's managed env file
- * both key off `HUGGINGFACE_API_KEY`, so an out-of-the-box install
- * answers messages with zero LLM-service edits once a token is pasted.
- * Operators can add more LLM services (OpenAI, Anthropic, etc.) via
- * the regular service-CRUD routes; the form gates them as "not yet
- * wired" so they're discoverable but not silently broken.
+ * workspace via the public API. A single OpenRouter entry — the
+ * runtime's default chat surface and the wizard's managed env file both
+ * key off `OPENROUTER_API_KEY`, so an out-of-the-box install answers
+ * messages with zero LLM-service edits once a key is pasted. Operators
+ * can add more LLM services (a local Ollama model, direct OpenAI, etc.)
+ * via the regular service-CRUD routes.
  */
 export const DEFAULT_WORKSPACE_SEED_LLM_SERVICES: readonly CreateLlmServiceInput[] =
-	Object.freeze([HUGGINGFACE_GPT_OSS_20B]);
+	Object.freeze([OPENROUTER_GPT_4O_MINI]);

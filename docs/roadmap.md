@@ -19,12 +19,13 @@ runnable artifact and a stable slice of the HTTP contract.
 | Chat-1 | Workspace-level Chat with Bobbie page (UI scaffold) | ✅ Shipped |
 | Chat-2 | Persistence — agentic tables wired through memory/file/astra | ✅ Shipped |
 | Chat-3 | Chat + message CRUD routes, functional UI | ✅ Shipped |
-| Chat-4 | HuggingFace chat completion + multi-KB RAG (sync) | ✅ Shipped |
+| Chat-4 | HuggingFace chat completion + multi-KB RAG (sync) | ✅ Shipped (HuggingFace retired in 0.3.0 — see Chat-6) |
 | Chat-5 | SSE token streaming end-to-end | ✅ Shipped |
 | MCP | Model Context Protocol façade — workspace as MCP tools | ✅ Shipped |
 | Agents-1 | Agent + conversation CRUD over the agentic tables | ✅ Shipped |
 | Agents-2 | Agent send + streaming pipeline (generalize chat-5 to any agent) + LLM-services CRUD + Bobbie retirement | ✅ Shipped |
-| 7+ | Multi-provider LLM execution, MCP tool calls, polish | Planned (see "Next steps") |
+| Chat-6 | Retire HuggingFace; unify chat + embeddings on OpenAI-compatibility — OpenRouter (hosted default), direct OpenAI (BYOK), Ollama (offline); live tool-calling model catalog | ✅ Shipped (0.3.0) |
+| 7+ | Native non-OpenAI-compatible providers, MCP tool calls, polish | Planned (see "Next steps") |
 
 ## Phase 0 — Bootstrap ✅
 
@@ -410,12 +411,13 @@ retired the `/chats` route + Bobbie singleton entirely. See
 
 Remaining open work in this area:
 
-- **Multi-provider chat**. Per-agent LLM services currently wire
-  `provider: "huggingface"` and `provider: "openai"` end-to-end.
-  Other stored providers (Cohere, Anthropic, …) return
-  `422 llm_provider_unsupported` until the dispatcher grows a case
-  for them. The `ChatService` abstraction is already
-  provider-agnostic; this is mechanical.
+- **Multi-provider chat**. Per-agent LLM services wire
+  `provider: "openrouter"`, `"openai"`, and `"ollama"` end-to-end as
+  of 0.3.0 — all three share one OpenAI-compatible adapter, so
+  OpenRouter alone already reaches 300+ models. Other *stored*
+  providers (e.g. a direct Cohere or Anthropic SDK case) return
+  `422 llm_provider_unsupported` until the dispatcher grows a case for
+  them; since OpenRouter fronts those vendors, that's now a niche need.
 - **Tool execution via MCP**. Now that the MCP server façade is in,
   the inverse — letting an agent **call** MCP tools — is the same
   SDK, just on the client side. Lands alongside
@@ -423,7 +425,7 @@ Remaining open work in this area:
 
 ### Per-KB / per-agent rate limiting
 
-Chat costs HF tokens; today the runtime relies on the global
+Chat costs LLM provider tokens; today the runtime relies on the global
 `/api/v1/*` IP-based limiter. Per-workspace and per-chat token
 buckets would let operators bound spend without blocking other
 endpoints.
@@ -441,11 +443,12 @@ fetch.
 
 ### Multi-provider chat backends
 
-`ChatService` is provider-agnostic, and the runtime now has
-HuggingFace and OpenAI implementations. Adding a `CohereChatService`
-or Anthropic-backed service is mostly mechanical — the prompt
-assembler and route are unchanged. Worth doing once we have a
-reason to compare quality / latency / cost across providers.
+`ChatService` is provider-agnostic, and the runtime ships one
+OpenAI-compatible implementation that serves OpenRouter, direct
+OpenAI, and a local Ollama server (HuggingFace was retired in 0.3.0).
+Adding a native `CohereChatService` or Anthropic-backed service is
+mostly mechanical — the prompt assembler and route are unchanged —
+but OpenRouter already fronts those vendors, so it's low priority.
 
 ### Production-grade chat persistence
 

@@ -2,11 +2,11 @@
  * Render tests for the top-level Settings page.
  *
  * The page hosts the runtime credentials editor: paste-and-update
- * for `ASTRA_DB_API_ENDPOINT`, `ASTRA_DB_APPLICATION_TOKEN`, and
- * `HUGGINGFACE_API_KEY` against `/setup/env` + `/setup/restart`.
- * Same call pattern as the first-run onboarding wizard, but
- * reachable post-setup so operators can fix a missing
- * HUGGINGFACE_API_KEY without going to the shell.
+ * for `ASTRA_DB_API_ENDPOINT`, `ASTRA_DB_APPLICATION_TOKEN`,
+ * `OPENROUTER_API_KEY`, and `OPENAI_API_KEY` against `/setup/env` +
+ * `/setup/restart`. Same call pattern as the first-run onboarding
+ * wizard, but reachable post-setup so operators can fix a missing
+ * OPENROUTER_API_KEY without going to the shell.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
@@ -43,6 +43,7 @@ const status: SetupStatus = {
 		path: "/tmp/wb/.env",
 		writable: true,
 		present: true,
+		configuredKeys: ["ASTRA_DB_API_ENDPOINT", "ASTRA_DB_APPLICATION_TOKEN"],
 	},
 };
 
@@ -70,7 +71,7 @@ describe("SettingsPage", () => {
 		vi.clearAllMocks();
 	});
 
-	it("renders three credential inputs with the documented placeholder copy", async () => {
+	it("renders the credential inputs with the documented placeholder copy", async () => {
 		render(wrap(<SettingsPage />));
 		await waitFor(() => {
 			expect(
@@ -79,8 +80,23 @@ describe("SettingsPage", () => {
 			expect(
 				screen.getByLabelText(/Astra DB application token/i),
 			).toBeInTheDocument();
-			expect(screen.getByLabelText(/HuggingFace API key/i)).toBeInTheDocument();
+			expect(screen.getByLabelText(/OpenRouter API key/i)).toBeInTheDocument();
+			expect(screen.getByLabelText(/OpenAI API key/i)).toBeInTheDocument();
 		});
+	});
+
+	it("marks already-configured credentials with a green Configured indicator", async () => {
+		// `status.managedEnv.configuredKeys` lists the two Astra keys but
+		// neither chat key, so exactly the two Astra fields are flagged.
+		render(wrap(<SettingsPage />));
+		// The indicators depend on the async /setup-status load resolving.
+		await waitFor(() =>
+			expect(screen.getAllByText(/^Configured$/)).toHaveLength(2),
+		);
+		// The configured secret field hints that blank keeps the current value.
+		expect(
+			screen.getAllByPlaceholderText(/leave blank to keep current/i).length,
+		).toBeGreaterThan(0);
 	});
 
 	it("surfaces the runtime's chat-not-configured state in the page banner", async () => {
@@ -94,15 +110,15 @@ describe("SettingsPage", () => {
 		vi.mocked(api.postSetupEnv).mockResolvedValue({
 			ok: true,
 			managedEnv: status.managedEnv,
-			written: ["HUGGINGFACE_API_KEY"],
+			written: ["OPENROUTER_API_KEY"],
 			restartRequired: true,
 		});
 		vi.mocked(api.postSetupRestart).mockResolvedValue(undefined);
 
 		render(wrap(<SettingsPage />));
 		const user = userEvent.setup();
-		const hfInput = await screen.findByLabelText(/HuggingFace API key/i);
-		await user.type(hfInput, "hf_NEWtoken");
+		const orInput = await screen.findByLabelText(/OpenRouter API key/i);
+		await user.type(orInput, "sk-or-NEWkey");
 
 		await act(async () => {
 			await user.click(
@@ -112,7 +128,7 @@ describe("SettingsPage", () => {
 
 		await waitFor(() =>
 			expect(api.postSetupEnv).toHaveBeenCalledWith({
-				HUGGINGFACE_API_KEY: "hf_NEWtoken",
+				OPENROUTER_API_KEY: "sk-or-NEWkey",
 			}),
 		);
 	});

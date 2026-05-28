@@ -3,11 +3,12 @@
  *
  * Holds runtime-wide configuration that doesn't belong on a
  * per-workspace settings page. Today: the credentials editor for
- * Astra and HuggingFace, which previously could only be set during
- * the first-run onboarding wizard. The wizard runs once and then
- * disappears; this page is the post-setup escape hatch so operators
- * can fix a missing `HUGGINGFACE_API_KEY` (or rotate a token)
- * without restarting the container by hand.
+ * Astra and the chat provider key (OpenRouter, or a direct OpenAI
+ * key), which previously could only be set during the first-run
+ * onboarding wizard. The wizard runs once and then disappears; this
+ * page is the post-setup escape hatch so operators can fix a missing
+ * `OPENROUTER_API_KEY` (or rotate a key) without restarting the
+ * container by hand.
  *
  * Backed by the same `/setup/env` + `/setup/restart` endpoints the
  * wizard already uses. The runtime's `setupAuthGate` was relaxed in
@@ -83,9 +84,10 @@ export function SettingsPage() {
 					<div>
 						<p className="font-medium">Chat is unconfigured.</p>
 						<p className="mt-1 text-xs leading-relaxed">
-							The runtime booted without a HuggingFace token, so agent message
-							endpoints return <code>503 chat_disabled</code>. Set the token
-							below and save — the runtime will restart and reconnect.
+							The runtime booted without a chat provider key, so agent message
+							endpoints return <code>503 chat_disabled</code>. Set your
+							OpenRouter (or OpenAI) key below and save — the runtime will
+							restart and reconnect.
 						</p>
 					</div>
 				</div>
@@ -142,12 +144,17 @@ function CredentialsCard() {
 	const qc = useQueryClient();
 	const [astraEndpoint, setAstraEndpoint] = useState("");
 	const [astraToken, setAstraToken] = useState("");
-	const [hfKey, setHfKey] = useState("");
+	const [openrouterKey, setOpenrouterKey] = useState("");
+	const [openaiKey, setOpenaiKey] = useState("");
 	const [phase, setPhase] = useState<Phase>("form");
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
 	const writable = status?.managedEnv.writable ?? true;
 	const managedPath = status?.managedEnv.path ?? "(unknown)";
+	// Which credentials already resolve to a value in the runtime's
+	// environment, so each field can confirm it's configured without
+	// the value ever crossing the wire.
+	const configured = new Set(status?.managedEnv.configuredKeys ?? []);
 
 	async function save() {
 		const values: Partial<Record<ManagedEnvKey, string>> = {};
@@ -155,7 +162,8 @@ function CredentialsCard() {
 			values.ASTRA_DB_API_ENDPOINT = astraEndpoint.trim();
 		if (astraToken.trim())
 			values.ASTRA_DB_APPLICATION_TOKEN = astraToken.trim();
-		if (hfKey.trim()) values.HUGGINGFACE_API_KEY = hfKey.trim();
+		if (openrouterKey.trim()) values.OPENROUTER_API_KEY = openrouterKey.trim();
+		if (openaiKey.trim()) values.OPENAI_API_KEY = openaiKey.trim();
 		if (Object.keys(values).length === 0) {
 			toast.info("Nothing to save — fill at least one field.");
 			return;
@@ -193,7 +201,8 @@ function CredentialsCard() {
 		// so we don't keep sensitive material in DOM state.
 		setAstraEndpoint("");
 		setAstraToken("");
-		setHfKey("");
+		setOpenrouterKey("");
+		setOpenaiKey("");
 		await qc.invalidateQueries({ queryKey: ["setup-status"] });
 	}
 
@@ -208,8 +217,8 @@ function CredentialsCard() {
 					<div className="min-w-0">
 						<CardTitle className="text-base">Runtime credentials</CardTitle>
 						<CardDescription className="mt-1 leading-relaxed">
-							Astra DB and HuggingFace credentials persist to the
-							workbench-managed dotenv file at{" "}
+							Astra DB and your chat provider key (OpenRouter, or a direct
+							OpenAI key) persist to the workbench-managed dotenv file at{" "}
 							<code className="text-xs">{managedPath}</code> (mode 0600). Saving
 							triggers a graceful runtime restart; the page reconnects when{" "}
 							<code>/readyz</code> returns OK.
@@ -229,7 +238,12 @@ function CredentialsCard() {
 					</div>
 				) : null}
 				<div className="space-y-2">
-					<Label htmlFor="astra-endpoint">Astra DB API endpoint</Label>
+					<FieldLabelRow
+						htmlFor="astra-endpoint"
+						configured={configured.has("ASTRA_DB_API_ENDPOINT")}
+					>
+						Astra DB API endpoint
+					</FieldLabelRow>
 					<Input
 						id="astra-endpoint"
 						type="url"
@@ -241,11 +255,20 @@ function CredentialsCard() {
 					/>
 				</div>
 				<div className="space-y-2">
-					<Label htmlFor="astra-token">Astra DB application token</Label>
+					<FieldLabelRow
+						htmlFor="astra-token"
+						configured={configured.has("ASTRA_DB_APPLICATION_TOKEN")}
+					>
+						Astra DB application token
+					</FieldLabelRow>
 					<Input
 						id="astra-token"
 						type="password"
-						placeholder="AstraCS:..."
+						placeholder={
+							configured.has("ASTRA_DB_APPLICATION_TOKEN")
+								? "•••••••• (leave blank to keep current)"
+								: "AstraCS:..."
+						}
 						autoComplete="off"
 						value={astraToken}
 						onChange={(e) => setAstraToken(e.target.value)}
@@ -253,19 +276,53 @@ function CredentialsCard() {
 					/>
 				</div>
 				<div className="space-y-2">
-					<Label htmlFor="hf-key">HuggingFace API key</Label>
+					<FieldLabelRow
+						htmlFor="openrouter-key"
+						configured={configured.has("OPENROUTER_API_KEY")}
+					>
+						OpenRouter API key
+					</FieldLabelRow>
 					<Input
-						id="hf-key"
+						id="openrouter-key"
 						type="password"
-						placeholder="hf_..."
+						placeholder={
+							configured.has("OPENROUTER_API_KEY")
+								? "•••••••• (leave blank to keep current)"
+								: "sk-or-..."
+						}
 						autoComplete="off"
-						value={hfKey}
-						onChange={(e) => setHfKey(e.target.value)}
+						value={openrouterKey}
+						onChange={(e) => setOpenrouterKey(e.target.value)}
 						disabled={submitting || !writable}
 					/>
 					<p className="text-xs text-slate-500 dark:text-slate-400">
-						Used as the default token for HuggingFace-backed chat services.
+						The runtime's default chat + embedding key (one key → 300+ models).
 						Per-agent LLM services override this.
+					</p>
+				</div>
+				<div className="space-y-2">
+					<FieldLabelRow
+						htmlFor="openai-key"
+						configured={configured.has("OPENAI_API_KEY")}
+					>
+						OpenAI API key
+					</FieldLabelRow>
+					<Input
+						id="openai-key"
+						type="password"
+						placeholder={
+							configured.has("OPENAI_API_KEY")
+								? "•••••••• (leave blank to keep current)"
+								: "sk-..."
+						}
+						autoComplete="off"
+						value={openaiKey}
+						onChange={(e) => setOpenaiKey(e.target.value)}
+						disabled={submitting || !writable}
+					/>
+					<p className="text-xs text-slate-500 dark:text-slate-400">
+						Optional — direct/BYOK for services with{" "}
+						<code>provider: openai</code> instead of routing through OpenRouter.
 					</p>
 				</div>
 				<div className="flex items-center justify-between gap-3 pt-1">
@@ -284,6 +341,33 @@ function CredentialsCard() {
 				</div>
 			</CardContent>
 		</Card>
+	);
+}
+
+/**
+ * A field label with an optional green "Configured" affordance on the
+ * right — confirms the credential already resolves to a value in the
+ * runtime environment (the value itself never leaves the server).
+ */
+function FieldLabelRow({
+	htmlFor,
+	configured,
+	children,
+}: {
+	readonly htmlFor: string;
+	readonly configured: boolean;
+	readonly children: React.ReactNode;
+}) {
+	return (
+		<div className="flex items-center justify-between gap-2">
+			<Label htmlFor={htmlFor}>{children}</Label>
+			{configured ? (
+				<span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+					<CheckCircle2 className="h-3.5 w-3.5" />
+					Configured
+				</span>
+			) : null}
+		</div>
 	);
 }
 

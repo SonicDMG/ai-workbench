@@ -90,15 +90,15 @@ runtime:
 
 # Optional — runtime-wide default chat-completion executor used by
 # agents that have no per-agent `llmServiceId` of their own. Set
-# HUGGINGFACE_API_KEY in your .env
-# (https://huggingface.co/settings/tokens) and uncomment the block
-# below. Without `chat:` AND with no LLM service bound on the agent,
-# POST .../messages returns 503 chat_disabled (the rest of the
-# runtime works fine).
+# OPENROUTER_API_KEY in your .env (https://openrouter.ai/keys) and
+# uncomment the block below. Without `chat:` AND with no LLM service
+# bound on the agent, POST .../messages returns 503 chat_disabled (the
+# rest of the runtime works fine).
 #
 # chat:
-#   tokenRef: env:HUGGINGFACE_API_KEY
-#   model: Qwen/Qwen2.5-7B-Instruct
+#   provider: openrouter        # openrouter (default) | openai | ollama
+#   tokenRef: env:OPENROUTER_API_KEY
+#   model: openai/gpt-4o-mini
 #   maxOutputTokens: 1024
 #   retrievalK: 6
 #   # Override the runtime's default agent system prompt

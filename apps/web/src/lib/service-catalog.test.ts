@@ -23,8 +23,10 @@ describe("service catalog", () => {
 		// names pinned here so a drift on either side fails CI.
 		expect(EMBEDDING_PRESETS.map((p) => p.id).sort()).toEqual([
 			"nvidia-nv-embedqa-e5-v5",
+			"ollama-nomic-embed-text",
 			"openai-text-embedding-3-large",
 			"openai-text-embedding-3-small",
+			"openrouter-text-embedding-3-small",
 		]);
 		expect(CHUNKING_PRESETS.map((p) => p.id).sort()).toEqual([
 			"line-rows-1",
@@ -35,12 +37,12 @@ describe("service catalog", () => {
 		]);
 	});
 
-	test("default embedding preset is openai 3-small", () => {
+	test("default embedding preset is openrouter 3-small", () => {
 		const first = EMBEDDING_PRESETS[0];
-		expect(first?.input.provider).toBe("openai");
-		expect(first?.input.modelName).toBe("text-embedding-3-small");
+		expect(first?.input.provider).toBe("openrouter");
+		expect(first?.input.modelName).toBe("openai/text-embedding-3-small");
 		expect(first?.input.embeddingDimension).toBe(1536);
-		expect(first?.input.credentialRef).toBe("env:OPENAI_API_KEY");
+		expect(first?.input.credentialRef).toBe("env:OPENROUTER_API_KEY");
 	});
 
 	test("default chunking preset is recursive char (1000/150)", () => {

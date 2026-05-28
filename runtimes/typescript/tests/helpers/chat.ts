@@ -1,6 +1,6 @@
 /**
  * Test-only {@link ChatService} that produces deterministic replies
- * without touching the HuggingFace API. The fake records the last
+ * without touching a real chat provider. The fake records the last
  * request so tests can assert on the assembled prompt (system role,
  * KB context, history, new turn) without parsing model outputs.
  */
@@ -110,9 +110,12 @@ async function* defaultStream(
  */
 export const TEST_CHAT_CONFIG: ChatConfig = {
 	enabled: true,
-	tokenRef: "env:TEST_HF_TOKEN",
+	provider: "openrouter",
+	tokenRef: "env:TEST_OPENROUTER_TOKEN",
+	baseUrl: null,
 	model: "fake-test-model",
 	maxOutputTokens: 256,
 	retrievalK: 4,
+	allowDataCollection: false,
 	systemPrompt: null,
 };

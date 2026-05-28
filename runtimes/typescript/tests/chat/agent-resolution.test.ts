@@ -11,7 +11,6 @@
 
 import { describe, expect, test } from "vitest";
 import { resolveAgentChat } from "../../src/chat/agent-resolution.js";
-import { HuggingFaceChatService } from "../../src/chat/huggingface.js";
 import { OpenAIChatService } from "../../src/chat/openai.js";
 import type { ChatService } from "../../src/chat/types.js";
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../../src/control-plane/defaults.js";
@@ -108,13 +107,13 @@ describe("resolveAgentChat — fallback chat service", () => {
 });
 
 describe("resolveAgentChat — per-agent llm-service binding", () => {
-	test("builds a HuggingFaceChatService when the agent points at one", async () => {
+	test("builds an OpenRouter-backed service when the agent points at one", async () => {
 		const f = await buildFixture();
 		const llm = await f.store.createLlmService(f.workspaceId, {
-			name: "hf-llm",
-			provider: "huggingface",
-			modelName: "mistralai/Mistral-7B-Instruct",
-			credentialRef: "stub:hf_token",
+			name: "or-llm",
+			provider: "openrouter",
+			modelName: "openai/gpt-4o-mini",
+			credentialRef: "stub:openrouter_token",
 		});
 		const agent = await f.store.updateAgent(f.workspaceId, f.agent.agentId, {
 			llmServiceId: llm.llmServiceId,
@@ -124,7 +123,8 @@ describe("resolveAgentChat — per-agent llm-service binding", () => {
 			agent,
 			conversation: f.conversation,
 		});
-		expect(resolved.chatService).toBeInstanceOf(HuggingFaceChatService);
+		expect(resolved.chatService).toBeInstanceOf(OpenAIChatService);
+		expect(resolved.chatService.providerId).toBe("openrouter");
 	});
 
 	test("builds an OpenAIChatService when the agent points at one", async () => {
@@ -144,6 +144,26 @@ describe("resolveAgentChat — per-agent llm-service binding", () => {
 			conversation: f.conversation,
 		});
 		expect(resolved.chatService).toBeInstanceOf(OpenAIChatService);
+		expect(resolved.chatService.providerId).toBe("openai");
+	});
+
+	test("builds a local Ollama service with no credentialRef", async () => {
+		const f = await buildFixture();
+		const llm = await f.store.createLlmService(f.workspaceId, {
+			name: "ollama-local",
+			provider: "ollama",
+			modelName: "llama3.1",
+		});
+		const agent = await f.store.updateAgent(f.workspaceId, f.agent.agentId, {
+			llmServiceId: llm.llmServiceId,
+		});
+		const resolved = await resolveAgentChat(f.deps, {
+			workspaceId: f.workspaceId,
+			agent,
+			conversation: f.conversation,
+		});
+		expect(resolved.chatService).toBeInstanceOf(OpenAIChatService);
+		expect(resolved.chatService.providerId).toBe("ollama");
 	});
 
 	test("raises a 404 when the agent points at a missing llm-service id", async () => {
@@ -166,12 +186,38 @@ describe("resolveAgentChat — per-agent llm-service binding", () => {
 		});
 	});
 
-	test("raises 422 llm_provider_unsupported for a non-openai/non-huggingface provider", async () => {
+	test("raises 422 llm_provider_unsupported for an unsupported provider", async () => {
 		const f = await buildFixture();
 		const llm = await f.store.createLlmService(f.workspaceId, {
 			name: "unknown",
 			provider: "vertex" as unknown as "openai",
 			modelName: "gemini-1.5-flash",
+			credentialRef: "stub:vertex_token",
+		});
+		const agent = await f.store.updateAgent(f.workspaceId, f.agent.agentId, {
+			llmServiceId: llm.llmServiceId,
+		});
+		await expect(
+			resolveAgentChat(f.deps, {
+				workspaceId: f.workspaceId,
+				agent,
+				conversation: f.conversation,
+			}),
+		).rejects.toMatchObject({
+			code: "llm_provider_unsupported",
+			status: 422,
+		});
+	});
+
+	test("a legacy huggingface record fails closed with 422, not a 500 (0.3.0 migration)", async () => {
+		// HuggingFace was removed in 0.3.0. A pre-existing service row left
+		// over from <0.3.0 must surface the actionable provider-unsupported
+		// error rather than crashing the send path.
+		const f = await buildFixture();
+		const llm = await f.store.createLlmService(f.workspaceId, {
+			name: "legacy-hf",
+			provider: "huggingface" as unknown as "openai",
+			modelName: "openai/gpt-oss-20b",
 			credentialRef: "stub:hf_token",
 		});
 		const agent = await f.store.updateAgent(f.workspaceId, f.agent.agentId, {
@@ -189,12 +235,12 @@ describe("resolveAgentChat — per-agent llm-service binding", () => {
 		});
 	});
 
-	test("raises 422 llm_credential_missing when credentialRef is null", async () => {
+	test("raises 422 llm_credential_missing when credentialRef is null and no global token", async () => {
 		const f = await buildFixture();
 		const llm = await f.store.createLlmService(f.workspaceId, {
-			name: "hf-no-cred",
-			provider: "huggingface",
-			modelName: "mistralai/Mistral-7B-Instruct",
+			name: "or-no-cred",
+			provider: "openrouter",
+			modelName: "openai/gpt-4o-mini",
 		});
 		const agent = await f.store.updateAgent(f.workspaceId, f.agent.agentId, {
 			llmServiceId: llm.llmServiceId,
@@ -232,10 +278,13 @@ describe("resolveAgentChat — system prompt precedence", () => {
 			...f.deps,
 			chatConfig: {
 				enabled: true,
-				tokenRef: "stub:hf_token",
+				provider: "openrouter" as const,
+				tokenRef: "stub:openrouter_token",
+				baseUrl: null,
 				model: "fixture-model",
 				maxOutputTokens: 512,
 				retrievalK: 6,
+				allowDataCollection: false,
 				systemPrompt: "runtime-level",
 			},
 		};

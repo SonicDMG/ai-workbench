@@ -17,6 +17,7 @@ import type {
 	CreateAgentInput,
 	CreateConversationInput,
 	CreateLlmServiceInput,
+	LlmModelList,
 	LlmServiceRecord,
 	UpdateAgentInput,
 	UpdateConversationInput,
@@ -452,5 +453,27 @@ export function useDeleteLlmService(
 			});
 			qc.invalidateQueries({ queryKey: keys.llmServices.all(workspaceId) });
 		},
+	});
+}
+
+/**
+ * Live chat-model catalog for the LLM-service model picker, keyed by
+ * provider. The runtime proxies OpenRouter `/models` (filtered to
+ * tool-calling-capable models) or a local Ollama server and falls back
+ * to a curated static list when the upstream is unreachable, so the
+ * query resolves on offline installs too. The model list is a
+ * runtime-level fact, not workspace-scoped, so it takes no workspaceId.
+ */
+export function useLlmModels(
+	provider: string | undefined,
+): UseQueryResult<LlmModelList, Error> {
+	return useQuery({
+		queryKey: provider
+			? keys.llmModels.byProvider(provider)
+			: ["llm-models", "disabled"],
+		queryFn: () => api.listLlmModels(provider),
+		enabled: Boolean(provider),
+		// The catalog drifts slowly; avoid refetching on every picker open.
+		staleTime: 5 * 60_000,
 	});
 }

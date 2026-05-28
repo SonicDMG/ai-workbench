@@ -110,14 +110,17 @@ runtime resolves the ref from these vars.
 > file pattern below to point `WORKBENCH_CONFIG` at a custom yaml with
 > `controlPlane: { driver: astra, ... }`.
 
-### HuggingFace chat
+### OpenRouter chat
 
-Generate a token at https://huggingface.co/settings/tokens (read scope),
-add it to `.env`:
+Generate a key at https://openrouter.ai/keys, add it to `.env`:
 
 ```bash
-HUGGINGFACE_API_KEY=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  # secret-scan: allow
+OPENROUTER_API_KEY=sk-or-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  # secret-scan: allow
 ```
+
+One key reaches OpenRouter's 300+ models. For fully offline use,
+point the `chat:` block at the `ollama` provider instead — Ollama
+runs locally and needs no key.
 
 Then either uncomment the `chat:` block in the bundled
 `workbench.docker.yaml` (via the override pattern) or bind-mount a
@@ -157,7 +160,7 @@ docker compose up -d --remove-orphans
 To pin a version:
 
 ```bash
-AI_WORKBENCH_TAG=0.2.0 docker compose up -d
+AI_WORKBENCH_TAG=0.3.0 docker compose up -d
 ```
 
 ## Healthcheck

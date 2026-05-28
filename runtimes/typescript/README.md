@@ -60,7 +60,7 @@ exercise each.
 | `WORKBENCH_CONFIG_FILE` | Path to `workbench.yaml` (default: repo-root) |
 | `WORKBENCH_ENV_FILE` | Override `.env` path |
 | `ASTRA_DB_API_ENDPOINT` / `ASTRA_DB_APPLICATION_TOKEN` | Astra control-plane credentials (auto-resolved from `astra` CLI when present) |
-| `HUGGINGFACE_API_KEY` | Required when `chat:` is configured |
+| `OPENROUTER_API_KEY` | Default chat/embedding credential; chat returns `503 chat_disabled` until set (not needed for the `ollama` provider). `OPENAI_API_KEY` is the direct/BYOK alternative. |
 | `APP_VERSION` / `APP_COMMIT` / `APP_BUILD_TIME` | Set by the Docker build to override [`src/version.ts`](src/version.ts) defaults |
 
 ## npm scripts

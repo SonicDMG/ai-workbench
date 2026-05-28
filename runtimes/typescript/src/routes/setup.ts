@@ -58,6 +58,13 @@ export interface SetupStatusBody {
 		path: string;
 		writable: boolean;
 		present: boolean;
+		/**
+		 * Which allow-listed keys currently resolve to a non-empty value
+		 * in the runtime's environment (from the managed file or shell
+		 * env). Lets the settings UI confirm per-field which credentials
+		 * are already configured without ever returning the values.
+		 */
+		configuredKeys: readonly string[];
 	};
 	readonly bootError?: SetupBootError;
 }
@@ -68,6 +75,9 @@ async function readSetupStatus(deps: SetupRouteDeps): Promise<SetupStatusBody> {
 		.then((items) => ({ count: items.length, healthy: true }))
 		.catch(() => ({ count: 0, healthy: false }));
 	const managedEnv = await describeManagedEnv();
+	const configuredKeys = MANAGED_ENV_KEYS.filter((key) =>
+		Boolean(process.env[key]?.trim()),
+	);
 	const hasAstraCreds = Boolean(
 		process.env.ASTRA_DB_API_ENDPOINT && process.env.ASTRA_DB_APPLICATION_TOKEN,
 	);
@@ -80,7 +90,7 @@ async function readSetupStatus(deps: SetupRouteDeps): Promise<SetupStatusBody> {
 		},
 		hasChatProvider: deps.chatConfigured,
 		hasAstraCreds,
-		managedEnv,
+		managedEnv: { ...managedEnv, configuredKeys },
 	};
 }
 

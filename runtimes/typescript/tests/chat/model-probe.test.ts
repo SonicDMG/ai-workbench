@@ -1,12 +1,13 @@
 /**
- * Unit coverage for the HuggingFace chat-model probe classifier.
+ * Unit coverage for the OpenAI-compatible chat-model probe classifier.
  *
  * The classifier is the load-bearing piece: a false positive blocks a
- * legitimate LLM-service save, so it must match the router's
- * task-mismatch phrasings and nothing else. The live probe itself is a
- * thin wrapper over {@link HuggingFaceChatService.complete} (already
- * covered) — here we assert the not-a-chat-model signal is recognised
- * and that everything else fails open.
+ * legitimate LLM-service save, so it must match the definitive
+ * "model unusable" phrasings (OpenRouter's "no endpoints found",
+ * OpenAI's `model_not_found`, etc.) and nothing transient. The live
+ * probe itself is a thin wrapper over {@link OpenAIChatService.complete}
+ * (already covered) — here we assert the signals are recognised and
+ * everything else fails open.
  */
 
 import { describe, expect, test } from "vitest";
@@ -17,34 +18,22 @@ import {
 } from "../../src/chat/model-probe.js";
 
 describe("isNotChatModelError", () => {
-	test("matches the canonical HF router phrasing", () => {
-		expect(
-			isNotChatModelError(
-				'HuggingFace inference failed: Model "mistralai/Mistral-7B-Instruct-v0.3" is not a chat model.',
-			),
-		).toBe(true);
+	test("matches the 'is not a chat model' phrasing", () => {
+		expect(isNotChatModelError('Model "some/model" is not a chat model.')).toBe(
+			true,
+		);
 	});
 
-	test("matches 'not supported for task' wording", () => {
+	test("matches 'does not support chat' wording", () => {
 		expect(
-			isNotChatModelError(
-				"Task conversational not supported for model some/model.",
-			),
-		).toBe(true);
-	});
-
-	test("matches 'task conversational is not ...' wording", () => {
-		expect(
-			isNotChatModelError(
-				"The task 'conversational' is not enabled for this model.",
-			),
+			isNotChatModelError("This model does not support chat completions."),
 		).toBe(true);
 	});
 
 	test("does NOT match an empty-completion failure (fail-open)", () => {
 		expect(
 			isNotChatModelError(
-				"HuggingFace returned an empty completion — try again, or pick a different model.",
+				"openrouter returned an empty completion — try again, or pick a different model.",
 			),
 		).toBe(false);
 	});
@@ -52,42 +41,43 @@ describe("isNotChatModelError", () => {
 	test("does NOT match transient transport / rate-limit errors (fail-open)", () => {
 		expect(isNotChatModelError("429 Too Many Requests")).toBe(false);
 		expect(isNotChatModelError("fetch failed: ENOTFOUND")).toBe(false);
-		expect(
-			isNotChatModelError("Model is currently loading; retry in 20s"),
-		).toBe(false);
 		expect(isNotChatModelError("401 Unauthorized: invalid token")).toBe(false);
 	});
 
-	test("does NOT match the not-routable signal (that's a different code)", () => {
+	test("does NOT match the model-unavailable signal (that's a different code)", () => {
 		expect(
-			isNotChatModelError(
-				"The requested model 'Qwen/Qwen2.5-7B-Instruct' is not supported by any provider you have enabled.",
-			),
+			isNotChatModelError("No endpoints found for openai/bogus-model."),
 		).toBe(false);
 	});
 });
 
 describe("isModelUnavailableError", () => {
-	test("matches the router's not-supported-by-any-provider phrasing", () => {
+	test("matches OpenRouter's 'no endpoints found' phrasing", () => {
 		expect(
 			isModelUnavailableError(
-				"Failed to perform inference: The requested model 'Qwen/Qwen2.5-7B-Instruct' is not supported by any provider you have enabled.",
+				"openrouter returned HTTP 404: No endpoints found for openai/bogus-model.",
 			),
 		).toBe(true);
 	});
 
-	test("matches the machine code 'model_not_supported'", () => {
+	test("matches OpenAI's machine code 'model_not_found'", () => {
 		expect(
-			isModelUnavailableError("400 Bad Request (model_not_supported)"),
+			isModelUnavailableError(
+				'openai returned HTTP 404: {"error":{"code":"model_not_found"}}',
+			),
 		).toBe(true);
+	});
+
+	test("matches 'does not exist' / 'is not a valid model' variants", () => {
+		expect(isModelUnavailableError("The model `gpt-9` does not exist.")).toBe(
+			true,
+		);
+		expect(isModelUnavailableError("`x` is not a valid model id.")).toBe(true);
 	});
 
 	test("does NOT match transient transport / rate-limit errors (fail-open)", () => {
 		expect(isModelUnavailableError("429 Too Many Requests")).toBe(false);
 		expect(isModelUnavailableError("fetch failed: ENOTFOUND")).toBe(false);
-		expect(
-			isModelUnavailableError("Model is currently loading; retry in 20s"),
-		).toBe(false);
 	});
 });
 
@@ -98,16 +88,14 @@ describe("classifyProbeFailure", () => {
 		);
 	});
 
-	test("routes the not-routable signal to llm_model_unavailable", () => {
+	test("routes the model-unavailable signal to llm_model_unavailable", () => {
 		expect(
-			classifyProbeFailure(
-				"The requested model 'x' is not supported by any provider you have enabled.",
-			),
+			classifyProbeFailure("No endpoints found for openai/bogus-model."),
 		).toBe("llm_model_unavailable");
 	});
 
 	test("returns null for indeterminate failures (fail-open)", () => {
 		expect(classifyProbeFailure("429 Too Many Requests")).toBeNull();
-		expect(classifyProbeFailure("model is currently loading")).toBeNull();
+		expect(classifyProbeFailure("connection reset")).toBeNull();
 	});
 });

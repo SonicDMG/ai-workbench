@@ -380,8 +380,10 @@ agent surface and the per-agent LLM-service binding.
 
 ```yaml
 chat:
-  tokenRef: env:HUGGINGFACE_API_KEY
-  model: openai/gpt-oss-20b
+  provider: openrouter
+  tokenRef: env:OPENROUTER_API_KEY
+  baseUrl: null
+  model: openai/gpt-4o-mini
   maxOutputTokens: 1024
   retrievalK: 6
   systemPrompt: null
@@ -389,8 +391,11 @@ chat:
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
-| `tokenRef` | SecretRef | required | Resolved once at boot. `env:VAR` or `file:/path`. |
-| `model` | string | `openai/gpt-oss-20b` | Any chat model served by the HuggingFace Inference Providers router. |
+| `provider` | enum | `openrouter` | One of `openrouter` (hosted default), `openai` (direct/BYOK), or `ollama` (local/offline). All three speak the OpenAI-compatible wire protocol and share one adapter. |
+| `tokenRef` | SecretRef | `env:OPENROUTER_API_KEY` | Resolved once at boot. `env:VAR` or `file:/path`. Not required for `ollama`, which needs no credential. |
+| `baseUrl` | string \| null | `null` | API base URL. `null` derives the provider default (`https://openrouter.ai/api/v1`, `https://api.openai.com/v1`, or `http://localhost:11434/v1`). |
+| `model` | string | `openai/gpt-4o-mini` | The provider's model id. For OpenRouter this is a catalog slug such as `openai/gpt-4o-mini`, `anthropic/claude-3.5-sonnet`, or `meta-llama/llama-3.3-70b-instruct` — one key reaches 300+ models. |
+| `allowDataCollection` | bool | `false` | OpenRouter only. Defaults to ZDR-only routing (`provider.data_collection: "deny"`), so prompts route exclusively to zero-data-retention upstreams. Set `true` to relax this and permit upstreams that may retain prompts. No effect for `openai` / `ollama`. |
 | `maxOutputTokens` | int (1–8192) | `1024` | Per-turn cap on the assistant's reply length. |
 | `retrievalK` | int (1–64) | `6` | Top-K KB chunks **per knowledge base**. The total injected into the prompt is `retrievalK * ceil(sqrt(numKbs))` so multi-KB conversations don't blow up the prompt. |
 | `systemPrompt` | string \| null | `null` | Default system prompt when neither the agent nor the agent's LLM service supplies one. `null` falls back to the runtime's persona-agnostic `DEFAULT_AGENT_SYSTEM_PROMPT`. |
@@ -399,11 +404,12 @@ chat:
 agent's bound LLM service overrides this block — the runtime
 instantiates a chat service from the LLM-service record instead of
 using the global block. The agent's own `systemPrompt` likewise
-wins over `chat.systemPrompt` when present. Multi-provider support
-is incremental; today `provider: "huggingface"` and
-`provider: "openai"` LLM services are wired end-to-end. Other
-providers can be stored but return `422 llm_provider_unsupported`
-until their adapters land.
+wins over `chat.systemPrompt` when present. Three providers are
+wired end-to-end today: `provider: "openrouter"`,
+`provider: "openai"`, and `provider: "ollama"` — all OpenAI-
+compatible and served by the same adapter. Other providers can be
+stored but return `422 llm_provider_unsupported` until their
+adapters land.
 
 ## Document extraction *(optional)*
 
@@ -597,7 +603,8 @@ populate it.
 
 **Managed env file.** The setup wizard writes its allow-listed keys
 (`ASTRA_DB_API_ENDPOINT`, `ASTRA_DB_APPLICATION_TOKEN`,
-`HUGGINGFACE_API_KEY`) to `$WORKBENCH_DATA_DIR/.env` with mode
+`OPENROUTER_API_KEY`, `OPENAI_API_KEY`) to
+`$WORKBENCH_DATA_DIR/.env` with mode
 `0600`. The bundled Docker compose sets both `WORKBENCH_DATA_DIR`
 and `WORKBENCH_ENV_FILE` to that path so the runtime auto-loads
 the file on the next boot after `POST /setup/restart`.

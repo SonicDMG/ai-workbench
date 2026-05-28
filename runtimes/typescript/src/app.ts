@@ -71,6 +71,7 @@ import type { AppEnv } from "./lib/types.js";
 import { buildDefaultRoutePlugins } from "./plugins/default-plugins.js";
 import type { RoutePluginRegistry } from "./plugins/registry.js";
 import { mapControlPlaneError } from "./routes/api-v1/helpers.js";
+import { llmModelsRoutes } from "./routes/api-v1/llm-models.js";
 import { authLoginRoutes } from "./routes/auth.js";
 import type { ReadinessSignal } from "./routes/operational.js";
 import { operationalRoutes } from "./routes/operational.js";
@@ -559,6 +560,17 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	for (const plugin of plugins.list()) {
 		app.route(plugin.mountPath, plugin.build(routePluginCtx));
 	}
+
+	// Runtime-level chat-model catalog (the model picker's data source).
+	// Not workspace-scoped — the catalog is a runtime fact, not a
+	// per-workspace one — so it mounts at `/api/v1` outside the
+	// workspace auth/CSRF middleware. It only proxies public model
+	// lists (OpenRouter `/models`, a local Ollama server) and never
+	// touches a credential or the control plane.
+	app.route(
+		"/api/v1",
+		llmModelsRoutes({ chatConfig: opts.chatConfig ?? null }),
+	);
 
 	registerCommonErrorResponses(app);
 	registerSecuritySchemes(app);

@@ -57,19 +57,31 @@ export const EMBEDDING_PROVIDERS: readonly {
 	readonly value: string;
 	readonly label: string;
 }[] = [
+	{ value: "openrouter", label: "OpenRouter" },
+	{ value: "ollama", label: "Ollama (local)" },
 	{ value: "openai", label: "OpenAI" },
 	{ value: "nvidia", label: "NVIDIA" },
 ];
 
 /** Model catalog per embedding provider — used to scope the model
  * dropdown once a provider is picked. Dim is the *native* dimension;
- * OpenAI's 3-* family supports truncation via the `dimensions` knob. */
+ * OpenAI's 3-* family supports truncation via the `dimensions` knob,
+ * while local models (Ollama nomic-embed-text → 768) are fixed. */
 export const EMBEDDING_MODELS: Readonly<
 	Record<
 		string,
 		readonly { readonly value: string; readonly dimension: number }[]
 	>
 > = {
+	openrouter: [
+		{ value: "openai/text-embedding-3-small", dimension: 1536 },
+		{ value: "openai/text-embedding-3-large", dimension: 3072 },
+	],
+	ollama: [
+		// Local Ollama server. Fixed native dimension — must match the
+		// KB's vector collection. No API key needed.
+		{ value: "nomic-embed-text", dimension: 768 },
+	],
 	openai: [
 		{ value: "text-embedding-3-small", dimension: 1536 },
 		{ value: "text-embedding-3-large", dimension: 3072 },
@@ -121,10 +133,43 @@ export const RERANKING_MODELS: Readonly<
 /** Embedding presets — mirror the runtime's `DEFAULT_SERVICES.embedding`. */
 export const EMBEDDING_PRESETS: readonly EmbeddingPreset[] = [
 	{
+		id: "openrouter-text-embedding-3-small",
+		label: "OpenRouter text-embedding-3-small",
+		description:
+			"Default. 1536 dimensions, cosine. Uses the same OPENROUTER_API_KEY as chat — one key for both.",
+		input: {
+			name: "openrouter-text-embedding-3-small",
+			description:
+				"OpenRouter openai/text-embedding-3-small (1536-dim, cosine).",
+			provider: "openrouter",
+			modelName: "openai/text-embedding-3-small",
+			embeddingDimension: 1536,
+			distanceMetric: "cosine",
+			authType: "api_key",
+			credentialRef: "env:OPENROUTER_API_KEY",
+		},
+	},
+	{
+		id: "ollama-nomic-embed-text",
+		label: "Ollama nomic-embed-text (local)",
+		description:
+			"Local/offline. 768 dimensions, cosine. Runs against a local Ollama server — no API key, works air-gapped once the model is pulled.",
+		input: {
+			name: "ollama-nomic-embed-text",
+			description: "Ollama nomic-embed-text (768-dim, cosine), local/offline.",
+			provider: "ollama",
+			modelName: "nomic-embed-text",
+			embeddingDimension: 768,
+			distanceMetric: "cosine",
+			authType: "none",
+			credentialRef: null,
+		},
+	},
+	{
 		id: "openai-text-embedding-3-small",
 		label: "OpenAI text-embedding-3-small",
 		description:
-			"Default. 1536 dimensions, cosine. Astra `$vectorize`-eligible — server-side embedding when the workspace uses the Astra driver.",
+			"Direct OpenAI (BYO key). 1536 dimensions, cosine. Astra `$vectorize`-eligible — server-side embedding when the workspace uses the Astra driver.",
 		input: {
 			name: "openai-text-embedding-3-small",
 			description: "OpenAI text-embedding-3-small (1536-dim, cosine).",

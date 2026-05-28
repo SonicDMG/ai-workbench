@@ -113,12 +113,11 @@ describe("agent routes", () => {
 
 		// Both agents are wired to the auto-seeded chat LLM service so
 		// the tool-call loop has a model available out of the box.
-		// Default ships HuggingFace `openai/gpt-oss-20b` (matches
-		// the runtime's default `chat.model`); HF doesn't expose native
-		// function calling so the dispatcher falls back to the
-		// retrieve-and-answer flow described in
-		// `chat/agent-dispatch.ts`. Confirm both agents share the same
-		// id and that the id points at a real LLM service.
+		// Default ships OpenRouter `openai/gpt-4o-mini` (matches the
+		// runtime's default `chat.provider` + `chat.model`), which exposes
+		// native function calling so the dispatcher's tool loop works
+		// directly. Confirm both agents share the same id and that the id
+		// points at a real LLM service.
 		const llmIds = new Set(items.map((a) => a.llmServiceId));
 		expect(llmIds.size).toBe(1);
 		const sharedLlmId = items[0]?.llmServiceId;
@@ -131,8 +130,8 @@ describe("agent routes", () => {
 			modelName: string;
 		}>;
 		expect(llmItems.find((s) => s.llmServiceId === sharedLlmId)).toMatchObject({
-			provider: "huggingface",
-			modelName: "openai/gpt-oss-20b",
+			provider: "openrouter",
+			modelName: "openai/gpt-4o-mini",
 		});
 
 		for (const item of items) {
@@ -543,13 +542,13 @@ describe("agent conversation message routes", () => {
 		expect(send.status).toBe(404);
 	});
 
-	test("POST /messages returns 422 when agent points at a non-huggingface llm service", async () => {
+	test("POST /messages returns 422 when agent points at an unsupported llm provider", async () => {
 		const app = makeApp({ chatService: makeFakeChatService() });
 		const ws = await createWorkspace(app);
 
-		// Create an LLM service with provider="mock" — only "huggingface"
-		// is wired in this runtime today, so the dispatcher should reject
-		// the request before calling any model.
+		// Create an LLM service with provider="mock" — only "openrouter",
+		// "openai", and "ollama" are wired in this runtime, so the
+		// dispatcher should reject the request before calling any model.
 		const svcRes = await app.request(`/api/v1/workspaces/${ws}/llm-services`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },

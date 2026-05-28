@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,13 @@ import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
+	SelectGroup,
 	SelectItem,
+	SelectLabel,
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useLlmModels } from "@/hooks/useConversations";
 import type {
 	CreateLlmServiceInput,
 	LlmServiceRecord,
@@ -19,17 +22,18 @@ import type {
 } from "@/lib/schemas";
 
 /**
- * Provider options. Only `huggingface` is wired through the runtime
- * today (see `chat/agent-dispatch.ts`); the other providers are
- * accepted at create time for forward-compat but produce
+ * Provider options. All three are OpenAI-compatible and wired through
+ * the runtime (one adapter — see `chat/providers.ts`). `openrouter` is
+ * the default (one key → 300+ models); `openai` is direct BYOK;
+ * `ollama` is a local/offline server that needs no credential. Any
+ * other provider value is accepted at create time but produces
  * `422 llm_provider_unsupported` at send time.
  */
 const PROVIDERS: readonly { readonly value: string; readonly label: string }[] =
 	[
-		{ value: "huggingface", label: "HuggingFace (wired)" },
-		{ value: "openai", label: "OpenAI (not yet wired)" },
-		{ value: "anthropic", label: "Anthropic (not yet wired)" },
-		{ value: "cohere", label: "Cohere (not yet wired)" },
+		{ value: "openrouter", label: "OpenRouter (wired)" },
+		{ value: "openai", label: "OpenAI — direct/BYOK (wired)" },
+		{ value: "ollama", label: "Ollama — local/offline (wired)" },
 	];
 
 /**
@@ -43,55 +47,56 @@ interface PopularModel {
 	readonly provider: string;
 	readonly modelName: string;
 	readonly label: string;
+	/** Surfaced under a "Recommended" group at the top of the picker. */
+	readonly recommended?: boolean;
 	/** Sensible per-model default so picking a row fills the rest. */
 	readonly maxOutputTokens?: number;
 }
 
 /**
- * Curated popular-models menu surfaced as quick picks. Today
- * HuggingFace dominates because the runtime only wires HF chat — the
- * other providers stay reachable through "Other (custom)" so
- * forward-compat doesn't regress. Keep this list short and
- * opinionated: it's a starter menu, not an exhaustive catalog.
+ * Curated popular-models menu surfaced as quick picks. OpenRouter slugs
+ * dominate because it's the default provider (one key → 300+ models);
+ * a local Ollama model is included for the offline path. Anything not
+ * listed stays reachable through "Other (custom)". Keep this list short
+ * and opinionated: it's a starter menu, not an exhaustive catalog.
  *
- * Every entry must be a model the HF Inference Providers router
- * actually serves for chat — a model that isn't onboarded by any
- * provider fails at send time with "not supported by any provider you
- * have enabled". These are the widest-served chat models on the router
- * (gpt-oss leads the ungated set); the config-time probe catches any
- * custom model picked via "Other" that the caller's account can't
- * route.
+ * Every OpenRouter entry is a tool-calling-capable model — the agent
+ * tool loop (list_kbs → search_kb → answer) needs native function
+ * calling. The config-time probe catches any custom model picked via
+ * "Other" that the caller's account/credits can't route.
  */
 const POPULAR_MODELS: readonly PopularModel[] = [
 	{
-		provider: "huggingface",
-		modelName: "openai/gpt-oss-20b",
-		label: "GPT-OSS 20B (default)",
+		provider: "openrouter",
+		modelName: "openai/gpt-4o-mini",
+		label: "GPT-4o mini (default)",
 		maxOutputTokens: 1024,
 	},
 	{
-		provider: "huggingface",
-		modelName: "openai/gpt-oss-120b",
-		label: "GPT-OSS 120B",
+		provider: "openrouter",
+		modelName: "openai/gpt-4o",
+		label: "GPT-4o",
 		maxOutputTokens: 2048,
 	},
 	{
-		provider: "huggingface",
-		modelName: "Qwen/Qwen3-32B",
-		label: "Qwen3 32B",
+		provider: "openrouter",
+		modelName: "anthropic/claude-3.5-sonnet",
+		label: "Claude 3.5 Sonnet",
 		maxOutputTokens: 2048,
 	},
 	{
-		provider: "huggingface",
-		modelName: "meta-llama/Llama-3.3-70B-Instruct",
+		provider: "openrouter",
+		modelName: "meta-llama/llama-3.3-70b-instruct",
 		label: "Llama 3.3 70B Instruct",
 		maxOutputTokens: 2048,
 	},
+	{
+		provider: "ollama",
+		modelName: "llama3.1",
+		label: "Llama 3.1 (local Ollama)",
+		maxOutputTokens: 2048,
+	},
 ];
-
-function findPopularModel(modelName: string): PopularModel | null {
-	return POPULAR_MODELS.find((m) => m.modelName === modelName) ?? null;
-}
 
 const FormSchema = z.object({
 	name: z.string().min(1, "Name is required"),
@@ -107,7 +112,7 @@ function toFormDefaults(svc: LlmServiceRecord | null): FormInput {
 	return {
 		name: svc?.name ?? "",
 		description: svc?.description ?? "",
-		provider: svc?.provider ?? "huggingface",
+		provider: svc?.provider ?? "openrouter",
 		modelName: svc?.modelName ?? "",
 		credentialRef: svc?.credentialRef ?? "",
 		maxOutputTokens: svc?.maxOutputTokens?.toString() ?? "",
@@ -156,33 +161,66 @@ export function LlmServiceForm({
 	const errors = form.formState.errors;
 	const provider = form.watch("provider");
 
-	// The picker is a separate piece of state because "Other (custom)"
-	// can't be derived from `modelName` alone — an empty modelName in
-	// edit mode would otherwise look like "no selection". We seed from
-	// the model name: matches a popular row → that row selected;
-	// otherwise → "Other".
-	const [modelPick, setModelPick] = useState<string>(() =>
-		findPopularModel(service?.modelName ?? "")
-			? (service?.modelName ?? "")
-			: "",
-	);
-	const showCustomModel = modelPick === "" || modelPick === OTHER_MODEL;
+	// Live model catalog for the selected provider (OpenRouter `/models`,
+	// Ollama `/models`). Falls back to the curated static list for this
+	// provider while the query is pending or when offline.
+	const modelsQuery = useLlmModels(provider);
+	const pickerModels = useMemo<readonly PopularModel[]>(() => {
+		const live = modelsQuery.data?.models;
+		if (live && live.length > 0) {
+			return live.map((m) => ({
+				provider,
+				modelName: m.id,
+				label: m.name,
+				recommended: m.recommended,
+			}));
+		}
+		return POPULAR_MODELS.filter((m) => m.provider === provider);
+	}, [modelsQuery.data, provider]);
+
+	// `modelName` (the form field) is the source of truth for the
+	// selection; `customModel` is true only when the operator explicitly
+	// chose "Other (custom)" to type a free-form id.
+	const currentModel = form.watch("modelName");
+	const [customModel, setCustomModel] = useState(false);
+
+	// What the picker renders: the provider's catalog, plus the
+	// currently-saved model when the catalog doesn't already list it (a
+	// live model absent from the offline fallback, a legacy/out-of-catalog
+	// id, or a pick made before the catalog finished loading). Without
+	// this, an existing selection silently collapses into "Other" on
+	// reopen instead of staying selected.
+	const options = useMemo<readonly PopularModel[]>(() => {
+		if (customModel || !currentModel) return pickerModels;
+		if (pickerModels.some((m) => m.modelName === currentModel))
+			return pickerModels;
+		return [
+			{ provider, modelName: currentModel, label: currentModel },
+			...pickerModels,
+		];
+	}, [pickerModels, currentModel, customModel, provider]);
+
+	const recommendedOptions = options.filter((m) => m.recommended);
+	const otherOptions = options.filter((m) => !m.recommended);
+	const showCustomModel = customModel;
 
 	function onPickModel(value: string): void {
-		setModelPick(value);
 		if (value === OTHER_MODEL) {
-			// Clear so the operator types their own. We don't touch
-			// provider — they may want a custom OpenAI / Cohere model
-			// after picking Other.
+			// Switch to the free-form input. Provider is left alone — the
+			// operator may want a custom OpenAI / Ollama model id.
+			setCustomModel(true);
 			form.setValue("modelName", "", { shouldDirty: true });
 			return;
 		}
-		const popular = findPopularModel(value);
-		if (!popular) return;
-		form.setValue("modelName", popular.modelName, { shouldDirty: true });
-		form.setValue("provider", popular.provider, { shouldDirty: true });
-		if (popular.maxOutputTokens !== undefined) {
-			form.setValue("maxOutputTokens", String(popular.maxOutputTokens), {
+		setCustomModel(false);
+		const picked = options.find((m) => m.modelName === value);
+		if (!picked) return;
+		form.setValue("modelName", picked.modelName, { shouldDirty: true });
+		form.setValue("provider", picked.provider, { shouldDirty: true });
+		// Only the curated rows carry a sensible default cap; live catalog
+		// entries leave the field untouched.
+		if (picked.maxOutputTokens !== undefined) {
+			form.setValue("maxOutputTokens", String(picked.maxOutputTokens), {
 				shouldDirty: true,
 			});
 		}
@@ -227,7 +265,7 @@ export function LlmServiceForm({
 				</FieldLabel>
 				<Input
 					id="llm-description"
-					placeholder="Production HuggingFace inference endpoint"
+					placeholder="Production OpenRouter chat model"
 					{...form.register("description")}
 				/>
 			</div>
@@ -236,7 +274,7 @@ export function LlmServiceForm({
 				<div className="flex flex-col gap-1.5">
 					<FieldLabel
 						htmlFor="llm-provider"
-						help="Today only HuggingFace is wired through the chat dispatcher. Other providers are accepted at create time but produce 422 llm_provider_unsupported when an agent tries to send."
+						help="OpenRouter, OpenAI (direct/BYOK), and Ollama (local) are all wired. Any other provider is accepted at create time but produces 422 llm_provider_unsupported when an agent tries to send."
 					>
 						Provider
 					</FieldLabel>
@@ -267,30 +305,47 @@ export function LlmServiceForm({
 				<div className="flex flex-col gap-1.5">
 					<FieldLabel
 						htmlFor="llm-model"
-						help="Pick a popular HuggingFace model or choose 'Other (custom)' to type any model name. Provider auto-switches to match the picked model."
+						help="Pick a popular model or choose 'Other (custom)' to type any model id (e.g. an OpenRouter slug, or a local Ollama model). Provider auto-switches to match the picked model."
 					>
 						Model
 					</FieldLabel>
 					<Select
-						value={showCustomModel ? OTHER_MODEL : (modelPick ?? OTHER_MODEL)}
+						value={customModel ? OTHER_MODEL : currentModel}
 						onValueChange={onPickModel}
 					>
 						<SelectTrigger id="llm-model">
 							<SelectValue placeholder="Pick a model" />
 						</SelectTrigger>
 						<SelectContent>
-							{POPULAR_MODELS.map((m) => (
-								<SelectItem key={m.modelName} value={m.modelName}>
-									{m.label}
-								</SelectItem>
-							))}
+							{recommendedOptions.length > 0 ? (
+								<SelectGroup>
+									<SelectLabel>Recommended</SelectLabel>
+									{recommendedOptions.map((m) => (
+										<SelectItem key={m.modelName} value={m.modelName}>
+											{m.label}
+										</SelectItem>
+									))}
+								</SelectGroup>
+							) : null}
+							{otherOptions.length > 0 ? (
+								<SelectGroup>
+									{recommendedOptions.length > 0 ? (
+										<SelectLabel>All models</SelectLabel>
+									) : null}
+									{otherOptions.map((m) => (
+										<SelectItem key={m.modelName} value={m.modelName}>
+											{m.label}
+										</SelectItem>
+									))}
+								</SelectGroup>
+							) : null}
 							<SelectItem value={OTHER_MODEL}>Other (custom)…</SelectItem>
 						</SelectContent>
 					</Select>
 					{showCustomModel ? (
 						<Input
 							id="llm-model-custom"
-							placeholder="e.g. openai/gpt-oss-20b"
+							placeholder="e.g. openai/gpt-4o-mini"
 							aria-invalid={errors.modelName ? true : undefined}
 							aria-label="Custom model name"
 							{...form.register("modelName")}
@@ -313,7 +368,7 @@ export function LlmServiceForm({
 				</FieldLabel>
 				<Input
 					id="llm-credential-ref"
-					placeholder="env:HUGGINGFACE_API_KEY"
+					placeholder="env:OPENROUTER_API_KEY"
 					{...form.register("credentialRef")}
 				/>
 				<p className="text-xs text-slate-500 dark:text-slate-400">

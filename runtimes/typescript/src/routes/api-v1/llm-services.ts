@@ -9,10 +9,8 @@
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import {
-	type ChatModelProbe,
-	probeHuggingFaceChatModel,
-} from "../../chat/model-probe.js";
+import { type ChatModelProbe, probeChatModel } from "../../chat/model-probe.js";
+import { chatProviderProfile } from "../../chat/providers.js";
 import type { ChatConfig } from "../../config/schema.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
@@ -42,11 +40,11 @@ export interface LlmServiceRoutesDeps {
 	readonly secrets?: SecretResolver;
 	/**
 	 * Runtime chat config. Supplies the fallback `tokenRef` used to
-	 * probe a HuggingFace model that has no per-service `credentialRef`.
-	 * `null` (no chat block / chat disabled) disables the fallback.
+	 * probe a model that has no per-service `credentialRef`. `null` (no
+	 * chat block / chat disabled) disables the fallback.
 	 */
 	readonly chatConfig?: ChatConfig | null;
-	/** Probe implementation; defaults to the live HF probe. */
+	/** Probe implementation; defaults to the live OpenAI-compatible probe. */
 	readonly probeChatModel?: ChatModelProbe;
 }
 
@@ -54,25 +52,28 @@ export function llmServiceRoutes(
 	deps: LlmServiceRoutesDeps,
 ): OpenAPIHono<AppEnv> {
 	const { store } = deps;
-	const probe = deps.probeChatModel ?? probeHuggingFaceChatModel;
+	const probe = deps.probeChatModel ?? probeChatModel;
 	const app = makeOpenApi();
 
 	/**
-	 * Config-time guard: for HuggingFace services, verify the model is
-	 * usable for chat before persisting. Skips silently when we can't
-	 * resolve a token to probe with (no secrets resolver, no per-service
-	 * credentialRef and no chat fallback, or an unresolved ref) — the
-	 * runtime degrades to the pre-existing send-time error in that case
+	 * Config-time guard: for credential-requiring OpenAI-compatible
+	 * providers (OpenRouter, OpenAI), verify the model is actually served
+	 * before persisting. Skips silently for local Ollama (no credential
+	 * to probe with), unknown providers (dispatch raises its own error),
+	 * and whenever we can't resolve a token (no secrets resolver, no
+	 * per-service credentialRef and no chat fallback, or an unresolved
+	 * ref) — the runtime degrades to the pre-existing send-time error
 	 * rather than blocking the save. Rejects with 422 only on a
-	 * definitive signal: `llm_model_not_chat` (served but not for chat)
-	 * or `llm_model_unavailable` (no provider serves it).
+	 * definitive signal: `llm_model_not_chat` or `llm_model_unavailable`.
 	 */
 	async function assertChatModelOrSkip(input: {
 		readonly provider: string;
 		readonly modelName: string;
 		readonly credentialRef: string | null | undefined;
+		readonly endpointBaseUrl: string | null | undefined;
 	}): Promise<void> {
-		if (input.provider !== "huggingface") return;
+		const profile = chatProviderProfile(input.provider);
+		if (!profile?.requiresCredential) return;
 		if (!deps.secrets) return;
 		const ref = input.credentialRef ?? deps.chatConfig?.tokenRef ?? null;
 		if (!ref) return;
@@ -83,12 +84,17 @@ export function llmServiceRoutes(
 			return; // unresolved credential → can't probe → fail-open
 		}
 		if (!token) return;
-		const outcome = await probe({ modelName: input.modelName, token });
+		const outcome = await probe({
+			provider: input.provider,
+			modelName: input.modelName,
+			token,
+			baseUrl: input.endpointBaseUrl,
+		});
 		if (outcome.kind === "rejected") {
 			const lead =
 				outcome.code === "llm_model_not_chat"
-					? `HuggingFace model "${input.modelName}" is not served for the chat-completion task; pick a conversational/instruct model (e.g. openai/gpt-oss-20b).`
-					: `HuggingFace model "${input.modelName}" is not served by any Inference provider on your account; enable a provider at huggingface.co/settings/inference-providers or pick a widely-served model (e.g. openai/gpt-oss-20b).`;
+					? `${profile.label} model "${input.modelName}" is not a chat-completion model; pick an instruct/chat model.`
+					: `${profile.label} model "${input.modelName}" is not served by ${profile.label}; check the model id (e.g. an OpenRouter slug like "openai/gpt-4o-mini") and that your account/credits can route it.`;
 			throw new ApiError(
 				outcome.code,
 				`${lead} Provider detail: ${outcome.detail}`,
@@ -156,6 +162,7 @@ export function llmServiceRoutes(
 				provider: body.provider,
 				modelName: body.modelName,
 				credentialRef: body.credentialRef,
+				endpointBaseUrl: body.endpointBaseUrl,
 			});
 			const record = await store.createLlmService(workspaceId, {
 				...body,
@@ -226,12 +233,14 @@ export function llmServiceRoutes(
 		async (c) => {
 			const { workspaceId, llmServiceId } = c.req.valid("param");
 			const body = c.req.valid("json");
-			// Re-probe only when the update touches the provider, model, or
-			// credential — otherwise the effective model is unchanged.
+			// Re-probe only when the update touches the provider, model,
+			// credential, or endpoint — otherwise the effective model is
+			// unchanged.
 			if (
 				body.provider !== undefined ||
 				body.modelName !== undefined ||
-				body.credentialRef !== undefined
+				body.credentialRef !== undefined ||
+				body.endpointBaseUrl !== undefined
 			) {
 				const existing = await store.getLlmService(workspaceId, llmServiceId);
 				if (existing) {
@@ -239,6 +248,7 @@ export function llmServiceRoutes(
 						provider: body.provider ?? existing.provider,
 						modelName: body.modelName ?? existing.modelName,
 						credentialRef: body.credentialRef ?? existing.credentialRef,
+						endpointBaseUrl: body.endpointBaseUrl ?? existing.endpointBaseUrl,
 					});
 				}
 			}

@@ -251,7 +251,8 @@ precedent as `/healthz` / `/readyz`. Families:
 Deep health snapshot. Returns `{controlPlane, chat, ingest,
 recentErrors}` with per-probe `{status: "ok"|"degraded"|"down",
 detail, durationMs}`. The chat probe calls `ChatService.ping()`
-(HuggingFace `whoami-v2`, OpenAI `/models`) when a chat provider
+(an OpenAI-compatible `/models` call against the configured
+provider — OpenRouter, OpenAI, or Ollama) when a chat provider
 is configured. No auth.
 
 ### `GET /health/recent-errors`
@@ -293,7 +294,7 @@ unauthenticated only during the fresh-install window
 Atomically writes a wizard-managed dotenv file at
 `$WORKBENCH_DATA_DIR/.env` (mode `0600`). Allow-list:
 `ASTRA_DB_API_ENDPOINT`, `ASTRA_DB_APPLICATION_TOKEN`,
-`HUGGINGFACE_API_KEY`. Any other key returns
+`OPENROUTER_API_KEY`, `OPENAI_API_KEY`. Any other key returns
 `400 unsupported_setup_key`.
 
 #### `POST /setup/restart`
@@ -1142,9 +1143,11 @@ same workspace may bind one of these via `agent.llmServiceId`; the
 agent's send + streaming pipeline then instantiates a chat service
 from the bound record.
 
-Today `provider: "huggingface"` and `provider: "openai"` are wired
-end-to-end; other providers can be created and stored, but agent send
-returns `422 llm_provider_unsupported` until their adapters land.
+Today `provider: "openrouter"`, `provider: "openai"`, and
+`provider: "ollama"` are wired end-to-end — all OpenAI-compatible
+and served by the same adapter. Other providers can be created and
+stored, but agent send returns `422 llm_provider_unsupported` until
+their adapters land.
 
 ### `GET /llm-services`
 
@@ -1165,10 +1168,10 @@ language / content tags. See the OpenAPI spec for the full shape.
 
 ```json
 {
-  "name": "hf-gpt-oss",
-  "provider": "huggingface",
-  "modelName": "openai/gpt-oss-20b",
-  "credentialRef": "env:HUGGINGFACE_API_KEY",
+  "name": "openrouter-gpt-4o-mini",
+  "provider": "openrouter",
+  "modelName": "openai/gpt-4o-mini",
+  "credentialRef": "env:OPENROUTER_API_KEY",
   "maxOutputTokens": 1024
 }
 ```
@@ -1261,8 +1264,8 @@ When unset it falls back to the runtime's global `chat:` block.
 - **201** — `{ user, assistant }`
 - **404** when the conversation does not belong to the named agent
 - **422** `llm_provider_unsupported` — `agent.llmServiceId` points
-  at an LLM service whose `provider` is neither `huggingface` nor
-  `openai`
+  at an LLM service whose `provider` is not one of `openrouter`,
+  `openai`, or `ollama`
 - **422** `llm_credential_missing` — bound LLM service has no
   `credentialRef`
 - **503** `chat_disabled` — runtime has no global `chat:` block
@@ -1277,7 +1280,7 @@ Same body. Returns `text/event-stream`:
 | `user-message` | The persisted user `ChatMessage` | Once, after the user turn is persisted |
 | `token` | `{ delta: string }` | Per model emission |
 | `token-reset` | `{}` | After a tool-call iteration so the UI can clear pre-tool narration before iteration N+1 streams in |
-| `tool-call` | `{ toolName, args, callId }` | The model requested a tool invocation (only on providers with native function calling — today OpenAI; HuggingFace skips this lane) |
+| `tool-call` | `{ toolName, args, callId }` | The model requested a tool invocation. Native function calling works across all wired providers (openrouter, openai, ollama) since they share the OpenAI tool-call wire format, subject to the specific model supporting tools (OpenRouter's catalog is filtered to tool-capable models). |
 | `tool-result` | `{ toolName, callId, result }` | Each tool result fed back into the next iteration |
 | `done` | The persisted assistant `ChatMessage` (`metadata.finish_reason: "stop"` / `"length"`) | Terminal on success |
 | `error` | The persisted assistant `ChatMessage` with `metadata.finish_reason: "error"` | Terminal on failure |
@@ -1397,14 +1400,15 @@ These do not exist yet. Shapes may shift before they land.
 
 ### Multi-provider LLM execution
 
-`huggingface` and `openai` are wired end-to-end today; `openai` is
-the only provider with native function calling, so the agent
-tool-use loop only fires for OpenAI-bound agents (HuggingFace
-agents still answer, just without tool dispatch). Other providers
-(Cohere, Anthropic, Bedrock, …) can be created and stored, but
-agent send returns `422 llm_provider_unsupported` until the
-provider is wired into the chat-service factory. Adding a provider
-is mostly a one-case addition to the dispatcher.
+`openrouter`, `openai`, and `ollama` are wired end-to-end today.
+All three speak the OpenAI tool-call wire format, so the agent
+tool-use loop fires across every wired provider (subject to the
+specific model supporting tools — OpenRouter's catalog is filtered
+to tool-capable models). Other providers (Cohere, Anthropic,
+Bedrock, …) can be created and stored, but agent send returns
+`422 llm_provider_unsupported` until the provider is wired into the
+chat-service factory. Adding a provider is mostly a one-case
+addition to the dispatcher.
 
 ### MCP tool execution
 

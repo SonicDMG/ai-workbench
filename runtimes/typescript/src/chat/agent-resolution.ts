@@ -31,11 +31,8 @@ import type { EmbedderFactory } from "../embeddings/factory.js";
 import { ApiError } from "../lib/errors.js";
 import type { Logger } from "../lib/logger.js";
 import type { SecretResolver } from "../secrets/provider.js";
-import {
-	HuggingFaceChatService,
-	type HuggingFaceChatServiceOptions,
-} from "./huggingface.js";
-import { OpenAIChatService, type OpenAIChatServiceOptions } from "./openai.js";
+import { OpenAIChatService } from "./openai.js";
+import { resolveChatProvider } from "./providers.js";
 import {
 	type AgentTool,
 	type AgentToolDeps,
@@ -92,6 +89,8 @@ export async function resolveAgentChat(
 	const chat = await resolveChatService(store, secrets, workspaceId, agent, {
 		fallbackChatService: chatService,
 		fallbackMaxOutputTokens: chatConfig?.maxOutputTokens,
+		fallbackTokenRef: chatConfig?.tokenRef,
+		allowDataCollection: chatConfig?.allowDataCollection,
 	});
 
 	// System-prompt resolution: agent override > runtime config override
@@ -118,11 +117,11 @@ export async function resolveAgentChat(
 		logger: deps.logger,
 	};
 
-	// Tools are always advertised to the resolved chat service. Both
-	// the OpenAI and HuggingFace adapters forward them as the `tools[]`
-	// request field and parse the model's `tool_calls` back out, so the
-	// model decides whether to call them. Models not served for tools
-	// just never emit any; the dispatcher loop only iterates when a
+	// Tools are always advertised to the resolved chat service. The
+	// OpenAI-compatible adapter forwards them as the `tools[]` request
+	// field and parses the model's `tool_calls` back out, so the model
+	// decides whether to call them. Models not served for tools just
+	// never emit any; the dispatcher loop only iterates when a
 	// completion actually emits tool calls.
 	const tools = DEFAULT_AGENT_TOOLS;
 
@@ -138,6 +137,14 @@ export async function resolveAgentChat(
 interface ChatServiceResolutionOptions {
 	readonly fallbackChatService: ChatService | null;
 	readonly fallbackMaxOutputTokens: number | undefined;
+	/**
+	 * Global runtime chat credential. Per the global-key design, a
+	 * per-agent llm service with no `credentialRef` of its own draws on
+	 * this so operators configure one key, not one-per-service.
+	 */
+	readonly fallbackTokenRef: string | undefined;
+	/** OpenRouter ZDR routing toggle from the runtime chat config. */
+	readonly allowDataCollection: boolean | undefined;
 }
 
 async function resolveChatService(
@@ -165,39 +172,51 @@ async function resolveChatService(
 	if (!record) {
 		throw new ControlPlaneNotFoundError("llm service", agent.llmServiceId);
 	}
-	if (record.provider !== "huggingface" && record.provider !== "openai") {
+
+	// Every wired provider is OpenAI-compatible; `resolveChatProvider`
+	// returns the base URL + headers + body extras, or null for an
+	// unknown provider (e.g. a legacy `huggingface` row left over from
+	// before 0.3.0).
+	const resolved = resolveChatProvider({
+		provider: record.provider,
+		baseUrl: record.endpointBaseUrl,
+		allowDataCollection: opts.allowDataCollection,
+	});
+	if (!resolved) {
 		throw new ApiError(
 			"llm_provider_unsupported",
-			`only the 'huggingface' and 'openai' providers are supported in this runtime today; agent points at provider '${record.provider}'`,
-			422,
-		);
-	}
-	if (!record.credentialRef) {
-		throw new ApiError(
-			"llm_credential_missing",
-			`llm service '${record.llmServiceId}' has no credentialRef set; cannot authenticate to ${record.provider}`,
+			`only the 'openrouter', 'openai', and 'ollama' providers are supported in this runtime; agent points at provider '${record.provider}'. Recreate the LLM service against a supported provider (HuggingFace was removed in 0.3.0).`,
 			422,
 		);
 	}
 
-	const credential = await secrets.resolve(record.credentialRef);
+	let apiKey = "";
+	if (resolved.profile.requiresCredential) {
+		// Per-service credentialRef wins; otherwise fall back to the
+		// runtime's single global chat token (the global-key design).
+		const ref = record.credentialRef ?? opts.fallbackTokenRef ?? null;
+		if (!ref) {
+			throw new ApiError(
+				"llm_credential_missing",
+				`llm service '${record.llmServiceId}' has no credentialRef and the runtime has no global chat token configured; cannot authenticate to ${record.provider}`,
+				422,
+			);
+		}
+		apiKey = await secrets.resolve(ref);
+	}
+
 	const maxOutputTokens =
 		record.maxOutputTokens ??
 		opts.fallbackMaxOutputTokens ??
 		DEFAULT_MAX_OUTPUT_TOKENS;
 
-	if (record.provider === "huggingface") {
-		const options: HuggingFaceChatServiceOptions = {
-			token: credential,
-			modelId: record.modelName,
-			maxOutputTokens,
-		};
-		return new HuggingFaceChatService(options);
-	}
-	const options: OpenAIChatServiceOptions = {
-		apiKey: credential,
+	return new OpenAIChatService({
+		apiKey,
 		modelId: record.modelName,
 		maxOutputTokens,
-	};
-	return new OpenAIChatService(options);
+		baseUrl: resolved.baseUrl,
+		providerId: resolved.profile.id,
+		defaultHeaders: resolved.defaultHeaders,
+		extraBody: resolved.extraBody,
+	});
 }

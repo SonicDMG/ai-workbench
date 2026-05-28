@@ -9,6 +9,113 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-28
+
+Headline: **HuggingFace is retired; chat and embeddings are unified on
+the OpenAI-compatible wire protocol.** One adapter now serves three
+providers — **OpenRouter** (hosted default, one key → 300+ models with
+standardized function calling), **OpenAI** (direct/BYOK), and
+**Ollama** (local, no credential, for air-gapped installs). This is a
+**breaking** release for anyone with a stored `provider: "huggingface"`
+LLM service or a `HUGGINGFACE_API_KEY`-based config — see **Migration**
+below.
+
+### Changed
+
+- **Provider strategy: OpenRouter + Ollama, not HuggingFace.** The
+  runtime's chat path was wired specifically to HF (an HF-only adapter,
+  HF-only routability probe, HF-only model picker). 0.2.1's release
+  notes were largely HF firefighting — symptoms of HF Inference
+  Providers being an awkward fit (models silently become unroutable,
+  uneven function-calling support). All three wired providers are now
+  OpenAI-compatible and dispatched through a single
+  [`OpenAIChatService`](./runtimes/typescript/src/chat/openai.ts) +
+  [provider registry](./runtimes/typescript/src/chat/providers.ts): a
+  provider is just a base URL + an optional credential + a label.
+- **Default chat model + credential.** `chat.model` defaults to
+  `openai/gpt-4o-mini` (an OpenRouter slug, was `openai/gpt-oss-20b`);
+  `chat.tokenRef` defaults to `env:OPENROUTER_API_KEY` (was
+  `env:HUGGINGFACE_API_KEY`); a new `chat.provider`
+  (`openrouter`|`openai`|`ollama`, default `openrouter`) and nullable
+  `chat.baseUrl` are added
+  ([`config/schema.ts`](./runtimes/typescript/src/config/schema.ts)).
+- **Seed + managed-env allow-list.** The auto-seeded default LLM
+  service now targets OpenRouter
+  ([`control-plane/default-services.ts`](./runtimes/typescript/src/control-plane/default-services.ts));
+  the `/setup/env` allow-list swaps `HUGGINGFACE_API_KEY` for
+  `OPENROUTER_API_KEY` + `OPENAI_API_KEY`
+  ([`setup/managed-env.ts`](./runtimes/typescript/src/setup/managed-env.ts)).
+- **ZDR-only by default.** OpenRouter requests carry
+  `provider.data_collection: "deny"` so prompts route only to
+  zero-data-retention upstreams; operators opt out with a single
+  global flag. Prompt logging is never enabled by default.
+
+### Added
+
+- **Live model catalog.** New `GET /api/v1/llm-models`
+  ([route](./runtimes/typescript/src/routes/api-v1/llm-models.ts) +
+  [catalog](./runtimes/typescript/src/chat/model-catalog.ts)) proxies
+  OpenRouter `/models` (filtered to tool-calling-capable models, a
+  curated "recommended" subset surfaced first) or a local Ollama
+  server's `/models`, with a curated static fallback so the picker is
+  never empty offline. The
+  [`LlmServiceForm`](./apps/web/src/components/agents/LlmServiceForm.tsx)
+  picker is now driven live from this endpoint. The endpoint is not
+  workspace-auth-scoped, so its `baseUrl` query param is validated
+  through the same SSRF guard (`EndpointBaseUrlSchema`) as service
+  endpoints.
+- **Ollama + OpenRouter embeddings.** When Astra `$vectorize` isn't
+  configured, embeddings run through the same OpenAI-compatible client
+  for `openrouter`/`ollama`/`openai`/`cohere`
+  ([`embeddings/langchain.ts`](./runtimes/typescript/src/embeddings/langchain.ts));
+  Ollama needs no credential. Each embedding service declares its
+  model's native vector dimension (the Ollama seed pins
+  `nomic-embed-text` → 768, which can't be truncated); when a returned
+  vector doesn't match the declared `embeddingDimension`, the embed
+  call now fails with an actionable error naming the exact size to set
+  (and to create the KB collection at), instead of a generic mismatch.
+- **Settings: per-field "Configured" indicators.** `/settings` now
+  shows a green ✓ Configured marker next to each credential that
+  already resolves in the runtime environment, backed by a new
+  `managedEnv.configuredKeys` field on `GET /setup-status` (the value
+  itself never crosses the wire); configured secret fields hint that a
+  blank input keeps the current value
+  ([`SettingsPage.tsx`](./apps/web/src/pages/SettingsPage.tsx)).
+- **Agent cards show their bound LLM model.** The workspace overview's
+  agent cards render a `model …` chip — mirroring the KB cards'
+  embedding chip — resolving the agent's `llmServiceId` to its model
+  id, or `default` when it inherits the workspace chat default
+  ([`WorkspaceDetailPage.tsx`](./apps/web/src/pages/WorkspaceDetailPage.tsx)).
+- **Browser tab title** now reads `AI Workbench | IBM`.
+
+### Removed
+
+- **HuggingFace chat adapter and SDK.** Deleted
+  `runtimes/typescript/src/chat/huggingface.ts` and removed the
+  `@huggingface/inference` dependency. The HF-specific
+  routability/chat-model probe is replaced by an OpenRouter-aware check
+  (a model is valid when it appears in `/models` with `tools` in
+  `supported_parameters`); Ollama models are accepted without probing.
+
+### Migration
+
+- **Stored `provider: "huggingface"` LLM services now fail closed.**
+  An agent bound to such a service raises `422
+  llm_provider_unsupported` at send time (not a 500) with an
+  actionable message; recreate the service against `openrouter`,
+  `openai`, or `ollama`. Regression-locked in
+  [`tests/chat/agent-resolution.test.ts`](./runtimes/typescript/tests/chat/agent-resolution.test.ts).
+- **Swap the env var.** Replace `HUGGINGFACE_API_KEY` with
+  `OPENROUTER_API_KEY` (or set `OPENAI_API_KEY` for direct BYOK, or
+  point `chat.provider: ollama` at a local server for offline use).
+  Paste the new key at `/settings` and the runtime restarts and
+  reconnects.
+
+Tests: **1,403** runtime + **434** web passing on a green typecheck and
+lint across both packages. Docs (configuration, api-spec, agents,
+docker, telemetry, roadmap, codemaps) updated to describe the new
+provider model.
+
 ## [0.2.1] — 2026-05-27
 
 Headline: **RLAC on Documents graduates from Preview to GA**, with
@@ -760,7 +867,8 @@ These were scoped for 0.1.0 but deferred to keep the release focused:
   flow.
 - Discoverability tooltips + "What's new in 0.1.0" modal in the web UI.
 
-[Unreleased]: https://github.com/datastax/ai-workbench/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/datastax/ai-workbench/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/datastax/ai-workbench/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/datastax/ai-workbench/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/datastax/ai-workbench/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/datastax/ai-workbench/releases/tag/v0.1.0

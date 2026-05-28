@@ -140,7 +140,7 @@ service CRUD) stay off the surface. Reasons:
   own KB; everything else is incremental.
 
 `chat_send` is exposed under a separate flag because it's the only
-tool that costs HuggingFace tokens. `ingest_text` and
+tool that costs LLM/model tokens. `ingest_text` and
 `delete_document` are unflagged: their cost is bounded by the
 chunker + embedder on the workspace, which the operator already
 controls through the regular ingest config.

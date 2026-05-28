@@ -39,6 +39,13 @@ export interface EmbedderFactory {
  */
 const MOCK_EMBEDDING_PROVIDER = "mock";
 
+/**
+ * Providers that need no credential. A local Ollama server is
+ * unauthenticated, so — like {@link MOCK_EMBEDDING_PROVIDER} — it
+ * skips secret resolution and builds straight from the config.
+ */
+const NO_CREDENTIAL_PROVIDERS = new Set(["ollama"]);
+
 function buildMockEmbedder(config: EmbeddingConfig): Embedder {
 	return {
 		id: `mock:${config.model}`,
@@ -62,6 +69,11 @@ export function makeEmbedderFactory(
 				// declines to call any backend. Operators who set this in
 				// production are opting out of real retrieval.
 				return buildMockEmbedder(config);
+			}
+			if (NO_CREDENTIAL_PROVIDERS.has(config.provider)) {
+				// Local/unauthenticated providers (Ollama) need no secret —
+				// build straight from the config with an empty key.
+				return buildLangchainEmbedder({ config, apiKey: "" });
 			}
 			if (!config.secretRef) {
 				throw new EmbedderUnavailableError(

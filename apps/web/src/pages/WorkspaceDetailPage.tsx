@@ -9,7 +9,7 @@ import {
 	Settings,
 	Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { AgentForm } from "@/components/agents/AgentForm";
@@ -192,6 +192,16 @@ function AgentsHero({ workspaceId }: { workspaceId: string }) {
 	const [editing, setEditing] = useState<AgentRecord | null>(null);
 	const [deleting, setDeleting] = useState<AgentRecord | null>(null);
 
+	// Resolve each agent's bound LLM service to its model id for the
+	// summary chip — mirrors how KB cards surface their embedding model.
+	const llmModelById = useMemo(
+		() =>
+			new Map(
+				(llmServices.data ?? []).map((s) => [s.llmServiceId, s.modelName]),
+			),
+		[llmServices.data],
+	);
+
 	return (
 		<Card className="overflow-hidden">
 			<CardHeader className="flex flex-col items-stretch gap-4 space-y-0 sm:flex-row sm:items-start sm:justify-between">
@@ -237,6 +247,7 @@ function AgentsHero({ workspaceId }: { workspaceId: string }) {
 								key={agent.agentId}
 								workspaceId={workspaceId}
 								agent={agent}
+								llmModelById={llmModelById}
 								onEdit={() => setEditing(agent)}
 								onDelete={() => setDeleting(agent)}
 							/>
@@ -272,17 +283,26 @@ function AgentsHero({ workspaceId }: { workspaceId: string }) {
 function AgentSummaryCard({
 	workspaceId,
 	agent,
+	llmModelById,
 	onEdit,
 	onDelete,
 }: {
 	workspaceId: string;
 	agent: AgentRecord;
+	llmModelById: ReadonlyMap<string, string>;
 	onEdit: () => void;
 	onDelete: () => void;
 }) {
 	const kbLabel = agent.knowledgeBaseIds.length
 		? `${agent.knowledgeBaseIds.length} KB${agent.knowledgeBaseIds.length === 1 ? "" : "s"}`
 		: "all KBs";
+	// The bound LLM service's model id, mirroring the KB cards' embedding
+	// chip. An agent with no explicit service inherits the workspace's
+	// global chat default; a non-null id that doesn't resolve means the
+	// service was deleted out from under the agent.
+	const llmModel = agent.llmServiceId
+		? (llmModelById.get(agent.llmServiceId) ?? agent.llmServiceId.slice(0, 8))
+		: null;
 	return (
 		<li className="group relative rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600">
 			<Link
@@ -307,12 +327,23 @@ function AgentSummaryCard({
 						</p>
 					</div>
 				</div>
-				<div className="mt-auto flex items-center gap-3">
-					<div className="min-w-0">
-						<span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-							{kbLabel}
+				<div className="mt-auto flex min-w-0 flex-wrap items-center gap-1.5">
+					<span className="inline-flex shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+						{kbLabel}
+					</span>
+					<span
+						className="inline-flex max-w-full items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-300"
+						title={
+							llmModel
+								? `model: ${llmModel}`
+								: "model: workspace default (no LLM service bound)"
+						}
+					>
+						<span className="opacity-70">model</span>
+						<span className="truncate font-mono normal-case">
+							{llmModel ?? "default"}
 						</span>
-					</div>
+					</span>
 				</div>
 			</div>
 			<div className="absolute right-3 top-3 z-20 flex items-center gap-1">

@@ -373,7 +373,7 @@ const REGISTRY = new Map<string, ErrorCodeDescriptor>([
 	entry(
 		"llm_provider_unsupported",
 		422,
-		"The agent's LLM service uses a provider that this runtime cannot dispatch yet; choose openai or huggingface.",
+		"The agent's LLM service uses a provider this runtime cannot dispatch; choose openrouter, openai, or ollama (HuggingFace was removed in 0.3.0).",
 	),
 	entry(
 		"llm_credential_missing",
@@ -383,12 +383,12 @@ const REGISTRY = new Map<string, ErrorCodeDescriptor>([
 	entry(
 		"llm_model_not_chat",
 		422,
-		"The HuggingFace model is not served for the chat-completion task; pick a conversational/instruct model (e.g. openai/gpt-oss-20b).",
+		"The model is not served for chat completion; pick an instruct/chat model.",
 	),
 	entry(
 		"llm_model_unavailable",
 		422,
-		"No HuggingFace Inference provider serves this model for your account; enable a provider at huggingface.co/settings/inference-providers or pick a widely-served model (e.g. openai/gpt-oss-20b).",
+		"The provider does not serve this model; check the model id (e.g. an OpenRouter slug like `openai/gpt-4o-mini`) and that your account/credits can route it.",
 	),
 
 	// --- playground ---

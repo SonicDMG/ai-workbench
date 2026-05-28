@@ -7,4 +7,4 @@
  * so the value is stable across build environments (CI, local dev,
  * Docker) and visible at code-review time.
  */
-export const APP_VERSION = "0.2.1";
+export const APP_VERSION = "0.3.0";

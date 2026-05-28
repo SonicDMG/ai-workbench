@@ -60,4 +60,9 @@ export const keys = {
 		detail: (workspaceId: string, llmServiceId: string) =>
 			["workspaces", workspaceId, "llm-services", llmServiceId] as const,
 	},
+	// Runtime-level chat-model catalog (not workspace-scoped). Keyed by
+	// provider so switching the provider picker refetches.
+	llmModels: {
+		byProvider: (provider: string) => ["llm-models", provider] as const,
+	},
 };

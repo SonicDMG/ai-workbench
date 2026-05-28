@@ -1,17 +1,21 @@
 /**
- * OpenAI Chat Completions implementation of {@link ChatService}, with
- * native function-calling support so agents can call the tools defined
- * in {@link ./tools/registry.ts}.
+ * OpenAI-compatible Chat Completions implementation of
+ * {@link ChatService}, with native function-calling support so agents
+ * can call the tools defined in {@link ./tools/registry.ts}.
  *
- * Direct `fetch` against `POST /v1/chat/completions` rather than the
+ * One adapter serves every wired provider — OpenRouter, direct OpenAI,
+ * and a local Ollama server all speak this exact wire protocol. They
+ * differ only by base URL, credential, and a few headers / body fields,
+ * which {@link ./providers.resolveChatProvider} supplies.
+ *
+ * Direct `fetch` against `POST /chat/completions` rather than the
  * OpenAI SDK: the wire shape is stable, the SDK isn't already a
  * dependency, and rolling our own keeps the streaming-tool-call
  * accumulation visible in one place.
  *
  * Failures (network, non-2xx, malformed JSON, empty responses) are
  * converted into a `finishReason: "error"` outcome so the route layer
- * persists a row instead of bubbling exceptions to the user, mirroring
- * the HuggingFace adapter's contract.
+ * persists a row instead of bubbling exceptions to the user.
  */
 
 import { safeErrorMessage } from "../lib/safe-error.js";
@@ -34,8 +38,21 @@ export interface OpenAIChatServiceOptions {
 	readonly apiKey: string;
 	readonly modelId: string;
 	readonly maxOutputTokens: number;
-	/** Override the API base URL (Azure OpenAI, on-prem proxies, fakes). */
+	/** Override the API base URL (OpenRouter, Ollama, Azure, proxies, fakes). */
 	readonly baseUrl?: string;
+	/**
+	 * Provider label surfaced on persisted messages + metrics. Defaults
+	 * to `"openai"`; OpenRouter/Ollama pass their own so attribution and
+	 * the `workbench_chat_*` provider label stay accurate.
+	 */
+	readonly providerId?: string;
+	/** Static headers added to every request (e.g. OpenRouter attribution). */
+	readonly defaultHeaders?: Readonly<Record<string, string>>;
+	/**
+	 * Extra fields merged into every completion request body — e.g.
+	 * OpenRouter's `{ provider: { data_collection: "deny" } }` ZDR hint.
+	 */
+	readonly extraBody?: Readonly<Record<string, unknown>>;
 	/** Optional fetch override — tests inject a fake transport here. */
 	readonly fetchImpl?: typeof fetch;
 }
@@ -91,27 +108,40 @@ interface OAIStreamChunk {
 
 export class OpenAIChatService implements ChatService {
 	readonly modelId: string;
-	readonly providerId = "openai";
+	readonly providerId: string;
 	private readonly apiKey: string;
 	private readonly maxOutputTokens: number;
 	private readonly baseUrl: string;
+	private readonly defaultHeaders: Readonly<Record<string, string>>;
+	private readonly extraBody: Readonly<Record<string, unknown>>;
 	private readonly fetchImpl: typeof fetch;
 
 	constructor(opts: OpenAIChatServiceOptions) {
 		this.modelId = opts.modelId;
+		this.providerId = opts.providerId ?? "openai";
 		this.apiKey = opts.apiKey;
 		this.maxOutputTokens = opts.maxOutputTokens;
 		this.baseUrl = opts.baseUrl ?? DEFAULT_BASE_URL;
+		this.defaultHeaders = opts.defaultHeaders ?? {};
+		this.extraBody = opts.extraBody ?? {};
 		this.fetchImpl = opts.fetchImpl ?? safeFetch;
+	}
+
+	/** Authorization + provider-specific headers for every request. */
+	private headers(): Record<string, string> {
+		return {
+			...this.defaultHeaders,
+			authorization: `Bearer ${this.apiKey}`,
+		};
 	}
 
 	async ping(options?: { readonly signal?: AbortSignal }): Promise<void> {
 		const res = await this.fetchImpl(`${this.baseUrl}/models`, {
-			headers: { authorization: `Bearer ${this.apiKey}` },
+			headers: this.headers(),
 			signal: options?.signal,
 		});
 		if (!res.ok) {
-			throw new Error(`OpenAI /models returned ${res.status}`);
+			throw new Error(`${this.providerId} /models returned ${res.status}`);
 		}
 	}
 
@@ -119,26 +149,25 @@ export class OpenAIChatService implements ChatService {
 		try {
 			const res = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
 				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					authorization: `Bearer ${this.apiKey}`,
-				},
+				headers: { "content-type": "application/json", ...this.headers() },
 				body: JSON.stringify({
 					model: this.modelId,
 					max_tokens: this.maxOutputTokens,
 					messages: toOpenAIMessages(request.messages),
 					...toolFields(request.tools),
+					...this.extraBody,
 				}),
 			});
 			if (!res.ok) {
 				const body = await res.text().catch(() => "");
 				return errorCompletion(
-					`OpenAI returned HTTP ${res.status}: ${body || res.statusText}`,
+					`${this.providerId} returned HTTP ${res.status}: ${body || res.statusText}`,
 				);
 			}
 			const json = (await res.json()) as OAICompletionResponse;
 			const choice = json.choices[0];
-			if (!choice) return errorCompletion("OpenAI returned no choices.");
+			if (!choice)
+				return errorCompletion(`${this.providerId} returned no choices.`);
 			const content = (choice.message.content ?? "").trim();
 			const toolCalls = (choice.message.tool_calls ?? []).map(
 				(tc): ToolCall => ({
@@ -149,7 +178,7 @@ export class OpenAIChatService implements ChatService {
 			);
 			if (content.length === 0 && toolCalls.length === 0) {
 				return errorCompletion(
-					"OpenAI returned an empty completion — try again, or pick a different model.",
+					`${this.providerId} returned an empty completion — try again, or pick a different model.`,
 					json.usage?.total_tokens ?? null,
 				);
 			}
@@ -161,7 +190,9 @@ export class OpenAIChatService implements ChatService {
 				toolCalls,
 			};
 		} catch (err) {
-			return errorCompletion(`OpenAI request failed: ${safeErrorMessage(err)}`);
+			return errorCompletion(
+				`${this.providerId} request failed: ${safeErrorMessage(err)}`,
+			);
 		}
 	}
 
@@ -181,10 +212,7 @@ export class OpenAIChatService implements ChatService {
 		try {
 			const res = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
 				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					authorization: `Bearer ${this.apiKey}`,
-				},
+				headers: { "content-type": "application/json", ...this.headers() },
 				body: JSON.stringify({
 					model: this.modelId,
 					max_tokens: this.maxOutputTokens,
@@ -192,6 +220,7 @@ export class OpenAIChatService implements ChatService {
 					stream: true,
 					stream_options: { include_usage: true },
 					...toolFields(request.tools),
+					...this.extraBody,
 				}),
 				signal: options?.signal,
 			});
@@ -199,7 +228,7 @@ export class OpenAIChatService implements ChatService {
 				const body = await res.text().catch(() => "");
 				yield {
 					type: "error",
-					errorMessage: `OpenAI returned HTTP ${res.status}: ${body || res.statusText}`,
+					errorMessage: `${this.providerId} returned HTTP ${res.status}: ${body || res.statusText}`,
 					tokenCount: null,
 				};
 				return;
@@ -255,8 +284,7 @@ export class OpenAIChatService implements ChatService {
 			if (content.length === 0 && toolCalls.length === 0) {
 				yield {
 					type: "error",
-					errorMessage:
-						"OpenAI returned an empty completion — try again, or pick a different model.",
+					errorMessage: `${this.providerId} returned an empty completion — try again, or pick a different model.`,
 					tokenCount,
 				};
 				return;
@@ -271,7 +299,7 @@ export class OpenAIChatService implements ChatService {
 		} catch (err) {
 			yield {
 				type: "error",
-				errorMessage: `OpenAI request failed: ${safeErrorMessage(err)}`,
+				errorMessage: `${this.providerId} request failed: ${safeErrorMessage(err)}`,
 				tokenCount,
 			};
 		}

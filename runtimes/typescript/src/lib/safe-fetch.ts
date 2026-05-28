@@ -20,13 +20,12 @@
  * and the caller's `AbortSignal` hasn't fired during backoff.
  *
  * Usage: pass this in place of the global `fetch` whenever the request
- * target was derived from operator config. The OpenAI SDK accepts a
- * `fetch` override on `configuration`; the OpenAIChatService here uses
- * it as the default `fetchImpl`. SDKs that don't expose a fetch hook
- * (currently `@huggingface/inference`, `@langchain/cohere`) rely on
- * the URL validator alone — the redirect risk for those vendors is
- * lower because the base URL is hardcoded by the SDK, not operator-
- * supplied.
+ * target was derived from operator config. The OpenAIChatService here
+ * uses it as the default `fetchImpl`, and the LangChain OpenAI embedder
+ * accepts a `fetch` override on `configuration`. SDKs that don't expose
+ * a fetch hook (currently `@langchain/cohere`) rely on the URL
+ * validator alone — the redirect risk for those vendors is lower
+ * because the base URL is hardcoded by the SDK, not operator-supplied.
  */
 
 import {

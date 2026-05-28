@@ -359,3 +359,64 @@ describe("OpenAIChatService.completeStream", () => {
 		});
 	});
 });
+
+describe("OpenAIChatService — OpenAI-compatible provider wiring", () => {
+	test("OpenRouter config sends attribution headers, ZDR body, and the right base URL + providerId", async () => {
+		const { captured, fetchImpl } = captureFetch(
+			() =>
+				new Response(
+					JSON.stringify({
+						choices: [
+							{
+								index: 0,
+								message: { role: "assistant", content: "hi" },
+								finish_reason: "stop",
+							},
+						],
+						usage: { total_tokens: 3 },
+					}),
+					{ status: 200 },
+				),
+		);
+		const service = new OpenAIChatService({
+			apiKey: "sk-or-fake",
+			modelId: "openai/gpt-4o-mini",
+			maxOutputTokens: 64,
+			baseUrl: "https://openrouter.ai/api/v1",
+			providerId: "openrouter",
+			defaultHeaders: {
+				"HTTP-Referer": "https://x",
+				"X-Title": "AI Workbench",
+			},
+			extraBody: { provider: { data_collection: "deny" } },
+			fetchImpl,
+		});
+		await service.complete({ messages: [{ role: "user", content: "hi" }] });
+		expect(service.providerId).toBe("openrouter");
+		expect(captured[0]?.url).toBe(
+			"https://openrouter.ai/api/v1/chat/completions",
+		);
+		expect(captured[0]?.headers.authorization).toBe("Bearer sk-or-fake");
+		expect(captured[0]?.headers["X-Title"]).toBe("AI Workbench");
+		expect(captured[0]?.body.provider).toEqual({ data_collection: "deny" });
+	});
+
+	test("error messages carry the providerId, not a hardcoded 'OpenAI'", async () => {
+		const { fetchImpl } = captureFetch(
+			() => new Response("nope", { status: 500, statusText: "Server Error" }),
+		);
+		const service = new OpenAIChatService({
+			apiKey: "x",
+			modelId: "llama3.1",
+			maxOutputTokens: 8,
+			baseUrl: "http://localhost:11434/v1",
+			providerId: "ollama",
+			fetchImpl,
+		});
+		const out = await service.complete({
+			messages: [{ role: "user", content: "hi" }],
+		});
+		expect(out.finishReason).toBe("error");
+		expect(out.errorMessage).toContain("ollama returned HTTP 500");
+	});
+});

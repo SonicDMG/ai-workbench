@@ -60,8 +60,10 @@ async function createLlmService(
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({
 			name: "default-llm",
-			provider: "huggingface",
-			modelName: "mistralai/Mistral-7B-Instruct-v0.3",
+			// `ollama` requires no credential, so the config-time probe is
+			// skipped — keeps the plain-CRUD tests network-free.
+			provider: "ollama",
+			modelName: "llama3.1",
 			...overrides,
 		}),
 	});
@@ -81,8 +83,8 @@ describe("llm-services routes", () => {
 		expect(get.status).toBe(200);
 		const body = await json(get);
 		expect(body.llmServiceId).toBe(id);
-		expect(body.provider).toBe("huggingface");
-		expect(body.modelName).toBe("mistralai/Mistral-7B-Instruct-v0.3");
+		expect(body.provider).toBe("ollama");
+		expect(body.modelName).toBe("llama3.1");
 	});
 
 	test("GET list pages results", async () => {
@@ -120,8 +122,8 @@ describe("llm-services routes", () => {
 			body: JSON.stringify({
 				llmServiceId: id,
 				name: "first",
-				provider: "huggingface",
-				modelName: "m",
+				provider: "ollama",
+				modelName: "llama3.1",
 			}),
 		});
 		expect(first.status).toBe(201);
@@ -132,8 +134,8 @@ describe("llm-services routes", () => {
 			body: JSON.stringify({
 				llmServiceId: id,
 				name: "second",
-				provider: "huggingface",
-				modelName: "m",
+				provider: "ollama",
+				modelName: "llama3.1",
 			}),
 		});
 		expect(dup.status).toBe(409);
@@ -223,13 +225,15 @@ describe("llm-services routes", () => {
 });
 
 /**
- * Config-time chat-model probe (issue: "<model> is not a chat model").
+ * Config-time chat-model probe.
  *
- * The route runs a fail-open HuggingFace probe before persisting so a
- * non-chat model is rejected at create/update with a clear 422 instead
- * of surfacing as a cryptic send-time error later. These tests inject a
- * fake probe + a resolvable credential so the gate is exercised without
- * touching the network.
+ * The route runs a fail-open probe (for credential-requiring providers
+ * — OpenRouter, OpenAI) before persisting so an unusable model is
+ * rejected at create/update with a clear 422 instead of surfacing as a
+ * cryptic send-time error later. The local `ollama` provider needs no
+ * credential and is never probed. These tests inject a fake probe + a
+ * resolvable credential so the gate is exercised without touching the
+ * network.
  */
 describe("llm-services config-time chat-model probe", () => {
 	function makeProbeApp(probe: ChatModelProbe): {
@@ -287,9 +291,9 @@ describe("llm-services config-time chat-model probe", () => {
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				name: "bad",
-				provider: "huggingface",
+				provider: "openrouter",
 				modelName: "acme/not-chat",
-				credentialRef: "test:hf",
+				credentialRef: "test:or",
 			}),
 		});
 
@@ -297,8 +301,10 @@ describe("llm-services config-time chat-model probe", () => {
 		const body = await json(res);
 		expect(body.error.code).toBe("llm_model_not_chat");
 		expect(probe).toHaveBeenCalledWith({
+			provider: "openrouter",
 			modelName: "acme/not-chat",
 			token: "fake-token",
+			baseUrl: undefined,
 		});
 		// Rejected saves must not persist.
 		expect(await store.listLlmServices(ws.uid)).toHaveLength(0);
@@ -319,9 +325,9 @@ describe("llm-services config-time chat-model probe", () => {
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				name: "unrouted",
-				provider: "huggingface",
+				provider: "openrouter",
 				modelName: "acme/unrouted",
-				credentialRef: "test:hf",
+				credentialRef: "test:or",
 			}),
 		});
 
@@ -340,9 +346,9 @@ describe("llm-services config-time chat-model probe", () => {
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				name: "good",
-				provider: "huggingface",
-				modelName: "openai/gpt-oss-20b",
-				credentialRef: "test:hf",
+				provider: "openrouter",
+				modelName: "openai/gpt-4o-mini",
+				credentialRef: "test:or",
 			}),
 		});
 
@@ -362,7 +368,7 @@ describe("llm-services config-time chat-model probe", () => {
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				name: "untokened",
-				provider: "huggingface",
+				provider: "openrouter",
 				modelName: "acme/whatever",
 			}),
 		});
@@ -371,7 +377,7 @@ describe("llm-services config-time chat-model probe", () => {
 		expect(probe).not.toHaveBeenCalled();
 	});
 
-	test("skips the probe for non-HuggingFace providers", async () => {
+	test("skips the probe for the local ollama provider (no credential)", async () => {
 		const probe = vi.fn<ChatModelProbe>().mockResolvedValue({ kind: "served" });
 		const { app, store } = makeProbeApp(probe);
 		const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
@@ -380,10 +386,9 @@ describe("llm-services config-time chat-model probe", () => {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
-				name: "openai-svc",
-				provider: "openai",
-				modelName: "gpt-4o-mini",
-				credentialRef: "test:openai",
+				name: "ollama-svc",
+				provider: "ollama",
+				modelName: "llama3.1",
 			}),
 		});
 
@@ -403,9 +408,9 @@ describe("llm-services config-time chat-model probe", () => {
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({
 					name: "svc",
-					provider: "huggingface",
-					modelName: "openai/gpt-oss-20b",
-					credentialRef: "test:hf",
+					provider: "openrouter",
+					modelName: "openai/gpt-4o-mini",
+					credentialRef: "test:or",
 				}),
 			},
 		);
@@ -430,7 +435,7 @@ describe("llm-services config-time chat-model probe", () => {
 		expect((await json(patch)).error.code).toBe("llm_model_not_chat");
 		// The rejected model must not have been written.
 		const after = await store.getLlmService(ws.uid, id);
-		expect(after?.modelName).toBe("openai/gpt-oss-20b");
+		expect(after?.modelName).toBe("openai/gpt-4o-mini");
 	});
 
 	test("PATCH that leaves the model untouched does not re-probe", async () => {
@@ -445,9 +450,9 @@ describe("llm-services config-time chat-model probe", () => {
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({
 					name: "svc",
-					provider: "huggingface",
-					modelName: "openai/gpt-oss-20b",
-					credentialRef: "test:hf",
+					provider: "openrouter",
+					modelName: "openai/gpt-4o-mini",
+					credentialRef: "test:or",
 				}),
 			},
 		);

@@ -2,10 +2,16 @@
  * Managed `.env` file written by the first-run setup wizard.
  *
  * The wizard collects a small, fixed allow-list of credentials
- * (Astra endpoint/token, HuggingFace key) and persists them to a
- * file inside the runtime's data directory so they survive
- * `docker compose down/up` in the same named volume that already
- * holds control-plane state.
+ * (Astra endpoint/token, OpenRouter key, and an optional direct
+ * OpenAI key for BYOK) and persists them to a file inside the
+ * runtime's data directory so they survive `docker compose down/up`
+ * in the same named volume that already holds control-plane state.
+ *
+ * These are the runtime's *global* chat/embedding credentials (the
+ * key is configured once, not per-workspace). Offline/air-gapped
+ * installs that run a local Ollama need no credential here — they
+ * select `chat.provider: ollama` (and an Ollama embedding service) in
+ * `workbench.yaml` instead.
  *
  * Resolution:
  *   1. `WORKBENCH_MANAGED_ENV_FILE` — explicit override (tests).
@@ -30,7 +36,8 @@ import { dirname, join, resolve } from "node:path";
 export const MANAGED_ENV_KEYS = [
 	"ASTRA_DB_API_ENDPOINT",
 	"ASTRA_DB_APPLICATION_TOKEN",
-	"HUGGINGFACE_API_KEY",
+	"OPENROUTER_API_KEY",
+	"OPENAI_API_KEY",
 ] as const;
 
 export type ManagedEnvKey = (typeof MANAGED_ENV_KEYS)[number];

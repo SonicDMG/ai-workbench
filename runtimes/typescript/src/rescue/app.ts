@@ -115,6 +115,9 @@ export function buildRescueApp(deps: RescueAppDeps): Hono<AppEnv> {
 
 	app.get("/setup-status", async (c) => {
 		const managedEnv = await describeManagedEnv();
+		const configuredKeys = MANAGED_ENV_KEYS.filter((key) =>
+			Boolean(process.env[key]?.trim()),
+		);
 		const hasAstraCreds = Boolean(
 			process.env.ASTRA_DB_API_ENDPOINT &&
 				process.env.ASTRA_DB_APPLICATION_TOKEN,
@@ -125,7 +128,7 @@ export function buildRescueApp(deps: RescueAppDeps): Hono<AppEnv> {
 			controlPlane: { kind: "unavailable", healthy: false },
 			hasChatProvider: false,
 			hasAstraCreds,
-			managedEnv,
+			managedEnv: { ...managedEnv, configuredKeys },
 			bootError: deps.bootError,
 		});
 	});

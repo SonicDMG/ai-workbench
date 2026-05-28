@@ -81,15 +81,15 @@ describe("rescue app", () => {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
-				values: { HUGGINGFACE_API_KEY: "hf_corrected_token" },
+				values: { OPENROUTER_API_KEY: "hf_corrected_token" },
 			}),
 		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { ok: boolean; written: string[] };
 		expect(body.ok).toBe(true);
-		expect(body.written).toEqual(["HUGGINGFACE_API_KEY"]);
+		expect(body.written).toEqual(["OPENROUTER_API_KEY"]);
 		const contents = readFileSync(join(dataDir, ".env"), "utf8");
-		expect(contents).toContain('HUGGINGFACE_API_KEY="hf_corrected_token"');
+		expect(contents).toContain('OPENROUTER_API_KEY="hf_corrected_token"');
 	});
 
 	test("/setup/env rejects keys outside the allow-list", async () => {

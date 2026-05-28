@@ -112,18 +112,19 @@ send time:
 
 1. **Per-agent service.** If `agent.llmServiceId` is set, the runtime
    fetches the matching `wb_config_llm_service_by_workspace` row and
-   instantiates a chat service from it. Two providers are wired
-   end-to-end today: `provider: "huggingface"` (via the HuggingFace
-   Inference API) and `provider: "openai"` (the only one with native
-   function calling, required for the agent tool-call loop). Any
-   other provider returns `422 llm_provider_unsupported` until its
-   adapter lands. A bound service without a `credentialRef` returns
-   `422 llm_credential_missing`.
+   instantiates a chat service from it. Three providers are wired
+   end-to-end today: `provider: "openrouter"` (hosted default),
+   `provider: "openai"` (direct/BYOK), and `provider: "ollama"`
+   (local/offline). All three are OpenAI-compatible and share one
+   adapter, so native function calling — required for the agent
+   tool-call loop — works on every wired provider (subject to the
+   specific model supporting tools). Any other provider returns
+   `422 llm_provider_unsupported` until its adapter lands. A bound
+   service without a `credentialRef` returns
+   `422 llm_credential_missing` (Ollama needs no credential).
 2. **Workspace fallback.** If `agent.llmServiceId` is unset, the
    runtime falls back to the global `chat:` block in
-   `workbench.yaml`. The fallback only ever uses HuggingFace —
-   `chat:` predates the per-agent LLM service surface and has no
-   provider field.
+   `workbench.yaml`, which defaults to the OpenRouter provider.
 3. **Hard stop.** If neither is configured, `POST .../messages` and
    `POST .../messages/stream` return `503 chat_disabled`. The agent
    record itself is unaffected; you can still list / patch / delete
@@ -140,11 +141,12 @@ turn in the prompt envelope before any RAG-retrieved chunks.
 
 **Tool calling.** The agent dispatcher's tool-execution loop (RAG
 search, list KBs, summarize, etc.) requires the underlying provider
-to support native function calling. OpenAI does. HuggingFace's chat-
-completion API does not, so the dispatcher serves only the
-no-tool-call path when bound to a HuggingFace service — the agent
-still answers, but it can't dispatch tools. Default workspace seeds
-ship one OpenAI `gpt-4o-mini` LLM service for this reason.
+to support native function calling. All three wired providers
+(`openrouter`, `openai`, `ollama`) share the OpenAI tool-call wire
+format, so tool dispatch works across all of them — subject to the
+specific model supporting tools (OpenRouter's catalog is filtered to
+tool-capable models). Models without tool support still answer; they
+just skip the tool-call lane.
 
 ## HTTP surface
 
@@ -185,8 +187,8 @@ workspace-route wrapper.
 - **404** when the conversation does not belong to the named agent
   (or when the workspace, agent, or conversation does not exist).
 - **422** `llm_provider_unsupported` when `agent.llmServiceId`
-  points at an LLM service whose `provider` is neither
-  `huggingface` nor `openai`.
+  points at an LLM service whose `provider` is not one of
+  `openrouter`, `openai`, or `ollama`.
 - **422** `llm_credential_missing` when the bound LLM service has no
   `credentialRef`.
 - **503** `chat_disabled` when the runtime has no global `chat:`
@@ -207,16 +209,16 @@ The dispatcher emits the following SSE events in order:
 | `user-message` | Once, after the user turn is persisted | The persisted user `ChatMessage` |
 | `token` | Per model emission | `{ delta: string }` |
 | `token-reset` | Optional — fires after each tool-call iteration so clients can clear pre-tool narration from the live preview | `{}` |
-| `tool-call` | When the model requests a tool invocation (only on providers with native function calling, today OpenAI) | `{ toolName, args, callId }` |
+| `tool-call` | When the model requests a tool invocation. Native function calling works across all wired providers (openrouter, openai, ollama) since they share the OpenAI tool-call wire format, subject to the model supporting tools. | `{ toolName, args, callId }` |
 | `tool-result` | Each tool result fed back into the next iteration | `{ toolName, callId, result }` |
 | `done` | Terminal on success | The persisted assistant `ChatMessage` (`metadata.finish_reason: "stop"` / `"length"`) |
 | `error` | Terminal on failure | The persisted assistant `ChatMessage` with `metadata.finish_reason: "error"` and a human-readable `content` |
 
 Each turn ends with exactly one of `done` or `error`. The
 dispatcher caps tool-use iterations at `MAX_TOOL_ITERATIONS = 6` per
-turn. HuggingFace-bound conversations never emit `tool-call` /
-`tool-result` (no native function calling) — the assistant streams a
-single answer pass.
+turn. Conversations bound to a model without tool support never emit
+`tool-call` / `tool-result` — the assistant streams a single answer
+pass instead.
 
 ```text
 event: user-message

@@ -69,9 +69,9 @@ destination for the envelope's `docs` field.
 | [`knowledge_filter_not_found`](#knowledge-filter-not-found) | 404 | The knowledge filter is not defined in this workspace. |
 | [`list_records_not_supported`](#list-records-not-supported) | 501 | This driver does not expose a list-records operation; use search instead. |
 | [`llm_credential_missing`](#llm-credential-missing) | 503 | The LLM provider credential could not be resolved; check the credentialsRef on the service. |
-| [`llm_model_not_chat`](#llm-model-not-chat) | 422 | The HuggingFace model is not served for the chat-completion task; pick a conversational/instruct model (e.g. openai/gpt-oss-20b). |
-| [`llm_model_unavailable`](#llm-model-unavailable) | 422 | No HuggingFace Inference provider serves this model for your account; enable a provider at huggingface.co/settings/inference-providers or pick a widely-served model (e.g. openai/gpt-oss-20b). |
-| [`llm_provider_unsupported`](#llm-provider-unsupported) | 422 | The agent's LLM service uses a provider that this runtime cannot dispatch yet; choose openai or huggingface. |
+| [`llm_model_not_chat`](#llm-model-not-chat) | 422 | The model is not served for chat completion; pick an instruct/chat model. |
+| [`llm_model_unavailable`](#llm-model-unavailable) | 422 | The provider does not serve this model; check the model id (e.g. an OpenRouter slug like `openai/gpt-4o-mini`) and that your account/credits can route it. |
+| [`llm_provider_unsupported`](#llm-provider-unsupported) | 422 | The agent's LLM service uses a provider this runtime cannot dispatch; choose openrouter, openai, or ollama (HuggingFace was removed in 0.3.0). |
 | [`llm_service_in_use`](#llm-service-in-use) | 409 | At least one agent binds this LLM service; rebind the agents before deleting. |
 | [`llm_service_not_found`](#llm-service-not-found) | 404 | The LLM service is not configured in this workspace. |
 | [`missing_file`](#missing-file) | 400 | The request must include a `file` part in the multipart body. |
@@ -316,17 +316,17 @@ destination for the envelope's `docs` field.
 ## llm_model_not_chat
 
 - **Default status**: `422`
-- **Hint**: The HuggingFace model is not served for the chat-completion task; pick a conversational/instruct model (e.g. openai/gpt-oss-20b).
+- **Hint**: The model is not served for chat completion; pick an instruct/chat model.
 
 ## llm_model_unavailable
 
 - **Default status**: `422`
-- **Hint**: No HuggingFace Inference provider serves this model for your account; enable a provider at huggingface.co/settings/inference-providers or pick a widely-served model (e.g. openai/gpt-oss-20b).
+- **Hint**: The provider does not serve this model; check the model id (e.g. an OpenRouter slug like `openai/gpt-4o-mini`) and that your account/credits can route it.
 
 ## llm_provider_unsupported
 
 - **Default status**: `422`
-- **Hint**: The agent's LLM service uses a provider that this runtime cannot dispatch yet; choose openai or huggingface.
+- **Hint**: The agent's LLM service uses a provider this runtime cannot dispatch; choose openrouter, openai, or ollama (HuggingFace was removed in 0.3.0).
 
 ## llm_service_in_use
 

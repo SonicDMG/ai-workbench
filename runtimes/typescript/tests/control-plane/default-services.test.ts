@@ -19,10 +19,10 @@ describe("DEFAULT_SERVICES", () => {
 		expect(DEFAULT_SERVICES.chunking[0]?.strategy).toBe("recursive");
 	});
 
-	test("openai-text-embedding-3-small is the first embedding preset", () => {
+	test("openrouter-text-embedding-3-small is the default (first) embedding preset", () => {
 		const first = DEFAULT_SERVICES.embedding[0];
-		expect(first?.name).toBe("openai-text-embedding-3-small");
-		expect(first?.provider).toBe("openai");
+		expect(first?.name).toBe("openrouter-text-embedding-3-small");
+		expect(first?.provider).toBe("openrouter");
 		expect(first?.embeddingDimension).toBe(1536);
 	});
 

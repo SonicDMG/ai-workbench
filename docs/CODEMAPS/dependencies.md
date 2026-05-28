@@ -7,8 +7,9 @@
 | Service | Use | Required? |
 |---|---|---|
 | **DataStax Astra** | Tabular + vector storage (production control plane) | Yes (when control-plane=astra) |
-| **OpenAI API** | Embeddings, chat completions, function calling | Optional (gated per workspace) |
-| **HuggingFace Inference** | Embeddings, JSON-prompted chat for non-OpenAI models | Optional |
+| **OpenRouter** | Hosted chat completions + embeddings via OpenAI-compatible API (default; one key → 300+ models, tool-capable) | Optional |
+| **OpenAI API** | Direct/BYOK embeddings, chat completions, function calling | Optional (gated per workspace) |
+| **Ollama** | Local/offline chat + embeddings via OpenAI-compatible API (no credential) | Optional |
 | **Cohere** | Reranking | Optional |
 | **OIDC provider** | SSO (any compliant: Auth0, Okta, Authelia, Keycloak…) | Optional (API keys also supported) |
 | **OpenTelemetry collector (OTLP/HTTP)** | Trace export | Optional |
@@ -36,9 +37,8 @@
 | Package | Why |
 |---|---|
 | `@langchain/core` | Chunker / embedder / reranker abstractions |
-| `@langchain/openai` | OpenAI provider for LangChain |
+| `@langchain/openai` | OpenAI-compatible client for chat + embeddings across OpenRouter, OpenAI, and Ollama (baseURL override) |
 | `@langchain/cohere` | Cohere reranker |
-| `@huggingface/inference` | HuggingFace embeddings + chat |
 | `@modelcontextprotocol/sdk` | MCP server facade |
 
 ### Document extraction

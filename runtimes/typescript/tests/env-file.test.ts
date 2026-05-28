@@ -152,9 +152,9 @@ describe("loadDotEnv", () => {
 
 	test("also loads the managed env file written by /setup/env", () => {
 		// This is the bug the user hit: the wizard / `/settings` page
-		// wrote `.workbench-data/.env` with HUGGINGFACE_API_KEY, but
+		// wrote `.workbench-data/.env` with OPENROUTER_API_KEY, but
 		// `loadDotEnv` only walked for a project `.env` — so on
-		// respawn the new HF token never reached `process.env` and
+		// respawn the new chat token never reached `process.env` and
 		// `chat_disabled` persisted.
 		const key = "__WB_ENV_TEST_MANAGED";
 		delete process.env[key];

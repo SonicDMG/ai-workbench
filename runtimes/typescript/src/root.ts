@@ -212,7 +212,7 @@ async function main(): Promise<void> {
 		logger.info({ model: chatService.modelId }, "chat service initialized");
 	} else {
 		logger.info(
-			"chat service not configured — POST /agents/{a}/conversations/{c}/messages will return 503 chat_disabled. Paste a HuggingFace token at /settings (default `chat.tokenRef: env:HUGGINGFACE_API_KEY`), attach a per-agent LLM service, or set `chat.enabled: false` in workbench.yaml to silence intentionally.",
+			"chat service not configured — POST /agents/{a}/conversations/{c}/messages will return 503 chat_disabled. Paste an OpenRouter key at /settings (default `chat.tokenRef: env:OPENROUTER_API_KEY`), select `chat.provider: ollama` for a local/offline model, attach a per-agent LLM service, or set `chat.enabled: false` in workbench.yaml to silence intentionally.",
 		);
 	}
 
