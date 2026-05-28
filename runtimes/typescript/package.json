@@ -26,12 +26,12 @@
 	},
 	"dependencies": {
 		"@datastax/astra-db-ts": "^2.2.1",
-		"@hono/node-server": "^2.0.3",
+		"@hono/node-server": "^2.0.4",
 		"@hono/zod-openapi": "^1.4.0",
 		"@huggingface/inference": "^4.13.18",
 		"@langchain/cohere": "^1.0.5",
-		"@langchain/core": "^1.1.47",
-		"@langchain/openai": "^1.4.6",
+		"@langchain/core": "^1.1.48",
+		"@langchain/openai": "^1.4.7",
 		"@modelcontextprotocol/sdk": "^1.29.0",
 		"@opentelemetry/api": "^1.9.1",
 		"@opentelemetry/auto-instrumentations-node": "^0.76.0",
@@ -39,13 +39,13 @@
 		"@opentelemetry/resources": "^2.7.1",
 		"@opentelemetry/sdk-node": "^0.218.0",
 		"@opentelemetry/semantic-conventions": "^1.40.0",
-		"@scalar/hono-api-reference": "^0.10.17",
-		"hono": "^4.12.21",
+		"@scalar/hono-api-reference": "^0.10.19",
+		"hono": "^4.12.23",
 		"jose": "^6.2.3",
 		"mammoth": "^1.12.0",
 		"pdfjs-dist": "^5.7.284",
 		"pino": "^10.3.1",
-		"read-excel-file": "^9.0.9",
+		"read-excel-file": "^9.0.10",
 		"ulid": "^3.0.2",
 		"yaml": "^2.9.0",
 		"zod": "^4.4.3"
@@ -57,7 +57,7 @@
 		"tsx": "^4.22.3",
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.5",
-		"write-excel-file": "^4.0.6"
+		"write-excel-file": "^4.0.7"
 	},
 	"overrides": {
 		"uuid": "^14.0.0",
