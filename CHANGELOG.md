@@ -24,9 +24,9 @@ safe upgrade from `0.2.0`.
   which pushed operators toward an OpenAI key just to try the
   out-of-the-box experience even though the runtime's default
   `chat.tokenRef` already pointed at `HUGGINGFACE_API_KEY`. The seed
-  is now `huggingface-mistral-7b-instruct` pointing at
-  `mistralai/Mistral-7B-Instruct-v0.3` (matches the runtime's
-  default chat model and the wizard's managed-env allow-list), so
+  is now `huggingface-qwen2.5-7b-instruct` pointing at
+  `Qwen/Qwen2.5-7B-Instruct` (matches the runtime's default chat
+  model and the wizard's managed-env allow-list), so
   pasting a HuggingFace token at `/settings` lights up agent chat
   with zero LLM-service edits. HF doesn't expose native function
   calling, so the agent dispatcher falls back to the
@@ -38,11 +38,11 @@ safe upgrade from `0.2.0`.
   [`LlmServiceForm`](./apps/web/src/components/agents/LlmServiceForm.tsx)
   used to be a free-form `<Input>` where operators had to remember
   the exact HF model slug
-  (e.g. `mistralai/Mistral-7B-Instruct-v0.3`). It's now a `<Select>`
-  with seven curated HuggingFace defaults — Mistral 7B v0.3
-  (default), Llama 3 / Llama 3.1, Mixtral 8x7B, Zephyr 7B, Qwen 2.5,
-  Gemma 2 — plus an **Other (custom)…** row that reveals the
-  free-form input for any other model name. Picking a popular row
+  (e.g. `Qwen/Qwen2.5-7B-Instruct`). It's now a `<Select>`
+  with five curated HuggingFace defaults — Qwen 2.5 7B Instruct
+  (default), Llama 3 / Llama 3.1, Zephyr 7B, Gemma 2 — plus an
+  **Other (custom)…** row that reveals the free-form input for any
+  other model name. Picking a popular row
   also pre-fills the provider and a sensible `maxOutputTokens`.
   Edit mode renders the free-form input automatically when the
   service points at a non-popular model (existing services keep
@@ -79,6 +79,33 @@ safe upgrade from `0.2.0`.
   + [`tests/chat/factory.test.ts`](./runtimes/typescript/tests/chat/factory.test.ts))
   lock the four branches: default-on, explicit opt-out, unresolved
   token (bootstrap path), and the healthy resolve.
+
+### Fixed
+
+- **Default chat model is served for chat (`"<model>" is not a chat
+  model`).** HuggingFace's Inference Providers router stopped serving
+  `mistralai/Mistral-7B-Instruct-v0.3` for the `conversational`
+  (chat-completion) task, so the prior default surfaced only at
+  send time as a cryptic `HuggingFace inference failed: … is not a
+  chat model`. The runtime default chat model, the auto-seeded LLM
+  service, the wizard managed-env allow-list, and the form's
+  popular-model menu all now use `Qwen/Qwen2.5-7B-Instruct` — ungated
+  and served for chat — and the Mistral/Mixtral entries (same router
+  exposure) were dropped from the curated menu.
+- **Config-time chat-model guard.** Creating or updating a
+  HuggingFace LLM service now runs a fail-open probe
+  ([`src/chat/model-probe.ts`](./runtimes/typescript/src/chat/model-probe.ts))
+  before persisting: a single `max_tokens: 1` chat completion that,
+  on a *definitive* not-a-chat-model signal, rejects the save with
+  `422 llm_model_not_chat` so a bad custom model (picked via **Other
+  (custom)…**) is caught at configuration time instead of when an
+  agent first replies. The probe is strictly fail-open — it only
+  runs when a credential resolves, and any transient failure
+  (network, rate limit, auth, cold-start) lets the save through
+  rather than blocking it. New unit coverage for the classifier
+  ([`tests/chat/model-probe.test.ts`](./runtimes/typescript/tests/chat/model-probe.test.ts))
+  and route-level reject / allow / skip / PATCH-re-probe coverage
+  ([`tests/llm-services.test.ts`](./runtimes/typescript/tests/llm-services.test.ts)).
 
 ### Added
 

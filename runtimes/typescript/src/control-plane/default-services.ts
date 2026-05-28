@@ -248,21 +248,30 @@ export const DEFAULT_WORKSPACE_SEED_SERVICES: DefaultServices = {
 	embedding: [NVIDIA_NV_EMBEDQA_E5_V5],
 };
 
-/** HuggingFace `mistralai/Mistral-7B-Instruct-v0.3` — the default chat
- * LLM auto-seeded into every new workspace. Matches the runtime's
+/** HuggingFace `Qwen/Qwen2.5-7B-Instruct` — the default chat LLM
+ * auto-seeded into every new workspace. Matches the runtime's
  * default `chat.model` so a fresh install that pastes a HuggingFace
  * token via `/settings` lights up agent chat immediately, without
- * any LLM-service edits. The HF inference API doesn't expose native
- * function calling, so the agent tool-call loop falls back to the
- * retrieve-and-answer flow described in `chat/agent-dispatch.ts` —
- * tools still execute, just not via a function-call protocol. */
-const HUGGINGFACE_MISTRAL_7B: CreateLlmServiceInput = {
-	name: "huggingface-mistral-7b-instruct",
+ * any LLM-service edits.
+ *
+ * Picked because it's ungated (no license click-through) and the HF
+ * Inference Providers router serves it for the `conversational`
+ * (chat-completion) task. The prior default
+ * `mistralai/Mistral-7B-Instruct-v0.3` was dropped: HF's router
+ * stopped serving it as a chat model, so every send returned
+ * "is not a chat model".
+ *
+ * The HF inference API doesn't expose native function calling, so
+ * the agent tool-call loop falls back to the retrieve-and-answer
+ * flow described in `chat/agent-dispatch.ts` — tools still execute,
+ * just not via a function-call protocol. */
+const HUGGINGFACE_QWEN_25_7B: CreateLlmServiceInput = {
+	name: "huggingface-qwen2.5-7b-instruct",
 	description:
-		"Default. HuggingFace `mistralai/Mistral-7B-Instruct-v0.3` chat completion via the HF Inference API. Used by Bobby + Maven; relies on the runtime's `chat.tokenRef` (default `env:HUGGINGFACE_API_KEY`) or a per-service credentialRef.",
+		"Default. HuggingFace `Qwen/Qwen2.5-7B-Instruct` chat completion via the HF Inference API. Used by Bobby + Maven; relies on the runtime's `chat.tokenRef` (default `env:HUGGINGFACE_API_KEY`) or a per-service credentialRef.",
 	status: "active",
 	provider: "huggingface",
-	modelName: "mistralai/Mistral-7B-Instruct-v0.3",
+	modelName: "Qwen/Qwen2.5-7B-Instruct",
 	contextWindowTokens: 32768,
 	maxOutputTokens: 1024,
 	supportsStreaming: true,
@@ -284,4 +293,4 @@ const HUGGINGFACE_MISTRAL_7B: CreateLlmServiceInput = {
  * wired" so they're discoverable but not silently broken.
  */
 export const DEFAULT_WORKSPACE_SEED_LLM_SERVICES: readonly CreateLlmServiceInput[] =
-	Object.freeze([HUGGINGFACE_MISTRAL_7B]);
+	Object.freeze([HUGGINGFACE_QWEN_25_7B]);

@@ -149,7 +149,12 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 		{
 			id: "llm_services",
 			mountPath: WORKSPACE_MOUNT,
-			build: () => llmServiceRoutes(ctx.store),
+			build: () =>
+				llmServiceRoutes({
+					store: ctx.store,
+					secrets: ctx.secrets,
+					chatConfig: ctx.chatConfig,
+				}),
 		},
 		{
 			id: "kb_data_plane",

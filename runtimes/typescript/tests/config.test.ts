@@ -332,7 +332,7 @@ describe("ConfigSchema", () => {
 		const cfg = ConfigSchema.parse({ version: 1 });
 		expect(cfg.chat.enabled).toBe(true);
 		expect(cfg.chat.tokenRef).toBe("env:HUGGINGFACE_API_KEY");
-		expect(cfg.chat.model).toBe("mistralai/Mistral-7B-Instruct-v0.3");
+		expect(cfg.chat.model).toBe("Qwen/Qwen2.5-7B-Instruct");
 		expect(cfg.chat.maxOutputTokens).toBe(1024);
 		expect(cfg.chat.retrievalK).toBe(6);
 		expect(cfg.chat.systemPrompt).toBeNull();

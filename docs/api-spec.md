@@ -1165,9 +1165,9 @@ language / content tags. See the OpenAPI spec for the full shape.
 
 ```json
 {
-  "name": "hf-mistral",
+  "name": "hf-qwen",
   "provider": "huggingface",
-  "modelName": "mistralai/Mistral-7B-Instruct-v0.3",
+  "modelName": "Qwen/Qwen2.5-7B-Instruct",
   "credentialRef": "env:HUGGINGFACE_API_KEY",
   "maxOutputTokens": 1024
 }

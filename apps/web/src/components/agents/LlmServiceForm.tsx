@@ -57,8 +57,8 @@ interface PopularModel {
 const POPULAR_MODELS: readonly PopularModel[] = [
 	{
 		provider: "huggingface",
-		modelName: "mistralai/Mistral-7B-Instruct-v0.3",
-		label: "Mistral-7B-Instruct v0.3 (default)",
+		modelName: "Qwen/Qwen2.5-7B-Instruct",
+		label: "Qwen 2.5 7B Instruct (default)",
 		maxOutputTokens: 1024,
 	},
 	{
@@ -75,21 +75,9 @@ const POPULAR_MODELS: readonly PopularModel[] = [
 	},
 	{
 		provider: "huggingface",
-		modelName: "mistralai/Mixtral-8x7B-Instruct-v0.1",
-		label: "Mixtral 8x7B Instruct",
-		maxOutputTokens: 2048,
-	},
-	{
-		provider: "huggingface",
 		modelName: "HuggingFaceH4/zephyr-7b-beta",
 		label: "Zephyr 7B Beta",
 		maxOutputTokens: 1024,
-	},
-	{
-		provider: "huggingface",
-		modelName: "Qwen/Qwen2.5-7B-Instruct",
-		label: "Qwen 2.5 7B Instruct",
-		maxOutputTokens: 2048,
 	},
 	{
 		provider: "huggingface",
@@ -300,7 +288,7 @@ export function LlmServiceForm({
 					{showCustomModel ? (
 						<Input
 							id="llm-model-custom"
-							placeholder="e.g. mistralai/Mistral-7B-Instruct-v0.3"
+							placeholder="e.g. Qwen/Qwen2.5-7B-Instruct"
 							aria-invalid={errors.modelName ? true : undefined}
 							aria-label="Custom model name"
 							{...form.register("modelName")}

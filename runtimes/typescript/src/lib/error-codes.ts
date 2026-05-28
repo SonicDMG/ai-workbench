@@ -380,6 +380,11 @@ const REGISTRY = new Map<string, ErrorCodeDescriptor>([
 		503,
 		"The LLM provider credential could not be resolved; check the credentialsRef on the service.",
 	),
+	entry(
+		"llm_model_not_chat",
+		422,
+		"The HuggingFace model is not served for the chat-completion task; pick a conversational/instruct model (e.g. Qwen/Qwen2.5-7B-Instruct).",
+	),
 
 	// --- playground ---
 	entry(

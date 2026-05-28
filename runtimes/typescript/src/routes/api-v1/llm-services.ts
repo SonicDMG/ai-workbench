@@ -9,8 +9,14 @@
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import {
+	type ChatModelProbe,
+	probeHuggingFaceChatModel,
+} from "../../chat/model-probe.js";
+import type { ChatConfig } from "../../config/schema.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
+import { ApiError } from "../../lib/errors.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
 import type { AppEnv } from "../../lib/types.js";
@@ -23,12 +29,67 @@ import {
 	UpdateLlmServiceInputSchema,
 	WorkspaceIdParamSchema,
 } from "../../openapi/schemas.js";
+import type { SecretResolver } from "../../secrets/provider.js";
 import { toWireLlm, toWirePage } from "./serdes/index.js";
 
+export interface LlmServiceRoutesDeps {
+	readonly store: ControlPlaneStore;
+	/**
+	 * Resolves the model's credential for the config-time chat-model
+	 * probe. When omitted (or when no credential resolves) the route is
+	 * pure CRUD — probing is skipped, never fatal.
+	 */
+	readonly secrets?: SecretResolver;
+	/**
+	 * Runtime chat config. Supplies the fallback `tokenRef` used to
+	 * probe a HuggingFace model that has no per-service `credentialRef`.
+	 * `null` (no chat block / chat disabled) disables the fallback.
+	 */
+	readonly chatConfig?: ChatConfig | null;
+	/** Probe implementation; defaults to the live HF probe. */
+	readonly probeChatModel?: ChatModelProbe;
+}
+
 export function llmServiceRoutes(
-	store: ControlPlaneStore,
+	deps: LlmServiceRoutesDeps,
 ): OpenAPIHono<AppEnv> {
+	const { store } = deps;
+	const probe = deps.probeChatModel ?? probeHuggingFaceChatModel;
 	const app = makeOpenApi();
+
+	/**
+	 * Config-time guard: for HuggingFace services, verify the model is
+	 * actually served for chat before persisting. Skips silently when we
+	 * can't resolve a token to probe with (no secrets resolver, no
+	 * per-service credentialRef and no chat fallback, or an unresolved
+	 * ref) — the runtime degrades to the pre-existing send-time error in
+	 * that case rather than blocking the save. Rejects with 422
+	 * `llm_model_not_chat` only on a definitive not-a-chat-model signal.
+	 */
+	async function assertChatModelOrSkip(input: {
+		readonly provider: string;
+		readonly modelName: string;
+		readonly credentialRef: string | null | undefined;
+	}): Promise<void> {
+		if (input.provider !== "huggingface") return;
+		if (!deps.secrets) return;
+		const ref = input.credentialRef ?? deps.chatConfig?.tokenRef ?? null;
+		if (!ref) return;
+		let token: string;
+		try {
+			token = await deps.secrets.resolve(ref);
+		} catch {
+			return; // unresolved credential → can't probe → fail-open
+		}
+		if (!token) return;
+		const outcome = await probe({ modelName: input.modelName, token });
+		if (outcome.kind === "not_chat_model") {
+			throw new ApiError(
+				"llm_model_not_chat",
+				`HuggingFace model "${input.modelName}" is not served for the chat-completion task; pick a conversational/instruct model (e.g. Qwen/Qwen2.5-7B-Instruct). Provider detail: ${outcome.detail}`,
+			);
+		}
+	}
 
 	app.openapi(
 		createRoute({
@@ -86,6 +147,11 @@ export function llmServiceRoutes(
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
 			const body = c.req.valid("json");
+			await assertChatModelOrSkip({
+				provider: body.provider,
+				modelName: body.modelName,
+				credentialRef: body.credentialRef,
+			});
 			const record = await store.createLlmService(workspaceId, {
 				...body,
 				uid: body.llmServiceId,
@@ -155,6 +221,22 @@ export function llmServiceRoutes(
 		async (c) => {
 			const { workspaceId, llmServiceId } = c.req.valid("param");
 			const body = c.req.valid("json");
+			// Re-probe only when the update touches the provider, model, or
+			// credential — otherwise the effective model is unchanged.
+			if (
+				body.provider !== undefined ||
+				body.modelName !== undefined ||
+				body.credentialRef !== undefined
+			) {
+				const existing = await store.getLlmService(workspaceId, llmServiceId);
+				if (existing) {
+					await assertChatModelOrSkip({
+						provider: body.provider ?? existing.provider,
+						modelName: body.modelName ?? existing.modelName,
+						credentialRef: body.credentialRef ?? existing.credentialRef,
+					});
+				}
+			}
 			const record = await store.updateLlmService(
 				workspaceId,
 				llmServiceId,

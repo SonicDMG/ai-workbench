@@ -381,7 +381,7 @@ agent surface and the per-agent LLM-service binding.
 ```yaml
 chat:
   tokenRef: env:HUGGINGFACE_API_KEY
-  model: mistralai/Mistral-7B-Instruct-v0.3
+  model: Qwen/Qwen2.5-7B-Instruct
   maxOutputTokens: 1024
   retrievalK: 6
   systemPrompt: null
@@ -390,7 +390,7 @@ chat:
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
 | `tokenRef` | SecretRef | required | Resolved once at boot. `env:VAR` or `file:/path`. |
-| `model` | string | `mistralai/Mistral-7B-Instruct-v0.3` | Any chat-completion-compatible HuggingFace Inference API model. |
+| `model` | string | `Qwen/Qwen2.5-7B-Instruct` | Any chat-completion-compatible HuggingFace Inference API model. |
 | `maxOutputTokens` | int (1–8192) | `1024` | Per-turn cap on the assistant's reply length. |
 | `retrievalK` | int (1–64) | `6` | Top-K KB chunks **per knowledge base**. The total injected into the prompt is `retrievalK * ceil(sqrt(numKbs))` so multi-KB conversations don't blow up the prompt. |
 | `systemPrompt` | string \| null | `null` | Default system prompt when neither the agent nor the agent's LLM service supplies one. `null` falls back to the runtime's persona-agnostic `DEFAULT_AGENT_SYSTEM_PROMPT`. |

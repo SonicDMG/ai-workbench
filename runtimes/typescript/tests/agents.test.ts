@@ -113,7 +113,7 @@ describe("agent routes", () => {
 
 		// Both agents are wired to the auto-seeded chat LLM service so
 		// the tool-call loop has a model available out of the box.
-		// Default ships HuggingFace `Mistral-7B-Instruct-v0.3` (matches
+		// Default ships HuggingFace `Qwen/Qwen2.5-7B-Instruct` (matches
 		// the runtime's default `chat.model`); HF doesn't expose native
 		// function calling so the dispatcher falls back to the
 		// retrieve-and-answer flow described in
@@ -132,7 +132,7 @@ describe("agent routes", () => {
 		}>;
 		expect(llmItems.find((s) => s.llmServiceId === sharedLlmId)).toMatchObject({
 			provider: "huggingface",
-			modelName: "mistralai/Mistral-7B-Instruct-v0.3",
+			modelName: "Qwen/Qwen2.5-7B-Instruct",
 		});
 
 		for (const item of items) {

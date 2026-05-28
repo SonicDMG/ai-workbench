@@ -5,12 +5,15 @@
  * conflict / not-found branches that the route layer guards.
  */
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { AuthResolver } from "../src/auth/resolver.js";
+import type { ChatModelProbe } from "../src/chat/model-probe.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
+import { RoutePluginRegistry } from "../src/plugins/registry.js";
+import { llmServiceRoutes } from "../src/routes/api-v1/llm-services.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
 import { SecretResolver } from "../src/secrets/provider.js";
 import { makeFakeEmbedderFactory } from "./helpers/embedder.js";
@@ -216,5 +219,223 @@ describe("llm-services routes", () => {
 			}),
 		});
 		expect(res.status).toBe(404);
+	});
+});
+
+/**
+ * Config-time chat-model probe (issue: "<model> is not a chat model").
+ *
+ * The route runs a fail-open HuggingFace probe before persisting so a
+ * non-chat model is rejected at create/update with a clear 422 instead
+ * of surfacing as a cryptic send-time error later. These tests inject a
+ * fake probe + a resolvable credential so the gate is exercised without
+ * touching the network.
+ */
+describe("llm-services config-time chat-model probe", () => {
+	function makeProbeApp(probe: ChatModelProbe): {
+		app: ReturnType<typeof createApp>;
+		store: MemoryControlPlaneStore;
+	} {
+		const store = new MemoryControlPlaneStore();
+		const driver = new MockVectorStoreDriver();
+		const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
+		// A bespoke `test:` provider so a service `credentialRef: "test:hf"`
+		// resolves to a token and the probe actually fires.
+		const secrets = new SecretResolver({
+			test: { resolve: async () => "fake-token" },
+		});
+		const auth = new AuthResolver({
+			mode: "disabled",
+			anonymousPolicy: "allow",
+			verifiers: [],
+		});
+		const embedders = makeFakeEmbedderFactory();
+		const registry = new RoutePluginRegistry();
+		registry.register({
+			id: "llm_services",
+			mountPath: "/api/v1/workspaces",
+			build: () =>
+				llmServiceRoutes({
+					store,
+					secrets,
+					chatConfig: null,
+					probeChatModel: probe,
+				}),
+		});
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders,
+			routePlugins: registry,
+		});
+		return { app, store };
+	}
+
+	test("POST rejects a model the probe flags as not-a-chat-model (422)", async () => {
+		const probe = vi.fn<ChatModelProbe>().mockResolvedValue({
+			kind: "not_chat_model",
+			detail: '"acme/not-chat" is not a chat model',
+		});
+		const { app, store } = makeProbeApp(probe);
+		const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
+
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}/llm-services`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "bad",
+				provider: "huggingface",
+				modelName: "acme/not-chat",
+				credentialRef: "test:hf",
+			}),
+		});
+
+		expect(res.status).toBe(422);
+		const body = await json(res);
+		expect(body.error.code).toBe("llm_model_not_chat");
+		expect(probe).toHaveBeenCalledWith({
+			modelName: "acme/not-chat",
+			token: "fake-token",
+		});
+		// Rejected saves must not persist.
+		expect(await store.listLlmServices(ws.uid)).toHaveLength(0);
+	});
+
+	test("POST allows a model the probe reports as served", async () => {
+		const probe = vi.fn<ChatModelProbe>().mockResolvedValue({ kind: "served" });
+		const { app, store } = makeProbeApp(probe);
+		const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
+
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}/llm-services`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "good",
+				provider: "huggingface",
+				modelName: "Qwen/Qwen2.5-7B-Instruct",
+				credentialRef: "test:hf",
+			}),
+		});
+
+		expect(res.status).toBe(201);
+		expect(probe).toHaveBeenCalledTimes(1);
+		expect(await store.listLlmServices(ws.uid)).toHaveLength(1);
+	});
+
+	test("skips the probe when no credential resolves (fail-open CRUD)", async () => {
+		const probe = vi.fn<ChatModelProbe>().mockResolvedValue({ kind: "served" });
+		const { app, store } = makeProbeApp(probe);
+		const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
+
+		// No credentialRef + chatConfig:null ⇒ nothing to probe with.
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}/llm-services`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "untokened",
+				provider: "huggingface",
+				modelName: "acme/whatever",
+			}),
+		});
+
+		expect(res.status).toBe(201);
+		expect(probe).not.toHaveBeenCalled();
+	});
+
+	test("skips the probe for non-HuggingFace providers", async () => {
+		const probe = vi.fn<ChatModelProbe>().mockResolvedValue({ kind: "served" });
+		const { app, store } = makeProbeApp(probe);
+		const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
+
+		const res = await app.request(`/api/v1/workspaces/${ws.uid}/llm-services`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "openai-svc",
+				provider: "openai",
+				modelName: "gpt-4o-mini",
+				credentialRef: "test:openai",
+			}),
+		});
+
+		expect(res.status).toBe(201);
+		expect(probe).not.toHaveBeenCalled();
+	});
+
+	test("PATCH re-probes when the model changes and rejects a non-chat model", async () => {
+		const probe = vi.fn<ChatModelProbe>().mockResolvedValue({ kind: "served" });
+		const { app, store } = makeProbeApp(probe);
+		const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
+
+		const created = await app.request(
+			`/api/v1/workspaces/${ws.uid}/llm-services`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "svc",
+					provider: "huggingface",
+					modelName: "Qwen/Qwen2.5-7B-Instruct",
+					credentialRef: "test:hf",
+				}),
+			},
+		);
+		expect(created.status).toBe(201);
+		const id = (await json(created)).llmServiceId;
+
+		probe.mockResolvedValueOnce({
+			kind: "not_chat_model",
+			detail: '"acme/not-chat" is not a chat model',
+		});
+		const patch = await app.request(
+			`/api/v1/workspaces/${ws.uid}/llm-services/${id}`,
+			{
+				method: "PATCH",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ modelName: "acme/not-chat" }),
+			},
+		);
+
+		expect(patch.status).toBe(422);
+		expect((await json(patch)).error.code).toBe("llm_model_not_chat");
+		// The rejected model must not have been written.
+		const after = await store.getLlmService(ws.uid, id);
+		expect(after?.modelName).toBe("Qwen/Qwen2.5-7B-Instruct");
+	});
+
+	test("PATCH that leaves the model untouched does not re-probe", async () => {
+		const probe = vi.fn<ChatModelProbe>().mockResolvedValue({ kind: "served" });
+		const { app, store } = makeProbeApp(probe);
+		const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
+
+		const created = await app.request(
+			`/api/v1/workspaces/${ws.uid}/llm-services`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "svc",
+					provider: "huggingface",
+					modelName: "Qwen/Qwen2.5-7B-Instruct",
+					credentialRef: "test:hf",
+				}),
+			},
+		);
+		const id = (await json(created)).llmServiceId;
+		probe.mockClear();
+
+		const patch = await app.request(
+			`/api/v1/workspaces/${ws.uid}/llm-services/${id}`,
+			{
+				method: "PATCH",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ description: "just a label change" }),
+			},
+		);
+
+		expect(patch.status).toBe(200);
+		expect(probe).not.toHaveBeenCalled();
 	});
 });

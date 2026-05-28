@@ -23,13 +23,13 @@ describe("LlmServiceForm", () => {
 		const user = userEvent.setup();
 		render(<LlmServiceForm mode="create" onSubmit={onSubmit} />);
 
-		await user.type(screen.getByLabelText(/^Name/), "  prod-mistral  ");
+		await user.type(screen.getByLabelText(/^Name/), "  prod-qwen  ");
 
-		// Open the Model picker and choose the default Mistral row.
+		// Open the Model picker and choose the default Qwen row.
 		await user.click(screen.getByRole("combobox", { name: /^Model/ }));
 		await user.click(
 			await screen.findByRole("option", {
-				name: /Mistral-7B-Instruct v0\.3 \(default\)/,
+				name: /Qwen 2\.5 7B Instruct \(default\)/,
 			}),
 		);
 
@@ -39,10 +39,10 @@ describe("LlmServiceForm", () => {
 
 		await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
 		expect(onSubmit).toHaveBeenCalledWith({
-			name: "prod-mistral",
+			name: "prod-qwen",
 			description: null,
 			provider: "huggingface",
-			modelName: "mistralai/Mistral-7B-Instruct-v0.3",
+			modelName: "Qwen/Qwen2.5-7B-Instruct",
 			credentialRef: null,
 			maxOutputTokens: 1024,
 		});
