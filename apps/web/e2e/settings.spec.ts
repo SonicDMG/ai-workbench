@@ -32,11 +32,14 @@ test("workspace settings: RLAC toggle reveals + hides principals/audit panels", 
 		page.getByRole("heading", { level: 1, name: "Settings" }),
 	).toBeVisible();
 
-	// RLAC card is always visible; the Preview chip ships with it.
+	// Access Control card is always visible. The "Preview" chip was
+	// removed in 0.2.1 when RLAC graduated to GA — the "Learn more →"
+	// link replaces the old "Learn about the Preview status →".
 	await expect(
 		page.getByRole("heading", { name: "Access control" }),
 	).toBeVisible();
-	await expect(page.getByText("Preview").first()).toBeVisible();
+	await expect(page.getByText("Preview")).toHaveCount(0);
+	await expect(page.getByRole("link", { name: /Learn more/ })).toBeVisible();
 
 	const toggle = page.getByRole("checkbox", { name: "Enable access control" });
 	await expect(toggle).toBeVisible();
