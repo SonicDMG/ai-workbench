@@ -22,6 +22,7 @@ import {
 	type PolicyAuditRecord,
 	type PolicyDecision,
 	type PrincipalRecord,
+	parseRole,
 	type RagDocumentHashEntry,
 	type RagDocumentRecord,
 	type RagDocumentStatusEntry,
@@ -912,6 +913,7 @@ export function principalToRow(r: PrincipalRecord): PrincipalRow {
 		principal_id: r.principalId,
 		label: r.label,
 		attributes: { ...r.attributes },
+		role: r.role,
 		created_at: r.createdAt,
 		updated_at: r.updatedAt,
 	};
@@ -923,6 +925,7 @@ export function principalFromRow(row: PrincipalRow): PrincipalRecord {
 		principalId: row.principal_id,
 		label: row.label,
 		attributes: asPlainStringMap(row.attributes),
+		role: parseRole(row.role),
 		// `timestamp` columns come back as `Date` from astra-db-ts;
 		// coerce to ISO-8601 so consumers can sort/compare with
 		// `localeCompare` and `<` without crashing.

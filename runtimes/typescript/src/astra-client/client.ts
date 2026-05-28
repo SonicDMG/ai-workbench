@@ -114,6 +114,13 @@ const ADDITIVE_COLUMN_MIGRATIONS = [
 		column: "scopes",
 		definition: API_KEYS_DEFINITION.columns.scopes,
 	},
+	// Principal RBAC role is additive; legacy principals default to
+	// `viewer` on read when the column is null/missing.
+	{
+		table: PRINCIPALS_TABLE,
+		column: "role",
+		definition: PRINCIPALS_DEFINITION.columns.role,
+	},
 	// Knowledge-base collection lifecycle + lexical config landed
 	// after the first issue #98 control-plane table shape.
 	{

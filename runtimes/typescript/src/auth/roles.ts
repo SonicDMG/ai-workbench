@@ -1,27 +1,30 @@
 /**
- * RBAC roles (0.4.0).
+ * RBAC role → privilege-scope mapping (0.4.0).
  *
- * A coarse role set layered over the existing privilege scopes
- * (`read` / `write` / `manage`). A **role** is the user-facing concept;
- * the **scopes** it expands to are what `assertScope()` /
- * `requireScope()` in {@link ./authz.ts} actually enforce on each route
- * and MCP tool. Keeping roles as a thin projection over scopes means
- * the enforcement layer never has to learn about roles — it keeps
- * checking scopes exactly as it does today.
+ * The `Role` vocabulary itself (`viewer` / `editor` / `admin`) lives in
+ * `control-plane/types.ts` next to {@link ApiKeyScope} — a persisted
+ * principal record carries a role, so the type belongs with the other
+ * control-plane shapes and the data layer can read it without importing
+ * from `auth/`. This module owns the *policy*: which scopes each role
+ * grants, plus the inverse lookup. It re-exports the vocabulary so
+ * `auth/roles.ts` stays the single import surface for role + scope
+ * helpers.
  *
  *   viewer → [read]                 read-only.
- *   editor → [read, write]          can mutate workspace content
- *                                   (KBs, documents, agents, services,
- *                                   ingest).
- *   admin  → [read, write, manage]  can additionally perform admin-only
- *                                   operations (API keys, principals,
- *                                   RLAC policy, workspace delete).
- *
- * `manage` is new in 0.4.0. Before it, every mutating route gated on
- * `write`, so a write-capable key could also perform admin actions;
- * splitting `manage` out is a deliberate behavior change — see
- * docs/auth.md (Migration).
+ *   editor → [read, write]          mutate workspace content.
+ *   admin  → [read, write, manage]  + admin ops (API keys, RLAC,
+ *                                   workspace destroy).
  */
+
+import {
+	ALL_ROLES,
+	DEFAULT_ROLE,
+	isRole,
+	parseRole,
+	type Role,
+} from "../control-plane/types.js";
+
+export { ALL_ROLES, DEFAULT_ROLE, isRole, parseRole, type Role };
 
 /** Privilege scope identifiers enforced by {@link ./authz.ts:assertScope}. */
 export const SCOPE_READ = "read";
@@ -35,22 +38,6 @@ export const ALL_SCOPES: readonly string[] = Object.freeze([
 	SCOPE_MANAGE,
 ]);
 
-/** A coarse RBAC role. */
-export type Role = "viewer" | "editor" | "admin";
-
-/** Every role, least-privileged first. */
-export const ALL_ROLES: readonly Role[] = Object.freeze([
-	"viewer",
-	"editor",
-	"admin",
-]);
-
-/**
- * The role assumed when none is recorded for a principal or carried by
- * a token — the safe, least-privileged floor.
- */
-export const DEFAULT_ROLE: Role = "viewer";
-
 const ROLE_SCOPES: Readonly<Record<Role, readonly string[]>> = Object.freeze({
 	viewer: Object.freeze([SCOPE_READ]),
 	editor: Object.freeze([SCOPE_READ, SCOPE_WRITE]),
@@ -60,24 +47,6 @@ const ROLE_SCOPES: Readonly<Record<Role, readonly string[]>> = Object.freeze({
 /** Expand a role into the privilege scopes it grants. */
 export function scopesForRole(role: Role): readonly string[] {
 	return ROLE_SCOPES[role];
-}
-
-/** Type guard: is `value` one of the known roles? */
-export function isRole(value: unknown): value is Role {
-	return (
-		typeof value === "string" &&
-		(ALL_ROLES as readonly string[]).includes(value)
-	);
-}
-
-/**
- * Coerce an arbitrary stored or claimed value into a role, falling back
- * to {@link DEFAULT_ROLE} when it's missing or unrecognized. Use this at
- * the boundary where a principal record's `role` field or an OIDC claim
- * value is read — never trust the raw value.
- */
-export function parseRole(value: unknown): Role {
-	return isRole(value) ? value : DEFAULT_ROLE;
 }
 
 /**

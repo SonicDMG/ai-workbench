@@ -29,7 +29,7 @@ import type {
 	PrincipalRepo,
 	UpdatePrincipalInput,
 } from "../store.js";
-import type { PrincipalRecord } from "../types.js";
+import { DEFAULT_ROLE, type PrincipalRecord } from "../types.js";
 import { type AstraStoreState, assertWorkspace } from "./state.js";
 
 export function makePrincipalMethods(state: AstraStoreState): PrincipalRepo {
@@ -78,6 +78,7 @@ export function makePrincipalMethods(state: AstraStoreState): PrincipalRepo {
 				principalId: input.principalId,
 				label: input.label ?? null,
 				attributes: { ...(input.attributes ?? {}) },
+				role: input.role ?? DEFAULT_ROLE,
 				createdAt: now,
 				updatedAt: now,
 			};
@@ -105,6 +106,7 @@ export function makePrincipalMethods(state: AstraStoreState): PrincipalRepo {
 				...(patch.attributes !== undefined && {
 					attributes: { ...patch.attributes },
 				}),
+				...(patch.role !== undefined && { role: patch.role }),
 				updatedAt: nowIso(),
 			};
 			const nextRow = principalToRow(next);

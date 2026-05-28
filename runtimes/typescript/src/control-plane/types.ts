@@ -169,6 +169,36 @@ export function normalizeApiKeyScopes(
 	return (["read", "write", "manage"] as const).filter((s) => seen.has(s));
 }
 
+/**
+ * Coarse RBAC role carried by a {@link PrincipalRecord}. The role is
+ * the user-facing identity tier; `auth/roles.ts` maps each role to the
+ * privilege {@link ApiKeyScope}s it grants (`viewer` → read, `editor` →
+ * read+write, `admin` → read+write+manage). Lives here, beside
+ * `ApiKeyScope`, because it is persisted on a control-plane record — so
+ * the data layer can read it without importing from `auth/`.
+ */
+export type Role = "viewer" | "editor" | "admin";
+
+/** Every role, least-privileged first. */
+export const ALL_ROLES: readonly Role[] = ["viewer", "editor", "admin"];
+
+/** The safe floor assumed when a principal has no recorded role. */
+export const DEFAULT_ROLE: Role = "viewer";
+
+/** Type guard for runtime parsing of arbitrary input shapes. */
+export function isRole(value: unknown): value is Role {
+	return value === "viewer" || value === "editor" || value === "admin";
+}
+
+/**
+ * Coerce an arbitrary stored or claimed value into a role, falling back
+ * to {@link DEFAULT_ROLE} when it's missing or unrecognized. Used at
+ * read boundaries — a principal row's `role` column, an OIDC claim.
+ */
+export function parseRole(value: unknown): Role {
+	return isRole(value) ? value : DEFAULT_ROLE;
+}
+
 /** Embedding configuration for a vector store. */
 export interface EmbeddingConfig {
 	readonly provider: string;
@@ -456,6 +486,13 @@ export interface PrincipalRecord {
 	readonly principalId: string;
 	readonly label: string | null;
 	readonly attributes: Readonly<Record<string, string>>;
+	/**
+	 * RBAC role for this identity. Drives RLAC (an `admin` role bypasses
+	 * row filters) and RBAC (effective scopes derived from role for OIDC
+	 * subjects). Defaults to {@link DEFAULT_ROLE} for principals created
+	 * or read before the role column existed.
+	 */
+	readonly role: Role;
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }

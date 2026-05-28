@@ -370,6 +370,8 @@ export interface PrincipalRow {
 	principal_id: string;
 	label: string | null;
 	attributes: Record<string, string>;
+	/** RBAC role; null on legacy rows written before the column existed. */
+	role: string | null;
 	created_at: Iso;
 	updated_at: Iso;
 }

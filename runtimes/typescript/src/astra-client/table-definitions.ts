@@ -553,6 +553,8 @@ export const PRINCIPALS_DEFINITION = {
 		// Free-form attributes the policy DSL can reference as
 		// `$principal.<key>` (e.g. role=finance, clearance=high).
 		attributes: { type: "map", keyType: "text", valueType: "text" },
+		// RBAC role (viewer/editor/admin); null on legacy rows.
+		role: "text",
 		created_at: "timestamp",
 		updated_at: "timestamp",
 	},

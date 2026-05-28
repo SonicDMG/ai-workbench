@@ -130,6 +130,58 @@ describe("RLAC routes — principals CRUD", () => {
 		expect(deleted.status).toBe(204);
 	});
 
+	test("RBAC role defaults to viewer and round-trips an explicit role", async () => {
+		const { app, store } = makeTestApp();
+		const { workspaceId } = await seedWorkspace(store);
+
+		// Omitting `role` defaults to the viewer floor.
+		const def = await app.request(
+			`/api/v1/workspaces/${workspaceId}/principals`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ principalId: "viewer-default" }),
+			},
+		);
+		expect(def.status).toBe(201);
+		expect(((await def.json()) as { role: string }).role).toBe("viewer");
+
+		// An explicit role persists and is returned on create.
+		const admin = await app.request(
+			`/api/v1/workspaces/${workspaceId}/principals`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ principalId: "ada", role: "admin" }),
+			},
+		);
+		expect(admin.status).toBe(201);
+		expect(((await admin.json()) as { role: string }).role).toBe("admin");
+
+		// PATCH updates the role.
+		const patched = await app.request(
+			`/api/v1/workspaces/${workspaceId}/principals/ada`,
+			{
+				method: "PATCH",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ role: "editor" }),
+			},
+		);
+		expect(patched.status).toBe(200);
+		expect(((await patched.json()) as { role: string }).role).toBe("editor");
+
+		// An unknown role is rejected by the schema.
+		const bad = await app.request(
+			`/api/v1/workspaces/${workspaceId}/principals`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ principalId: "nope", role: "superadmin" }),
+			},
+		);
+		expect(bad.status).toBe(400);
+	});
+
 	test("creating a duplicate principal returns 409", async () => {
 		const { app, store } = makeTestApp();
 		const { workspaceId } = await seedWorkspace(store);

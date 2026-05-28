@@ -12,8 +12,17 @@ import type {
 	PrincipalRepo,
 	UpdatePrincipalInput,
 } from "../store.js";
-import type { PrincipalRecord } from "../types.js";
+import { DEFAULT_ROLE, type PrincipalRecord, parseRole } from "../types.js";
 import { assertWorkspace, type FileStoreState } from "./state.js";
+
+/**
+ * Normalize a persisted row's `role`: rows written before the role
+ * field existed have none, so back-compat them to {@link DEFAULT_ROLE}
+ * (viewer) on read. Returns a new record — never mutates the input.
+ */
+function withRole(record: PrincipalRecord): PrincipalRecord {
+	return { ...record, role: parseRole(record.role) };
+}
 
 export function makePrincipalMethods(state: FileStoreState): PrincipalRepo {
 	return {
@@ -24,6 +33,7 @@ export function makePrincipalMethods(state: FileStoreState): PrincipalRepo {
 			const rows = await state.readAll("principals");
 			return rows
 				.filter((r) => r.workspaceId === workspace)
+				.map(withRole)
 				.sort((a, b) => a.principalId.localeCompare(b.principalId));
 		},
 
@@ -33,11 +43,10 @@ export function makePrincipalMethods(state: FileStoreState): PrincipalRepo {
 		): Promise<PrincipalRecord | null> {
 			await assertWorkspace(state, workspace);
 			const rows = await state.readAll("principals");
-			return (
-				rows.find(
-					(r) => r.workspaceId === workspace && r.principalId === principalId,
-				) ?? null
+			const found = rows.find(
+				(r) => r.workspaceId === workspace && r.principalId === principalId,
 			);
+			return found ? withRole(found) : null;
 		},
 
 		async createPrincipal(
@@ -63,6 +72,7 @@ export function makePrincipalMethods(state: FileStoreState): PrincipalRepo {
 					principalId: input.principalId,
 					label: input.label ?? null,
 					attributes: { ...(input.attributes ?? {}) },
+					role: input.role ?? DEFAULT_ROLE,
 					createdAt: now,
 					updatedAt: now,
 				};
@@ -83,13 +93,14 @@ export function makePrincipalMethods(state: FileStoreState): PrincipalRepo {
 				if (idx < 0) {
 					throw new ControlPlaneNotFoundError("principal", principalId);
 				}
-				const existing = rows[idx] as PrincipalRecord;
+				const existing = withRole(rows[idx] as PrincipalRecord);
 				const next: PrincipalRecord = {
 					...existing,
 					...(patch.label !== undefined && { label: patch.label }),
 					...(patch.attributes !== undefined && {
 						attributes: { ...patch.attributes },
 					}),
+					...(patch.role !== undefined && { role: patch.role }),
 					updatedAt: nowIso(),
 				};
 				const nextRows = [...rows];
