@@ -8,6 +8,7 @@
  *   controlPlane:  discriminated on `driver`:
  *     memory:   { driver: "memory" }
  *     file:     { driver: "file", root: string }
+ *     sqlite:   { driver: "sqlite", path: string }
  *     astra:    { driver: "astra", endpoint, tokenRef, keyspace }
  *   seedWorkspaces?: WorkspaceRecord-shaped array, loaded into the
  *     memory backend at startup. Ignored by file/astra.
@@ -97,6 +98,88 @@ const TelemetrySchema = z
 	.default({ enabled: false, url: null });
 
 export type TelemetryConfig = z.infer<typeof TelemetrySchema>;
+
+/**
+ * Native agent-tool guardrails (0.4.0, A3). Off by default — both
+ * `native:fetch` and `native:web_search` are opt-in per agent via the
+ * `toolIds` allow-list AND must be turned on here. A default agent
+ * (empty `toolIds`) never sees them regardless of this block.
+ *
+ * `fetch` — the GET/POST HTTP tool. `timeoutMs`/`maxResponseBytes` are
+ * the guardrail defaults the native provider enforces with an
+ * AbortController + a streamed byte cap (A5 reads these for shared
+ * guardrail defaults too). Even with `enabled: true` the tool only
+ * reaches public hosts: outbound goes through `safeFetch`
+ * (`redirect: "error"`, closing the redirect-to-internal bypass) and a
+ * pre-flight host check rejects private / loopback / link-local /
+ * cloud-metadata targets.
+ *
+ * `webSearch` — a pluggable provider behind a config key. The tool is
+ * only built when `enabled: true` AND both `provider` and `apiKeyRef`
+ * are set; otherwise it is simply NOT returned (off). `apiKeyRef` is a
+ * {@link SecretRef} resolved at construction time via the
+ * SecretResolver — the key never appears by value in config.
+ */
+const FetchToolSchema = z
+	.object({
+		enabled: z.boolean().default(false),
+		// Hard per-call deadline enforced via AbortController. Bounded so a
+		// hung upstream can't pin a tool-call iteration open indefinitely.
+		timeoutMs: z.number().int().min(100).max(120_000).default(10_000),
+		// Stop reading the response body past this many bytes (the reader is
+		// aborted) so a huge/streaming payload can't blow up the prompt or
+		// exhaust memory. Independent of the model's context window.
+		maxResponseBytes: z
+			.number()
+			.int()
+			.min(1_024)
+			.max(10_485_760)
+			.default(1_048_576),
+	})
+	.default({ enabled: false, timeoutMs: 10_000, maxResponseBytes: 1_048_576 });
+
+const WebSearchToolSchema = z
+	.object({
+		enabled: z.boolean().default(false),
+		// Search backend behind the tool. Only `tavily` ships today; the
+		// enum is the seam for adding more without widening the surface.
+		provider: z.enum(["tavily"]).nullable().default(null),
+		// SecretRef for the provider's API key, e.g. `env:TAVILY_API_KEY`.
+		// Required for the tool to be built; null leaves the tool off.
+		apiKeyRef: SecretRef.nullable().default(null),
+		// Hard per-call deadline for the search request (AbortController).
+		timeoutMs: z.number().int().min(100).max(120_000).default(10_000),
+		// Max results to request from the provider; also the hard cap on
+		// what the model may ask for.
+		maxResults: z.number().int().min(1).max(20).default(5),
+	})
+	.default({
+		enabled: false,
+		provider: null,
+		apiKeyRef: null,
+		timeoutMs: 10_000,
+		maxResults: 5,
+	});
+
+const ChatToolsSchema = z
+	.object({
+		fetch: FetchToolSchema,
+		webSearch: WebSearchToolSchema,
+	})
+	.default({
+		fetch: { enabled: false, timeoutMs: 10_000, maxResponseBytes: 1_048_576 },
+		webSearch: {
+			enabled: false,
+			provider: null,
+			apiKeyRef: null,
+			timeoutMs: 10_000,
+			maxResults: 5,
+		},
+	});
+
+export type ChatToolsConfig = z.infer<typeof ChatToolsSchema>;
+export type FetchToolConfig = z.infer<typeof FetchToolSchema>;
+export type WebSearchToolConfig = z.infer<typeof WebSearchToolSchema>;
 
 const RuntimeSchema = z
 	.object({
@@ -258,6 +341,17 @@ const OidcClientSchema = z.object({
 	sessionSecretRef: SecretRef.nullable().default(null),
 });
 
+const OidcRoleMappingSchema = z.object({
+	// JWT claim to read the role/group(s) from (e.g. "groups" or "role").
+	claim: z.string().min(1),
+	// Map a claim value → RBAC role. The claim may hold a single string
+	// or an array (groups); the highest-privileged matching role wins.
+	values: z.record(z.string(), z.enum(["viewer", "editor", "admin"])),
+	// Role assigned when the claim is absent or nothing matches — the
+	// safe floor.
+	default: z.enum(["viewer", "editor", "admin"]).default("viewer"),
+});
+
 const OidcSchema = z.object({
 	// Token `iss` claim; MUST match exactly. Discovery URL is derived
 	// from this when `jwksUri` isn't set.
@@ -273,6 +367,12 @@ const OidcSchema = z.object({
 	clockToleranceSeconds: z.number().int().min(0).max(300).default(30),
 	// Claim-to-field mapping.
 	claims: OidcClaimsSchema,
+	// Optional RBAC role mapping: derive a role from a token claim.
+	// When set, OIDC subjects without a per-workspace principal record
+	// get RBAC scopes from their role (viewer floor when the claim is
+	// absent). When unset, OIDC subjects keep all scopes — configure it
+	// to start enforcing RBAC on OIDC-authenticated users.
+	roleMapping: OidcRoleMappingSchema.optional(),
 	// Optional browser-login block. When present the runtime hosts
 	// the `/auth/*` endpoints.
 	client: OidcClientSchema.optional(),
@@ -354,6 +454,21 @@ const ControlPlaneSchema = z.discriminatedUnion("driver", [
 		driver: z.literal("file"),
 		root: z.string().min(1),
 		jobsResume: JobsResumeSchema.optional(),
+	}),
+	z.object({
+		// SQLite control plane for chat-heavy / durable single-node
+		// deployments. Same durability + single-node posture as `file`,
+		// but row-level writes (WAL) instead of a whole-file rewrite per
+		// mutation — built for streaming chat where `file` goes quadratic.
+		driver: z.literal("sqlite"),
+		// Database file path. WAL sidecars (`-wal`, `-shm`) live beside
+		// it. `:memory:` selects an ephemeral in-process database.
+		path: z.string().min(1),
+		jobsResume: JobsResumeSchema.optional(),
+		// Accepted for symmetry with the astra block (operators can keep
+		// one shape across drivers); unused by the single-node SQLite job
+		// store, which fans out updates in-process with no poller.
+		jobPollIntervalMs: z.number().int().min(50).max(60_000).optional(),
 	}),
 	z.object({
 		driver: z.literal("astra"),
@@ -456,6 +571,21 @@ const ChatSchema = z.object({
 	 * over this fallback.
 	 */
 	systemPrompt: z.string().min(1).nullable().default(null),
+	/**
+	 * Native agent-tool guardrails (`native:fetch`, `native:web_search`).
+	 * Both off by default and opt-in per agent via `toolIds` — see
+	 * {@link ChatToolsSchema}. A5 reads these for shared guardrail
+	 * defaults; the native provider (A3) reads them to gate + bound each
+	 * tool.
+	 *
+	 * Optional so existing hand-built `ChatConfig` literals stay valid and
+	 * an omitted `chat.tools:` block leaves both native tools off (their
+	 * default state). When the block IS present in YAML, the inner schema
+	 * fills any missing sub-fields with the off/guardrail defaults below,
+	 * so a parsed config that wrote `chat.tools` always carries a fully
+	 * populated object.
+	 */
+	tools: ChatToolsSchema.optional(),
 });
 
 /**

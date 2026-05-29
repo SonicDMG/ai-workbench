@@ -23,7 +23,7 @@ export { toWireJob } from "./job.js";
 export {
 	toWireEmbedding,
 	toWireLlm,
-	toWireMcpTool,
+	toWireMcpServer,
 	toWirePage,
 	toWireReranking,
 } from "./service.js";

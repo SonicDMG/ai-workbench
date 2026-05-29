@@ -15,17 +15,41 @@
 /** Lifecycle state of a job. Terminal states: `succeeded`, `failed`. */
 export type JobStatus = "pending" | "running" | "succeeded" | "failed";
 
-/** Kind discriminates the payload of `result`. More kinds arrive as
- * more async operations ship. */
+/**
+ * Kind discriminates the payload of `result` and selects the resume
+ * callback the orphan sweeper consults. `"ingest"` is the only kind
+ * with a producer today; more arrive as more async operations ship.
+ *
+ * Kept a closed literal union so the public wire schema (the OpenAPI
+ * job response pins `kind`) stays exact. The durability machinery —
+ * the {@link JobInputSnapshot} blob and the
+ * {@link ./resume-registry.ResumeRegistry} — is structurally
+ * kind-agnostic, so adding a resumable kind is: extend this union, add
+ * a producer, register a resume callback.
+ */
 export type JobKind = "ingest";
+
+/**
+ * Kind-tagged resume snapshot persisted on a {@link JobRecord}.
+ *
+ * A JSON blob — the orphan sweeper hands it back to the resume
+ * callback registered for the record's {@link JobRecord.kind}, which
+ * knows how to interpret it. Stored alongside the job so the
+ * cross-replica sweeper can replay the work after reclaiming an
+ * abandoned lease, instead of marking the job failed and forcing the
+ * user to retry.
+ *
+ * The shape is per-kind and opaque at this layer (same loose typing as
+ * {@link JobRecord.result}, since it serializes through JSON on every
+ * backend). For `ingest` jobs the blob is an {@link IngestInputSnapshot}.
+ */
+export type JobInputSnapshot = Readonly<Record<string, unknown>>;
 
 /**
  * Persisted input snapshot for an `ingest` job — exactly what the
  * pipeline received (text, optional metadata, optional chunker
- * options). Stored alongside the job record so the cross-replica
- * orphan sweeper can replay the pipeline after reclaiming an
- * abandoned lease, instead of marking the job failed and forcing
- * the user to retry.
+ * options). This is the `ingest` kind's concrete
+ * {@link JobInputSnapshot}.
  *
  * Mirrors `IngestInput` in `src/ingest/pipeline.ts`. Kept as a
  * dedicated job-types declaration so the jobs layer doesn't take a
@@ -91,13 +115,51 @@ export interface JobRecord {
 	 */
 	readonly leasedAt: string | null;
 	/**
-	 * Persisted ingest input — present on `ingest` jobs created by
-	 * the async path so the orphan sweeper can replay them after
-	 * reclaim. `null` for jobs created before this column shipped or
-	 * for synchronous (sync-path) ingests that don't allocate a job
-	 * record at all.
+	 * Kind-tagged resume snapshot — present on jobs created by an
+	 * async path that wants to be resumable, so the orphan sweeper can
+	 * replay them after reclaim. Interpreted by the resume callback
+	 * registered for {@link kind}; for `ingest` it's an
+	 * {@link IngestInputSnapshot}.
+	 *
+	 * `null` for jobs created before any snapshot was persisted
+	 * (including pre-`ingest_input_json` rows — those are migrated in
+	 * on read), for synchronous paths that don't allocate a job record,
+	 * and for kinds that don't persist a snapshot.
 	 */
-	readonly ingestInput: IngestInputSnapshot | null;
+	readonly inputSnapshot: JobInputSnapshot | null;
+}
+
+/**
+ * On-disk / serialized shape of a job, as read back from a durable
+ * backend (file JSON, SQLite `data` blob, Astra row converters).
+ *
+ * Differs from {@link JobRecord} only in that the lease + snapshot
+ * fields are optional and the deprecated `ingestInput` field may still
+ * be present on rows written before the rename. {@link hydrateJobRow}
+ * folds these into a canonical {@link JobRecord}.
+ */
+export type PersistedJobRow = Partial<JobRecord> & {
+	/** Legacy snapshot field, superseded by `inputSnapshot`. Read for
+	 * back-compat on rows written before the rename. */
+	readonly ingestInput?: JobInputSnapshot | null;
+};
+
+/**
+ * Fold a {@link PersistedJobRow} into a canonical {@link JobRecord},
+ * backfilling fields that pre-date the lease + resume-snapshot columns.
+ *
+ * The snapshot resolves from the kind-agnostic `inputSnapshot` when
+ * present and falls back to the legacy `ingestInput` field, so jobs
+ * persisted before the rename still resume. Shared by every durable
+ * backend so back-compat handling can't drift between them.
+ */
+export function hydrateJobRow(row: PersistedJobRow): JobRecord {
+	return {
+		...(row as JobRecord),
+		leasedBy: row.leasedBy ?? null,
+		leasedAt: row.leasedAt ?? null,
+		inputSnapshot: row.inputSnapshot ?? row.ingestInput ?? null,
+	};
 }
 
 /** Patch shape for job updates. Only progress-relevant fields appear
@@ -125,8 +187,34 @@ export interface CreateJobInput {
 	/** Optional job id — generated if omitted. */
 	readonly jobId?: string;
 	readonly total?: number | null;
-	/** Persisted on create for `ingest` jobs created via the async
-	 * path. The orphan sweeper reads this back on reclaim to drive a
-	 * resume; sync ingests and non-ingest jobs leave it `null`. */
+	/** Kind-tagged resume snapshot persisted on create. The orphan
+	 * sweeper reads it back on reclaim and hands it to the kind's
+	 * resume callback; paths that aren't resumable leave it `null`. */
+	readonly inputSnapshot?: JobInputSnapshot | null;
+	/**
+	 * @deprecated Back-compat alias for {@link inputSnapshot}, kept so
+	 * the ingest service can keep passing `ingestInput` while callers
+	 * migrate to the kind-agnostic field. When both are supplied
+	 * `inputSnapshot` wins. New code should set `inputSnapshot`.
+	 */
 	readonly ingestInput?: IngestInputSnapshot | null;
+}
+
+/**
+ * Resolve the canonical input snapshot from a {@link CreateJobInput},
+ * preferring the kind-agnostic `inputSnapshot` and falling back to the
+ * deprecated `ingestInput` alias. Returns `null` when neither is set.
+ *
+ * Centralized here so all four backends derive the persisted snapshot
+ * identically.
+ */
+export function resolveInputSnapshot(
+	input: Pick<CreateJobInput, "inputSnapshot" | "ingestInput">,
+): JobInputSnapshot | null {
+	if (input.inputSnapshot != null) return input.inputSnapshot;
+	// `IngestInputSnapshot` has named fields rather than an index
+	// signature, so spread it into a fresh record to land on the
+	// kind-agnostic `JobInputSnapshot` shape.
+	if (input.ingestInput != null) return { ...input.ingestInput };
+	return null;
 }

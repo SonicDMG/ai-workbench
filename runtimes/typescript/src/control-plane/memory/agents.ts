@@ -110,6 +110,9 @@ export function makeAgentMethods(state: MemoryStoreState): AgentRepo {
 				...(patch.knowledgeBaseIds !== undefined && {
 					knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
 				}),
+				...(patch.toolIds !== undefined && {
+					toolIds: freezeStringSet(patch.toolIds),
+				}),
 				...(patch.rerankEnabled !== undefined && {
 					rerankEnabled: patch.rerankEnabled,
 				}),

@@ -12,6 +12,7 @@ import { keys } from "@/lib/query";
 import type {
 	AgentRecord,
 	AgentTemplate,
+	AvailableTool,
 	ChatMessage,
 	ConversationRecord,
 	CreateAgentInput,
@@ -23,6 +24,7 @@ import type {
 	UpdateConversationInput,
 	UpdateLlmServiceInput,
 } from "@/lib/schemas";
+import { reduceToolCards, type ToolCardState } from "@/lib/toolCards";
 
 /* -------- Agents -------- */
 
@@ -134,6 +136,29 @@ export function useCreateAgentFromTemplate(
 			qc.invalidateQueries({ queryKey: keys.agents.all(workspaceId) });
 			qc.setQueryData(keys.agents.detail(workspaceId, agent.agentId), agent);
 		},
+	});
+}
+
+/* -------- Available tools (agent-form catalog) -------- */
+
+/**
+ * Selectable tool catalog for the agent-form tool picker. Reflects
+ * what's actually wired for the workspace (built-in always; native only
+ * when configured; astra only for astra/hcd; mcp per registered server).
+ * The pool drifts slowly within a session, so a short stale window keeps
+ * the round-trip count down while a newly-registered MCP server still
+ * shows up on the next form open.
+ */
+export function useAvailableTools(
+	workspaceId: string | undefined,
+): UseQueryResult<AvailableTool[], Error> {
+	return useQuery({
+		queryKey: workspaceId
+			? keys.availableTools.all(workspaceId)
+			: ["available-tools", "disabled"],
+		queryFn: () => api.listAvailableTools(workspaceId as string),
+		enabled: Boolean(workspaceId),
+		staleTime: 60_000,
 	});
 }
 
@@ -290,6 +315,12 @@ export interface SendConversationStreamHandle {
 	 */
 	readonly send: (content: string) => Promise<string | null>;
 	readonly pendingDelta: string;
+	/**
+	 * Tool-call cards accumulated during the in-flight turn (interleaved
+	 * with `pendingDelta` in the transcript). Each flips from `running`
+	 * to `done` as its `tool-result` arrives. Reset on the next `send`.
+	 */
+	readonly toolCards: readonly ToolCardState[];
 	readonly pending: boolean;
 	readonly error: string | null;
 	readonly cancel: () => void;
@@ -302,6 +333,7 @@ export function useSendConversationStream(
 ): SendConversationStreamHandle {
 	const qc = useQueryClient();
 	const [pendingDelta, setPendingDelta] = useState("");
+	const [toolCards, setToolCards] = useState<readonly ToolCardState[]>([]);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const abortRef = useRef<AbortController | null>(null);
@@ -324,6 +356,7 @@ export function useSendConversationStream(
 			abortRef.current = ctrl;
 			setPending(true);
 			setPendingDelta("");
+			setToolCards([]);
 			setError(null);
 			try {
 				let buffer = "";
@@ -346,9 +379,14 @@ export function useSendConversationStream(
 						} else if (evt.type === "token-reset") {
 							// Server signals "drop any pre-tool-call narration that
 							// leaked into the live preview" — the next iteration's
-							// tokens append to a clean slate.
+							// tokens append to a clean slate. Tool cards persist
+							// (they ARE the record of why the iteration ended).
 							buffer = "";
 							setPendingDelta("");
+						} else if (evt.type === "tool-call" || evt.type === "tool-result") {
+							// Fold tool-call / tool-result events into the ordered
+							// card list (pure reducer, see lib/toolCards.ts).
+							setToolCards((prev) => reduceToolCards(prev, evt));
 						} else if (evt.type === "done" || evt.type === "error") {
 							qc.setQueryData<ChatMessage[]>(
 								keys.conversations.messages(
@@ -376,7 +414,7 @@ export function useSendConversationStream(
 		[agentId, conversationId, qc, workspaceId],
 	);
 
-	return { send, pendingDelta, pending, error, cancel };
+	return { send, pendingDelta, toolCards, pending, error, cancel };
 }
 
 /* -------- LLM services -------- */

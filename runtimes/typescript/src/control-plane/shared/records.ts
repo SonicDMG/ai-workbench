@@ -29,6 +29,20 @@ export function freezeStringSet(
 	return Object.freeze(arr);
 }
 
+/**
+ * Normalise an MCP-server `allowedTools` allow-list. Unlike
+ * {@link freezeStringSet}, this preserves the `null` (expose every tool
+ * the server advertises) vs `[]` (expose none) distinction the A2 tool
+ * resolver relies on. An array is deduplicated, sorted, and frozen for a
+ * deterministic wire shape; `null`/`undefined` collapse to `null`.
+ */
+export function normalizeAllowedTools(
+	value: readonly string[] | null | undefined,
+): readonly string[] | null {
+	if (value === null || value === undefined) return null;
+	return Object.freeze([...new Set(value)].sort());
+}
+
 /** Freeze a metadata-style `Record<string, string>` map (or empty). */
 export function freezeMetadata(
 	m: Readonly<Record<string, string>> | undefined,
@@ -110,7 +124,7 @@ export function buildAgentRecord(
 		description: input.description ?? null,
 		systemPrompt: input.systemPrompt ?? null,
 		userPrompt: input.userPrompt ?? null,
-		toolIds: freezeStringSet([]),
+		toolIds: freezeStringSet(input.toolIds ?? []),
 		llmServiceId: input.llmServiceId ?? null,
 		knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
 		rerankEnabled: input.rerankEnabled ?? false,

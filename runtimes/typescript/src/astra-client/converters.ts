@@ -15,13 +15,14 @@ import {
 	type KnowledgeBaseRecord,
 	type KnowledgeFilterRecord,
 	type LlmServiceRecord,
-	type McpToolRecord,
+	type McpServerRecord,
 	type MessageRecord,
 	normalizeApiKeyScopes,
 	type PolicyAction,
 	type PolicyAuditRecord,
 	type PolicyDecision,
 	type PrincipalRecord,
+	parseRole,
 	type RagDocumentHashEntry,
 	type RagDocumentRecord,
 	type RagDocumentStatusEntry,
@@ -37,7 +38,7 @@ import type {
 	KnowledgeBaseRow,
 	KnowledgeFilterRow,
 	LlmServiceRow,
-	McpToolRow,
+	McpServerRow,
 	MessageRow,
 	PolicyAuditRow,
 	PrincipalRow,
@@ -656,45 +657,50 @@ export function llmServiceFromRow(row: LlmServiceRow): LlmServiceRecord {
 	};
 }
 
-/* --------------------------- MCP tool ----------------------------- */
+/* -------------------------- MCP server ---------------------------- */
 
-export function mcpToolToRow(r: McpToolRecord): McpToolRow {
+/**
+ * Parse the `allowed_tools` text column. `null`/missing → `null` (expose
+ * every advertised tool); a serialized JSON array → a sorted, deduped
+ * `string[]`. Throws on malformed JSON / non-array so a corrupt row
+ * surfaces loudly rather than silently exposing every tool.
+ */
+function parseAllowedTools(raw: string | null): readonly string[] | null {
+	if (raw == null) return null;
+	const parsed = JSON.parse(raw) as unknown;
+	if (!Array.isArray(parsed)) {
+		throw new Error("expected allowed_tools to be a JSON array");
+	}
+	return [...new Set(parsed.map((v) => String(v)))].sort();
+}
+
+export function mcpServerToRow(r: McpServerRecord): McpServerRow {
 	return {
 		workspace_id: r.workspaceId,
-		tool_id: r.toolId,
-		name: r.name,
-		description: r.description,
-		tool_type: r.toolType,
-		endpoint_base_url: r.endpointBaseUrl,
-		endpoint_path: r.endpointPath,
-		http_method: r.httpMethod,
-		input_schema: r.inputSchema ? JSON.stringify(r.inputSchema) : null,
-		output_schema: r.outputSchema ? JSON.stringify(r.outputSchema) : null,
-		auth_type: r.authType,
+		mcp_server_id: r.mcpServerId,
+		label: r.label,
+		url: r.url,
 		credential_ref: r.credentialRef,
-		tags: arrayToSet(r.tags),
+		enabled: r.enabled,
+		allowed_tools:
+			r.allowedTools === null ? null : JSON.stringify(r.allowedTools),
 		created_at: r.createdAt,
 		updated_at: r.updatedAt,
 	};
 }
 
-export function mcpToolFromRow(row: McpToolRow): McpToolRecord {
+export function mcpServerFromRow(row: McpServerRow): McpServerRecord {
 	return {
 		workspaceId: asUuidString(row.workspace_id),
-		toolId: asUuidString(row.tool_id),
-		name: row.name,
-		description: row.description,
-		toolType: row.tool_type,
-		endpointBaseUrl: row.endpoint_base_url,
-		endpointPath: row.endpoint_path,
-		httpMethod: row.http_method,
-		inputSchema: parseJsonObject(row.input_schema),
-		outputSchema: parseJsonObject(row.output_schema),
-		authType: row.auth_type,
+		mcpServerId: asUuidString(row.mcp_server_id),
+		label: row.label,
+		url: row.url,
 		credentialRef: row.credential_ref,
-		tags: setToSortedArray(row.tags),
-		createdAt: row.created_at,
-		updatedAt: row.updated_at,
+		// Legacy rows written before the column existed read as enabled.
+		enabled: row.enabled ?? true,
+		allowedTools: parseAllowedTools(row.allowed_tools),
+		createdAt: asIsoString(row.created_at),
+		updatedAt: asIsoString(row.updated_at),
 	};
 }
 
@@ -912,6 +918,7 @@ export function principalToRow(r: PrincipalRecord): PrincipalRow {
 		principal_id: r.principalId,
 		label: r.label,
 		attributes: { ...r.attributes },
+		role: r.role,
 		created_at: r.createdAt,
 		updated_at: r.updatedAt,
 	};
@@ -923,6 +930,7 @@ export function principalFromRow(row: PrincipalRow): PrincipalRecord {
 		principalId: row.principal_id,
 		label: row.label,
 		attributes: asPlainStringMap(row.attributes),
+		role: parseRole(row.role),
 		// `timestamp` columns come back as `Date` from astra-db-ts;
 		// coerce to ISO-8601 so consumers can sort/compare with
 		// `localeCompare` and `<` without crashing.

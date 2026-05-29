@@ -1,5 +1,0 @@
----
-"@ai-workbench/cli": minor
----
-
-`aiw login --oidc` adds RFC 8628 device-flow login alongside the existing API-key paste flow. Runtime gains two proxy endpoints (`POST /auth/device/authorize` + `POST /auth/device/token`) that front the configured IdP's device endpoints — the CLI never needs the IdP issuer URL and the IdP client secret stays server-side. The resulting JWT is whatever the existing OIDC verifier already validates, so no new auth path. Profiles persist the access token, optional refresh token, and expiry under a new `oidc` block; the HTTP client prefers the OIDC bearer over the API key when both are present. The runtime responds `501 device_flow_not_supported` when the IdP doesn't advertise a device endpoint (Auth0, Okta, Keycloak, Google all do by default), and `/auth/config` exposes `modes.device` so the CLI can fail fast on runtimes that can't speak the flow. Two new audit actions land: `auth.device.authorize` (one row per /device/authorize call, captures the human-typed user_code) and `auth.device.token` (one row per terminal poll — pending polls are not audited so a long grant doesn't flood the log).

@@ -134,7 +134,7 @@ function extractDenyReason(result: unknown): string | null {
 		content?: ReadonlyArray<{ type?: string; text?: string }>;
 	};
 	const first = obj.content?.[0];
-	if (!first || first.type !== "text" || !first.text) return null;
+	if (first?.type !== "text" || !first.text) return null;
 	try {
 		const parsed = JSON.parse(first.text);
 		if (

@@ -1098,6 +1098,49 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
+		test("updateAgent patches toolIds independently (A6 PATCH allow-list)", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				// Created with the grandfather default (empty allow-list).
+				const a = await store.createAgent(ws.uid, { name: "Tooler" });
+				expect([...a.toolIds]).toEqual([]);
+
+				// PATCH a non-empty set — sorted + deduped by freezeStringSet.
+				const set = await store.updateAgent(ws.uid, a.agentId, {
+					toolIds: ["search_kb", "native:fetch", "search_kb"],
+				});
+				expect([...set.toolIds]).toEqual(["native:fetch", "search_kb"]);
+				// A read sees the persisted allow-list (round-trips the backend).
+				const got = await store.getAgent(ws.uid, a.agentId);
+				expect([...(got?.toolIds ?? [])]).toEqual([
+					"native:fetch",
+					"search_kb",
+				]);
+
+				// Other fields untouched by a toolIds-only patch.
+				expect(got?.name).toBe("Tooler");
+
+				// Clearing back to [] grandfathers the agent again.
+				const cleared = await store.updateAgent(ws.uid, a.agentId, {
+					toolIds: [],
+				});
+				expect([...cleared.toolIds]).toEqual([]);
+
+				// Omitting toolIds in a patch leaves the prior value intact.
+				const reset = await store.updateAgent(ws.uid, a.agentId, {
+					toolIds: ["list_kbs"],
+				});
+				expect([...reset.toolIds]).toEqual(["list_kbs"]);
+				const renamed = await store.updateAgent(ws.uid, a.agentId, {
+					name: "Renamed",
+				});
+				expect([...renamed.toolIds]).toEqual(["list_kbs"]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("deleteAgent cascades conversations + messages", async () => {
 			const { store, cleanup } = await factory();
 			try {
@@ -1206,6 +1249,209 @@ export function runContract(name: string, factory: ContractFactory): void {
 					conv.conversationId,
 				);
 				expect(after?.knowledgeBaseIds).toEqual([kbB.knowledgeBaseId]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		/* ============================================================== */
+		/* MCP servers (external tool providers, 0.4.0 A2)                */
+		/* ============================================================== */
+
+		test("MCP-server CRUD round-trip mints an id and echoes fields", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const before = await store.listMcpServers(ws.uid);
+				expect(before).toEqual([]);
+
+				const created = await store.createMcpServer(ws.uid, {
+					label: "Docs MCP",
+					url: "https://mcp.example.com/sse",
+					credentialRef: "env:DOCS_MCP_TOKEN",
+					allowedTools: ["search", "fetch", "search"],
+				});
+				expect(created.mcpServerId).toMatch(
+					/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+				);
+				expect(created.workspaceId).toBe(ws.uid);
+				expect(created.label).toBe("Docs MCP");
+				expect(created.url).toBe("https://mcp.example.com/sse");
+				expect(created.credentialRef).toBe("env:DOCS_MCP_TOKEN");
+				// `enabled` defaults to true; `allowedTools` deduped + sorted.
+				expect(created.enabled).toBe(true);
+				expect(created.allowedTools).toEqual(["fetch", "search"]);
+				expect(created.createdAt).toBe(created.updatedAt);
+
+				const got = await store.getMcpServer(ws.uid, created.mcpServerId);
+				expect(got).toEqual(created);
+
+				const list = await store.listMcpServers(ws.uid);
+				expect(list.map((s) => s.mcpServerId)).toEqual([created.mcpServerId]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("createMcpServer defaults: enabled=true, credentialRef=null, allowedTools=null", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const created = await store.createMcpServer(ws.uid, {
+					label: "Bare",
+					url: "https://bare.example.com/mcp",
+				});
+				expect(created.enabled).toBe(true);
+				expect(created.credentialRef).toBeNull();
+				// null = expose every tool the server advertises (distinct from []).
+				expect(created.allowedTools).toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("createMcpServer preserves an empty allowedTools list (≠ null)", async () => {
+			// Empty list = expose no tools; null = expose all. The two must
+			// not be conflated across the round-trip (the Astra backend stores
+			// allowed_tools as JSON text precisely to keep this distinction).
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const created = await store.createMcpServer(ws.uid, {
+					label: "Locked",
+					url: "https://locked.example.com/mcp",
+					allowedTools: [],
+				});
+				expect(created.allowedTools).toEqual([]);
+				const got = await store.getMcpServer(ws.uid, created.mcpServerId);
+				expect(got?.allowedTools).toEqual([]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("createMcpServer honors an explicit mcpServerId and rejects duplicates", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const id = "00000000-0000-0000-0000-0000000000a1";
+				const created = await store.createMcpServer(ws.uid, {
+					mcpServerId: id,
+					label: "Pinned",
+					url: "https://pinned.example.com/mcp",
+				});
+				expect(created.mcpServerId).toBe(id);
+				await expect(
+					store.createMcpServer(ws.uid, {
+						mcpServerId: id,
+						label: "dup",
+						url: "https://dup.example.com/mcp",
+					}),
+				).rejects.toBeInstanceOf(ControlPlaneConflictError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("updateMcpServer patches fields independently and bumps updatedAt", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const created = await store.createMcpServer(ws.uid, {
+					label: "Old",
+					url: "https://old.example.com/mcp",
+					credentialRef: "env:OLD",
+					allowedTools: ["a"],
+				});
+				await new Promise((r) => setTimeout(r, 5));
+
+				// Toggle enabled + replace allow-list; leave url/credentialRef alone.
+				const disabled = await store.updateMcpServer(
+					ws.uid,
+					created.mcpServerId,
+					{ enabled: false, allowedTools: ["c", "b"], label: "New" },
+				);
+				expect(disabled.enabled).toBe(false);
+				expect(disabled.label).toBe("New");
+				expect(disabled.allowedTools).toEqual(["b", "c"]);
+				expect(disabled.url).toBe("https://old.example.com/mcp");
+				expect(disabled.credentialRef).toBe("env:OLD");
+				expect(new Date(disabled.updatedAt).getTime()).toBeGreaterThan(
+					new Date(created.updatedAt).getTime(),
+				);
+
+				// Clear the credential and widen to all tools (null).
+				const cleared = await store.updateMcpServer(
+					ws.uid,
+					created.mcpServerId,
+					{ credentialRef: null, allowedTools: null },
+				);
+				expect(cleared.credentialRef).toBeNull();
+				expect(cleared.allowedTools).toBeNull();
+				// Untouched fields survive.
+				expect(cleared.label).toBe("New");
+				expect(cleared.enabled).toBe(false);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("updateMcpServer / deleteMcpServer throw or report on unknown id", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await expect(
+					store.updateMcpServer(
+						ws.uid,
+						"00000000-0000-0000-0000-0000000000ff",
+						{ label: "x" },
+					),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+				const { deleted } = await store.deleteMcpServer(
+					ws.uid,
+					"00000000-0000-0000-0000-0000000000ff",
+				);
+				expect(deleted).toBe(false);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deleteMcpServer removes the row", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const created = await store.createMcpServer(ws.uid, {
+					label: "Doomed",
+					url: "https://doomed.example.com/mcp",
+				});
+				const { deleted } = await store.deleteMcpServer(
+					ws.uid,
+					created.mcpServerId,
+				);
+				expect(deleted).toBe(true);
+				expect(
+					await store.getMcpServer(ws.uid, created.mcpServerId),
+				).toBeNull();
+				expect(await store.listMcpServers(ws.uid)).toEqual([]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("MCP-server operations on an unknown workspace throw not-found", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ghost = "00000000-0000-0000-0000-000000000000";
+				await expect(store.listMcpServers(ghost)).rejects.toBeInstanceOf(
+					ControlPlaneNotFoundError,
+				);
+				await expect(
+					store.createMcpServer(ghost, {
+						label: "x",
+						url: "https://x.example.com/mcp",
+					}),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
 			} finally {
 				await cleanup?.();
 			}

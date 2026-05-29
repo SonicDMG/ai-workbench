@@ -315,29 +315,33 @@ export const LLM_SERVICES_DEFINITION = {
 	},
 } as const satisfies CreateTableDefinition;
 
-/** `wb_config_mcp_tools_by_workspace` — tool registry (Stage 2). */
-export const MCP_TOOLS_TABLE = "wb_config_mcp_tools_by_workspace";
-export const MCP_TOOLS_DEFINITION = {
+/**
+ * `wb_config_mcp_servers_by_workspace` — registered external MCP servers
+ * (0.4.0 A2). One row per remote server the workspace's agents may reach
+ * over Streamable HTTP. The runtime discovers each server's tools at turn
+ * time via `tools/list`, so the registry stores the *connection*, not
+ * individual tools.
+ *
+ * `allowed_tools` is `text` (a serialized JSON array) rather than
+ * `SET<TEXT>` so the null-vs-empty allow-list distinction survives the
+ * round-trip — the Data API collapses an empty `SET` to null on read.
+ */
+export const MCP_SERVERS_TABLE = "wb_config_mcp_servers_by_workspace";
+export const MCP_SERVERS_DEFINITION = {
 	columns: {
 		workspace_id: "uuid",
-		tool_id: "uuid",
-		name: "text",
-		description: "text",
-		tool_type: "text", // mcp | http | function | builtin
-		endpoint_base_url: "text",
-		endpoint_path: "text",
-		http_method: "text", // GET | POST
-		input_schema: "text", // JSON schema, serialized
-		output_schema: "text",
-		auth_type: "text",
+		mcp_server_id: "uuid",
+		label: "text",
+		url: "text",
 		credential_ref: "text",
-		tags: { type: "set", valueType: "text" },
+		enabled: "boolean",
+		allowed_tools: "text", // serialized JSON string[] or null
 		created_at: "timestamp",
 		updated_at: "timestamp",
 	},
 	primaryKey: {
 		partitionBy: ["workspace_id"],
-		partitionSort: { tool_id: 1 },
+		partitionSort: { mcp_server_id: 1 },
 	},
 } as const satisfies CreateTableDefinition;
 
@@ -493,12 +497,10 @@ export const CONVERSATIONS_DEFINITION = {
  * non-key column for client-side dedup.
  *
  * `tool_id` is `text` (not `uuid`), because the runtime stores the
- * called tool's *name* (e.g. `list_kbs`) — built-in chat tools
- * don't have a row in `wb_config_mcp_tools_by_workspace` to point at,
- * and the Data API rightly rejects non-UUID strings going into a
- * `uuid` column. If we ever wire only-MCP-tool messages, this column
- * still accepts the MCP tool's stringified UUID as the canonical
- * tool name.
+ * called tool's *name* (e.g. `list_kbs` for a built-in,
+ * `mcp:{serverId}:{tool}` for an external-MCP tool) — not a UUID — and
+ * the Data API rightly rejects non-UUID strings going into a `uuid`
+ * column.
  */
 export const MESSAGES_TABLE = "wb_agentic_messages_by_conversation";
 export const MESSAGES_DEFINITION = {
@@ -553,6 +555,8 @@ export const PRINCIPALS_DEFINITION = {
 		// Free-form attributes the policy DSL can reference as
 		// `$principal.<key>` (e.g. role=finance, clearance=high).
 		attributes: { type: "map", keyType: "text", valueType: "text" },
+		// RBAC role (viewer/editor/admin); null on legacy rows.
+		role: "text",
 		created_at: "timestamp",
 		updated_at: "timestamp",
 	},
@@ -622,11 +626,17 @@ export const JOBS_DEFINITION = {
 		// missing columns get added.
 		leased_by: "text",
 		leased_at: "timestamp",
-		// Snapshot of the original `IngestInput` (text + metadata +
-		// chunker opts) for `ingest` jobs created via the async path.
-		// The orphan sweeper reads it back on reclaim and replays the
-		// pipeline instead of marking the job failed. `text` so
-		// arbitrary JSON survives — same pattern as `result_json`.
+		// Kind-tagged resume snapshot for resumable jobs. The orphan
+		// sweeper reads it back on reclaim and hands it to the kind's
+		// resume callback (for `ingest`, the original IngestInput —
+		// text + metadata + chunker opts). `text` so arbitrary JSON
+		// survives — same pattern as `result_json`.
+		input_snapshot_json: "text",
+		// Legacy ingest-only snapshot column. Superseded by
+		// `input_snapshot_json`; kept in the definition (and the
+		// additive-migration list) so existing deployments that already
+		// added it stay schema-consistent and rows written against it
+		// remain readable. Never written on fresh inserts.
 		ingest_input_json: "text",
 	},
 	primaryKey: {

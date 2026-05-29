@@ -204,7 +204,10 @@ export const loginCommand = defineCommand({
 			url,
 			configPath: loc.file,
 			verified: false as boolean,
-			scopes: undefined as string[] | undefined,
+			// `null` = the runtime reports this caller as unscoped (all
+			// scopes); `undefined` = we never got to verify (no key / skip).
+			role: undefined as string | null | undefined,
+			scopes: undefined as readonly string[] | null | undefined,
 		};
 
 		if (args["no-verify"] || !apiKey) {
@@ -218,8 +221,12 @@ export const loginCommand = defineCommand({
 		try {
 			const me = await request({ profile }, "/auth/me", WhoAmISchema);
 			result.verified = true;
+			result.role = me.role;
 			result.scopes = me.scopes;
-			if (format === "human") success("API key accepted by the runtime.");
+			if (format === "human") {
+				success("API key accepted by the runtime.");
+				if (me.role) info(`Key role: ${me.role}.`);
+			}
 		} catch (err: unknown) {
 			const msg = `Saved the profile but /auth/me failed: ${describe(err)}.`;
 			if (format === "human") {
@@ -238,6 +245,53 @@ export const loginCommand = defineCommand({
 function describe(err: unknown): string {
 	if (err instanceof Error) return err.message;
 	return String(err);
+}
+
+/**
+ * Translate a runtime `403 forbidden` into actionable RBAC guidance —
+ * the 403 sibling of {@link hintFor401}. Matches the messages the
+ * runtime's authz layer emits (`auth/authz.ts`):
+ *
+ *   - "missing required scope 'X'"  → the key authenticated but its
+ *     role is too low. Name the role that grants the scope so the user
+ *     knows what to mint, mirroring the role picker in the web UI.
+ *   - "not authorized for workspace 'W'" → the key is scoped to a
+ *     different workspace; this isn't a role problem.
+ *
+ * Returns `null` when the message isn't a recognized authz denial, so
+ * the caller falls back to the server-supplied registry hint instead of
+ * overriding it with something less specific.
+ */
+export function hintForForbidden(message: string): string | null {
+	const m = message.toLowerCase();
+	const scopeMatch = m.match(/missing required scope '([a-z]+)'/);
+	if (scopeMatch) {
+		const scope = scopeMatch[1];
+		const role =
+			scope === "manage"
+				? "Admin"
+				: scope === "write"
+					? "Editor (or Admin)"
+					: "Viewer (or higher)";
+		const lines = [
+			`Your key authenticated but lacks the '${scope}' scope, so the runtime refused this action.`,
+			`  • This operation needs the '${scope}' scope — mint a key with the ${role} role in the web UI (Workspace settings → API keys → New key), or ask an admin for one.`,
+		];
+		if (scope === "manage") {
+			lines.push(
+				"  • 'manage' is the admin tier: minting/revoking keys, RLAC principals + policy, and workspace deletion. Editor keys can mutate content but not perform these admin ops.",
+			);
+		}
+		return lines.join("\n");
+	}
+	const wsMatch = m.match(/not authorized for workspace '([^']+)'/);
+	if (wsMatch) {
+		return [
+			`This key isn't scoped to workspace '${wsMatch[1]}'.`,
+			"  • API keys are workspace-scoped — mint one under the workspace you're targeting, or switch profiles with `aiw login --profile <name>`.",
+		].join("\n");
+	}
+	return null;
 }
 
 /**

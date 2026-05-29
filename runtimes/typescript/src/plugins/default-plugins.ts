@@ -19,6 +19,7 @@
 
 import { agentRoutes } from "../routes/api-v1/agents.js";
 import { apiKeyRoutes } from "../routes/api-v1/api-keys.js";
+import { availableToolsRoutes } from "../routes/api-v1/available-tools.js";
 import { chunkingServiceRoutes } from "../routes/api-v1/chunking-services.js";
 import { connectRoutes } from "../routes/api-v1/connect.js";
 import { embeddingServiceRoutes } from "../routes/api-v1/embedding-services.js";
@@ -29,6 +30,7 @@ import { knowledgeBaseRoutes } from "../routes/api-v1/knowledge-bases.js";
 import { knowledgeFilterRoutes } from "../routes/api-v1/knowledge-filters.js";
 import { llmServiceRoutes } from "../routes/api-v1/llm-services.js";
 import { mcpRoutes } from "../routes/api-v1/mcp.js";
+import { mcpServerRoutes } from "../routes/api-v1/mcp-servers.js";
 import { playgroundRoutes } from "../routes/api-v1/playground.js";
 import { policyRoutes } from "../routes/api-v1/policy.js";
 import { principalRoutes } from "../routes/api-v1/principals.js";
@@ -131,6 +133,21 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					metrics: ctx.metrics,
 				}),
 		},
+		// Selectable agent-tool catalog (0.4.0 A6). Composes the full
+		// candidate pool (built-in + native + Astra + remote-MCP) so the
+		// agent form can offer tool choices. Read-only — gated as a `read`.
+		{
+			id: "available_tools",
+			mountPath: WORKSPACE_MOUNT,
+			build: () =>
+				availableToolsRoutes({
+					store: ctx.store,
+					drivers: ctx.drivers,
+					embedders: ctx.embedders,
+					secrets: ctx.secrets,
+					chatConfig: ctx.chatConfig,
+				}),
+		},
 		{
 			id: "chunking_services",
 			mountPath: WORKSPACE_MOUNT,
@@ -219,6 +236,13 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					ingestService,
 					knowledgeBaseService,
 				}),
+		},
+		// External MCP server registry (0.4.0 A2). Workspace content —
+		// mutations gated to `write` by `mutatingRouteWriteScope`.
+		{
+			id: "mcp_servers",
+			mountPath: WORKSPACE_MOUNT,
+			build: () => mcpServerRoutes(ctx.store),
 		},
 		// RLAC prototype: principal CRUD + policy compile-preview + audit.
 		{

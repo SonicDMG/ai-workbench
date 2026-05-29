@@ -10,7 +10,7 @@
 import type {
 	EmbeddingServiceRecord,
 	LlmServiceRecord,
-	McpToolRecord,
+	McpServerRecord,
 	RerankingServiceRecord,
 } from "../../../control-plane/types.js";
 
@@ -38,8 +38,16 @@ export function toWireLlm(r: LlmServiceRecord) {
 	};
 }
 
-export function toWireMcpTool(r: McpToolRecord) {
-	return { ...r, tags: [...r.tags] };
+/**
+ * Registered external MCP server (0.4.0 A2). `allowedTools` is a
+ * `readonly string[] | null` on the record; clone the array (preserving
+ * the `null` = expose-all sentinel) for the mutable wire shape.
+ */
+export function toWireMcpServer(r: McpServerRecord) {
+	return {
+		...r,
+		allowedTools: r.allowedTools === null ? null : [...r.allowedTools],
+	};
 }
 
 export function toWirePage<T, U>(

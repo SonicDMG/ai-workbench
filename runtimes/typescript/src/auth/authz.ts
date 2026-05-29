@@ -26,6 +26,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { AppEnv } from "../lib/types.js";
 import { ForbiddenError } from "./errors.js";
+import { SCOPE_MANAGE } from "./roles.js";
 
 export function assertWorkspaceAccess(
 	c: Context<AppEnv>,
@@ -209,5 +210,60 @@ function isReadShapedRoute(path: string): boolean {
 	// DELETE on a specific conversation, and POST /messages
 	// + /messages/stream — chat session, not KB content.
 	if (path.includes("/conversations")) return true;
+	return false;
+}
+
+/**
+ * Workspace-route middleware: require the `manage` scope on admin-only
+ * surfaces. Mounts after {@link mutatingRouteWriteScope} so workspace
+ * membership and the `write` floor have already cleared.
+ *
+ * `manage` is the admin tier (see {@link ./roles.ts}). It gates the
+ * operations that, before 0.4.0, any `write`-capable key could perform —
+ * a deliberate split (see docs/auth.md → Migration) so an `editor` can
+ * manage workspace *content* (KBs, documents, agents, services, ingest)
+ * without also being able to mint credentials, administer RLAC, or
+ * destroy the workspace. Admin surfaces:
+ *
+ *   - `…/api-keys` …     credential issuance / revocation / listing.
+ *   - `…/principals` …   RLAC principal CRUD.
+ *   - `…/policy` …       RLAC policy preview + audit log.
+ *   - `DELETE /workspaces/{w}`  destroy the workspace.
+ *
+ * The whole CRUD surface — including `GET` — is gated for these
+ * resources: listing credentials or principals is itself a privileged
+ * read. Anonymous and unscoped (OIDC / bootstrap) callers pass through
+ * exactly as in {@link assertScope}; the gate only bites a scoped API
+ * key that lacks `manage`.
+ *
+ * The workspace `PATCH` that toggles `rlacEnabled` is also an admin
+ * action, but it shares a route with the (write-level) rename, so it's
+ * gated at the handler with `assertScope(c, "manage")` rather than here.
+ */
+export function manageRouteScope(): MiddlewareHandler<AppEnv> {
+	return async (c, next) => {
+		if (isManageScopedRoute(c.req.path, c.req.method)) {
+			assertScope(c, SCOPE_MANAGE);
+		}
+		await next();
+	};
+}
+
+/**
+ * Path/method tests for the {@link manageRouteScope} gate. The mount
+ * restricts these to `/api/v1/workspaces/{w}/...`, so the suffixes are
+ * unambiguous identifiers.
+ */
+function isManageScopedRoute(path: string, method: string): boolean {
+	if (path.includes("/api-keys")) return true;
+	if (path.includes("/principals")) return true;
+	if (path.includes("/policy")) return true;
+	// Workspace destroy — DELETE on the workspace root, no sub-resource.
+	if (
+		method.toUpperCase() === "DELETE" &&
+		/\/api\/v1\/workspaces\/[^/]+$/.test(path)
+	) {
+		return true;
+	}
 	return false;
 }

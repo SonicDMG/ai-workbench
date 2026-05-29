@@ -16,8 +16,8 @@ import type { ControlPlaneStore } from "../control-plane/store.js";
 import type { AgentRecord, MessageRecord } from "../control-plane/types.js";
 import type { Logger } from "../lib/logger.js";
 import type { RetrievedChunk } from "./prompt.js";
-import { executeWorkspaceTool } from "./tools/dispatcher.js";
-import type { AgentToolDeps } from "./tools/registry.js";
+import { executeWorkspaceTool, type OnToolInvoke } from "./tools/dispatcher.js";
+import type { AgentToolDeps, AgentToolset } from "./tools/registry.js";
 import type { ChatService, ChatTurn, ToolCall } from "./types.js";
 
 export interface PersistTurnDeps {
@@ -175,13 +175,25 @@ export async function persistFinalAssistant(
  * `completion.toolCalls`, while the streaming dispatcher must also
  * decide whether to flush its token buffer — different enough that
  * keeping the two outer loops readable beats one over-clever loop.
+ *
+ * `onToolInvoke` is the audit seam: fired once per tool call with the
+ * tool name + outcome (success / failure / denied) — but never the
+ * arguments. The route layer supplies a closure that emits a
+ * `tool.invoke` audit event, so this module stays free of any audit
+ * coupling (mirrors the `onToolInvoke` hook in `mcp/server.ts`). Fired
+ * before `onResult` so the audit row is written even if the SSE write
+ * (or persistence) downstream throws.
  */
 export async function executeToolCalls(
 	ctx: PersistTurnContext,
-	resolved: { readonly toolDeps: AgentToolDeps },
+	resolved: {
+		readonly toolDeps: AgentToolDeps;
+		readonly toolset: AgentToolset;
+	},
 	toolCalls: readonly ToolCall[],
 	startTs: string,
 	onResult?: (call: ToolCall, resultText: string) => Promise<void>,
+	onToolInvoke?: OnToolInvoke,
 ): Promise<{
 	readonly endTs: string;
 	readonly turns: readonly ChatTurn[];
@@ -189,7 +201,19 @@ export async function executeToolCalls(
 	let prevTs = startTs;
 	const turns: ChatTurn[] = [];
 	for (const call of toolCalls) {
-		const resultText = await executeWorkspaceTool(call, resolved.toolDeps);
+		const { resultText, outcome, reason } = await executeWorkspaceTool(
+			call,
+			resolved.toolset,
+			resolved.toolDeps,
+		);
+		// Emit the audit signal first — args are deliberately omitted.
+		if (onToolInvoke) {
+			onToolInvoke({
+				toolName: call.name,
+				outcome,
+				...(reason ? { reason } : {}),
+			});
+		}
 		prevTs = await persistToolResult(ctx, prevTs, call, resultText);
 		turns.push({
 			role: "tool",

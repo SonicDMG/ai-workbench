@@ -28,7 +28,7 @@ import type {
 	KnowledgeBaseRow,
 	KnowledgeFilterRow,
 	LlmServiceRow,
-	McpToolRow,
+	McpServerRow,
 	MessageRow,
 	PolicyAuditRow,
 	PrincipalRow,
@@ -60,8 +60,8 @@ import {
 	KNOWLEDGE_FILTERS_TABLE,
 	LLM_SERVICES_DEFINITION,
 	LLM_SERVICES_TABLE,
-	MCP_TOOLS_DEFINITION,
-	MCP_TOOLS_TABLE,
+	MCP_SERVERS_DEFINITION,
+	MCP_SERVERS_TABLE,
 	MESSAGES_DEFINITION,
 	MESSAGES_TABLE,
 	POLICY_AUDIT_DEFINITION,
@@ -114,6 +114,13 @@ const ADDITIVE_COLUMN_MIGRATIONS = [
 		column: "scopes",
 		definition: API_KEYS_DEFINITION.columns.scopes,
 	},
+	// Principal RBAC role is additive; legacy principals default to
+	// `viewer` on read when the column is null/missing.
+	{
+		table: PRINCIPALS_TABLE,
+		column: "role",
+		definition: PRINCIPALS_DEFINITION.columns.role,
+	},
 	// Knowledge-base collection lifecycle + lexical config landed
 	// after the first issue #98 control-plane table shape.
 	{
@@ -157,6 +164,15 @@ const ADDITIVE_COLUMN_MIGRATIONS = [
 		table: JOBS_TABLE,
 		column: "ingest_input_json",
 		definition: JOBS_DEFINITION.columns.ingest_input_json,
+	},
+	// Kind-agnostic resume snapshot (D2). Added additively alongside
+	// the legacy `ingest_input_json` rather than renaming it, so
+	// deployments with the old column keep resuming and pre-existing
+	// rows stay readable.
+	{
+		table: JOBS_TABLE,
+		column: "input_snapshot_json",
+		definition: JOBS_DEFINITION.columns.input_snapshot_json,
 	},
 	// RLAC prototype additive columns. Existing deployments pick them
 	// up on next boot; new deployments get them from the table DDL.
@@ -240,7 +256,7 @@ export async function openAstraClient(
 		embeddingServices: db.table<EmbeddingServiceRow>(EMBEDDING_SERVICES_TABLE),
 		rerankingServices: db.table<RerankingServiceRow>(RERANKING_SERVICES_TABLE),
 		llmServices: db.table<LlmServiceRow>(LLM_SERVICES_TABLE),
-		mcpTools: db.table<McpToolRow>(MCP_TOOLS_TABLE),
+		mcpServers: db.table<McpServerRow>(MCP_SERVERS_TABLE),
 		ragDocuments: db.table<RagDocumentRow>(RAG_DOCUMENTS_TABLE),
 		ragDocumentsByStatus: db.table<RagDocumentByStatusRow>(
 			RAG_DOCUMENTS_BY_STATUS_TABLE,
@@ -300,8 +316,8 @@ async function ensureTables(db: Db): Promise<void> {
 			definition: LLM_SERVICES_DEFINITION,
 			ifNotExists: true,
 		}),
-		db.createTable(MCP_TOOLS_TABLE, {
-			definition: MCP_TOOLS_DEFINITION,
+		db.createTable(MCP_SERVERS_TABLE, {
+			definition: MCP_SERVERS_DEFINITION,
 			ifNotExists: true,
 		}),
 		db.createTable(RAG_DOCUMENTS_TABLE, {

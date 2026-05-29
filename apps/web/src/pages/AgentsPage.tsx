@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import {
 	useAgents,
+	useAvailableTools,
 	useCreateAgent,
 	useDeleteAgent,
 	useLlmServices,
@@ -111,6 +112,7 @@ function AgentsCard({ workspace }: { workspace: string }) {
 	const llmServices = useLlmServices(workspace);
 	const knowledgeBases = useKnowledgeBases(workspace);
 	const rerankingServices = useRerankingServices(workspace);
+	const availableTools = useAvailableTools(workspace);
 	const [creating, setCreating] = useState(false);
 	const [templating, setTemplating] = useState(false);
 	const [editing, setEditing] = useState<AgentRecord | null>(null);
@@ -188,6 +190,7 @@ function AgentsCard({ workspace }: { workspace: string }) {
 				knowledgeBases={knowledgeBases.data ?? []}
 				llmServices={llmServices.data ?? []}
 				rerankingServices={rerankingServices.data ?? []}
+				availableTools={availableTools.data ?? []}
 			/>
 			<TemplateGalleryDialog
 				workspace={workspace}
@@ -202,6 +205,7 @@ function AgentsCard({ workspace }: { workspace: string }) {
 				knowledgeBases={knowledgeBases.data ?? []}
 				llmServices={llmServices.data ?? []}
 				rerankingServices={rerankingServices.data ?? []}
+				availableTools={availableTools.data ?? []}
 			/>
 			<DeleteAgentConfirm
 				workspace={workspace}
@@ -309,6 +313,7 @@ interface AgentDialogContext {
 	readonly knowledgeBases: ReturnType<typeof useKnowledgeBases>["data"];
 	readonly llmServices: ReturnType<typeof useLlmServices>["data"];
 	readonly rerankingServices: ReturnType<typeof useRerankingServices>["data"];
+	readonly availableTools: ReturnType<typeof useAvailableTools>["data"];
 }
 
 function CreateAgentDialog({
@@ -318,6 +323,7 @@ function CreateAgentDialog({
 	knowledgeBases,
 	llmServices,
 	rerankingServices,
+	availableTools,
 }: AgentDialogContext & {
 	open: boolean;
 	onOpenChange: (v: boolean) => void;
@@ -338,6 +344,7 @@ function CreateAgentDialog({
 					knowledgeBases={knowledgeBases ?? []}
 					llmServices={llmServices ?? []}
 					rerankingServices={rerankingServices ?? []}
+					availableTools={availableTools ?? []}
 					submitting={create.isPending}
 					onSubmit={async (values) => {
 						try {
@@ -364,6 +371,7 @@ function EditAgentDialog({
 	knowledgeBases,
 	llmServices,
 	rerankingServices,
+	availableTools,
 }: AgentDialogContext & {
 	agent: AgentRecord | null;
 	onClose: () => void;
@@ -383,6 +391,7 @@ function EditAgentDialog({
 					knowledgeBases={knowledgeBases ?? []}
 					llmServices={llmServices ?? []}
 					rerankingServices={rerankingServices ?? []}
+					availableTools={availableTools ?? []}
 					submitting={update.isPending}
 					onSubmit={async (values) => {
 						try {

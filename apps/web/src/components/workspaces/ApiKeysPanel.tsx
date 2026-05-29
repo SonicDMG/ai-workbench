@@ -89,7 +89,7 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 						variant="brand"
 						className="min-w-0 flex-1 sm:flex-none"
 						onClick={() => setCreateOpen(true)}
-						title="Mint a workspace-scoped bearer token. Pick read or read+write scope at creation; the secret value is shown exactly once after the key lands."
+						title="Mint a workspace-scoped bearer token. Pick a role (Viewer / Editor / Admin) at creation; the secret value is shown exactly once after the key lands."
 					>
 						<Plus className="h-4 w-4" />
 						New key
@@ -197,19 +197,21 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 
 /**
  * Renders the key's privilege tier as a single human-readable badge.
- * The wire format is an array (`["read"]` or `["read", "write"]`)
- * but the UI's mental model is the same two-preset toggle the create
- * dialog exposes — so we collapse to the same labels here. Keeps the
- * picker → table read consistent for a demo viewer.
+ * The wire format is a scope array (`["read"]`, `["read", "write"]`,
+ * `["read", "write", "manage"]`) but the UI's mental model is the same
+ * role picker the create dialog exposes — so we collapse to a role
+ * label here. Keeps the picker → table read consistent.
  *
- * Three branches:
- *   - `["read", "write"]` (or any superset of write) → "Read + Write"
- *     amber; write keys carry more risk and should feel visually
- *     louder than read-only ones.
- *   - exactly `["read"]`        → "Read only", subdued green.
- *   - anything else (legacy / future preset) → fall back to a chip
- *     per literal scope. Defensive; happens to render e.g.
- *     `write:admin` without us having to revisit this.
+ * Branches, most-privileged first:
+ *   - any set containing `manage` → "Admin", red — the highest tier
+ *     (can mint keys / manage RLAC / delete the workspace), so it
+ *     should read as the loudest.
+ *   - `["read", "write"]`         → "Editor", amber; write keys carry
+ *     more risk than read-only ones.
+ *   - exactly `["read"]`          → "Viewer", subdued green.
+ *   - anything else (legacy / future preset) → fall back to a chip per
+ *     literal scope. Defensive; renders unexpected scopes verbatim
+ *     without us having to revisit this.
  */
 function ScopeBadges({ scopes }: { scopes: readonly string[] }) {
 	if (scopes.length === 0) {
@@ -217,21 +219,32 @@ function ScopeBadges({ scopes }: { scopes: readonly string[] }) {
 		// but rendering "—" is friendlier than blank if it ever does.
 		return <span className="text-xs text-slate-400">—</span>;
 	}
+	const hasManage = scopes.includes("manage");
 	const hasWrite = scopes.includes("write");
-	const isReadOnly = scopes.length === 1 && scopes[0] === "read" && !hasWrite;
-	const isReadWrite =
-		scopes.length === 2 && scopes.includes("read") && scopes.includes("write");
+	const isViewer = scopes.length === 1 && scopes[0] === "read";
+	const isEditor =
+		scopes.length === 2 && scopes.includes("read") && hasWrite && !hasManage;
+	const isAdmin =
+		hasManage && hasWrite && scopes.includes("read") && scopes.length === 3;
 
-	if (isReadWrite) {
-		return <Badge tone="amber">Read + Write</Badge>;
+	if (isAdmin) {
+		return <Badge tone="red">Admin</Badge>;
 	}
-	if (isReadOnly) {
-		return <Badge tone="green">Read only</Badge>;
+	if (isEditor) {
+		return <Badge tone="amber">Editor</Badge>;
+	}
+	if (isViewer) {
+		return <Badge tone="green">Viewer</Badge>;
 	}
 	return (
 		<span className="flex flex-wrap gap-1">
 			{scopes.map((scope) => (
-				<Badge key={scope} tone={scope.startsWith("write") ? "amber" : "green"}>
+				<Badge
+					key={scope}
+					tone={
+						scope === "manage" ? "red" : scope === "write" ? "amber" : "green"
+					}
+				>
 					{scope}
 				</Badge>
 			))}
@@ -254,7 +267,7 @@ function Badge({
 	tone,
 	children,
 }: {
-	tone: "green" | "amber" | "muted";
+	tone: "green" | "amber" | "red" | "muted";
 	children: React.ReactNode;
 }) {
 	const styles: Record<typeof tone, string> = {
@@ -262,6 +275,7 @@ function Badge({
 			"bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/50",
 		amber:
 			"bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900/50",
+		red: "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900/50",
 		muted:
 			"bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700",
 	};

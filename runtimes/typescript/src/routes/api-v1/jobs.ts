@@ -7,19 +7,26 @@
  * `GET /jobs/{jobId}/events` is an SSE stream that emits one
  * `data: <JobRecord JSON>` event per update and closes once the job
  * reaches a terminal state. The initial record is replayed
- * immediately so clients don't race the first update.
+ * immediately so clients don't race the first update. Each `job` frame
+ * carries an `id: <updatedAt>` so a client that drops and reconnects
+ * can present `Last-Event-ID` and resume from the last snapshot it saw
+ * instead of replaying from scratch (job records are idempotent
+ * snapshots, so a terminal frame is always re-sent on reconnect).
  *
  * Workspace-scoped so the app-level workspace authz wrapper blocks a
  * scoped token for workspace A from reading jobs in workspace B.
+ *
+ * The queue + listener + abort + single-terminal-event machinery lives
+ * in the shared `lib/sse.ts` helper, which the agent chat stream uses
+ * too.
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { JobStore } from "../../jobs/store.js";
-import type { JobRecord } from "../../jobs/types.js";
-import { isTerminal } from "../../jobs/types.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
+import { runJobEventStream } from "../../lib/sse.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	JobIdParamSchema,
@@ -85,54 +92,21 @@ export function jobRoutes(deps: JobsRouteDeps): OpenAPIHono<AppEnv> {
 			);
 		}
 
+		// `Last-Event-ID` is echoed by EventSource on reconnect; when
+		// present we resume from the last job-record version the client
+		// saw rather than replaying the (idempotent) snapshot it already
+		// has. The shared helper owns the queue + abort + terminal-event
+		// guarantee.
+		const lastEventId = c.req.header("last-event-id") ?? null;
 		return streamSSE(c, async (stream) => {
-			// Each subscriber gets its own queue so a slow consumer can't
-			// block a fast one. The listener just pushes into the queue;
-			// the async loop drains it.
-			const queue: JobRecord[] = [];
-			let resolveNext: (() => void) | null = null;
-			let aborted = false;
-
-			const unsub = await jobs.subscribe(workspaceId, jobId, (record) => {
-				queue.push(record);
-				resolveNext?.();
-				resolveNext = null;
+			await runJobEventStream(stream, {
+				jobs,
+				workspaceId,
+				jobId,
+				lastEventId,
+				serialize: (record) => JSON.stringify(toWireJob(record)),
+				onAbort: (handler) => stream.onAbort(handler),
 			});
-
-			// Clean up when the client disconnects.
-			stream.onAbort(() => {
-				aborted = true;
-				unsub();
-				resolveNext?.();
-			});
-
-			try {
-				while (!aborted) {
-					if (queue.length === 0) {
-						await new Promise<void>((resolve) => {
-							resolveNext = resolve;
-						});
-						if (aborted) break;
-					}
-					const record = queue.shift();
-					if (!record) continue;
-					await stream.writeSSE({
-						event: "job",
-						data: JSON.stringify(toWireJob(record)),
-					});
-					if (isTerminal(record.status)) {
-						// One more `done` so clients have an unambiguous
-						// terminator even when they don't parse `data`.
-						await stream.writeSSE({
-							event: "done",
-							data: JSON.stringify({ status: record.status }),
-						});
-						break;
-					}
-				}
-			} finally {
-				unsub();
-			}
 		});
 	});
 

@@ -23,7 +23,9 @@ import { makeEmbedderFactory } from "./embeddings/factory.js";
 import { buildJobStore } from "./jobs/factory.js";
 import { IngestSemaphore, runBounded } from "./jobs/ingest-semaphore.js";
 import { runKbIngestJob } from "./jobs/ingest-worker.js";
+import { ResumeRegistry } from "./jobs/resume-registry.js";
 import { JobOrphanSweeper } from "./jobs/sweeper.js";
+import type { IngestInputSnapshot } from "./jobs/types.js";
 import { applyLogLevel, logger } from "./lib/logger.js";
 import { generateReplicaId } from "./lib/replica-id.js";
 import { executeRespawn, planRespawn } from "./lib/respawn.js";
@@ -255,10 +257,33 @@ async function main(): Promise<void> {
 
 	// Cross-replica orphan-sweeper. Off by default — clustered
 	// deployments opt in via `controlPlane.jobsResume.enabled` so the
-	// single-replica reference deployment doesn't pay for it. When
-	// on, reclaimed orphans with a persisted `ingestInput` snapshot
-	// flow through `runKbIngestJob` for a real resume; orphans without
-	// one fall back to mark-failed.
+	// single-replica reference deployment doesn't pay for it. When on,
+	// reclaimed orphans whose kind has a registered resume callback and
+	// that carry a persisted `inputSnapshot` are replayed; orphans of an
+	// unregistered kind (or with no snapshot) fall back to mark-failed.
+	//
+	// `ingest` is the only resumable kind today: its snapshot is the
+	// original IngestInput, replayed through `runKbIngestJob` (chunk IDs
+	// are deterministic, so re-upsert is idempotent). Future resumable
+	// kinds register here too.
+	const resumes = new ResumeRegistry().register(
+		"ingest",
+		({ workspaceId, jobId, replicaId: rid, snapshot }) => {
+			void runBounded(ingestSemaphore, () =>
+				runKbIngestJob({
+					deps: { store, drivers, embedders, jobs },
+					workspaceId,
+					jobId,
+					replicaId: rid,
+					// The `ingest` kind's snapshot is an IngestInputSnapshot,
+					// structurally an IngestInput. The registry is
+					// kind-agnostic (snapshot is an opaque JSON blob); this
+					// callback owns the per-kind shape.
+					input: snapshot as unknown as IngestInputSnapshot,
+				}),
+			);
+		},
+	);
 	const sweeperCfg = config.controlPlane.jobsResume;
 	const sweeper =
 		sweeperCfg?.enabled === true
@@ -267,17 +292,7 @@ async function main(): Promise<void> {
 					replicaId,
 					graceMs: sweeperCfg.graceMs,
 					intervalMs: sweeperCfg.intervalMs,
-					resume: ({ workspaceId, jobId, replicaId: rid, input }) => {
-						void runBounded(ingestSemaphore, () =>
-							runKbIngestJob({
-								deps: { store, drivers, embedders, jobs },
-								workspaceId,
-								jobId,
-								replicaId: rid,
-								input,
-							}),
-						);
-					},
+					resumes,
 				})
 			: null;
 	if (sweeper) {

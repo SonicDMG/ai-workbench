@@ -31,71 +31,53 @@ export const WHATS_NEW_VERSION = APP_VERSION;
  */
 export const WHATS_NEW_HIGHLIGHTS: readonly WhatsNewItem[] = [
 	{
-		title: "Chat moves to OpenRouter + Ollama",
+		title: "Agents can call tools",
 		summary:
-			'HuggingFace is retired. Chat and tool-use now run on OpenRouter by default — one key reaches 300+ models with standardized function calling — with a direct OpenAI (BYOK) path and a local Ollama provider for fully offline installs. The model picker pulls a live, tool-calling-capable catalog. Heads-up: existing LLM services with provider "huggingface" must be repointed at openrouter/openai/ollama or they fail at send time.',
+			"Agents now use tools mid-conversation in a bounded multi-step loop: the workspace's own knowledge-base tools, external MCP servers you register, native HTTP fetch + web search, and a read-only Astra Data API query. Pick exactly which tools each agent may use in the agent form; tool calls and their results render as inline expandable cards in chat. Tools beyond the built-ins are opt-in per agent.",
 		link: {
-			label: "Configure an LLM service",
+			label: "Configure an agent's tools",
+			href: "/agents",
+		},
+	},
+	{
+		title: "Connect external MCP servers",
+		summary:
+			"Register Model Context Protocol servers per workspace in Settings, then allow-list their tools onto an agent. The runtime discovers each server's tools at turn time and calls them over the standard MCP protocol — credentials stay behind a secret reference and the server URL is SSRF-guarded.",
+		link: {
+			label: "Add an MCP server",
 			href: "/settings",
 		},
 	},
 	{
-		title: "First-run setup wizard",
+		title: "Roles & scoped API keys (RBAC)",
 		summary:
-			"Fresh installs land on a guided onboarding flow that captures Astra and your chat provider key (OpenRouter, or a direct OpenAI key), writes them to a managed `.env` in the workbench-data volume (mode 0600, allow-listed keys only), and restarts the runtime so the new values take effect — no shell access required.",
+			"Access is now gated by coarse roles — viewer (read), editor (read + write), and admin (everything). Issue API keys with a role/scope from the API-keys panel. Admin-only actions (issuing keys, managing RLAC, deleting a workspace) require the new `manage` scope. Heads-up: a pre-0.4.0 read+write key can no longer perform those admin actions — re-mint an admin key.",
 		link: {
-			label: "Open onboarding",
-			href: "/onboarding",
+			label: "Manage API keys & roles",
+			href: "/settings",
 		},
 	},
 	{
-		title: "System status page",
+		title: "Sign in with your IdP (device flow)",
 		summary:
-			"New /status route renders live traffic-light cards for the control-plane probe, chat-provider probe, ingest queue, and the last 100 error envelopes (no PII). Polled every 10 seconds so a stuck install is visible without grepping container logs.",
+			"`aiw login --oidc` adds RFC 8628 device-flow login alongside the API-key paste flow — authorize in the browser, no token to copy. Map your IdP groups/claims to workbench roles with `auth.oidc.roleMapping`.",
 		link: {
-			label: "Open /status",
-			href: "/status",
+			label: "Auth & rotation guide",
+			href: "https://github.com/datastax/ai-workbench/blob/main/docs/auth.md",
 		},
 	},
 	{
-		title: "Error envelopes carry remediation hints",
+		title: "Durable single-node storage (SQLite)",
 		summary:
-			"Every API error now ships with a one-line `hint` and a `docs` link drawn from a 67-entry registry. The web UI surfaces them in toasts; the new `aiw doctor --explain <code>` prints the long-form entry; the full catalog lives at docs/errors.md.",
+			'A new `driver: "sqlite"` control-plane backend gives durable, low-overhead persistence for single-node installs — row-level writes instead of the file backend rewriting whole JSON files on every change. Recommended for chat-heavy deployments that don\'t run on Astra.',
 		link: {
-			label: "Browse the error catalog",
-			href: "https://github.com/datastax/ai-workbench/blob/main/docs/errors.md",
+			label: "Configuration reference",
+			href: "https://github.com/datastax/ai-workbench/blob/main/docs/configuration.md",
 		},
 	},
 	{
-		title: "CLI: aiw doctor, status, profile, completion",
+		title: "More resilient jobs & streaming",
 		summary:
-			"`aiw doctor` runs a PASS/WARN/FAIL pre-flight checklist; `aiw status` is the one-line health probe; `aiw profile {ls,use,rm}` manages stored credential profiles; `aiw completion {bash,zsh,fish}` emits a shell completion script. Every command supports stable JSON output and documented exit codes.",
-		link: {
-			label: "Read the CLI README",
-			href: "https://github.com/datastax/ai-workbench/tree/main/packages/aiw-cli#readme",
-		},
-	},
-	{
-		title: "Curated Prometheus metrics + Grafana starter",
-		summary:
-			"Five new metric families land at /metrics: chat requests by provider + outcome, stream tokens, ingest documents, search requests by mode, search latency. A drop-in Grafana dashboard JSON ships at docs/observability/grafana-workbench.json.",
-		link: {
-			label: "Production guide",
-			href: "https://github.com/datastax/ai-workbench/blob/main/docs/production.md",
-		},
-	},
-	{
-		title: "Opt-in anonymous telemetry",
-		summary:
-			"Off by default. Enable with WORKBENCH_TELEMETRY=1 / AIW_TELEMETRY=1 and (optionally) point at a sink. Strictly categorical fields only — install id, version, event name, error code. No request bodies, paths, names, or secrets ever leave the process.",
-		link: {
-			label: "Event catalog + opt-out",
-			href: "https://github.com/datastax/ai-workbench/blob/main/docs/telemetry.md",
-		},
-	},
-	{
-		title: "Conformance now covers chat",
-		summary:
-			"A new FixtureChatService replays scripted token streams so the SSE happy path + agent message CRUD are pinned in the cross-runtime conformance harness. SSE response bodies normalize into a deterministic array of {event, data} records.",
+			"Background jobs of any kind now resume after a restart (not just ingest), chat streams reconnect with Last-Event-ID, cancelling a chat aborts the in-flight model call, and a dropped stream still records a final assistant turn. Plus every tool call is recorded as a `tool.invoke` audit event.",
 	},
 ];

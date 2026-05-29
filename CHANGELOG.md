@@ -9,6 +9,113 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-28
+
+Headline: **two flagship capabilities — agent tool-calling and
+role-based access control (RBAC) — on a security + reliability
+hardening pass.** Agents can now call tools mid-conversation in a
+bounded multi-step loop; every `/api/v1/*` surface is gated by coarse
+roles (viewer / editor / admin) with a new `manage` tier for admin-only
+operations. This is a **breaking** release for write-scoped API keys
+that performed admin actions — see **Migration**.
+
+### Added
+
+- **Agent tool-calling.** Agents resolve a per-agent allow-list
+  (`agent.toolIds`) and call tools in a multi-step loop (cap 6). Tool
+  sources: the built-in workspace tools; the workspace's **external MCP
+  servers** (a new per-workspace registry + REST CRUD at
+  `/api/v1/workspaces/{w}/mcp-servers` + an in-runtime MCP client);
+  **native tools** `native:fetch` (SSRF-guarded, with a timeout,
+  response-size cap, and content-type allow-list) and
+  `native:web_search` (pluggable, off until configured); and a
+  read-only `astra:data_api` tool. Empty `toolIds` grandfathers in all
+  built-in tools; external / native / Astra tools are opt-in. Every tool
+  call is bounded by a timeout + output cap and recorded as a
+  `tool.invoke` audit event (arguments omitted). Code execution is a
+  documented non-goal this release.
+- **Tool-calling UI.** Inline expandable tool-call / result cards in the
+  chat transcript, a source-grouped tool picker in the agent form, a
+  `GET /available-tools` catalog endpoint, and an MCP-servers settings
+  panel.
+- **RBAC.** Coarse roles `viewer | editor | admin` map to the privilege
+  scopes `read | write | manage`. A new **`manage`** scope gates
+  admin-only surfaces (API keys, RLAC principals + policy, workspace
+  delete). Roles unify with RLAC principals (a principal carries a
+  `role`); OIDC subjects map to a role via the opt-in
+  `auth.oidc.roleMapping` (group/claim → role, with a `viewer` floor).
+  API keys are issued with explicit scopes / a role, enforced across
+  HTTP routes, MCP tools, the `aiw` CLI, and the web UI (`useRole`
+  gating). A self-maintaining route-inventory guard proves every
+  mutating route is gated.
+- **SQLite control-plane driver.** A `driver: "sqlite"` control-plane +
+  job-store backend for durable single-node deployments — row-level WAL
+  writes instead of the `file` backend's whole-file rewrite.
+- **Job durability for all kinds.** The async-resume path (previously
+  ingest-only) is generalized: a kind-tagged `inputSnapshot` + a
+  `JobKind → resume` registry let the orphan sweeper replay any
+  registered job kind idempotently.
+- **Streaming robustness.** A shared SSE helper guarantees exactly one
+  terminal event; the job-events stream supports `Last-Event-ID`
+  resume; a client disconnect aborts the in-flight LLM call; a dropped
+  stream still persists a terminal assistant row.
+- **MCP write tools** — `create_knowledge_base`, `delete_knowledge_base`,
+  and `run_agent` join the MCP façade (KB writes require `write`).
+- **OIDC device-flow login** — `aiw login --oidc` (RFC 8628) with
+  runtime proxy endpoints; the IdP client secret stays server-side.
+- **In-app "What's new" modal**, auto-opening once per `APP_VERSION`,
+  plus discoverability tooltips on commonly-missed operator actions.
+- **Chat-surface conformance** scenarios (CRUD + a deterministic SSE
+  tool-call happy path), closing the last gap in the cross-runtime
+  contract.
+- **Secret rotation guide** (`docs/auth.md`), an expanded secret
+  scanner, and a wire-leak test asserting no resolved secret crosses the
+  API boundary.
+
+### Changed
+
+- **`manage` scope split out of `write` (breaking).** Admin-only
+  operations — API-key issuance / revocation, RLAC principal + policy
+  management, and workspace deletion — now require the `manage` scope
+  (an `admin` role) instead of `write`. See **Migration**.
+- **RLAC audit-log contract is stable.** `PolicyAuditRecord`,
+  `PolicyAction`, and `PolicyDecision` are committed as a stable public
+  contract (`PolicyAuditRecordV1`) for SIEM ingestion; additive changes
+  stay non-breaking.
+- **`aiw` CLI parses the real wire shapes** (`{ items, nextCursor }`,
+  resource-specific ids, bare-array `/search`), gains `--top-k` /
+  `--hybrid` / `--rerank`, and translates auth mismatches + 401s into
+  actionable guidance.
+- Job records carry a generalized `inputSnapshot` (back-compat reads of
+  the legacy ingest snapshot).
+- Conservative dependency refresh across all workspaces; **0** known
+  vulnerabilities.
+
+### Removed
+
+- The dead Stage-2 MCP-*tool* scaffold (`McpToolRow` / `MCP_TOOLS_*` /
+  the unmounted `toWireMcpTool` serde), superseded by the MCP-*server*
+  registry above.
+
+### Migration
+
+- **Write-scoped API keys lose admin access.** A key minted before
+  0.4.0 carries `["read", "write"]` (an `editor`). It can no longer
+  issue / revoke API keys, manage RLAC principals or policy, or delete a
+  workspace — those now return `403 forbidden` (missing scope `manage`).
+  Re-mint an **admin** key (`["read", "write", "manage"]`) for those
+  operations. OIDC and bootstrap subjects are unaffected (unscoped);
+  set `auth.oidc.roleMapping` to assign OIDC users a role.
+- **Agent tools beyond the built-ins are opt-in.** Existing agents
+  (empty `toolIds`) keep every built-in workspace tool. To grant an
+  external-MCP / native / Astra tool, add its id to the agent's
+  `toolIds`.
+- **No data migration required.** Legacy job snapshots, principal rows
+  (defaulting to `viewer`), and API-key scopes all back-compat on read.
+
+Tests: **1,686** runtime + **462** web + **198** CLI passing on a green
+typecheck, lint, and cross-runtime conformance across all packages.
+
 ## [0.3.0] — 2026-05-28
 
 Headline: **HuggingFace is retired; chat and embeddings are unified on

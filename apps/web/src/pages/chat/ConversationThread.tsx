@@ -14,6 +14,7 @@ import {
 import { ApiError, formatApiError } from "@/lib/api";
 import type { AgentRecord, ConversationRecord } from "@/lib/schemas";
 import { EmptyMessages, MessageBubble, StreamingBubble } from "./MessageBubble";
+import { ToolCallCardList } from "./ToolCallCard";
 
 interface EmptyConversationPaneProps {
 	workspaceId: string;
@@ -115,13 +116,16 @@ export function ConversationThread({
 	// the viewport without snapping the scroll on every frame.
 	const messageCount = messagesQuery.data?.length ?? 0;
 	const pendingDeltaLength = stream.pendingDelta.length;
+	// Also key off the tool-card count so a new tool-call card (or a
+	// result landing) scrolls the live transcript into view.
+	const toolCardCount = stream.toolCards.length;
 	// biome-ignore lint/correctness/useExhaustiveDependencies: scrolling depends on content length, not the ref identity
 	useEffect(() => {
 		const node = messageListRef.current;
 		if (node && typeof node.scrollTo === "function") {
 			node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
 		}
-	}, [messageCount, pendingDeltaLength]);
+	}, [messageCount, pendingDeltaLength, toolCardCount]);
 
 	if (conversationQuery.isLoading) {
 		return (
@@ -250,10 +254,19 @@ export function ConversationThread({
 								/>
 							))}
 							{stream.pending ? (
-								<StreamingBubble
-									delta={stream.pendingDelta}
-									agentName={agent.name}
-								/>
+								<>
+									{/* Tool-call cards render above the live token
+									 * preview: the model's tool calls (with results)
+									 * first, then its final answer streaming in. */}
+									<ToolCallCardList
+										cards={stream.toolCards}
+										workspaceId={workspaceId}
+									/>
+									<StreamingBubble
+										delta={stream.pendingDelta}
+										agentName={agent.name}
+									/>
+								</>
 							) : null}
 						</ul>
 					)}

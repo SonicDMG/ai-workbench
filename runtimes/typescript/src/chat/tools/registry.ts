@@ -23,6 +23,7 @@
  */
 
 import { z } from "@hono/zod-openapi";
+import type { ChatConfig } from "../../config/schema.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { KnowledgeBaseRecord } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
@@ -36,9 +37,13 @@ import {
 import type { Logger } from "../../lib/logger.js";
 import { resolveKb } from "../../routes/api-v1/kb-descriptor.js";
 import { dispatchSearch } from "../../routes/api-v1/search-dispatch.js";
+import type { SecretResolver } from "../../secrets/provider.js";
 import type { RetrievedChunk } from "../prompt.js";
 import type { AstraQuerySnapshot } from "../retrieval.js";
 import type { ToolDefinition } from "../types.js";
+import { astraTools } from "./providers/astra.js";
+import { nativeTools } from "./providers/native.js";
+import { remoteMcpTools } from "./providers/remote-mcp.js";
 
 /**
  * Side-channel a tool can use to surface artifacts the agent dispatcher
@@ -725,6 +730,136 @@ export function defaultToolDefinitions(): readonly ToolDefinition[] {
  */
 export function resolveTool(name: string): AgentTool | null {
 	return DEFAULT_AGENT_TOOLS.find((t) => t.definition.name === name) ?? null;
+}
+
+/**
+ * The set of tools an agent may use, with its per-agent allow-list
+ * applied. `tools` is what we advertise to the model; `resolve` is the
+ * execution-time gate, so a model that hallucinates a non-allowed tool
+ * name still can't reach it (defense-in-depth vs the advertised set).
+ * This is the single composition point — A2–A4 (remote-MCP, native,
+ * Astra tools) extend the candidate pool below.
+ */
+export interface AgentToolset {
+	readonly tools: readonly AgentTool[];
+	resolve(name: string): AgentTool | null;
+}
+
+/**
+ * Construction-time context handed to each tool provider so it can
+ * build its tools — resolve credentials, read runtime config, reach the
+ * data plane. Distinct from {@link AgentToolDeps}, which is the
+ * *execution* context passed when a resolved tool actually runs.
+ */
+export interface ToolProviderContext {
+	readonly workspaceId: string;
+	readonly store: ControlPlaneStore;
+	readonly drivers: VectorStoreDriverRegistry;
+	readonly embedders: EmbedderFactory;
+	readonly secrets: SecretResolver;
+	readonly chatConfig: ChatConfig | null;
+	readonly logger?: Pick<Logger, "warn" | "debug">;
+}
+
+/**
+ * Resolve the toolset an agent may use from its `toolIds` allow-list.
+ *
+ *   - empty `toolIds` → all built-in workspace tools (grandfathered:
+ *                       existing agents keep today's behavior). External
+ *                       sources aren't even built — no remote MCP
+ *                       round-trip for a default agent.
+ *   - non-empty       → the named subset across the full candidate pool
+ *                       (built-in + native + Astra + remote-MCP).
+ *
+ * Native / Astra / remote-MCP tools (A2–A4) are contributed by the
+ * provider modules under `./providers/`; each is opt-in and only ever
+ * included when a tool id explicitly lists it.
+ */
+export async function resolveAgentToolset(
+	toolIds: readonly string[],
+	ctx: ToolProviderContext,
+): Promise<AgentToolset> {
+	if (toolIds.length === 0) {
+		return toolsetOf(DEFAULT_AGENT_TOOLS);
+	}
+	const candidates: readonly AgentTool[] = [
+		...DEFAULT_AGENT_TOOLS,
+		...(await nativeTools(ctx)),
+		...(await astraTools(ctx)),
+		...(await remoteMcpTools(ctx)),
+	];
+	const allowed = candidates.filter((t) => toolIds.includes(t.definition.name));
+	return toolsetOf(allowed);
+}
+
+function toolsetOf(tools: readonly AgentTool[]): AgentToolset {
+	const byName = new Map(tools.map((t) => [t.definition.name, t] as const));
+	return { tools, resolve: (name) => byName.get(name) ?? null };
+}
+
+/* --------------------------- tool catalog -------------------------- */
+
+/** Where a candidate tool comes from. Drives the catalog grouping in the UI. */
+export type ToolSource = "builtin" | "native" | "astra" | "mcp";
+
+/**
+ * One selectable entry in the agent-form tool picker. `id` is the
+ * namespaced tool id an agent lists in its `toolIds` allow-list
+ * (`mcp:{serverId}:{tool}`, `native:fetch`, `astra:data_api`, or a
+ * built-in name like `search_kb`).
+ */
+export interface ToolCandidate {
+	readonly id: string;
+	readonly description: string;
+	readonly source: ToolSource;
+}
+
+/** Built-in tool names, used to classify a candidate's source. */
+const BUILTIN_TOOL_NAMES: ReadonlySet<string> = new Set(
+	DEFAULT_AGENT_TOOLS.map((t) => t.definition.name),
+);
+
+/**
+ * Classify a tool by its (namespaced) id. Built-ins use bare names;
+ * the provider modules use a `{source}:…` prefix. A built-in name wins
+ * over any prefix coincidence because the built-in set is explicit.
+ */
+function classifyToolSource(id: string): ToolSource {
+	if (BUILTIN_TOOL_NAMES.has(id)) return "builtin";
+	if (id.startsWith("native:")) return "native";
+	if (id.startsWith("astra:")) return "astra";
+	if (id.startsWith("mcp:")) return "mcp";
+	// Defensive default: an unprefixed, non-built-in id is treated as a
+	// built-in for catalog purposes (it can only have come from the
+	// built-in registry expanding).
+	return "builtin";
+}
+
+/**
+ * Enumerate the FULL candidate tool pool for a workspace, regardless of
+ * any agent's allow-list — the selectable catalog the agent form offers.
+ * Composes the same providers as {@link resolveAgentToolset} (built-in +
+ * native + Astra + remote-MCP), so the catalog reflects exactly what is
+ * actually wired for the workspace: native tools only when configured,
+ * the Astra tool only for astra/hcd workspaces, and remote-MCP tools
+ * per registered+enabled server. Each provider isolates its own failures
+ * (an unreachable MCP server contributes nothing) so the catalog never
+ * fails wholesale.
+ */
+export async function listCandidateTools(
+	ctx: ToolProviderContext,
+): Promise<readonly ToolCandidate[]> {
+	const candidates: readonly AgentTool[] = [
+		...DEFAULT_AGENT_TOOLS,
+		...(await nativeTools(ctx)),
+		...(await astraTools(ctx)),
+		...(await remoteMcpTools(ctx)),
+	];
+	return candidates.map((t) => ({
+		id: t.definition.name,
+		description: t.definition.description,
+		source: classifyToolSource(t.definition.name),
+	}));
 }
 
 /* ------------------------------ helpers ---------------------------- */

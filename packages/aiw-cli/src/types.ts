@@ -121,10 +121,15 @@ export const SearchResponseSchema = z.array(SearchHitSchema);
 export const WhoAmISchema = z
 	.object({
 		id: z.string().optional(),
-		label: z.string().optional(),
+		label: z.string().nullable().optional(),
 		type: z.string().optional(),
 		workspaceScopes: z.array(z.string()).nullable().optional(),
-		scopes: z.array(z.string()).optional(),
+		// RBAC (0.4.0): the runtime's `/auth/me` now reports the caller's
+		// effective role + privilege scopes. Both are nullable — an OIDC
+		// subject with no role mapping carries every scope and reports
+		// `null` for each.
+		role: z.string().nullable().optional(),
+		scopes: z.array(z.string()).nullable().optional(),
 	})
 	.passthrough();
 

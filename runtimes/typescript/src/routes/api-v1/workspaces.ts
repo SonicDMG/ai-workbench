@@ -10,8 +10,10 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
 	assertPlatformAccess,
+	assertScope,
 	filterToAccessibleWorkspaces,
 } from "../../auth/authz.js";
+import { SCOPE_MANAGE } from "../../auth/roles.js";
 import {
 	DEFAULT_WORKSPACE_SEED_LLM_SERVICES,
 	DEFAULT_WORKSPACE_SEED_SERVICES,
@@ -191,6 +193,13 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
 			const body = c.req.valid("json");
+			// Toggling RLAC (an access-control change) is an admin-only
+			// action — require the `manage` scope. The route-level gate
+			// only takes the workspace PATCH to the `write` floor (rename),
+			// so the `rlacEnabled`-specific check lives here.
+			if (body.rlacEnabled !== undefined) {
+				assertScope(c, SCOPE_MANAGE);
+			}
 			// Detect a false → true `rlacEnabled` transition so we can
 			// bootstrap the workspace into a usable state (default
 			// principal + visibility backfill) before returning. Without

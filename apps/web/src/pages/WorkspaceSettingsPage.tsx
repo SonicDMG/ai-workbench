@@ -3,6 +3,7 @@ import {
 	Cog,
 	ExternalLink,
 	Info,
+	Network,
 	Pencil,
 	ServerCog,
 	ShieldCheck,
@@ -26,12 +27,14 @@ import {
 import { ApiKeysPanel } from "@/components/workspaces/ApiKeysPanel";
 import { DeleteDialog } from "@/components/workspaces/DeleteDialog";
 import { KindBadge } from "@/components/workspaces/KindBadge";
+import { McpServersPanel } from "@/components/workspaces/McpServersPanel";
 import { PolicyAuditPanel } from "@/components/workspaces/PolicyAuditPanel";
 import { PrincipalsPanel } from "@/components/workspaces/PrincipalsPanel";
 import { SeededDefaultsCallout } from "@/components/workspaces/SeededDefaultsCallout";
 import { ServicesPanel } from "@/components/workspaces/ServicesPanel";
 import { TestConnectionPanel } from "@/components/workspaces/TestConnectionPanel";
 import { WorkspaceForm } from "@/components/workspaces/WorkspaceForm";
+import { useRole } from "@/hooks/useRole";
 import {
 	useDeleteWorkspace,
 	useUpdateWorkspace,
@@ -51,6 +54,11 @@ export function WorkspaceSettingsPage() {
 	const { data, isLoading, isError, error } = useWorkspace(workspaceId);
 	const update = useUpdateWorkspace(workspaceId ?? "");
 	const del = useDeleteWorkspace();
+	// RBAC gating: admin-only surfaces (API keys, RLAC controls, delete)
+	// are hidden/disabled for non-admins. `canManage` defaults permissive
+	// when there's no role signal (see useRole) — the server stays the
+	// authoritative gate.
+	const { canManage } = useRole();
 	const [editing, setEditing] = useState(false);
 	const [infoOpen, setInfoOpen] = useState(false);
 	const [deleteOpen, setDeleteOpen] = useState(false);
@@ -145,14 +153,16 @@ export function WorkspaceSettingsPage() {
 								Edit
 							</Button>
 						)}
-						<Button
-							variant="destructive"
-							className="col-span-2 justify-center sm:col-span-1"
-							onClick={() => setDeleteOpen(true)}
-						>
-							<Trash2 className="h-4 w-4" />
-							Delete
-						</Button>
+						{canManage ? (
+							<Button
+								variant="destructive"
+								className="col-span-2 justify-center sm:col-span-1"
+								onClick={() => setDeleteOpen(true)}
+							>
+								<Trash2 className="h-4 w-4" />
+								Delete
+							</Button>
+						) : null}
 					</div>
 				</CardHeader>
 				{editing ? (
@@ -192,16 +202,30 @@ export function WorkspaceSettingsPage() {
 				<ServicesPanel workspace={data.workspaceId} />
 			</SettingsSection>
 
-			<ApiKeysPanel workspace={data.workspaceId} />
+			<SettingsSection
+				title="MCP servers"
+				description="Remote MCP servers this workspace's agents can call. Each enabled server's tools are discovered at chat time and offered to agents that opt in via their tool allow-list."
+				icon={<Network className="h-4 w-4" />}
+			>
+				<McpServersPanel workspace={data.workspaceId} />
+			</SettingsSection>
 
-			<AccessControlToggle workspace={data} />
-
-			{data.rlacEnabled ? (
+			{canManage ? (
 				<>
-					<PrincipalsPanel workspace={data.workspaceId} />
-					<PolicyAuditPanel workspace={data.workspaceId} />
+					<ApiKeysPanel workspace={data.workspaceId} />
+
+					<AccessControlToggle workspace={data} />
+
+					{data.rlacEnabled ? (
+						<>
+							<PrincipalsPanel workspace={data.workspaceId} />
+							<PolicyAuditPanel workspace={data.workspaceId} />
+						</>
+					) : null}
 				</>
-			) : null}
+			) : (
+				<AdminOnlyNote />
+			)}
 
 			<DeleteDialog
 				open={deleteOpen}
@@ -343,6 +367,35 @@ function SectionIcon({ children }: { children: React.ReactNode }) {
 		>
 			{children}
 		</div>
+	);
+}
+
+/**
+ * Placeholder shown in place of the admin-only sections (API keys, RLAC
+ * controls, principals, policy audit) when the signed-in caller isn't an
+ * admin. Naming the gap is friendlier than silently dropping the cards —
+ * a Viewer/Editor sees *why* the controls are absent rather than
+ * wondering if the page failed to load.
+ */
+function AdminOnlyNote() {
+	return (
+		<Card className="overflow-hidden shadow-sm">
+			<CardContent className="flex items-start gap-3 p-4 text-sm text-slate-600 dark:text-slate-400">
+				<SectionIcon>
+					<ShieldCheck className="h-4 w-4" />
+				</SectionIcon>
+				<div className="min-w-0">
+					<p className="font-medium text-slate-800 dark:text-slate-200">
+						Admin-only controls hidden
+					</p>
+					<p className="mt-1 leading-relaxed">
+						API keys, access-control settings, and workspace deletion require
+						the <code>manage</code> scope (the Admin role). Ask a workspace
+						admin if you need access to these.
+					</p>
+				</div>
+			</CardContent>
+		</Card>
 	);
 }
 

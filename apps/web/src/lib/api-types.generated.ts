@@ -2096,6 +2096,60 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/api/v1/workspaces/{workspaceId}/available-tools": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List the selectable agent tool catalog */
+		get: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description Every tool an agent in this workspace may add to its allow-list */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["AvailableToolList"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/api/v1/workspaces/{workspaceId}/chunking-services": {
 		parameters: {
 			query?: never;
@@ -3955,6 +4009,242 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/api/v1/workspaces/{workspaceId}/mcp-servers": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List registered external MCP servers */
+		get: {
+			parameters: {
+				query?: {
+					/** @description Maximum number of items to return (max 200). */
+					limit?: number;
+					/** @description Opaque cursor returned as `nextCursor` from the previous page. */
+					cursor?: string;
+				};
+				header?: never;
+				path: {
+					workspaceId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description All MCP servers registered in the workspace */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["McpServerPage"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		put?: never;
+		/** Register an external MCP server */
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": components["schemas"]["CreateMcpServerInput"];
+				};
+			};
+			responses: {
+				/** @description MCP server registered */
+				201: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["McpServer"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/v1/workspaces/{workspaceId}/mcp-servers/{mcpServerId}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get a single MCP server */
+		get: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+					mcpServerId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description MCP server record */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["McpServer"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace or MCP server not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		put?: never;
+		post?: never;
+		/** Delete an MCP server */
+		delete: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+					mcpServerId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description Deleted */
+				204: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content?: never;
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace or MCP server not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		options?: never;
+		head?: never;
+		/** Update an MCP server */
+		patch: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+					mcpServerId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": components["schemas"]["UpdateMcpServerInput"];
+				};
+			};
+			responses: {
+				/** @description Updated MCP server */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["McpServer"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace or MCP server not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		trace?: never;
+	};
 	"/api/v1/workspaces/{workspaceId}/principals": {
 		parameters: {
 			query?: never;
@@ -4601,7 +4891,7 @@ export interface components {
 			expiresAt: string | null;
 		};
 		/** @enum {string} */
-		ApiKeyScope: "read" | "write";
+		ApiKeyScope: "read" | "write" | "manage";
 		CreatedApiKeyResponse: {
 			/** @example wb_live_abc123xyz789_… */
 			plaintext: string;
@@ -4864,6 +5154,7 @@ export interface components {
 			/** Format: uuid */
 			llmServiceId: string | null;
 			knowledgeBaseIds: string[];
+			toolIds: string[];
 			rerankEnabled: boolean;
 			/** Format: uuid */
 			rerankingServiceId: string | null;
@@ -4887,6 +5178,7 @@ export interface components {
 			/** Format: uuid */
 			rerankingServiceId?: string | null;
 			rerankMaxResults?: number | null;
+			toolIds?: string[];
 		};
 		AgentTemplateList: {
 			items: components["schemas"]["AgentTemplate"][];
@@ -4914,6 +5206,7 @@ export interface components {
 			/** Format: uuid */
 			rerankingServiceId?: string | null;
 			rerankMaxResults?: number | null;
+			toolIds?: string[];
 		};
 		ConversationPage: {
 			items: components["schemas"]["Conversation"][];
@@ -5057,6 +5350,15 @@ export interface components {
 				message: string;
 				status: number;
 			};
+		};
+		AvailableToolList: {
+			items: components["schemas"]["AvailableTool"][];
+		};
+		AvailableTool: {
+			id: string;
+			description: string;
+			/** @enum {string} */
+			source: "builtin" | "native" | "astra" | "mcp";
 		};
 		ChunkingServicePage: {
 			items: components["schemas"]["ChunkingService"][];
@@ -5731,6 +6033,43 @@ export interface components {
 			subjectLabel: string | null;
 			reason: string | null;
 		};
+		McpServerPage: {
+			items: components["schemas"]["McpServer"][];
+			nextCursor: string | null;
+		};
+		McpServer: {
+			/** Format: uuid */
+			workspaceId: string;
+			/** Format: uuid */
+			mcpServerId: string;
+			label: string;
+			url: string;
+			credentialRef: components["schemas"]["SecretRef"] & (string | null);
+			enabled: boolean;
+			allowedTools: string[] | null;
+			/** Format: date-time */
+			createdAt: string;
+			/** Format: date-time */
+			updatedAt: string;
+		};
+		CreateMcpServerInput: {
+			label: string;
+			url: components["schemas"]["McpServerUrl"];
+			credentialRef?: components["schemas"]["SecretRef"] & (string | null);
+			/** @description Whether the server's tools are exposed. Defaults to true. */
+			enabled?: boolean;
+			/** @description Allow-list of remote tool names to expose. Omit / null = expose every tool the server advertises; empty array = expose none. */
+			allowedTools?: string[] | null;
+		};
+		/** @example https://mcp.example.com/mcp */
+		McpServerUrl: string;
+		UpdateMcpServerInput: {
+			label?: string;
+			url?: components["schemas"]["McpServerUrl"];
+			credentialRef?: components["schemas"]["SecretRef"] & (string | null);
+			enabled?: boolean;
+			allowedTools?: string[] | null;
+		};
 		PrincipalPage: {
 			items: components["schemas"]["Principal"][];
 			nextCursor: string | null;
@@ -5743,23 +6082,28 @@ export interface components {
 			attributes: {
 				[key: string]: string;
 			};
+			role: components["schemas"]["Role"];
 			/** Format: date-time */
 			createdAt: string;
 			/** Format: date-time */
 			updatedAt: string;
 		};
+		/** @enum {string} */
+		Role: "viewer" | "editor" | "admin";
 		CreatePrincipalInput: {
 			principalId: string;
 			label?: string | null;
 			attributes?: {
 				[key: string]: string;
 			};
+			role?: components["schemas"]["Role"] & unknown;
 		};
 		UpdatePrincipalInput: {
 			label?: string | null;
 			attributes?: {
 				[key: string]: string;
 			};
+			role?: components["schemas"]["Role"];
 		};
 		PolicyCompilePreviewResponse: {
 			ok: boolean;

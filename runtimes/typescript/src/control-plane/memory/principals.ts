@@ -16,7 +16,7 @@ import type {
 	PrincipalRepo,
 	UpdatePrincipalInput,
 } from "../store.js";
-import type { PrincipalRecord } from "../types.js";
+import { DEFAULT_ROLE, type PrincipalRecord } from "../types.js";
 import { assertWorkspace, type MemoryStoreState } from "./state.js";
 
 function freezeAttributes(
@@ -64,6 +64,7 @@ export function makePrincipalMethods(state: MemoryStoreState): PrincipalRepo {
 				principalId: input.principalId,
 				label: input.label ?? null,
 				attributes: freezeAttributes(input.attributes),
+				role: input.role ?? DEFAULT_ROLE,
 				createdAt: now,
 				updatedAt: now,
 			};
@@ -88,6 +89,7 @@ export function makePrincipalMethods(state: MemoryStoreState): PrincipalRepo {
 				...(patch.attributes !== undefined && {
 					attributes: freezeAttributes(patch.attributes),
 				}),
+				...(patch.role !== undefined && { role: patch.role }),
 				updatedAt: nowIso(),
 			};
 			state.principals.get(workspace)?.set(principalId, next);

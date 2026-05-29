@@ -21,9 +21,21 @@ export const whoamiCommand = defineCommand({
 			const lines: string[] = [];
 			lines.push(`profile  ${ctx.resolved.name}`);
 			lines.push(`url      ${ctx.resolved.profile.url}`);
-			lines.push(`subject  ${JSON.stringify(data.subject ?? null)}`);
-			if (Array.isArray(data.scopes)) {
-				lines.push(`scopes   ${data.scopes.join(", ") || "(none)"}`);
+			if (data.id) lines.push(`subject  ${data.id}`);
+			if (data.label) lines.push(`label    ${data.label}`);
+			if (data.type) lines.push(`type     ${data.type}`);
+			// RBAC (0.4.0): the runtime reports the caller's effective role
+			// + privilege scopes. `null` for either means "unscoped" — an
+			// OIDC subject with no role mapping carries every scope.
+			if (data.role !== undefined) {
+				lines.push(`role     ${data.role ?? "(unscoped — all scopes)"}`);
+			}
+			if (data.scopes !== undefined) {
+				lines.push(
+					`scopes   ${
+						data.scopes === null ? "(all)" : data.scopes.join(", ") || "(none)"
+					}`,
+				);
 			}
 			return lines.join("\n");
 		});

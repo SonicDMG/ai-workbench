@@ -34,6 +34,7 @@ import type {
 	KnowledgeBaseRecord,
 	KnowledgeFilterRecord,
 	LlmServiceRecord,
+	McpServerRecord,
 	MessageRecord,
 	PolicyAuditRecord,
 	PrincipalRecord,
@@ -61,7 +62,9 @@ export type Table =
 	| "messages"
 	// RLAC prototype.
 	| "principals"
-	| "policy-audit";
+	| "policy-audit"
+	// External MCP servers (0.4.0 A2).
+	| "mcp-servers";
 
 /** Map table discriminator to its row type. */
 export type TableRow<K extends Table> = K extends "workspaces"
@@ -92,7 +95,9 @@ export type TableRow<K extends Table> = K extends "workspaces"
 													? PrincipalRecord
 													: K extends "policy-audit"
 														? PolicyAuditRecord
-														: never;
+														: K extends "mcp-servers"
+															? McpServerRecord
+															: never;
 
 export const TABLE_FILES: Record<Table, string> = {
 	workspaces: "workspaces.json",
@@ -109,6 +114,7 @@ export const TABLE_FILES: Record<Table, string> = {
 	messages: "messages.json",
 	principals: "principals.json",
 	"policy-audit": "policy-audit.json",
+	"mcp-servers": "mcp-servers.json",
 };
 
 /**
@@ -145,6 +151,7 @@ function createMutexes(): Record<Table, Mutex> {
 		messages: new Mutex(),
 		principals: new Mutex(),
 		"policy-audit": new Mutex(),
+		"mcp-servers": new Mutex(),
 	};
 }
 

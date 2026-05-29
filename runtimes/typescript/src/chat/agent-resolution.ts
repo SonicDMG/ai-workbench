@@ -36,7 +36,8 @@ import { resolveChatProvider } from "./providers.js";
 import {
 	type AgentTool,
 	type AgentToolDeps,
-	DEFAULT_AGENT_TOOLS,
+	type AgentToolset,
+	resolveAgentToolset,
 } from "./tools/registry.js";
 import type { ChatService } from "./types.js";
 
@@ -71,6 +72,13 @@ export interface ResolvedAgentChat {
 	 * old retrieve-and-answer flow.
 	 */
 	readonly tools: readonly AgentTool[];
+	/**
+	 * Allow-list resolver for execution time. The dispatcher resolves
+	 * each tool call through this, so a model that names a tool outside
+	 * the agent's allow-list can't reach it even though only the
+	 * advertised `tools` were offered.
+	 */
+	readonly toolset: AgentToolset;
 	/**
 	 * Bound context for tool execution. Built once per turn so each
 	 * tool invocation doesn't have to plumb workspace + store + driver
@@ -117,19 +125,28 @@ export async function resolveAgentChat(
 		logger: deps.logger,
 	};
 
-	// Tools are always advertised to the resolved chat service. The
-	// OpenAI-compatible adapter forwards them as the `tools[]` request
-	// field and parses the model's `tool_calls` back out, so the model
-	// decides whether to call them. Models not served for tools just
-	// never emit any; the dispatcher loop only iterates when a
-	// completion actually emits tool calls.
-	const tools = DEFAULT_AGENT_TOOLS;
+	// The agent's `toolIds` allow-list selects which tools are advertised
+	// to the model and — via `toolset.resolve` — which a tool call may
+	// actually reach. Empty `toolIds` grandfathers in all built-in
+	// workspace tools. The OpenAI-compatible adapter forwards `tools[]`
+	// and parses `tool_calls` back out; the dispatcher loop only iterates
+	// when a completion actually emits tool calls.
+	const toolset = await resolveAgentToolset(agent.toolIds, {
+		workspaceId,
+		store,
+		drivers: deps.drivers,
+		embedders: deps.embedders,
+		secrets,
+		chatConfig: chatConfig ?? null,
+		logger: deps.logger,
+	});
 
 	return {
 		chatService: chat,
 		systemPrompt,
 		knowledgeBaseIds,
-		tools,
+		tools: toolset.tools,
+		toolset,
 		toolDeps,
 	};
 }

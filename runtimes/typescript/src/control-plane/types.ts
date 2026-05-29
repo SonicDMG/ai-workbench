@@ -123,14 +123,21 @@ export interface ApiKeyRecord {
 }
 
 /**
- * Privilege tiers an issued API key can carry. Two-tier today;
- * splitting `write` into more granular slices (e.g. `write:ingest`
- * vs `write:admin`) is intentionally deferred until the surface that
- * needs the split actually lands. Existing rows persisted before this
- * column was added back-compat to `["read", "write"]` so behavior
- * doesn't change for already-minted keys.
+ * Privilege tiers an issued API key can carry, aligned with the RBAC
+ * roles in `auth/roles.ts` (`viewer` / `editor` / `admin`):
+ *
+ *   - `read`    list + fetch + search workspace content.
+ *   - `write`   mutate workspace content (KBs, documents, agents,
+ *               services, ingest).
+ *   - `manage`  admin-only operations (API keys, RLAC principals +
+ *               policy, workspace destroy). New in 0.4.0; before it,
+ *               every mutating route gated on `write`.
+ *
+ * Existing rows persisted before the scopes column was added
+ * back-compat to `["read", "write"]` (an `editor`-equivalent key), so
+ * behavior doesn't change for already-minted keys.
  */
-export type ApiKeyScope = "read" | "write";
+export type ApiKeyScope = "read" | "write" | "manage";
 
 /**
  * Default for newly-minted keys when the caller omits `scopes`. Keeps
@@ -141,7 +148,7 @@ export const DEFAULT_API_KEY_SCOPES: readonly ApiKeyScope[] = ["read", "write"];
 
 /** Type guard for runtime parsing of arbitrary input shapes. */
 export function isApiKeyScope(value: unknown): value is ApiKeyScope {
-	return value === "read" || value === "write";
+	return value === "read" || value === "write" || value === "manage";
 }
 
 /**
@@ -159,7 +166,37 @@ export function normalizeApiKeyScopes(
 	for (const v of input) if (isApiKeyScope(v)) seen.add(v);
 	if (seen.size === 0) return DEFAULT_API_KEY_SCOPES;
 	// Deterministic order for stable comparisons + wire shape.
-	return (["read", "write"] as const).filter((s) => seen.has(s));
+	return (["read", "write", "manage"] as const).filter((s) => seen.has(s));
+}
+
+/**
+ * Coarse RBAC role carried by a {@link PrincipalRecord}. The role is
+ * the user-facing identity tier; `auth/roles.ts` maps each role to the
+ * privilege {@link ApiKeyScope}s it grants (`viewer` → read, `editor` →
+ * read+write, `admin` → read+write+manage). Lives here, beside
+ * `ApiKeyScope`, because it is persisted on a control-plane record — so
+ * the data layer can read it without importing from `auth/`.
+ */
+export type Role = "viewer" | "editor" | "admin";
+
+/** Every role, least-privileged first. */
+export const ALL_ROLES: readonly Role[] = ["viewer", "editor", "admin"];
+
+/** The safe floor assumed when a principal has no recorded role. */
+export const DEFAULT_ROLE: Role = "viewer";
+
+/** Type guard for runtime parsing of arbitrary input shapes. */
+export function isRole(value: unknown): value is Role {
+	return value === "viewer" || value === "editor" || value === "admin";
+}
+
+/**
+ * Coerce an arbitrary stored or claimed value into a role, falling back
+ * to {@link DEFAULT_ROLE} when it's missing or unrecognized. Used at
+ * read boundaries — a principal row's `role` column, an OIDC claim.
+ */
+export function parseRole(value: unknown): Role {
+	return isRole(value) ? value : DEFAULT_ROLE;
 }
 
 /** Embedding configuration for a vector store. */
@@ -385,23 +422,35 @@ export interface LlmServiceRecord extends ServiceEndpointConfig {
 	readonly updatedAt: string;
 }
 
-/** A tool an agent may invoke — MCP, plain HTTP, builtin, or function. */
-export interface McpToolRecord {
+/**
+ * A registered **external MCP server** the workspace's agents can reach
+ * (0.4.0, A2). This row describes a *remote server* the runtime connects
+ * to over Streamable HTTP; the runtime discovers the server's tools at
+ * turn time via `tools/list` and adapts each into an agent tool named
+ * `mcp:{mcpServerId}:{toolName}`.
+ *
+ * Workspace-scoped. The server URL is validated through the same SSRF
+ * guard as service endpoints (cloud-metadata / link-local blocked);
+ * `credentialRef` resolves through the {@link SecretRef} machinery — the
+ * raw bearer token never lands in a record. `allowedTools`, when present,
+ * filters the discovered tool set to that allow-list (empty/absent = all
+ * the server advertises). `enabled: false` keeps the row registered but
+ * contributes no tools to any agent.
+ */
+export interface McpServerRecord {
 	readonly workspaceId: string;
-	readonly toolId: string;
-	readonly name: string;
-	readonly description: string | null;
-	readonly toolType: string;
-	readonly endpointBaseUrl: string | null;
-	readonly endpointPath: string | null;
-	readonly httpMethod: string | null;
-	/** JSON-Schema as a record, deserialized by the converter. */
-	readonly inputSchema: Readonly<Record<string, unknown>> | null;
-	/** JSON-Schema as a record, deserialized by the converter. */
-	readonly outputSchema: Readonly<Record<string, unknown>> | null;
-	readonly authType: AuthType;
+	readonly mcpServerId: string;
+	readonly label: string;
+	readonly url: string;
+	/** {@link SecretRef} for the server's bearer credential, or null. */
 	readonly credentialRef: SecretRef | null;
-	readonly tags: readonly string[];
+	readonly enabled: boolean;
+	/**
+	 * Optional allow-list of remote tool names to expose. Empty / null =
+	 * every tool the server advertises. Stored sorted + deduped by the
+	 * store contract.
+	 */
+	readonly allowedTools: readonly string[] | null;
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }
@@ -449,6 +498,13 @@ export interface PrincipalRecord {
 	readonly principalId: string;
 	readonly label: string | null;
 	readonly attributes: Readonly<Record<string, string>>;
+	/**
+	 * RBAC role for this identity. Drives RLAC (an `admin` role bypasses
+	 * row filters) and RBAC (effective scopes derived from role for OIDC
+	 * subjects). Defaults to {@link DEFAULT_ROLE} for principals created
+	 * or read before the role column existed.
+	 */
+	readonly role: Role;
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }

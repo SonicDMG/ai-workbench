@@ -1,0 +1,206 @@
+{
+	"slug": "chat-sse-tool-call",
+	"description": "Server-sent events tool-call happy path for POST /agents/{a}/conversations/{c}/messages/stream. The multi-turn `chatScript` drives the dispatcher's tool-call loop deterministically: turn 1 emits a `list_kbs` tool call (a built-in tool that needs no external dependency and returns a fixed string on an empty workspace), turn 2 emits the final answer. Pins the full intermediate-iteration SSE shape: `user-message` -> `token-reset` -> `tool-call` -> `tool-result` -> `token`* -> terminal `done`. The closing GET confirms the user-facing transcript is just the user turn + final assistant row (the tool-call/tool-result scaffolding rows are persisted but filtered from the message list).",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentials": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"rlacEnabled": false,
+					"updatedAt": "{{TS}}",
+					"url": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"name": "fixture-tool-agent"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents"
+			},
+			"response": {
+				"body": {
+					"agentId": "{{UUID_2}}",
+					"createdAt": "{{TS}}",
+					"description": null,
+					"knowledgeBaseIds": [],
+					"llmServiceId": null,
+					"name": "fixture-tool-agent",
+					"rerankEnabled": false,
+					"rerankMaxResults": null,
+					"rerankingServiceId": null,
+					"systemPrompt": null,
+					"toolIds": [],
+					"updatedAt": "{{TS}}",
+					"userPrompt": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"title": "tool thread"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents/{{UUID_2}}/conversations"
+			},
+			"response": {
+				"body": {
+					"agentId": "{{UUID_2}}",
+					"conversationId": "{{UUID_3}}",
+					"createdAt": "{{TS}}",
+					"knowledgeBaseIds": [],
+					"title": "tool thread",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"content": "what knowledge bases do I have?"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents/{{UUID_2}}/conversations/{{UUID_3}}/messages/stream"
+			},
+			"response": {
+				"body": [
+					{
+						"data": {
+							"chatId": "{{UUID_3}}",
+							"content": "what knowledge bases do I have?",
+							"messageId": "{{UUID_4}}",
+							"messageTs": "{{TS}}",
+							"metadata": {},
+							"role": "user",
+							"tokenCount": null,
+							"workspaceId": "{{UUID_1}}"
+						},
+						"event": "user-message"
+					},
+					{
+						"data": {},
+						"event": "token-reset"
+					},
+					{
+						"data": {
+							"toolCalls": [
+								{
+									"arguments": "{}",
+									"id": "call-list-kbs-1",
+									"name": "list_kbs"
+								}
+							]
+						},
+						"event": "tool-call"
+					},
+					{
+						"data": {
+							"content": "No knowledge bases exist in this workspace yet.",
+							"name": "list_kbs",
+							"toolCallId": "call-list-kbs-1"
+						},
+						"event": "tool-result"
+					},
+					{
+						"data": {
+							"delta": "You have "
+						},
+						"event": "token"
+					},
+					{
+						"data": {
+							"delta": "no knowledge bases "
+						},
+						"event": "token"
+					},
+					{
+						"data": {
+							"delta": "yet."
+						},
+						"event": "token"
+					},
+					{
+						"data": {
+							"chatId": "{{UUID_3}}",
+							"content": "You have no knowledge bases yet.",
+							"messageId": "{{UUID_5}}",
+							"messageTs": "{{TS}}",
+							"metadata": {
+								"finish_reason": "stop",
+								"model": "fixture-test-model"
+							},
+							"role": "agent",
+							"tokenCount": 7,
+							"workspaceId": "{{UUID_1}}"
+						},
+						"event": "done"
+					}
+				],
+				"status": 200
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents/{{UUID_2}}/conversations/{{UUID_3}}/messages"
+			},
+			"response": {
+				"body": {
+					"items": [
+						{
+							"chatId": "{{UUID_3}}",
+							"content": "what knowledge bases do I have?",
+							"messageId": "{{UUID_4}}",
+							"messageTs": "{{TS}}",
+							"metadata": {},
+							"role": "user",
+							"tokenCount": null,
+							"workspaceId": "{{UUID_1}}"
+						},
+						{
+							"chatId": "{{UUID_3}}",
+							"content": "You have no knowledge bases yet.",
+							"messageId": "{{UUID_5}}",
+							"messageTs": "{{TS}}",
+							"metadata": {
+								"finish_reason": "stop",
+								"model": "fixture-test-model"
+							},
+							"role": "agent",
+							"tokenCount": 7,
+							"workspaceId": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
+				"status": 200
+			},
+			"step": 5
+		}
+	]
+}

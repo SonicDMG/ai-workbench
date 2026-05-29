@@ -108,12 +108,21 @@ silently escalate by minting a fresh tenant outside its scope and
 operating against it. Anonymous callers and unscoped subjects
 (operator tokens) pass through.
 
-### Privilege scopes (read / write)
+### Privilege scopes (read / write / manage)
 
 Workspace API keys carry a second axis besides workspace membership:
-a privilege-scope list. Keys minted from the workspace UI today
-carry `["read"]` (default) or `["read", "write"]`; OIDC and bootstrap
-subjects carry `scopes: null`, which implicitly grants every scope.
+a privilege-scope list. Three tiers, aligned with the RBAC roles in
+`auth/roles.ts` (`viewer` / `editor` / `admin`):
+
+- **`read`** — list / fetch / search workspace content.
+- **`write`** — mutate workspace content (KBs, documents, agents,
+  services, ingest).
+- **`manage`** (0.4.0) — admin-only operations: API keys, RLAC
+  principals + policy, and workspace destroy.
+
+Keys minted before 0.4.0 back-compat to `["read", "write"]` (an
+`editor`-equivalent key); OIDC and bootstrap subjects carry
+`scopes: null`, which implicitly grants every scope.
 
 Two layers enforce it:
 
@@ -135,10 +144,19 @@ Two layers enforce it:
      KB content).
    - Calls `assertScope(c, "write")` for every other write-shaped
      request (POST/PATCH/PUT/DELETE). A read-only key on any KB CRUD,
-     document register / patch / delete, ingest, agent CRUD, service
-     CRUD, or `POST /api-keys` (issuance is itself a privilege
-     escalation in disguise) gets `403 forbidden` with `message:
+     document register / patch / delete, ingest, agent CRUD, or
+     service CRUD gets `403 forbidden` with `message:
      "authenticated subject is missing required scope 'write'"`.
+3. **REST admin gate** — `manageRouteScope()` is mounted right after
+   the write gate and requires the `manage` scope on admin-only
+   surfaces: `…/api-keys`, `…/principals`, `…/policy` (the entire CRUD
+   surface, including `GET` — listing credentials or principals is
+   itself a privileged read), and `DELETE /workspaces/{w}`. An
+   `editor` (`["read", "write"]`) key gets `403 forbidden` on these;
+   only an `admin` (`["read", "write", "manage"]`) key — or an
+   unscoped OIDC / bootstrap subject — passes. (The `rlacEnabled`
+   toggle on `PATCH /workspaces/{w}` is also admin, but it shares a
+   route with the write-level rename, so it's gated in the handler.)
 
 Anonymous callers (when `anonymousPolicy: allow`) and `scopes: null`
 subjects bypass both gates — `anonymousPolicy` is the only knob that
@@ -149,6 +167,76 @@ The gate is mount-based rather than per-route, so a freshly added
 mutating route inherits the check automatically. New "POST-as-read"
 endpoints (a future smoke-test or probe surface) add a path suffix to
 the allowlist instead of editing every call site.
+
+> **Migration (0.4.0).** Splitting `manage` out of `write` is a
+> deliberate behavior change: an existing `["read", "write"]` key that
+> previously issued API keys, administered RLAC, or deleted a
+> workspace now gets `403 forbidden` on those routes. Re-mint the key
+> with `manage` (or use an OIDC admin / bootstrap token) to restore the
+> old capability. Content mutations (KBs, documents, agents, services,
+> ingest) are unaffected — `write` still covers them.
+
+**OIDC role mapping (opt-in).** By default OIDC subjects carry
+`scopes: null` (all scopes). Set `auth.oidc.roleMapping` to derive an
+RBAC role from a token claim and constrain those subjects:
+
+```yaml
+auth:
+  oidc:
+    roleMapping:
+      claim: groups          # token claim holding the role / group(s)
+      values:                # claim value → role
+        wb-admins: admin
+        wb-editors: editor
+      default: viewer        # role when the claim is absent / unmapped
+```
+
+The claim may be a single value or an array (groups); the
+highest-privileged match wins. A per-workspace **principal record**
+role still overrides the claim role for that workspace. With no
+`roleMapping`, OIDC behavior is unchanged (all scopes) — so this is a
+deliberate opt-in, not a silent restriction.
+
+### Surfacing role + scopes (UI / CLI gating)
+
+`GET /auth/me` reports the caller's **effective role and privilege
+scopes** alongside the existing identity fields:
+
+```json
+{
+  "id": "carol",
+  "label": "carol@ex.com",
+  "type": "oidc",
+  "workspaceScopes": ["..."],
+  "role": "admin",
+  "scopes": ["read", "write", "manage"],
+  "expiresAt": 1777230000,
+  "canRefresh": true
+}
+```
+
+`role` and `scopes` are each `null` when no gate applies — an OIDC
+subject with no `roleMapping` carries every scope and reports
+`{ role: null, scopes: null }`. An API-key subject reports its concrete
+scope array, labelled with the matching role when the set corresponds to
+a whole role (e.g. `["read"]` → `viewer`). This is a **pure projection**
+for client gating; the authoritative gate is always the route-level
+`requireScope` / `manageRouteScope` enforcement above, never this field.
+
+Consumers:
+
+- **Web UI** — the `useRole()` hook reads `/auth/me` and hides/disables
+  admin-only affordances for non-admins: API-key management, the
+  access-control (RLAC) toggle, principal + policy panels, and the
+  workspace-delete button (all on the workspace settings page). Gating
+  is **permissive by default** — when there is no role signal (login
+  disabled, or an unscoped subject) the controls show, because the
+  server still enforces the real rule. A positive `viewer`/`editor` role
+  (or a concrete scope list without `manage`) hides them.
+- **CLI** — `aiw whoami` and `aiw login` surface the role + scopes; a
+  `403 forbidden` carrying a "missing required scope" message is
+  translated into role guidance ("mint a key with the Admin role"),
+  mirroring the existing 401 login-guidance.
 
 ### Header format
 
@@ -365,6 +453,113 @@ auth:
 
 Use a high-entropy value, store it outside source control, and rotate
 or remove it after normal operator access is established.
+
+## Secret rotation
+
+Every credential the runtime touches lives behind a **`SecretRef`** — an
+`env:NAME` or `file:/path` pointer, never a literal value. The control
+plane (Astra tables, the `file` JSON root, SQLite) only ever stores the
+*ref*; the `SecretResolver` materializes the value in-process, at use
+time. Two consequences shape rotation:
+
+- **The secret store and the control plane are separate.** Rotating a
+  provider key, an OIDC client secret, or an Astra token is a change to
+  the secret *source* (your env / mounted file / secret manager), not a
+  database migration. Records that point at the ref are untouched.
+- **Nothing reads a secret back out over the wire.** `GET /setup-status`
+  reports `managedEnv.configuredKeys` — the **names** of the managed env
+  keys that currently resolve to a non-empty value — so the settings UI
+  can confirm a credential is *present* without ever returning the value.
+  Service and MCP-server records expose their `credentialRef` (the
+  pointer), never the resolved secret. The wire-leak guard
+  (`runtimes/typescript/tests/security/wire-leak.test.ts`) pins this for
+  every credential-carrying surface.
+
+The mechanics differ by credential class.
+
+### Workspace API keys (`wb_live_*`)
+
+API keys are **rotate-by-replacement**: there is no in-place "change the
+secret" — you revoke the old key and mint a new one.
+
+1. **Mint the replacement first** so the integration never goes dark:
+   `POST /api/v1/workspaces/{w}/api-keys` with the role/scopes the
+   consumer needs (`role: viewer|editor|admin`, or an explicit
+   `scopes` array — see [Privilege scopes](#privilege-scopes-read--write--manage)).
+   The `plaintext` field is returned **exactly once**; store it in the
+   consumer's secret source.
+2. **Cut the consumer over** to the new token.
+3. **Revoke the old key:** `DELETE /api/v1/workspaces/{w}/api-keys/{keyId}`.
+   This is a soft-revoke — the row stays visible with `revokedAt` set, and
+   the next request bearing the old token gets `401 unauthorized`.
+
+Issuing and revoking keys both require the **`manage`** scope (admin
+role). In the web UI this is the API-keys panel on the workspace settings
+page; via the CLI, `aiw` surfaces role-aware guidance on a `403`. Rotate a
+key whenever its scopes change — narrowing a key from `admin` to `editor`
+means minting a new `editor` key and revoking the old one, since scopes
+are fixed at issue time.
+
+### OIDC client secret
+
+The confidential-client secret used by the browser login flow is a
+`SecretRef` at `auth.oidc.client.clientSecretRef` (public clients omit
+it). To rotate:
+
+1. Add the new secret at the IdP (most IdPs allow two active client
+   secrets during a rollover window).
+2. Update the value behind `clientSecretRef` in the runtime's secret
+   source and **restart** so the new value is resolved at boot.
+3. Retire the old secret at the IdP.
+
+The **session-cookie** key (`auth.oidc.client.sessionSecretRef`) rotates
+the same way — update the ref and restart. There is no dual-key
+validation period: sessions encrypted with the old key stop decrypting
+and those users re-login (see
+[Session key rotation](#operational-notes)). The **bootstrap operator
+token** (`auth.bootstrapTokenRef`) likewise rotates by updating its ref
+and restarting; remove it entirely once normal operator access exists.
+
+### Provider API keys (OpenRouter / OpenAI / Cohere / …)
+
+LLM, embedding, and reranking services authenticate with a provider key
+resolved from the service's `credentialRef`, falling back to the
+runtime's global `chat.tokenRef` (default `env:OPENROUTER_API_KEY`) when a
+service sets none. Two rotation paths, depending on where the ref points:
+
+- **Repoint the ref's source (recommended for `env:` / `file:` refs).**
+  Update the value in the env / mounted file / secret manager that
+  `credentialRef` (or `chat.tokenRef`) names, then restart the runtime so
+  the new value is picked up and provider clients reconnect with it. The
+  service record is unchanged — it still points at the same ref.
+- **Paste a new key at `/settings`** (single-user / `auth: disabled`, or
+  the first-run setup wizard). The settings page writes the managed env
+  file via `POST /setup/env` and prompts for a restart; on the next boot
+  the runtime resolves the new value. `configuredKeys` flips to include
+  the key name once it resolves — confirming presence without exposing the
+  value.
+
+Either way the secret never enters the control plane. To point a service
+at a *different* ref (not just a new value behind the same ref),
+`PATCH …/llm-services/{id}` (or the embedding/reranking equivalent) with a
+new `credentialRef`; the response echoes the ref, never the resolved
+secret.
+
+### External MCP-server credentials
+
+A registered MCP server's bearer credential is a `SecretRef` on the
+server record's `credentialRef` (see
+[external MCP servers](mcp.md)). The runtime resolves it per connection,
+at tool-discovery and tool-call time — so rotation takes effect on the
+**next** turn, no restart required:
+
+- **New value, same ref:** update the env / file source the
+  `credentialRef` names. The next agent turn reconnects with the fresh
+  value.
+- **New ref:** `PATCH /api/v1/workspaces/{w}/mcp-servers/{id}` with the
+  new `credentialRef` (an admin/`manage`-shaped surface is not required —
+  registering and editing MCP servers is workspace `write` content). The
+  wire response carries the ref but never the resolved bearer token.
 
 ## OIDC (Phase 3a)
 

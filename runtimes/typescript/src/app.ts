@@ -24,7 +24,11 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { mutatingRouteWriteScope, workspaceRouteAuthz } from "./auth/authz.js";
+import {
+	manageRouteScope,
+	mutatingRouteWriteScope,
+	workspaceRouteAuthz,
+} from "./auth/authz.js";
 import { csrfOriginCheck } from "./auth/csrf.js";
 import { ForbiddenError, UnauthorizedError } from "./auth/errors.js";
 import { authMiddleware } from "./auth/middleware.js";
@@ -478,6 +482,13 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 	const writeScopeGate = mutatingRouteWriteScope();
 	app.use("/api/v1/workspaces/:workspaceId", writeScopeGate);
 	app.use("/api/v1/workspaces/:workspaceId/*", writeScopeGate);
+
+	// Admin-only surfaces (api-keys, principals, RLAC policy, workspace
+	// destroy) additionally require the `manage` scope. Mounts after the
+	// write gate so workspace membership + the write floor cleared first.
+	const manageScopeGate = manageRouteScope();
+	app.use("/api/v1/workspaces/:workspaceId", manageScopeGate);
+	app.use("/api/v1/workspaces/:workspaceId/*", manageScopeGate);
 
 	const recentErrors = createRecentErrorBuffer();
 	app.route(

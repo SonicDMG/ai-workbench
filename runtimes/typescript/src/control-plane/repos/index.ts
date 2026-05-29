@@ -55,6 +55,11 @@ export type {
 	UpdateLlmServiceInput,
 } from "./llm-services.js";
 export type {
+	CreateMcpServerInput,
+	McpServerRepo,
+	UpdateMcpServerInput,
+} from "./mcp-servers.js";
+export type {
 	ListPolicyAuditOptions,
 	PolicyAuditRepo,
 	RecordPolicyDecisionInput,

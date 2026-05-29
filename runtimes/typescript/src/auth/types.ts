@@ -10,6 +10,8 @@
  * resolves to an anonymous context and nothing is enforced.
  */
 
+import type { Role } from "../control-plane/types.js";
+
 /** Backends the auth middleware accepts. */
 export type AuthMode = "disabled" | "apiKey" | "oidc" | "any";
 
@@ -52,6 +54,14 @@ export interface AuthSubject {
 	 * the field in afterward.
 	 */
 	readonly principal?: ResolvedPrincipal | null;
+	/**
+	 * RBAC role derived from an OIDC role-claim mapping
+	 * (`auth.oidc.roleMapping`), when configured. Absent for API-key and
+	 * bootstrap subjects, and for OIDC when no mapping is set. The
+	 * principal-resolver uses it as the effective role when no
+	 * per-workspace principal record exists.
+	 */
+	readonly role?: Role;
 }
 
 /** RLAC: resolved principal for a single request. */
@@ -59,6 +69,12 @@ export interface ResolvedPrincipal {
 	readonly id: string;
 	readonly workspaceId: string;
 	readonly attributes: Readonly<Record<string, string>>;
+	/**
+	 * RBAC role resolved from the principal record (or {@link DEFAULT_ROLE}
+	 * when no record exists). Drives effective-scope derivation for OIDC
+	 * subjects and the RLAC admin bypass.
+	 */
+	readonly role: Role;
 }
 
 /** What the middleware writes into `c.set("auth", ...)` on every request. */

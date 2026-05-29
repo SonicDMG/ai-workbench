@@ -4,6 +4,8 @@
  * Each driver gets one entrypoint:
  *   memory → fresh Map-of-Maps, optionally seeded.
  *   file   → JSON-on-disk at `root`.
+ *   sqlite → SQLite (WAL, row-level writes) at `path`; the durable
+ *            single-node choice for chat-heavy deployments.
  *   astra  → Data API Tables via `@datastax/astra-db-ts`, token
  *            resolved through the provided {@link SecretResolver}.
  *
@@ -24,6 +26,7 @@ import { AstraControlPlaneStore } from "./astra/store.js";
 import { DEFAULT_SERVICES } from "./default-services.js";
 import { FileControlPlaneStore } from "./file/store.js";
 import { MemoryControlPlaneStore } from "./memory/store.js";
+import { SqliteControlPlaneStore } from "./sqlite/store.js";
 import type { ControlPlaneStore } from "./store.js";
 
 export interface BuildStoreOptions {
@@ -54,6 +57,13 @@ export async function buildControlPlane(
 		}
 		case "file": {
 			const store = new FileControlPlaneStore({ root: opts.controlPlane.root });
+			await store.init?.();
+			return { store, astraTables: undefined };
+		}
+		case "sqlite": {
+			const store = new SqliteControlPlaneStore({
+				path: opts.controlPlane.path,
+			});
 			await store.init?.();
 			return { store, astraTables: undefined };
 		}

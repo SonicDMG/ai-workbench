@@ -23,6 +23,8 @@ export interface CreateAgentInput {
 	readonly systemPrompt?: string | null;
 	readonly userPrompt?: string | null;
 	readonly knowledgeBaseIds?: readonly string[];
+	/** Per-agent tool allow-list. Empty/omitted → all built-in tools. */
+	readonly toolIds?: readonly string[];
 	readonly llmServiceId?: string | null;
 	readonly rerankEnabled?: boolean;
 	readonly rerankingServiceId?: string | null;

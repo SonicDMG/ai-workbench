@@ -222,6 +222,54 @@ describe("agent routes", () => {
 		expect(updated.ragEnabled).toBeUndefined();
 	});
 
+	test("PATCH toolIds round-trip (A6 deferred allow-list patch)", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const aid = await createAgent(app, ws, { name: "Tooler" });
+
+		// Default agent grandfathers in all built-ins (empty allow-list).
+		const before = await app.request(`/api/v1/workspaces/${ws}/agents/${aid}`);
+		expect((await json(before)).toolIds).toEqual([]);
+
+		// PATCH a non-empty allow-list — sorted + deduped on the wire.
+		const patch = await app.request(`/api/v1/workspaces/${ws}/agents/${aid}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				toolIds: ["search_kb", "native:fetch", "search_kb"],
+			}),
+		});
+		expect(patch.status, await patch.clone().text()).toBe(200);
+		expect((await json(patch)).toolIds).toEqual(["native:fetch", "search_kb"]);
+
+		// The patched set survives a fresh GET.
+		const after = await app.request(`/api/v1/workspaces/${ws}/agents/${aid}`);
+		expect((await json(after)).toolIds).toEqual(["native:fetch", "search_kb"]);
+
+		// Clearing back to [] re-grandfathers built-ins.
+		const cleared = await app.request(
+			`/api/v1/workspaces/${ws}/agents/${aid}`,
+			{
+				method: "PATCH",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ toolIds: [] }),
+			},
+		);
+		expect((await json(cleared)).toolIds).toEqual([]);
+	});
+
+	test("PATCH rejects an unknown field (UpdateAgentInput stays .strict)", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const aid = await createAgent(app, ws);
+		const res = await app.request(`/api/v1/workspaces/${ws}/agents/${aid}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ bogusField: true }),
+		});
+		expect(res.status).toBe(400);
+	});
+
 	test("DELETE 204; cascades the agent's conversations + messages", async () => {
 		const app = makeApp();
 		const ws = await createWorkspace(app);
@@ -633,5 +681,96 @@ describe("agent conversation message routes", () => {
 		expect(payload.code).toBe("llm_provider_unsupported");
 		expect(payload.status).toBe(422);
 		expect(payload.message).toContain("provider 'mock'");
+	});
+});
+
+describe("available-tools route (A6 tool catalog)", () => {
+	test("GET lists every built-in tool for a mock workspace", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+
+		const res = await app.request(`/api/v1/workspaces/${ws}/available-tools`);
+		expect(res.status, await res.clone().text()).toBe(200);
+		const body = await json(res);
+		const ids: string[] = body.items.map((t: { id: string }) => t.id);
+		// The 7 built-in workspace tools are always selectable.
+		expect(ids).toEqual(
+			expect.arrayContaining([
+				"list_kbs",
+				"list_documents",
+				"count_documents",
+				"summarize_kb",
+				"search_kb",
+				"get_document",
+				"list_chunks",
+			]),
+		);
+		// Each built-in is classified as such, with a non-empty description.
+		for (const t of body.items as {
+			id: string;
+			source: string;
+			description: string;
+		}[]) {
+			expect(t.source).toBe("builtin");
+			expect(t.description.length).toBeGreaterThan(0);
+		}
+		// No chat config + no registered MCP servers → no native / astra /
+		// mcp entries for a mock workspace.
+		expect(ids.some((id) => id.startsWith("native:"))).toBe(false);
+		expect(ids.some((id) => id.startsWith("astra:"))).toBe(false);
+		expect(ids.some((id) => id.startsWith("mcp:"))).toBe(false);
+	});
+
+	test("native fetch tool surfaces when chat.tools.fetch is configured", async () => {
+		// A chat service is needed for the runtime to carry a chat config;
+		// the fake service's config gets the `tools.fetch` block below.
+		const app = createApp({
+			store: new MemoryControlPlaneStore(),
+			drivers: new VectorStoreDriverRegistry(
+				new Map([["mock", new MockVectorStoreDriver()]]),
+			),
+			secrets: new SecretResolver({ env: new EnvSecretProvider() }),
+			auth: new AuthResolver({
+				mode: "disabled",
+				anonymousPolicy: "allow",
+				verifiers: [],
+			}),
+			embedders: makeFakeEmbedderFactory(),
+			chatService: makeFakeChatService(),
+			chatConfig: {
+				...TEST_CHAT_CONFIG,
+				tools: {
+					fetch: {
+						enabled: true,
+						timeoutMs: 10_000,
+						maxResponseBytes: 1_048_576,
+					},
+					webSearch: {
+						enabled: false,
+						provider: null,
+						apiKeyRef: null,
+						timeoutMs: 10_000,
+						maxResults: 5,
+					},
+				},
+			},
+		});
+		const ws = await createWorkspace(app);
+		const res = await app.request(`/api/v1/workspaces/${ws}/available-tools`);
+		expect(res.status, await res.clone().text()).toBe(200);
+		const body = await json(res);
+		const fetchTool = body.items.find(
+			(t: { id: string }) => t.id === "native:fetch",
+		);
+		expect(fetchTool).toBeDefined();
+		expect(fetchTool.source).toBe("native");
+	});
+
+	test("404 for an unknown workspace", async () => {
+		const app = makeApp();
+		const res = await app.request(
+			`/api/v1/workspaces/${randomUUID()}/available-tools`,
+		);
+		expect(res.status).toBe(404);
 	});
 });
