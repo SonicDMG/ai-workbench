@@ -1,13 +1,13 @@
 # AI Workbench
 
-[![Status: Beta · v0.3.0](https://img.shields.io/badge/status-Beta%20%C2%B7%20v0.3.0-f59e0b)](./CHANGELOG.md)
+[![Status: Beta · v0.4.0](https://img.shields.io/badge/status-Beta%20%C2%B7%20v0.4.0-f59e0b)](./CHANGELOG.md)
 [![CI](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/ci.yml?branch=main&label=CI)](https://github.com/datastax/ai-workbench/actions/workflows/ci.yml)
 [![Runtimes](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/runtimes.yml?branch=main&label=Runtimes)](https://github.com/datastax/ai-workbench/actions/workflows/runtimes.yml)
 [![Secret scan](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/secret-scan.yml?branch=main&label=Secret%20scan)](https://github.com/datastax/ai-workbench/actions/workflows/secret-scan.yml)
 [![Node 22+](https://img.shields.io/badge/node-%3E=22-blue)](./.nvmrc)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
-> **0.3 is an internal beta.** APIs, schemas, and UI surfaces may
+> **0.4 is an internal beta.** APIs, schemas, and UI surfaces may
 > change between minor versions until 1.0. See
 > [`CHANGELOG.md`](./CHANGELOG.md) for what's in this release; the
 > narrative tour of the prior milestone lives at
