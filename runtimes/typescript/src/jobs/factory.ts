@@ -11,6 +11,10 @@
  *                                       same `root` as the control
  *                                       plane (jobs.json alongside
  *                                       workspaces.json, etc.)
+ *   controlPlane.driver === "sqlite"  → {@link SqliteJobStore} at the
+ *                                       same `path` as the control
+ *                                       plane (one `jobs` table in the
+ *                                       same database file).
  *   controlPlane.driver === "astra"   → {@link AstraJobStore} sharing
  *                                       the already-open tables
  *                                       bundle (adds one table row on
@@ -26,6 +30,7 @@ import type { ControlPlaneConfig } from "../config/schema.js";
 import { AstraJobStore } from "./astra-store.js";
 import { FileJobStore } from "./file-store.js";
 import { MemoryJobStore } from "./memory-store.js";
+import { SqliteJobStore } from "./sqlite-store.js";
 import type { JobStore } from "./store.js";
 
 export interface BuildJobStoreOptions {
@@ -44,6 +49,11 @@ export async function buildJobStore(
 			return new MemoryJobStore();
 		case "file": {
 			const store = new FileJobStore({ root: opts.controlPlane.root });
+			await store.init();
+			return store;
+		}
+		case "sqlite": {
+			const store = new SqliteJobStore({ path: opts.controlPlane.path });
 			await store.init();
 			return store;
 		}
