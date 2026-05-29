@@ -508,5 +508,95 @@
 				"body": { "content": "hello stream" }
 			}
 		]
+	},
+	{
+		"slug": "chat-message-crud-basic",
+		"description": "End-to-end agentic chat CRUD against the fixture chat provider: create an agent (no llmServiceId, so dispatch falls through to the harness-injected FixtureChatService driven by `chatScript`), open a conversation, list + GET that conversation, send one synchronous message, then list the persisted turns. Pins the conversation list/get envelope AND the user+assistant message wire shape (token counts, finish_reason, role) in a single round-trip — the CRUD surface `agent-crud-basic` deliberately skips (it never sends) and `chat-message-sync` skips (it never lists/gets the conversation).",
+		"chatScript": {
+			"reply": "fixture crud reply",
+			"tokenCount": 6
+		},
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents",
+				"body": { "name": "fixture-crud-agent" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations",
+				"body": { "title": "crud thread" }
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations/$3.conversationId"
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations/$3.conversationId/messages",
+				"body": { "content": "hello crud" }
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations/$3.conversationId/messages"
+			}
+		]
+	},
+	{
+		"slug": "chat-sse-tool-call",
+		"description": "Server-sent events tool-call happy path for POST /agents/{a}/conversations/{c}/messages/stream. The multi-turn `chatScript` drives the dispatcher's tool-call loop deterministically: turn 1 emits a `list_kbs` tool call (a built-in tool that needs no external dependency and returns a fixed string on an empty workspace), turn 2 emits the final answer. Pins the full intermediate-iteration SSE shape: `user-message` -> `token-reset` -> `tool-call` -> `tool-result` -> `token`* -> terminal `done`. The closing GET confirms the user-facing transcript is just the user turn + final assistant row (the tool-call/tool-result scaffolding rows are persisted but filtered from the message list).",
+		"chatScript": {
+			"turns": [
+				{
+					"toolCalls": [
+						{
+							"id": "call-list-kbs-1",
+							"name": "list_kbs",
+							"arguments": "{}"
+						}
+					],
+					"tokenCount": 4
+				},
+				{
+					"tokens": ["You have ", "no knowledge bases ", "yet."],
+					"tokenCount": 7
+				}
+			]
+		},
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents",
+				"body": { "name": "fixture-tool-agent" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations",
+				"body": { "title": "tool thread" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations/$3.conversationId/messages/stream",
+				"body": { "content": "what knowledge bases do I have?" }
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations/$3.conversationId/messages"
+			}
+		]
 	}
 ]

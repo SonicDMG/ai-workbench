@@ -167,3 +167,69 @@ Pins canonical error envelopes on the agent surface:
 Every error envelope must be `{ error: { code, message, requestId } }`.
 
 Fixture: `fixtures/agent-error-envelopes.json`.
+
+---
+
+## Scenario 14 — `chat-message-sync`
+
+Synchronous `POST /agents/{a}/conversations/{c}/messages` happy path.
+The agent is created without an `llmServiceId`, so dispatch falls
+through to the runtime's global chat service — which the conformance
+harness injects as a deterministic `FixtureChatService` driven by the
+scenario's `chatScript`. Pins the user + assistant message wire shape,
+including persisted `tokenCount` and `finish_reason`.
+
+> **`chatScript` is conformance-only.** It is NOT part of the public
+> API surface; it tells the harness how to script the fixture chat
+> provider so the chat reply is deterministic without standing up a
+> live LLM. A runtime that can't inject a fixture chat service may
+> stub these scenarios — the wire contract is the request/response
+> shape, not the reply text.
+
+Fixture: `fixtures/chat-message-sync.json`.
+
+---
+
+## Scenario 15 — `chat-message-stream`
+
+Server-sent-events happy path for
+`POST /agents/{a}/conversations/{c}/messages/stream`. The fixture chat
+service emits the scripted token stream; the harness parses the SSE
+body into a deterministic array of `{event, data}` records via
+[`runner.parseSseBody`](./runner.mjs) so the capture is stable across
+runs. Pins the terminal-`done` happy path:
+`user-message` → `token`* → `done`.
+
+Fixture: `fixtures/chat-message-stream.json`.
+
+---
+
+## Scenario 16 — `chat-message-crud-basic`
+
+End-to-end agentic chat CRUD against the fixture chat provider: create
+an agent, open a conversation, **list** + **GET** that conversation,
+send one **synchronous** message, then **list** the persisted turns.
+Pins the conversation list/get envelope AND the user + assistant
+message wire shape in one round-trip — the slice
+`agent-crud-basic` deliberately omits (it never sends) and
+`chat-message-sync` omits (it never lists/gets the conversation).
+
+Fixture: `fixtures/chat-message-crud-basic.json`.
+
+---
+
+## Scenario 17 — `chat-sse-tool-call`
+
+Server-sent-events **tool-call** happy path for the streaming send. A
+multi-turn `chatScript` drives the dispatcher's tool-call loop
+deterministically: turn 1 emits a `list_kbs` tool call (a built-in
+tool that needs no external dependency and returns a fixed string on
+an empty workspace), turn 2 emits the final answer. Pins the full
+intermediate-iteration SSE shape:
+`user-message` → `token-reset` → `tool-call` → `tool-result` →
+`token`* → terminal `done`. The closing `GET /messages` confirms the
+user-facing transcript is just the user turn + final assistant row —
+the tool-call / tool-result scaffolding rows are persisted but
+filtered from the message list.
+
+Fixture: `fixtures/chat-sse-tool-call.json`.
