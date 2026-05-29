@@ -11,7 +11,6 @@ import type {
 	EmbeddingServiceRecord,
 	LlmServiceRecord,
 	McpServerRecord,
-	McpToolRecord,
 	RerankingServiceRecord,
 } from "../../../control-plane/types.js";
 
@@ -37,10 +36,6 @@ export function toWireLlm(r: LlmServiceRecord) {
 		supportedLanguages: [...r.supportedLanguages],
 		supportedContent: [...r.supportedContent],
 	};
-}
-
-export function toWireMcpTool(r: McpToolRecord) {
-	return { ...r, tags: [...r.tags] };
 }
 
 /**

@@ -315,39 +315,12 @@ export const LLM_SERVICES_DEFINITION = {
 	},
 } as const satisfies CreateTableDefinition;
 
-/** `wb_config_mcp_tools_by_workspace` — tool registry (Stage 2). */
-export const MCP_TOOLS_TABLE = "wb_config_mcp_tools_by_workspace";
-export const MCP_TOOLS_DEFINITION = {
-	columns: {
-		workspace_id: "uuid",
-		tool_id: "uuid",
-		name: "text",
-		description: "text",
-		tool_type: "text", // mcp | http | function | builtin
-		endpoint_base_url: "text",
-		endpoint_path: "text",
-		http_method: "text", // GET | POST
-		input_schema: "text", // JSON schema, serialized
-		output_schema: "text",
-		auth_type: "text",
-		credential_ref: "text",
-		tags: { type: "set", valueType: "text" },
-		created_at: "timestamp",
-		updated_at: "timestamp",
-	},
-	primaryKey: {
-		partitionBy: ["workspace_id"],
-		partitionSort: { tool_id: 1 },
-	},
-} as const satisfies CreateTableDefinition;
-
 /**
  * `wb_config_mcp_servers_by_workspace` — registered external MCP servers
  * (0.4.0 A2). One row per remote server the workspace's agents may reach
- * over Streamable HTTP. Distinct from `wb_config_mcp_tools_by_workspace`
- * (the Stage-2 per-tool registry above): the runtime discovers each
- * server's tools at turn time via `tools/list`, so the registry stores
- * the *connection*, not individual tools.
+ * over Streamable HTTP. The runtime discovers each server's tools at turn
+ * time via `tools/list`, so the registry stores the *connection*, not
+ * individual tools.
  *
  * `allowed_tools` is `text` (a serialized JSON array) rather than
  * `SET<TEXT>` so the null-vs-empty allow-list distinction survives the
@@ -524,12 +497,10 @@ export const CONVERSATIONS_DEFINITION = {
  * non-key column for client-side dedup.
  *
  * `tool_id` is `text` (not `uuid`), because the runtime stores the
- * called tool's *name* (e.g. `list_kbs`) — built-in chat tools
- * don't have a row in `wb_config_mcp_tools_by_workspace` to point at,
- * and the Data API rightly rejects non-UUID strings going into a
- * `uuid` column. If we ever wire only-MCP-tool messages, this column
- * still accepts the MCP tool's stringified UUID as the canonical
- * tool name.
+ * called tool's *name* (e.g. `list_kbs` for a built-in,
+ * `mcp:{serverId}:{tool}` for an external-MCP tool) — not a UUID — and
+ * the Data API rightly rejects non-UUID strings going into a `uuid`
+ * column.
  */
 export const MESSAGES_TABLE = "wb_agentic_messages_by_conversation";
 export const MESSAGES_DEFINITION = {

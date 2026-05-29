@@ -24,7 +24,6 @@ export {
 	toWireEmbedding,
 	toWireLlm,
 	toWireMcpServer,
-	toWireMcpTool,
 	toWirePage,
 	toWireReranking,
 } from "./service.js";

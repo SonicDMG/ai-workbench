@@ -1,0 +1,11 @@
+{
+	"$schema": "https://unpkg.com/knip@6/schema.json",
+	"entry": [
+		"src/lib/tracing-preload.ts!",
+		"scripts/*.ts",
+		"tests/**/*.test.ts"
+	],
+	"project": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
+	"ignoreExportsUsedInFile": true,
+	"ignoreDependencies": ["pino-pretty", "@opentelemetry/sdk-trace-.+"]
+}

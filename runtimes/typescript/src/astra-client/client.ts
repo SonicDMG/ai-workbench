@@ -29,7 +29,6 @@ import type {
 	KnowledgeFilterRow,
 	LlmServiceRow,
 	McpServerRow,
-	McpToolRow,
 	MessageRow,
 	PolicyAuditRow,
 	PrincipalRow,
@@ -63,8 +62,6 @@ import {
 	LLM_SERVICES_TABLE,
 	MCP_SERVERS_DEFINITION,
 	MCP_SERVERS_TABLE,
-	MCP_TOOLS_DEFINITION,
-	MCP_TOOLS_TABLE,
 	MESSAGES_DEFINITION,
 	MESSAGES_TABLE,
 	POLICY_AUDIT_DEFINITION,
@@ -259,7 +256,6 @@ export async function openAstraClient(
 		embeddingServices: db.table<EmbeddingServiceRow>(EMBEDDING_SERVICES_TABLE),
 		rerankingServices: db.table<RerankingServiceRow>(RERANKING_SERVICES_TABLE),
 		llmServices: db.table<LlmServiceRow>(LLM_SERVICES_TABLE),
-		mcpTools: db.table<McpToolRow>(MCP_TOOLS_TABLE),
 		mcpServers: db.table<McpServerRow>(MCP_SERVERS_TABLE),
 		ragDocuments: db.table<RagDocumentRow>(RAG_DOCUMENTS_TABLE),
 		ragDocumentsByStatus: db.table<RagDocumentByStatusRow>(
@@ -318,10 +314,6 @@ async function ensureTables(db: Db): Promise<void> {
 		}),
 		db.createTable(LLM_SERVICES_TABLE, {
 			definition: LLM_SERVICES_DEFINITION,
-			ifNotExists: true,
-		}),
-		db.createTable(MCP_TOOLS_TABLE, {
-			definition: MCP_TOOLS_DEFINITION,
 			ifNotExists: true,
 		}),
 		db.createTable(MCP_SERVERS_TABLE, {

@@ -422,34 +422,12 @@ export interface LlmServiceRecord extends ServiceEndpointConfig {
 	readonly updatedAt: string;
 }
 
-/** A tool an agent may invoke — MCP, plain HTTP, builtin, or function. */
-export interface McpToolRecord {
-	readonly workspaceId: string;
-	readonly toolId: string;
-	readonly name: string;
-	readonly description: string | null;
-	readonly toolType: string;
-	readonly endpointBaseUrl: string | null;
-	readonly endpointPath: string | null;
-	readonly httpMethod: string | null;
-	/** JSON-Schema as a record, deserialized by the converter. */
-	readonly inputSchema: Readonly<Record<string, unknown>> | null;
-	/** JSON-Schema as a record, deserialized by the converter. */
-	readonly outputSchema: Readonly<Record<string, unknown>> | null;
-	readonly authType: AuthType;
-	readonly credentialRef: SecretRef | null;
-	readonly tags: readonly string[];
-	readonly createdAt: string;
-	readonly updatedAt: string;
-}
-
 /**
  * A registered **external MCP server** the workspace's agents can reach
- * (0.4.0, A2). Distinct from {@link McpToolRecord} (a single tool in the
- * Stage-2 per-tool registry): this row describes a *remote server* the
- * runtime connects to over Streamable HTTP; the runtime discovers the
- * server's tools at turn time via `tools/list` and adapts each into an
- * agent tool named `mcp:{mcpServerId}:{toolName}`.
+ * (0.4.0, A2). This row describes a *remote server* the runtime connects
+ * to over Streamable HTTP; the runtime discovers the server's tools at
+ * turn time via `tools/list` and adapts each into an agent tool named
+ * `mcp:{mcpServerId}:{toolName}`.
  *
  * Workspace-scoped. The server URL is validated through the same SSRF
  * guard as service endpoints (cloud-metadata / link-local blocked);
