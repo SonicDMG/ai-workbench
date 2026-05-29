@@ -338,7 +338,7 @@ describe("converters — numeric column coercion", () => {
 /**
  * Schema regression: `messages.tool_id` is `text`, not `uuid`. The
  * runtime stores tool *names* (e.g. "list_kbs") there for built-in
- * chat tools, which don't have a row in `wb_config_mcp_tools_by_workspace`.
+ * chat tools, which are not UUIDs.
  * Storing those into a `uuid` column makes the Data API reject the
  * insert with "Invalid UUID string: list_kbs", which silently breaks
  * the chat-tool persistence pipeline (the assistant's tool_calls

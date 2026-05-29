@@ -16,7 +16,6 @@ import {
 	type KnowledgeFilterRecord,
 	type LlmServiceRecord,
 	type McpServerRecord,
-	type McpToolRecord,
 	type MessageRecord,
 	normalizeApiKeyScopes,
 	type PolicyAction,
@@ -40,7 +39,6 @@ import type {
 	KnowledgeFilterRow,
 	LlmServiceRow,
 	McpServerRow,
-	McpToolRow,
 	MessageRow,
 	PolicyAuditRow,
 	PrincipalRow,
@@ -654,48 +652,6 @@ export function llmServiceFromRow(row: LlmServiceRow): LlmServiceRecord {
 		credentialRef: row.credential_ref,
 		supportedLanguages: setToSortedArray(row.supported_languages),
 		supportedContent: setToSortedArray(row.supported_content),
-		createdAt: row.created_at,
-		updatedAt: row.updated_at,
-	};
-}
-
-/* --------------------------- MCP tool ----------------------------- */
-
-export function mcpToolToRow(r: McpToolRecord): McpToolRow {
-	return {
-		workspace_id: r.workspaceId,
-		tool_id: r.toolId,
-		name: r.name,
-		description: r.description,
-		tool_type: r.toolType,
-		endpoint_base_url: r.endpointBaseUrl,
-		endpoint_path: r.endpointPath,
-		http_method: r.httpMethod,
-		input_schema: r.inputSchema ? JSON.stringify(r.inputSchema) : null,
-		output_schema: r.outputSchema ? JSON.stringify(r.outputSchema) : null,
-		auth_type: r.authType,
-		credential_ref: r.credentialRef,
-		tags: arrayToSet(r.tags),
-		created_at: r.createdAt,
-		updated_at: r.updatedAt,
-	};
-}
-
-export function mcpToolFromRow(row: McpToolRow): McpToolRecord {
-	return {
-		workspaceId: asUuidString(row.workspace_id),
-		toolId: asUuidString(row.tool_id),
-		name: row.name,
-		description: row.description,
-		toolType: row.tool_type,
-		endpointBaseUrl: row.endpoint_base_url,
-		endpointPath: row.endpoint_path,
-		httpMethod: row.http_method,
-		inputSchema: parseJsonObject(row.input_schema),
-		outputSchema: parseJsonObject(row.output_schema),
-		authType: row.auth_type,
-		credentialRef: row.credential_ref,
-		tags: setToSortedArray(row.tags),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};

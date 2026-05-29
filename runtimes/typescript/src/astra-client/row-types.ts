@@ -218,30 +218,9 @@ export interface LlmServiceRow {
 	updated_at: Iso;
 }
 
-export interface McpToolRow {
-	workspace_id: Uuid;
-	tool_id: Uuid;
-	name: string;
-	description: string | null;
-	tool_type: string;
-	endpoint_base_url: string | null;
-	endpoint_path: string | null;
-	http_method: string | null;
-	/** Serialized JSON Schema describing tool inputs. */
-	input_schema: string | null;
-	/** Serialized JSON Schema describing tool outputs. */
-	output_schema: string | null;
-	auth_type: AuthType;
-	credential_ref: string | null;
-	tags: Set<string>;
-	created_at: Iso;
-	updated_at: Iso;
-}
-
 /**
- * Registered external MCP server (0.4.0 A2). Distinct from
- * {@link McpToolRow} (the Stage-2 per-tool registry): this row is a
- * *remote server* the runtime connects to over Streamable HTTP.
+ * Registered external MCP server (0.4.0 A2). This row is a *remote
+ * server* the runtime connects to over Streamable HTTP.
  *
  * `allowed_tools` is a serialized JSON array (or null) rather than a
  * Cassandra `SET<TEXT>` so the `null` (expose every advertised tool) vs
@@ -339,11 +318,10 @@ export interface MessageRow {
 	author_id: Uuid | null;
 	content: string | null;
 	/**
-	 * Tool *name* (text), not a UUID. Built-in chat tools (e.g.
-	 * `list_kbs`) don't have a row in `wb_config_mcp_tools_by_workspace`
-	 * — the runtime stores the called tool's name here verbatim. MCP
-	 * tools, when wired, can store their stringified UUID since UUIDs
-	 * are valid text.
+	 * Tool *name* (text), not a UUID. The runtime stores the called
+	 * tool's identifier here verbatim: built-in chat tools by their bare
+	 * name (e.g. `list_kbs`), external-MCP / native tools by their
+	 * namespaced id (e.g. `mcp:{serverId}:{tool}`, `native:fetch`).
 	 */
 	tool_id: string | null;
 	/** Serialized JSON of the tool-call arguments for `role: "tool"` messages. */
