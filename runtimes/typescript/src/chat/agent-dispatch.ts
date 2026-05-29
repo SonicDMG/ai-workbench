@@ -202,6 +202,7 @@ export async function dispatchAgentSend(
 	};
 	const toolResolved = {
 		toolDeps: withSink(resolved.toolDeps, accumulator.sink),
+		toolset: resolved.toolset,
 	};
 
 	for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
@@ -356,6 +357,7 @@ export async function dispatchAgentSendStream(
 	};
 	const toolResolved = {
 		toolDeps: withSink(resolved.toolDeps, accumulator.sink),
+		toolset: resolved.toolset,
 	};
 
 	// The iteration body persists rows + writes SSE events one-at-a-time;

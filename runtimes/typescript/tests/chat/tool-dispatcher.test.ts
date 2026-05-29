@@ -10,13 +10,20 @@ import {
 	executeWorkspaceTool,
 	executeWorkspaceToolByName,
 } from "../../src/chat/tools/dispatcher.js";
-import type { AgentToolDeps } from "../../src/chat/tools/registry.js";
+import {
+	type AgentToolDeps,
+	type AgentToolset,
+	resolveAgentToolset,
+} from "../../src/chat/tools/registry.js";
 import { MemoryControlPlaneStore } from "../../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../../src/drivers/registry.js";
 import { makeFakeEmbedderFactory } from "../helpers/embedder.js";
 
-async function fixture(): Promise<{ deps: AgentToolDeps }> {
+async function fixture(): Promise<{
+	deps: AgentToolDeps;
+	toolset: AgentToolset;
+}> {
 	const store = new MemoryControlPlaneStore();
 	const driver = new MockVectorStoreDriver();
 	const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
@@ -24,32 +31,37 @@ async function fixture(): Promise<{ deps: AgentToolDeps }> {
 	const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
 	return {
 		deps: { workspaceId: ws.uid, store, drivers, embedders },
+		// All built-in tools available (empty allow-list = grandfathered).
+		toolset: resolveAgentToolset([]),
 	};
 }
 
 describe("executeWorkspaceTool", () => {
 	test("returns an Error: string for unknown tool names", async () => {
-		const { deps } = await fixture();
+		const { deps, toolset } = await fixture();
 		const out = await executeWorkspaceTool(
 			{ id: "1", name: "nope", arguments: "{}" },
+			toolset,
 			deps,
 		);
 		expect(out).toMatch(/^Error: tool 'nope' is not available/);
 	});
 
 	test("returns an Error: string for malformed JSON arguments", async () => {
-		const { deps } = await fixture();
+		const { deps, toolset } = await fixture();
 		const out = await executeWorkspaceTool(
 			{ id: "1", name: "list_kbs", arguments: "{not json" },
+			toolset,
 			deps,
 		);
 		expect(out).toMatch(/^Error: tool arguments were not valid JSON/);
 	});
 
 	test("returns the tool's result string on success", async () => {
-		const { deps } = await fixture();
+		const { deps, toolset } = await fixture();
 		const out = await executeWorkspaceTool(
 			{ id: "1", name: "list_kbs", arguments: "" },
+			toolset,
 			deps,
 		);
 		// Empty workspace → friendly placeholder, not JSON.
@@ -57,9 +69,10 @@ describe("executeWorkspaceTool", () => {
 	});
 
 	test("treats empty arguments as `{}`", async () => {
-		const { deps } = await fixture();
+		const { deps, toolset } = await fixture();
 		const out = await executeWorkspaceTool(
 			{ id: "1", name: "list_kbs", arguments: "" },
+			toolset,
 			deps,
 		);
 		expect(out).not.toMatch(/^Error/);

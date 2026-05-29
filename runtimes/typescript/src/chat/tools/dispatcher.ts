@@ -21,6 +21,7 @@ import type { ToolCall } from "../types.js";
 import {
 	type AgentTool,
 	type AgentToolDeps,
+	type AgentToolset,
 	DEFAULT_AGENT_TOOLS,
 } from "./registry.js";
 
@@ -34,11 +35,17 @@ import {
  */
 export async function executeWorkspaceTool(
 	call: ToolCall,
+	toolset: AgentToolset,
 	deps: AgentToolDeps,
 ): Promise<string> {
-	const tool = resolveDefaultTool(call.name);
+	const tool = toolset.resolve(call.name);
 	if (!tool) {
-		return `Error: tool '${call.name}' is not available. Try one of: ${DEFAULT_AGENT_TOOLS.map((t) => t.definition.name).join(", ")}.`;
+		const available = toolset.tools.map((t) => t.definition.name).join(", ");
+		return `Error: tool '${call.name}' is not available to this agent.${
+			available
+				? ` Available tools: ${available}.`
+				: " This agent has no tools enabled."
+		}`;
 	}
 	let parsed: unknown;
 	try {

@@ -727,6 +727,45 @@ export function resolveTool(name: string): AgentTool | null {
 	return DEFAULT_AGENT_TOOLS.find((t) => t.definition.name === name) ?? null;
 }
 
+/**
+ * The set of tools an agent may use, with its per-agent allow-list
+ * applied. `tools` is what we advertise to the model; `resolve` is the
+ * execution-time gate, so a model that hallucinates a non-allowed tool
+ * name still can't reach it (defense-in-depth vs the advertised set).
+ * This is the single composition point — A2–A4 (remote-MCP, native,
+ * Astra tools) extend the candidate pool below.
+ */
+export interface AgentToolset {
+	readonly tools: readonly AgentTool[];
+	resolve(name: string): AgentTool | null;
+}
+
+/**
+ * Resolve the toolset an agent may use from its `toolIds` allow-list.
+ *
+ *   - empty `toolIds` → all built-in workspace tools (grandfathered:
+ *                       existing agents keep today's behavior).
+ *   - non-empty       → exactly the named subset.
+ *
+ * External-MCP / native / Astra tools (A2–A4) are opt-in: they will
+ * join the candidate pool here and are only ever included when a tool
+ * id explicitly lists them.
+ */
+export function resolveAgentToolset(toolIds: readonly string[]): AgentToolset {
+	// Candidate pool: built-in workspace tools. A2–A4 concat their
+	// resolved tools onto this before the allow-list filter.
+	const candidates: readonly AgentTool[] = DEFAULT_AGENT_TOOLS;
+	const allowed =
+		toolIds.length === 0
+			? candidates
+			: candidates.filter((t) => toolIds.includes(t.definition.name));
+	const byName = new Map(allowed.map((t) => [t.definition.name, t] as const));
+	return {
+		tools: allowed,
+		resolve: (name) => byName.get(name) ?? null,
+	};
+}
+
 /* ------------------------------ helpers ---------------------------- */
 
 function truncate(s: string, max: number): string {

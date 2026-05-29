@@ -92,6 +92,7 @@
 					"rerankMaxResults": null,
 					"rerankingServiceId": null,
 					"systemPrompt": null,
+					"toolIds": [],
 					"updatedAt": "{{TS}}",
 					"userPrompt": null,
 					"workspaceId": "{{UUID_1}}"
@@ -118,6 +119,7 @@
 					"rerankMaxResults": null,
 					"rerankingServiceId": null,
 					"systemPrompt": null,
+					"toolIds": [],
 					"updatedAt": "{{TS}}",
 					"userPrompt": null,
 					"workspaceId": "{{UUID_1}}"

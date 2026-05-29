@@ -110,7 +110,7 @@ export function buildAgentRecord(
 		description: input.description ?? null,
 		systemPrompt: input.systemPrompt ?? null,
 		userPrompt: input.userPrompt ?? null,
-		toolIds: freezeStringSet([]),
+		toolIds: freezeStringSet(input.toolIds ?? []),
 		llmServiceId: input.llmServiceId ?? null,
 		knowledgeBaseIds: freezeStringSet(input.knowledgeBaseIds),
 		rerankEnabled: input.rerankEnabled ?? false,

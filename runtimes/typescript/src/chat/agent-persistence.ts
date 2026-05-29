@@ -17,7 +17,7 @@ import type { AgentRecord, MessageRecord } from "../control-plane/types.js";
 import type { Logger } from "../lib/logger.js";
 import type { RetrievedChunk } from "./prompt.js";
 import { executeWorkspaceTool } from "./tools/dispatcher.js";
-import type { AgentToolDeps } from "./tools/registry.js";
+import type { AgentToolDeps, AgentToolset } from "./tools/registry.js";
 import type { ChatService, ChatTurn, ToolCall } from "./types.js";
 
 export interface PersistTurnDeps {
@@ -178,7 +178,10 @@ export async function persistFinalAssistant(
  */
 export async function executeToolCalls(
 	ctx: PersistTurnContext,
-	resolved: { readonly toolDeps: AgentToolDeps },
+	resolved: {
+		readonly toolDeps: AgentToolDeps;
+		readonly toolset: AgentToolset;
+	},
 	toolCalls: readonly ToolCall[],
 	startTs: string,
 	onResult?: (call: ToolCall, resultText: string) => Promise<void>,
@@ -189,7 +192,11 @@ export async function executeToolCalls(
 	let prevTs = startTs;
 	const turns: ChatTurn[] = [];
 	for (const call of toolCalls) {
-		const resultText = await executeWorkspaceTool(call, resolved.toolDeps);
+		const resultText = await executeWorkspaceTool(
+			call,
+			resolved.toolset,
+			resolved.toolDeps,
+		);
 		prevTs = await persistToolResult(ctx, prevTs, call, resultText);
 		turns.push({
 			role: "tool",
