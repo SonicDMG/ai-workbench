@@ -135,6 +135,68 @@ describe("sendConversationStream", () => {
 		expect(done).toBe(true);
 	});
 
+	it("parses tool-call and tool-result events interleaved with tokens", async () => {
+		const assistantMsg = {
+			workspaceId: "00000000-0000-4000-8000-000000000001",
+			chatId: "00000000-0000-4000-8000-000000000002",
+			messageId: "00000000-0000-4000-8000-000000000004",
+			messageTs: "2026-04-28T00:00:01.000Z",
+			role: "agent",
+			content: "done",
+			tokenCount: null,
+			metadata: { finish_reason: "stop" },
+		};
+		const body = streamFromChunks([
+			`event: token\ndata: ${JSON.stringify({ delta: "let me look" })}\n\n`,
+			"event: token-reset\ndata: {}\n\n",
+			`event: tool-call\ndata: ${JSON.stringify({
+				toolCalls: [
+					{ id: "c1", name: "search_kb", arguments: '{"query":"x"}' },
+				],
+			})}\n\n`,
+			`event: tool-result\ndata: ${JSON.stringify({
+				toolCallId: "c1",
+				name: "search_kb",
+				content: "2 hits",
+			})}\n\n`,
+			`event: token\ndata: ${JSON.stringify({ delta: "answer" })}\n\n`,
+			`event: done\ndata: ${JSON.stringify(assistantMsg)}\n\n`,
+		]);
+		stubFetch.mockResolvedValueOnce(
+			new Response(body, {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			}),
+		);
+
+		const events: ChatStreamUiEvent[] = [];
+		await sendConversationStream("ws", "agent-1", "conv-1", {
+			content: "hi",
+			onEvent: (e) => events.push(e),
+		});
+
+		expect(events.map((e) => e.type)).toEqual([
+			"token",
+			"token-reset",
+			"tool-call",
+			"tool-result",
+			"token",
+			"done",
+		]);
+		const toolCall = events.find((e) => e.type === "tool-call");
+		expect(toolCall).toEqual({
+			type: "tool-call",
+			toolCalls: [{ id: "c1", name: "search_kb", arguments: '{"query":"x"}' }],
+		});
+		const toolResult = events.find((e) => e.type === "tool-result");
+		expect(toolResult).toEqual({
+			type: "tool-result",
+			toolCallId: "c1",
+			name: "search_kb",
+			content: "2 hits",
+		});
+	});
+
 	it("rejects on a non-2xx response", async () => {
 		stubFetch.mockResolvedValueOnce(
 			new Response("conversation is disabled", {

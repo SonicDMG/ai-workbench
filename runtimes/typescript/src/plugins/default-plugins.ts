@@ -19,6 +19,7 @@
 
 import { agentRoutes } from "../routes/api-v1/agents.js";
 import { apiKeyRoutes } from "../routes/api-v1/api-keys.js";
+import { availableToolsRoutes } from "../routes/api-v1/available-tools.js";
 import { chunkingServiceRoutes } from "../routes/api-v1/chunking-services.js";
 import { connectRoutes } from "../routes/api-v1/connect.js";
 import { embeddingServiceRoutes } from "../routes/api-v1/embedding-services.js";
@@ -130,6 +131,21 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					chatService: ctx.chatService,
 					chatConfig: ctx.chatConfig,
 					metrics: ctx.metrics,
+				}),
+		},
+		// Selectable agent-tool catalog (0.4.0 A6). Composes the full
+		// candidate pool (built-in + native + Astra + remote-MCP) so the
+		// agent form can offer tool choices. Read-only — gated as a `read`.
+		{
+			id: "available_tools",
+			mountPath: WORKSPACE_MOUNT,
+			build: () =>
+				availableToolsRoutes({
+					store: ctx.store,
+					drivers: ctx.drivers,
+					embedders: ctx.embedders,
+					secrets: ctx.secrets,
+					chatConfig: ctx.chatConfig,
 				}),
 		},
 		{

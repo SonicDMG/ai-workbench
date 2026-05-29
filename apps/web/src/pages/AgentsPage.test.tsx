@@ -16,6 +16,7 @@ vi.mock("@/hooks/useConversations", () => ({
 	useUpdateAgent: vi.fn(),
 	useDeleteAgent: vi.fn(),
 	useLlmServices: vi.fn(),
+	useAvailableTools: vi.fn(),
 }));
 vi.mock("@/hooks/useServices", () => ({
 	useRerankingServices: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock("@/components/agents/LlmServicesPanel", () => ({
 
 import {
 	useAgents,
+	useAvailableTools,
 	useCreateAgent,
 	useDeleteAgent,
 	useLlmServices,
@@ -46,6 +48,7 @@ afterEach(() => {
 	vi.mocked(useUpdateAgent).mockReset();
 	vi.mocked(useDeleteAgent).mockReset();
 	vi.mocked(useLlmServices).mockReset();
+	vi.mocked(useAvailableTools).mockReset();
 	vi.mocked(useRerankingServices).mockReset();
 	vi.mocked(useKnowledgeBases).mockReset();
 });
@@ -74,6 +77,9 @@ function setupChildHooks() {
 	vi.mocked(useLlmServices).mockReturnValue({
 		data: [],
 	} as unknown as ReturnType<typeof useLlmServices>);
+	vi.mocked(useAvailableTools).mockReturnValue({
+		data: [],
+	} as unknown as ReturnType<typeof useAvailableTools>);
 	vi.mocked(useRerankingServices).mockReturnValue({
 		data: [],
 	} as unknown as ReturnType<typeof useRerankingServices>);

@@ -14,6 +14,8 @@ import {
 	AstraCliInfoSchema,
 	type AstraCliInventory,
 	AstraCliInventorySchema,
+	type AvailableTool,
+	AvailableToolListSchema,
 	type ChatMessage,
 	ChatMessagePageSchema,
 	ChunkingServicePageSchema,
@@ -38,6 +40,7 @@ import {
 	type CreateKnowledgeBaseInput,
 	type CreateKnowledgeFilterInput,
 	type CreateLlmServiceInput,
+	type CreateMcpServerInput,
 	type CreatePrincipalInput,
 	type CreateRerankingServiceInput,
 	type CreateWorkspaceInput,
@@ -70,6 +73,9 @@ import {
 	type LlmServiceRecord,
 	LlmServiceRecordSchema,
 	type ManagedEnvKey,
+	McpServerPageSchema,
+	type McpServerRecord,
+	McpServerRecordSchema,
 	type PlaygroundCommandInput,
 	type PlaygroundCommandResponse,
 	PlaygroundCommandResponseSchema,
@@ -104,6 +110,7 @@ import {
 	type UpdateKnowledgeBaseInput,
 	type UpdateKnowledgeFilterInput,
 	type UpdateLlmServiceInput,
+	type UpdateMcpServerInput,
 	type UpdatePrincipalInput,
 	type UpdateRerankingServiceInput,
 	type UpdateWorkspaceInput,
@@ -950,6 +957,15 @@ export const api = {
 			AgentRecordSchema,
 		),
 
+	/* -------- Available tools (agent-form catalog) -------- */
+
+	listAvailableTools: (workspaceId: string): Promise<AvailableTool[]> =>
+		request(
+			`/workspaces/${workspaceId}/available-tools`,
+			{ method: "GET" },
+			AvailableToolListSchema,
+		).then((res) => res.items),
+
 	/* -------- Conversations (agent-scoped) -------- */
 
 	listConversations: (
@@ -1306,6 +1322,42 @@ export const api = {
 			PolicyAuditPageSchema,
 		);
 	},
+
+	/* ====== External MCP servers (0.4.0) ====== */
+
+	listMcpServers: (workspaceId: string): Promise<McpServerRecord[]> =>
+		requestAllPages(
+			`/workspaces/${workspaceId}/mcp-servers`,
+			McpServerPageSchema,
+		),
+
+	createMcpServer: (
+		workspaceId: string,
+		input: CreateMcpServerInput,
+	): Promise<McpServerRecord> =>
+		request(
+			`/workspaces/${workspaceId}/mcp-servers`,
+			{ method: "POST", body: JSON.stringify(stripUndefined(input)) },
+			McpServerRecordSchema,
+		),
+
+	updateMcpServer: (
+		workspaceId: string,
+		mcpServerId: string,
+		patch: UpdateMcpServerInput,
+	): Promise<McpServerRecord> =>
+		request(
+			`/workspaces/${workspaceId}/mcp-servers/${mcpServerId}`,
+			{ method: "PATCH", body: JSON.stringify(stripUndefined(patch)) },
+			McpServerRecordSchema,
+		),
+
+	deleteMcpServer: (workspaceId: string, mcpServerId: string): Promise<void> =>
+		request(
+			`/workspaces/${workspaceId}/mcp-servers/${mcpServerId}`,
+			{ method: "DELETE" },
+			null,
+		),
 };
 
 function normalizeCreate(input: CreateWorkspaceInput) {

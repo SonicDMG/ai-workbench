@@ -1098,6 +1098,49 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
+		test("updateAgent patches toolIds independently (A6 PATCH allow-list)", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				// Created with the grandfather default (empty allow-list).
+				const a = await store.createAgent(ws.uid, { name: "Tooler" });
+				expect([...a.toolIds]).toEqual([]);
+
+				// PATCH a non-empty set — sorted + deduped by freezeStringSet.
+				const set = await store.updateAgent(ws.uid, a.agentId, {
+					toolIds: ["search_kb", "native:fetch", "search_kb"],
+				});
+				expect([...set.toolIds]).toEqual(["native:fetch", "search_kb"]);
+				// A read sees the persisted allow-list (round-trips the backend).
+				const got = await store.getAgent(ws.uid, a.agentId);
+				expect([...(got?.toolIds ?? [])]).toEqual([
+					"native:fetch",
+					"search_kb",
+				]);
+
+				// Other fields untouched by a toolIds-only patch.
+				expect(got?.name).toBe("Tooler");
+
+				// Clearing back to [] grandfathers the agent again.
+				const cleared = await store.updateAgent(ws.uid, a.agentId, {
+					toolIds: [],
+				});
+				expect([...cleared.toolIds]).toEqual([]);
+
+				// Omitting toolIds in a patch leaves the prior value intact.
+				const reset = await store.updateAgent(ws.uid, a.agentId, {
+					toolIds: ["list_kbs"],
+				});
+				expect([...reset.toolIds]).toEqual(["list_kbs"]);
+				const renamed = await store.updateAgent(ws.uid, a.agentId, {
+					name: "Renamed",
+				});
+				expect([...renamed.toolIds]).toEqual(["list_kbs"]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("deleteAgent cascades conversations + messages", async () => {
 			const { store, cleanup } = await factory();
 			try {

@@ -14,10 +14,12 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import type {
 	AgentRecord,
+	AvailableTool,
 	CreateAgentInput,
 	KnowledgeBaseRecord,
 	LlmServiceRecord,
 	RerankingServiceRecord,
+	ToolSource,
 	UpdateAgentInput,
 } from "@/lib/schemas";
 
@@ -32,6 +34,8 @@ const FormSchema = z.object({
 	systemPrompt: z.string(),
 	llmServiceId: z.string(),
 	knowledgeBaseIds: z.array(z.string().uuid()),
+	// Per-agent tool allow-list. Empty = all built-in tools (default).
+	toolIds: z.array(z.string()),
 	rerankEnabled: z.boolean(),
 	rerankingServiceId: z.string(),
 	rerankMaxResults: z.string(),
@@ -40,6 +44,21 @@ type FormInput = z.infer<typeof FormSchema>;
 
 const NONE_VALUE = "__none__";
 
+/** Human-friendly group label per tool source. */
+const TOOL_SOURCE_LABEL: Record<ToolSource, string> = {
+	builtin: "Built-in workspace tools",
+	native: "Native tools",
+	astra: "Astra Data API",
+	mcp: "External MCP servers",
+};
+
+const TOOL_SOURCE_ORDER: readonly ToolSource[] = [
+	"builtin",
+	"native",
+	"astra",
+	"mcp",
+];
+
 function toFormDefaults(agent: AgentRecord | null): FormInput {
 	return {
 		name: agent?.name ?? "",
@@ -47,6 +66,7 @@ function toFormDefaults(agent: AgentRecord | null): FormInput {
 		systemPrompt: agent?.systemPrompt ?? "",
 		llmServiceId: agent?.llmServiceId ?? "",
 		knowledgeBaseIds: agent?.knowledgeBaseIds ?? [],
+		toolIds: agent?.toolIds ?? [],
 		rerankEnabled: agent?.rerankEnabled ?? false,
 		rerankingServiceId: agent?.rerankingServiceId ?? "",
 		rerankMaxResults: agent?.rerankMaxResults?.toString() ?? "",
@@ -66,10 +86,23 @@ function buildPayload(values: FormInput): CreateAgentInput {
 		systemPrompt: values.systemPrompt.trim() || null,
 		llmServiceId: values.llmServiceId || null,
 		knowledgeBaseIds: values.knowledgeBaseIds,
+		// Empty selection → omit, so the backend grandfathers all built-in
+		// tools (the "default" semantics). A non-empty set is sent verbatim.
+		toolIds: values.toolIds,
 		rerankEnabled: values.rerankEnabled,
 		rerankingServiceId: values.rerankingServiceId || null,
 		rerankMaxResults: parseOptionalInt(values.rerankMaxResults),
 	};
+}
+
+/** Group the flat tool catalog by source, preserving a stable order. */
+function groupToolsBySource(
+	tools: readonly AvailableTool[],
+): readonly { source: ToolSource; tools: readonly AvailableTool[] }[] {
+	return TOOL_SOURCE_ORDER.map((source) => ({
+		source,
+		tools: tools.filter((t) => t.source === source),
+	})).filter((g) => g.tools.length > 0);
 }
 
 export interface AgentFormProps {
@@ -78,6 +111,12 @@ export interface AgentFormProps {
 	readonly knowledgeBases: readonly KnowledgeBaseRecord[];
 	readonly llmServices: readonly LlmServiceRecord[];
 	readonly rerankingServices: readonly RerankingServiceRecord[];
+	/**
+	 * Selectable tool catalog for this workspace (from
+	 * `GET .../available-tools`). When omitted/empty the tool picker is
+	 * hidden — the agent keeps the default "all built-in tools" behavior.
+	 */
+	readonly availableTools?: readonly AvailableTool[];
 	readonly submitting?: boolean;
 	readonly onSubmit: (
 		values: CreateAgentInput | UpdateAgentInput,
@@ -91,6 +130,7 @@ export function AgentForm({
 	knowledgeBases,
 	llmServices,
 	rerankingServices,
+	availableTools = [],
 	submitting,
 	onSubmit,
 	onCancel,
@@ -102,7 +142,9 @@ export function AgentForm({
 
 	const rerankEnabled = form.watch("rerankEnabled");
 	const selectedKbIds = form.watch("knowledgeBaseIds");
+	const selectedToolIds = form.watch("toolIds");
 	const errors = form.formState.errors;
+	const toolGroups = groupToolsBySource(availableTools);
 
 	function toggleKb(kbId: string): void {
 		const current = form.getValues("knowledgeBaseIds");
@@ -110,6 +152,14 @@ export function AgentForm({
 			? current.filter((id) => id !== kbId)
 			: [...current, kbId];
 		form.setValue("knowledgeBaseIds", next, { shouldDirty: true });
+	}
+
+	function toggleTool(toolId: string): void {
+		const current = form.getValues("toolIds");
+		const next = current.includes(toolId)
+			? current.filter((id) => id !== toolId)
+			: [...current, toolId];
+		form.setValue("toolIds", next, { shouldDirty: true });
 	}
 
 	async function handleSubmit(values: FormInput): Promise<void> {
@@ -244,6 +294,61 @@ export function AgentForm({
 					</div>
 				)}
 			</div>
+
+			{toolGroups.length > 0 ? (
+				<div className="flex flex-col gap-1.5">
+					<FieldLabel
+						className="text-sm font-medium"
+						help="The tools this agent may call mid-conversation. Leave every box unchecked to grandfather in all built-in workspace tools (the default). Checking any box switches to an explicit allow-list — only the checked tools are offered (built-in tools must then be checked too). Native and external-MCP tools are always opt-in."
+					>
+						Tools
+					</FieldLabel>
+					<p className="text-xs text-slate-500 dark:text-slate-400">
+						{selectedToolIds.length === 0
+							? "Using all built-in tools (default). Check tools to set an explicit allow-list."
+							: `${selectedToolIds.length} tool${selectedToolIds.length === 1 ? "" : "s"} selected.`}
+					</p>
+					<div className="flex flex-col gap-3">
+						{toolGroups.map((group) => (
+							<fieldset
+								key={group.source}
+								className="flex flex-col gap-1.5"
+								data-testid={`tool-group-${group.source}`}
+							>
+								<legend className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+									{TOOL_SOURCE_LABEL[group.source]}
+								</legend>
+								{group.tools.map((tool) => {
+									const checked = selectedToolIds.includes(tool.id);
+									return (
+										<label
+											key={tool.id}
+											className="flex items-start gap-2 text-sm"
+										>
+											<input
+												type="checkbox"
+												checked={checked}
+												onChange={() => toggleTool(tool.id)}
+												className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[var(--color-brand-500)] focus:ring-[var(--color-brand-500)] dark:border-slate-600 dark:bg-slate-900"
+											/>
+											<span className="min-w-0">
+												<span className="font-mono text-[13px] font-medium">
+													{tool.id}
+												</span>
+												{tool.description ? (
+													<span className="block text-xs text-slate-500 dark:text-slate-400">
+														{tool.description}
+													</span>
+												) : null}
+											</span>
+										</label>
+									);
+								})}
+							</fieldset>
+						))}
+					</div>
+				</div>
+			) : null}
 
 			<fieldset className="flex flex-col gap-3 rounded-md border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
 				<div className="flex items-center gap-2">
