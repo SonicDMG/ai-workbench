@@ -454,6 +454,113 @@ auth:
 Use a high-entropy value, store it outside source control, and rotate
 or remove it after normal operator access is established.
 
+## Secret rotation
+
+Every credential the runtime touches lives behind a **`SecretRef`** — an
+`env:NAME` or `file:/path` pointer, never a literal value. The control
+plane (Astra tables, the `file` JSON root, SQLite) only ever stores the
+*ref*; the `SecretResolver` materializes the value in-process, at use
+time. Two consequences shape rotation:
+
+- **The secret store and the control plane are separate.** Rotating a
+  provider key, an OIDC client secret, or an Astra token is a change to
+  the secret *source* (your env / mounted file / secret manager), not a
+  database migration. Records that point at the ref are untouched.
+- **Nothing reads a secret back out over the wire.** `GET /setup-status`
+  reports `managedEnv.configuredKeys` — the **names** of the managed env
+  keys that currently resolve to a non-empty value — so the settings UI
+  can confirm a credential is *present* without ever returning the value.
+  Service and MCP-server records expose their `credentialRef` (the
+  pointer), never the resolved secret. The wire-leak guard
+  (`runtimes/typescript/tests/security/wire-leak.test.ts`) pins this for
+  every credential-carrying surface.
+
+The mechanics differ by credential class.
+
+### Workspace API keys (`wb_live_*`)
+
+API keys are **rotate-by-replacement**: there is no in-place "change the
+secret" — you revoke the old key and mint a new one.
+
+1. **Mint the replacement first** so the integration never goes dark:
+   `POST /api/v1/workspaces/{w}/api-keys` with the role/scopes the
+   consumer needs (`role: viewer|editor|admin`, or an explicit
+   `scopes` array — see [Privilege scopes](#privilege-scopes-read--write--manage)).
+   The `plaintext` field is returned **exactly once**; store it in the
+   consumer's secret source.
+2. **Cut the consumer over** to the new token.
+3. **Revoke the old key:** `DELETE /api/v1/workspaces/{w}/api-keys/{keyId}`.
+   This is a soft-revoke — the row stays visible with `revokedAt` set, and
+   the next request bearing the old token gets `401 unauthorized`.
+
+Issuing and revoking keys both require the **`manage`** scope (admin
+role). In the web UI this is the API-keys panel on the workspace settings
+page; via the CLI, `aiw` surfaces role-aware guidance on a `403`. Rotate a
+key whenever its scopes change — narrowing a key from `admin` to `editor`
+means minting a new `editor` key and revoking the old one, since scopes
+are fixed at issue time.
+
+### OIDC client secret
+
+The confidential-client secret used by the browser login flow is a
+`SecretRef` at `auth.oidc.client.clientSecretRef` (public clients omit
+it). To rotate:
+
+1. Add the new secret at the IdP (most IdPs allow two active client
+   secrets during a rollover window).
+2. Update the value behind `clientSecretRef` in the runtime's secret
+   source and **restart** so the new value is resolved at boot.
+3. Retire the old secret at the IdP.
+
+The **session-cookie** key (`auth.oidc.client.sessionSecretRef`) rotates
+the same way — update the ref and restart. There is no dual-key
+validation period: sessions encrypted with the old key stop decrypting
+and those users re-login (see
+[Session key rotation](#operational-notes)). The **bootstrap operator
+token** (`auth.bootstrapTokenRef`) likewise rotates by updating its ref
+and restarting; remove it entirely once normal operator access exists.
+
+### Provider API keys (OpenRouter / OpenAI / Cohere / …)
+
+LLM, embedding, and reranking services authenticate with a provider key
+resolved from the service's `credentialRef`, falling back to the
+runtime's global `chat.tokenRef` (default `env:OPENROUTER_API_KEY`) when a
+service sets none. Two rotation paths, depending on where the ref points:
+
+- **Repoint the ref's source (recommended for `env:` / `file:` refs).**
+  Update the value in the env / mounted file / secret manager that
+  `credentialRef` (or `chat.tokenRef`) names, then restart the runtime so
+  the new value is picked up and provider clients reconnect with it. The
+  service record is unchanged — it still points at the same ref.
+- **Paste a new key at `/settings`** (single-user / `auth: disabled`, or
+  the first-run setup wizard). The settings page writes the managed env
+  file via `POST /setup/env` and prompts for a restart; on the next boot
+  the runtime resolves the new value. `configuredKeys` flips to include
+  the key name once it resolves — confirming presence without exposing the
+  value.
+
+Either way the secret never enters the control plane. To point a service
+at a *different* ref (not just a new value behind the same ref),
+`PATCH …/llm-services/{id}` (or the embedding/reranking equivalent) with a
+new `credentialRef`; the response echoes the ref, never the resolved
+secret.
+
+### External MCP-server credentials
+
+A registered MCP server's bearer credential is a `SecretRef` on the
+server record's `credentialRef` (see
+[external MCP servers](mcp.md)). The runtime resolves it per connection,
+at tool-discovery and tool-call time — so rotation takes effect on the
+**next** turn, no restart required:
+
+- **New value, same ref:** update the env / file source the
+  `credentialRef` names. The next agent turn reconnects with the fresh
+  value.
+- **New ref:** `PATCH /api/v1/workspaces/{w}/mcp-servers/{id}` with the
+  new `credentialRef` (an admin/`manage`-shaped surface is not required —
+  registering and editing MCP servers is workspace `write` content). The
+  wire response carries the ref but never the resolved bearer token.
+
 ## OIDC (Phase 3a)
 
 Any OIDC-compliant issuer that publishes a JWKS works. Typical

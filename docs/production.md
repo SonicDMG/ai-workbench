@@ -50,9 +50,20 @@ runtime beyond a trusted loopback or private admin network.
 ## Operational hardening
 
 - **Pin and rotate secrets.** Prefer `env:` or `file:` secret refs for
-  Astra, OIDC, session, and bootstrap credentials. Rotate workspace
-  credentials by updating the secret source and restarting the runtime
-  so in-process driver caches reconnect with fresh credentials.
+  Astra, OIDC, session, provider, and bootstrap credentials — every
+  credential lives behind a `SecretRef`, so the value stays in your
+  secret source and never lands in the control plane. Rotate
+  refs-with-a-server-side-cache (Astra, OIDC client + session, bootstrap,
+  provider API keys) by updating the secret source and restarting the
+  runtime so in-process driver and provider clients reconnect with fresh
+  credentials; external MCP-server credentials are resolved per turn and
+  take effect on the next agent turn without a restart. Workspace API
+  keys (`wb_live_*`) rotate by **revoke + re-mint** with the desired
+  role/scopes (scopes are fixed at issue time). `GET /setup-status`
+  reports `configuredKeys` — the **names** of configured credentials,
+  never their values — so you can confirm a key is present without
+  reading it back. Full per-credential procedures live in
+  [`docs/auth.md` → Secret rotation](./auth.md#secret-rotation).
 - **Forward audit events to a durable sink.** The runtime emits
   structured audit events for API-key issuance/revocation, workspace +
   KB + agent + document create/delete, MCP tool invocations, job claim,
