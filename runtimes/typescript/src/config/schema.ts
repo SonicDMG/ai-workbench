@@ -8,6 +8,7 @@
  *   controlPlane:  discriminated on `driver`:
  *     memory:   { driver: "memory" }
  *     file:     { driver: "file", root: string }
+ *     sqlite:   { driver: "sqlite", path: string }
  *     astra:    { driver: "astra", endpoint, tokenRef, keyspace }
  *   seedWorkspaces?: WorkspaceRecord-shaped array, loaded into the
  *     memory backend at startup. Ignored by file/astra.
@@ -371,6 +372,21 @@ const ControlPlaneSchema = z.discriminatedUnion("driver", [
 		driver: z.literal("file"),
 		root: z.string().min(1),
 		jobsResume: JobsResumeSchema.optional(),
+	}),
+	z.object({
+		// SQLite control plane for chat-heavy / durable single-node
+		// deployments. Same durability + single-node posture as `file`,
+		// but row-level writes (WAL) instead of a whole-file rewrite per
+		// mutation — built for streaming chat where `file` goes quadratic.
+		driver: z.literal("sqlite"),
+		// Database file path. WAL sidecars (`-wal`, `-shm`) live beside
+		// it. `:memory:` selects an ephemeral in-process database.
+		path: z.string().min(1),
+		jobsResume: JobsResumeSchema.optional(),
+		// Accepted for symmetry with the astra block (operators can keep
+		// one shape across drivers); unused by the single-node SQLite job
+		// store, which fans out updates in-process with no poller.
+		jobPollIntervalMs: z.number().int().min(50).max(60_000).optional(),
 	}),
 	z.object({
 		driver: z.literal("astra"),
