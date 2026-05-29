@@ -116,7 +116,10 @@ export const TestConnectionResultSchema = z.object({
 });
 export type TestConnectionResult = z.infer<typeof TestConnectionResultSchema>;
 
-export const ApiKeyScopeSchema = z.enum(["read", "write"]);
+// Kept in sync with the generated OpenAPI `ApiKeyScope` enum via the
+// drift check in `schemas.test.ts`. `manage` (0.4.0) is the admin tier
+// — keys minted with it can hit API-key / principal / RLAC routes.
+export const ApiKeyScopeSchema = z.enum(["read", "write", "manage"]);
 export type ApiKeyScope = z.infer<typeof ApiKeyScopeSchema>;
 
 export const ApiKeyRecordSchema = z.object({
