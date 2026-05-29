@@ -17,7 +17,12 @@ import { nowIso } from "../control-plane/defaults.js";
 import { ControlPlaneNotFoundError } from "../control-plane/errors.js";
 import type { JobListener, JobStore, Unsubscribe } from "./store.js";
 import { JobSubscriptions } from "./subscriptions.js";
-import type { CreateJobInput, JobRecord, UpdateJobInput } from "./types.js";
+import {
+	type CreateJobInput,
+	type JobRecord,
+	resolveInputSnapshot,
+	type UpdateJobInput,
+} from "./types.js";
 
 function key(workspace: string, jobId: string): string {
 	return `${workspace}:${jobId}`;
@@ -45,7 +50,7 @@ export class MemoryJobStore implements JobStore {
 			updatedAt: now,
 			leasedBy: null,
 			leasedAt: null,
-			ingestInput: input.ingestInput ?? null,
+			inputSnapshot: resolveInputSnapshot(input),
 		};
 		this.jobs.set(key(input.workspace, jobId), record);
 		return record;

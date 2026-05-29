@@ -49,6 +49,39 @@ describe("AstraJobStore — serialization round-trip", () => {
 		expect(fetched?.result).toBeNull();
 		expect(fetched?.errorMessage).toBe("boom");
 	});
+
+	test("a row with only the legacy `ingest_input_json` column reads into `inputSnapshot` (back-compat)", async () => {
+		// D2 back-compat: rows written before `input_snapshot_json` was
+		// added (additively) carry only `ingest_input_json`. The
+		// converter must fall back to it so those jobs still resume.
+		const tables = createFakeTablesBundle();
+		const store = new AstraJobStore(tables);
+		const jobId = "00000000-0000-4000-8000-0000000beef0";
+		await tables.jobs.insertOne({
+			workspace: WORKSPACE_A,
+			job_id: jobId,
+			kind: "ingest",
+			knowledge_base_id: null,
+			document_id: null,
+			status: "running",
+			processed: 0,
+			total: null,
+			result_json: null,
+			error_message: null,
+			created_at: "2026-01-01T00:00:00.000Z",
+			updated_at: "2026-01-01T00:00:00.000Z",
+			leased_by: "wb-replica-old",
+			leased_at: "2026-01-01T00:00:00.000Z",
+			// New column present-but-null (additively added, never
+			// written for this old row); only the legacy column is
+			// populated — the realistic post-migration back-compat shape.
+			input_snapshot_json: null,
+			ingest_input_json: JSON.stringify({ text: "legacy column" }),
+		});
+
+		const fetched = await store.get(WORKSPACE_A, jobId);
+		expect(fetched?.inputSnapshot).toEqual({ text: "legacy column" });
+	});
 });
 
 /**
