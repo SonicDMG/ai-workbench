@@ -227,6 +227,144 @@ describe("jobs route — GET /jobs/{jobId}", () => {
 		expect(done).toContain('"status":"succeeded"');
 	});
 
+	test("SSE /events tags each `job` frame with an `id:` carrying the record version", async () => {
+		const h = makeHarness();
+		const ws = await createWorkspace(h);
+		const job = await h.jobs.create({
+			workspace: ws,
+			kind: "ingest",
+			jobId: randomUUID(),
+			knowledgeBaseId: null,
+			documentId: null,
+			total: 1,
+		});
+
+		const res = await h.app.request(
+			`/api/v1/workspaces/${ws}/jobs/${job.jobId}/events`,
+		);
+		expect(res.status).toBe(200);
+		if (!res.body) throw new Error("expected SSE response body");
+		const reader = res.body.getReader();
+		const decoder = new TextDecoder();
+		let buffer = "";
+
+		// Drive the job to terminal so the stream closes on its own.
+		await h.jobs.update(ws, job.jobId, { status: "succeeded", processed: 1 });
+		for (let i = 0; i < 10 && !buffer.includes("event: done"); i++) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			buffer += decoder.decode(value, { stream: true });
+		}
+		try {
+			reader.releaseLock();
+		} catch {}
+
+		// Every framed event (job + done) must carry an `id:` line — that's
+		// the per-record version a reconnecting client echoes as
+		// `Last-Event-ID`.
+		const idLines = buffer.split("\n").filter((l) => l.startsWith("id: "));
+		expect(idLines.length).toBeGreaterThanOrEqual(2);
+		// The id is the record's ISO `updatedAt` — a parseable timestamp.
+		const firstId = idLines[0]?.slice(4) ?? "";
+		expect(Number.isNaN(Date.parse(firstId))).toBe(false);
+	});
+
+	test("SSE /events resume: a stale non-terminal snapshot is skipped, later updates still flow", async () => {
+		const h = makeHarness();
+		const ws = await createWorkspace(h);
+		const job = await h.jobs.create({
+			workspace: ws,
+			kind: "ingest",
+			jobId: randomUUID(),
+			knowledgeBaseId: null,
+			documentId: null,
+			total: 2,
+		});
+		// Advance to a known version the client claims to have already seen.
+		const seen = await h.jobs.update(ws, job.jobId, {
+			status: "running",
+			processed: 1,
+		});
+
+		// Reconnect with Last-Event-ID == the running snapshot's version.
+		const res = await h.app.request(
+			`/api/v1/workspaces/${ws}/jobs/${job.jobId}/events`,
+			{ headers: { "last-event-id": seen.updatedAt } },
+		);
+		expect(res.status).toBe(200);
+		if (!res.body) throw new Error("expected SSE response body");
+		const reader = res.body.getReader();
+		const decoder = new TextDecoder();
+		let buffer = "";
+
+		// The immediate replay (same version, non-terminal) must be
+		// suppressed — but a fresh terminal update must still arrive.
+		await h.jobs.update(ws, job.jobId, { status: "succeeded", processed: 2 });
+		for (let i = 0; i < 10 && !buffer.includes("event: done"); i++) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			buffer += decoder.decode(value, { stream: true });
+		}
+		try {
+			reader.releaseLock();
+		} catch {}
+
+		// The stale `running` replay was skipped: no `job` frame carries
+		// the already-seen status before the terminal one. We should see
+		// the `succeeded` job frame + the `done` terminator, and NOT a
+		// redundant `running` replay frame.
+		const jobFrames = buffer
+			.split("\n\n")
+			.filter((e) => e.includes("event: job"));
+		expect(jobFrames.every((e) => !e.includes('"status":"running"'))).toBe(
+			true,
+		);
+		expect(buffer).toContain('"status":"succeeded"');
+		expect(buffer).toContain("event: done");
+	});
+
+	test("SSE /events resume: a missed terminal snapshot is always re-sent", async () => {
+		const h = makeHarness();
+		const ws = await createWorkspace(h);
+		const job = await h.jobs.create({
+			workspace: ws,
+			kind: "ingest",
+			jobId: randomUUID(),
+			knowledgeBaseId: null,
+			documentId: null,
+			total: 1,
+		});
+		// Job already terminal before the client (re)connects.
+		const terminal = await h.jobs.update(ws, job.jobId, {
+			status: "succeeded",
+			processed: 1,
+		});
+
+		// Reconnect claiming we already saw this exact terminal version —
+		// the stream must still re-emit it so the client can close cleanly
+		// (job records are idempotent snapshots, re-emit is safe).
+		const res = await h.app.request(
+			`/api/v1/workspaces/${ws}/jobs/${job.jobId}/events`,
+			{ headers: { "last-event-id": terminal.updatedAt } },
+		);
+		expect(res.status).toBe(200);
+		if (!res.body) throw new Error("expected SSE response body");
+		const reader = res.body.getReader();
+		const decoder = new TextDecoder();
+		let buffer = "";
+		for (let i = 0; i < 10 && !buffer.includes("event: done"); i++) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			buffer += decoder.decode(value, { stream: true });
+		}
+		try {
+			reader.releaseLock();
+		} catch {}
+
+		expect(buffer).toContain('"status":"succeeded"');
+		expect(buffer).toContain("event: done");
+	});
+
 	test("scoped API-key cannot read jobs from a workspace it doesn't own", async () => {
 		const h = makeHarness({ authMode: "apiKey" });
 		// Two workspaces and a key scoped only to A.

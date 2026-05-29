@@ -15,6 +15,7 @@ import type {
 	ChatCompletionRequest,
 	ChatService,
 	ChatStreamEvent,
+	ChatStreamOptions,
 } from "../../src/chat/types.js";
 import { MemoryControlPlaneStore } from "../../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../../src/drivers/mock/store.js";
@@ -316,5 +317,221 @@ describe("dispatchAgentSendStream failure recovery", () => {
 				serializer,
 			),
 		).resolves.toBeUndefined();
+	});
+});
+
+/**
+ * Streaming fake that captures the `AbortSignal` handed to
+ * `completeStream` and blocks (mid-token) until that signal fires. Lets
+ * the test prove the cancel path actually reaches the provider request
+ * — i.e. a client disconnect would abort the in-flight LLM fetch and
+ * stop billing for tokens.
+ */
+class AbortObservingChatService implements ChatService {
+	readonly modelId = "fake-abort-observing";
+	readonly providerId = "fake";
+	capturedSignal: AbortSignal | null = null;
+
+	async complete(): Promise<ChatCompletion> {
+		throw new Error("not used in streaming test");
+	}
+
+	async *completeStream(
+		_request: ChatCompletionRequest,
+		options?: ChatStreamOptions,
+	): AsyncIterable<ChatStreamEvent> {
+		this.capturedSignal = options?.signal ?? null;
+		// Emit one token so the consumer is actively streaming.
+		yield { type: "token", delta: "thinking… " };
+		// Block until the signal aborts — exactly how the real OpenAI
+		// adapter's `fetch` would unblock on `signal.abort()`.
+		await new Promise<void>((resolve) => {
+			if (options?.signal?.aborted) {
+				resolve();
+				return;
+			}
+			options?.signal?.addEventListener("abort", () => resolve(), {
+				once: true,
+			});
+		});
+		// Mirror the adapter's abort branch: stop cleanly with a `done`
+		// carrying whatever was buffered.
+		yield {
+			type: "done",
+			content: "thinking… ",
+			finishReason: "stop",
+			tokenCount: 1,
+			toolCalls: [],
+		};
+	}
+}
+
+describe("dispatchAgentSendStream cancel propagation", () => {
+	test("client disconnect aborts the in-flight provider stream (signal fires)", async () => {
+		const chat = new AbortObservingChatService();
+		const f = await fixture(chat);
+
+		let abortHandler: (() => void) | null = null;
+		const writes: RecordedEvent[] = [];
+		const sse = {
+			writeSSE: async (event: RecordedEvent) => {
+				writes.push(event);
+			},
+			// Capture the dispatcher's disconnect handler so the test can
+			// fire it like Hono's `streamSSE` would on a dropped socket.
+			onAbort: (handler: () => void) => {
+				abortHandler = handler;
+			},
+		};
+		const serializer = {
+			serializeUserMessage: (r: { messageId: string }) =>
+				JSON.stringify({ messageId: r.messageId }),
+			serializeAssistantMessage: (r: { messageId: string }) =>
+				JSON.stringify({ messageId: r.messageId }),
+		};
+
+		const dispatchPromise = dispatchAgentSendStream(
+			f.deps,
+			f.ctx,
+			{ content: "cancel me" },
+			sse,
+			serializer,
+		);
+
+		// Wait until the provider stream is live (signal captured + first
+		// token forwarded), then simulate the client hanging up.
+		await waitFor(
+			() =>
+				chat.capturedSignal !== null && writes.some((w) => w.event === "token"),
+		);
+		expect(chat.capturedSignal?.aborted).toBe(false);
+
+		if (!abortHandler) throw new Error("dispatcher never registered onAbort");
+		(abortHandler as () => void)();
+
+		// The captured provider signal must now be aborted — proving the
+		// disconnect propagated all the way to the LLM request.
+		await waitFor(() => chat.capturedSignal?.aborted === true);
+		expect(chat.capturedSignal?.aborted).toBe(true);
+
+		// The dispatcher still resolves cleanly (no orphaned connection).
+		await expect(dispatchPromise).resolves.toBeUndefined();
+	});
+});
+
+/**
+ * Streaming fake whose first iteration ends with a tool call (so the
+ * dispatcher persists a tool-result row and writes a `tool-result`
+ * frame), then on the SECOND iteration returns a final answer. Used to
+ * land real tool-result rows on the wire before a downstream persistence
+ * failure, exercising the partial-write recovery path.
+ */
+class ToolThenAnswerChatService implements ChatService {
+	readonly modelId = "fake-tool-then-answer";
+	readonly providerId = "fake";
+	private iteration = 0;
+
+	async complete(): Promise<ChatCompletion> {
+		throw new Error("not used in streaming test");
+	}
+
+	async *completeStream(): AsyncIterable<ChatStreamEvent> {
+		this.iteration += 1;
+		if (this.iteration === 1) {
+			yield { type: "token", delta: "Looking… " };
+			yield {
+				type: "done",
+				content: "Looking… ",
+				finishReason: "tool_calls",
+				tokenCount: 4,
+				toolCalls: [
+					{ id: "c1", name: "list_knowledge_bases", arguments: "{}" },
+				],
+			};
+			return;
+		}
+		yield { type: "token", delta: "Here is the answer." };
+		yield {
+			type: "done",
+			content: "Here is the answer.",
+			finishReason: "stop",
+			tokenCount: 8,
+			toolCalls: [],
+		};
+	}
+}
+
+describe("dispatchAgentSendStream partial-write recovery", () => {
+	test("emits exactly one terminal `error` even when the FINAL persist fails after tool-results landed", async () => {
+		const chat = new ToolThenAnswerChatService();
+		const f = await fixture(chat);
+
+		// Let everything persist up to (and including) the tool-result row,
+		// then fail the FINAL assistant append. Append order for this run:
+		//   1 user · 2 assistant-tool-call · 3 tool-result · 4 final-assistant
+		// Failing #4 models a control-plane outage right at the end, after
+		// a `tool-result` frame already reached the client.
+		const realAppend = f.store.appendChatMessage.bind(f.store);
+		let appendCalls = 0;
+		f.store.appendChatMessage = (async (...args: unknown[]) => {
+			appendCalls += 1;
+			if (appendCalls === 4) {
+				throw new Error("control-plane outage at final persist");
+			}
+			// biome-ignore lint/suspicious/noExplicitAny: spy passthrough
+			return await (realAppend as any)(...args);
+		}) as typeof f.store.appendChatMessage;
+
+		const writes: RecordedEvent[] = [];
+		const sse = {
+			writeSSE: async (event: RecordedEvent) => {
+				writes.push(event);
+			},
+			onAbort: () => {},
+		};
+		const serializer = {
+			serializeUserMessage: (r: { messageId: string }) =>
+				JSON.stringify({ messageId: r.messageId }),
+			serializeAssistantMessage: (r: {
+				messageId: string;
+				content: string | null;
+				metadata: Record<string, string>;
+			}) =>
+				JSON.stringify({
+					messageId: r.messageId,
+					content: r.content,
+					metadata: r.metadata,
+				}),
+		};
+
+		await dispatchAgentSendStream(
+			f.deps,
+			f.ctx,
+			{ content: "diagnose me" },
+			sse,
+			serializer,
+		);
+
+		const events = writes.map((w) => w.event);
+		// A `tool-result` frame landed before the failure…
+		expect(events).toContain("tool-result");
+		// …and the stream still closed with EXACTLY one terminal event,
+		// and it's `error` (not `done`).
+		expect(events.filter((e) => e === "done" || e === "error")).toEqual([
+			"error",
+		]);
+
+		// The terminal `error` carries a coherent assistant-shaped row with
+		// finish_reason: "error" — even though no durable row could be
+		// written, the wire contract holds so the SPA renders an error
+		// bubble instead of hanging on the live preview.
+		const errorWrite = writes.find((w) => w.event === "error");
+		expect(errorWrite).toBeDefined();
+		const parsed = JSON.parse(errorWrite?.data ?? "{}") as {
+			content: string | null;
+			metadata: Record<string, string>;
+		};
+		expect(parsed.metadata.finish_reason).toBe("error");
+		expect(parsed.content).toContain("control-plane outage at final persist");
 	});
 });

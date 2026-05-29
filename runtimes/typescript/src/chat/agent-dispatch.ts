@@ -26,6 +26,7 @@ import {
 	type PersistTurnContext,
 	persistAssistantToolCallTurn,
 	persistFinalAssistant,
+	strictlyAfter,
 } from "../chat/agent-persistence.js";
 import {
 	type AgentResolutionContext,
@@ -51,6 +52,7 @@ import type {
 	LlmServiceRecord,
 	MessageRecord,
 } from "../control-plane/types.js";
+import { SseEmitter } from "../lib/sse.js";
 
 /**
  * Hard cap on how many tool-call iterations a single user turn can
@@ -87,7 +89,7 @@ export interface AgentSendResult {
  * route layer wires to client disconnects.
  */
 export interface AgentSseWriter {
-	writeSSE(event: { event: string; data: string }): Promise<void>;
+	writeSSE(event: { event: string; data: string; id?: string }): Promise<void>;
 	onAbort(handler: () => void): void;
 }
 
@@ -343,10 +345,21 @@ export async function dispatchAgentSendStream(
 		userTurn: body.content,
 	});
 
+	// Client disconnect → abort the in-flight provider fetch so we stop
+	// paying for tokens nobody will read. The signal threads through
+	// `consumeStreamIteration` → `chatService.completeStream(.., { signal })`
+	// → the OpenAI adapter's `fetch(.., { signal })`.
 	const abort = new AbortController();
 	sse.onAbort(() => abort.abort());
 
-	await sse.writeSSE({
+	// All wire writes go through the shared emitter so the
+	// "exactly one terminal event, best-effort, swallow client-gone"
+	// guarantee is centralised (mirrors the job-events stream). Once a
+	// terminal event lands, later `emit` calls become no-ops — a
+	// late-arriving token can't append past the stream's logical end.
+	const emitter = new SseEmitter(sse);
+
+	await emitter.emit({
 		event: "user-message",
 		data: serializer.serializeUserMessage(userRecord),
 	});
@@ -392,7 +405,7 @@ export async function dispatchAgentSendStream(
 				tools.map((t) => t.definition),
 				abort.signal,
 				async (delta) => {
-					await sse.writeSSE({
+					await emitter.emit({
 						event: "token",
 						data: JSON.stringify({ delta }),
 					});
@@ -406,7 +419,7 @@ export async function dispatchAgentSendStream(
 					prevTs,
 					final.tokenCount,
 					final.errorMessage ?? "the agent couldn't answer this turn.",
-					sse,
+					emitter,
 					serializer,
 				);
 				return;
@@ -426,7 +439,7 @@ export async function dispatchAgentSendStream(
 						errorMessage: null,
 					},
 				);
-				await sse.writeSSE({
+				await emitter.emitTerminal({
 					event: "done",
 					data: serializer.serializeAssistantMessage(assistantRecord),
 				});
@@ -436,13 +449,13 @@ export async function dispatchAgentSendStream(
 			// Tool-call iteration. Tell the frontend to clear any pre-tool-
 			// call narration that streamed into the live preview, persist
 			// the assistant tool-call turn, and surface tool progress.
-			await sse.writeSSE({ event: "token-reset", data: "{}" });
+			await emitter.emit({ event: "token-reset", data: "{}" });
 			prevTs = await persistAssistantToolCallTurn(persistCtx, prevTs, {
 				content: final.content,
 				toolCalls: final.toolCalls,
 				tokenCount: final.tokenCount,
 			});
-			await sse.writeSSE({
+			await emitter.emit({
 				event: "tool-call",
 				data: JSON.stringify({ toolCalls: final.toolCalls }),
 			});
@@ -458,7 +471,7 @@ export async function dispatchAgentSendStream(
 				final.toolCalls,
 				prevTs,
 				async (call, resultText) => {
-					await sse.writeSSE({
+					await emitter.emit({
 						event: "tool-result",
 						data: JSON.stringify({
 							toolCallId: call.id,
@@ -478,7 +491,7 @@ export async function dispatchAgentSendStream(
 			prevTs,
 			lastTokenCount,
 			ITERATION_CAP_MESSAGE,
-			sse,
+			emitter,
 			serializer,
 			ITERATION_CAP_REASON,
 		);
@@ -493,27 +506,91 @@ export async function dispatchAgentSendStream(
 			prevTs,
 			lastTokenCount,
 			errorMessage,
-			sse,
+			emitter,
 			serializer,
 		);
+	} finally {
+		// Last-resort guarantee: if every branch above somehow returned
+		// without writing a terminal event, close the stream so the SPA
+		// never hangs. `emitTerminalError` itself already guarantees a
+		// terminal frame on every path it reaches, so this only fires for
+		// a truly unexpected escape; no-op when a terminal event landed.
+		if (!emitter.isTerminated) {
+			await emitTerminalError(
+				persistCtx,
+				prevTs,
+				lastTokenCount,
+				"the agent stream ended without a terminal event.",
+				emitter,
+				serializer,
+			);
+		}
 	}
 }
 
 /**
- * Best-effort terminal `error` envelope. Tries to persist a final
- * assistant row carrying the failure, then tries to write one terminal
- * `error` SSE event. Both steps swallow their own errors: persistence
- * may fail if the control plane is the very thing that died, and the
- * SSE write may fail if the client has already disconnected. In either
- * case the route layer's outer `streamSSE` wrapper provides the
- * last-resort guarantee that *something* terminal lands on the wire.
+ * Build an in-memory assistant {@link MessageRecord} carrying a failure,
+ * WITHOUT persisting it. Used as the terminal-event payload when the
+ * control plane is the very thing that died and `persistFinalAssistant`
+ * couldn't write a durable row — the stream still needs exactly one
+ * terminal `error` frame, and it must serialize to the same assistant-row
+ * shape the SPA renders for a persisted failure (so it shows an error
+ * bubble, not a hung "thinking" state). `messageTs` is stamped strictly
+ * after `prevTs` to stay consistent with the rest of the turn's ordering.
+ */
+function unpersistedErrorRecord(
+	persistCtx: PersistTurnContext,
+	prevTs: string,
+	tokenCount: number | null,
+	errorMessage: string,
+): MessageRecord {
+	const ts = strictlyAfter(prevTs);
+	return {
+		workspaceId: persistCtx.workspaceId,
+		conversationId: persistCtx.conversationId,
+		messageTs: ts,
+		messageId: `unpersisted-error-${ts}`,
+		role: "agent",
+		authorId: persistCtx.agent.agentId,
+		content: errorMessage,
+		toolId: null,
+		toolCallPayload: null,
+		toolResponse: null,
+		tokenCount,
+		metadata: buildAgentMetadata(
+			persistCtx.chunks,
+			persistCtx.chatService.modelId,
+			{ finishReason: "error", errorMessage },
+			persistCtx.astraQueries,
+		),
+	};
+}
+
+/**
+ * Terminal `error` guarantee. Tries to persist a final assistant row
+ * carrying the failure; whether or not that succeeds, emits exactly one
+ * terminal `error` SSE event so the dispatcher always closes the wire
+ * itself rather than relying on the route's outer `streamSSE` wrapper.
+ *
+ * Hardening for partial-write recovery: when some `tool-result` rows have
+ * already landed and the *final* persist fails (control plane outage),
+ * the old behavior dropped the dispatcher-level terminal event entirely
+ * and left the SPA's live preview hanging until the route's separate
+ * `stream-error` envelope arrived. Now a coherent terminal `error` frame
+ * (backed by a persisted row when possible, an in-memory row otherwise)
+ * always lands, so the SPA can swap the preview for an error bubble.
+ *
+ * Both the persist and the SSE write are best-effort: persistence may
+ * fail if the control plane died, and the SSE write may fail if the
+ * client already disconnected. The {@link SseEmitter} swallows the latter
+ * and enforces the single-terminal-event invariant.
  */
 async function emitTerminalError(
 	persistCtx: PersistTurnContext,
 	prevTs: string,
 	lastTokenCount: number | null,
 	errorMessage: string,
-	sse: AgentSseWriter,
+	emitter: SseEmitter,
 	serializer: AgentStreamSerializer,
 	persistedErrorMessage?: string,
 ): Promise<void> {
@@ -528,21 +605,19 @@ async function emitTerminalError(
 	} catch (persistErr) {
 		persistCtx.deps.logger?.warn?.(
 			{ err: persistErr },
-			"streaming dispatcher could not persist terminal error row",
+			"streaming dispatcher could not persist terminal error row; emitting an in-memory terminal frame",
 		);
 	}
-	if (!assistantRecord) return;
-	try {
-		await sse.writeSSE({
-			event: "error",
-			data: serializer.serializeAssistantMessage(assistantRecord),
-		});
-	} catch (sseErr) {
-		persistCtx.deps.logger?.debug?.(
-			{ err: sseErr },
-			"streaming dispatcher could not emit terminal error SSE (client gone)",
-		);
-	}
+	// Fall back to an unpersisted row so a terminal frame still lands even
+	// when the control plane is down — the wire contract (one terminal
+	// event carrying an assistant-shaped row) is preserved either way.
+	const record =
+		assistantRecord ??
+		unpersistedErrorRecord(persistCtx, prevTs, lastTokenCount, errorMessage);
+	await emitter.emitTerminal({
+		event: "error",
+		data: serializer.serializeAssistantMessage(record),
+	});
 }
 
 type IterationResult =
