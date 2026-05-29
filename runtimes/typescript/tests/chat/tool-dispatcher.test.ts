@@ -31,7 +31,12 @@ async function fixture(): Promise<{
 	const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
 	const embedders = makeFakeEmbedderFactory();
 	const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
-	const deps: AgentToolDeps = { workspaceId: ws.uid, store, drivers, embedders };
+	const deps: AgentToolDeps = {
+		workspaceId: ws.uid,
+		store,
+		drivers,
+		embedders,
+	};
 	// All built-in tools available (empty allow-list = grandfathered).
 	const toolset = await resolveAgentToolset([], {
 		workspaceId: ws.uid,
@@ -45,27 +50,32 @@ async function fixture(): Promise<{
 }
 
 describe("executeWorkspaceTool", () => {
-	test("returns an Error: string for unknown tool names", async () => {
+	test("returns an Error: string + denied outcome for unknown tool names", async () => {
 		const { deps, toolset } = await fixture();
 		const out = await executeWorkspaceTool(
 			{ id: "1", name: "nope", arguments: "{}" },
 			toolset,
 			deps,
 		);
-		expect(out).toMatch(/^Error: tool 'nope' is not available/);
+		expect(out.resultText).toMatch(/^Error: tool 'nope' is not available/);
+		// Not on the allow-list → denied (A1 / A5 audit semantics).
+		expect(out.outcome).toBe("denied");
 	});
 
-	test("returns an Error: string for malformed JSON arguments", async () => {
+	test("returns an Error: string + failure outcome for malformed JSON arguments", async () => {
 		const { deps, toolset } = await fixture();
 		const out = await executeWorkspaceTool(
 			{ id: "1", name: "list_kbs", arguments: "{not json" },
 			toolset,
 			deps,
 		);
-		expect(out).toMatch(/^Error: tool arguments were not valid JSON/);
+		expect(out.resultText).toMatch(
+			/^Error: tool arguments were not valid JSON/,
+		);
+		expect(out.outcome).toBe("failure");
 	});
 
-	test("returns the tool's result string on success", async () => {
+	test("returns the tool's result string + success outcome on success", async () => {
 		const { deps, toolset } = await fixture();
 		const out = await executeWorkspaceTool(
 			{ id: "1", name: "list_kbs", arguments: "" },
@@ -73,7 +83,10 @@ describe("executeWorkspaceTool", () => {
 			deps,
 		);
 		// Empty workspace → friendly placeholder, not JSON.
-		expect(out).toBe("No knowledge bases exist in this workspace yet.");
+		expect(out.resultText).toBe(
+			"No knowledge bases exist in this workspace yet.",
+		);
+		expect(out.outcome).toBe("success");
 	});
 
 	test("treats empty arguments as `{}`", async () => {
@@ -83,7 +96,8 @@ describe("executeWorkspaceTool", () => {
 			toolset,
 			deps,
 		);
-		expect(out).not.toMatch(/^Error/);
+		expect(out.resultText).not.toMatch(/^Error/);
+		expect(out.outcome).toBe("success");
 	});
 });
 

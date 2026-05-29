@@ -85,14 +85,17 @@ describe("executeWorkspaceTool — execution-time allow-list gate", () => {
 	test("rejects a tool the agent isn't allowed, without executing it", async () => {
 		const ts = await resolveAgentToolset(["list_kbs"], await makeCtx());
 		const result = await executeWorkspaceTool(call("search_kb"), ts, stubDeps);
-		expect(result).toMatch(/not available to this agent/);
-		expect(result).toMatch(/list_kbs/);
+		expect(result.resultText).toMatch(/not available to this agent/);
+		expect(result.resultText).toMatch(/list_kbs/);
+		// Allow-list rejection (A1) is audited as `denied`, not `failure`.
+		expect(result.outcome).toBe("denied");
 	});
 
 	test("an agent with no enabled tools reports an empty toolset", async () => {
 		const ts = await resolveAgentToolset(["does-not-exist"], await makeCtx());
 		expect(ts.tools).toEqual([]);
 		const result = await executeWorkspaceTool(call("search_kb"), ts, stubDeps);
-		expect(result).toMatch(/no tools enabled/);
+		expect(result.resultText).toMatch(/no tools enabled/);
+		expect(result.outcome).toBe("denied");
 	});
 });

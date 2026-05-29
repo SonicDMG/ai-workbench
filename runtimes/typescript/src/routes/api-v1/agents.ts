@@ -10,11 +10,13 @@
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { ForbiddenError, UnauthorizedError } from "../../auth/errors.js";
 import {
 	dispatchAgentSend,
 	dispatchAgentSendStream,
+	type OnToolInvoke,
 } from "../../chat/agent-dispatch.js";
 import type { ChatService } from "../../chat/types.js";
 import type { ChatConfig } from "../../config/schema.js";
@@ -688,6 +690,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 						conversation: resolved.conversation,
 					},
 					{ content: body.content },
+					auditToolInvoke(c, workspaceId),
 				);
 				const outcome =
 					(assistant.metadata as { finish_reason?: string } | null)
@@ -806,6 +809,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 							serializeAssistantMessage: (record) =>
 								JSON.stringify(toChatMessageWire(record)),
 						},
+						auditToolInvoke(c, workspaceId),
 					);
 					metrics?.chatRequests.inc({ provider, outcome: "stream_ok" });
 				} catch (err) {
@@ -836,6 +840,31 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 	);
 
 	return app;
+}
+
+/**
+ * Build the `onToolInvoke` closure the agent dispatcher fires once per
+ * tool call. Emits a `tool.invoke` audit event carrying the tool name +
+ * outcome — but NOT the arguments (secrets can live in args; matches the
+ * MCP `onToolInvoke` convention in `routes/api-v1/mcp.ts`). Audit
+ * emission is best-effort inside `audit()`, so a logging hiccup never
+ * breaks the tool loop.
+ */
+function auditToolInvoke(
+	c: Context<AppEnv>,
+	workspaceId: string,
+): OnToolInvoke {
+	return (info) => {
+		audit(c, {
+			action: "tool.invoke",
+			outcome: info.outcome,
+			workspaceId,
+			details: {
+				toolName: info.toolName,
+				...(info.reason ? { reason: info.reason } : {}),
+			},
+		});
+	};
 }
 
 interface StreamErrorEnvelope {
