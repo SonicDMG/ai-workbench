@@ -31,7 +31,12 @@ async function fixture(): Promise<{
 	const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
 	const embedders = makeFakeEmbedderFactory();
 	const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
-	const deps: AgentToolDeps = { workspaceId: ws.uid, store, drivers, embedders };
+	const deps: AgentToolDeps = {
+		workspaceId: ws.uid,
+		store,
+		drivers,
+		embedders,
+	};
 	// All built-in tools available (empty allow-list = grandfathered).
 	const toolset = await resolveAgentToolset([], {
 		workspaceId: ws.uid,

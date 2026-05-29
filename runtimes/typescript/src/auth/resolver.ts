@@ -88,6 +88,6 @@ export class AuthResolver {
 
 function parseBearer(header: string): string | null {
 	const [scheme, value] = header.split(/\s+/, 2);
-	if (!scheme || scheme.toLowerCase() !== "bearer" || !value) return null;
+	if (scheme?.toLowerCase() !== "bearer" || !value) return null;
 	return value.trim();
 }
