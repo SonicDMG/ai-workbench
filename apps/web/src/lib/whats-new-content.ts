@@ -31,6 +31,11 @@ export const WHATS_NEW_VERSION = APP_VERSION;
  */
 export const WHATS_NEW_HIGHLIGHTS: readonly WhatsNewItem[] = [
 	{
+		title: "A cleaner agent editor and simpler access control",
+		summary:
+			"Creating or editing an agent now uses the same full form everywhere — the workspace overview, the Agents page, and the chat zero-state — so the tool picker is always available. Workspace access control now centers on role-based API keys (Viewer / Editor / Admin); the advanced row-level prototype moved out of the app and stays available via the API and the aiw CLI.",
+	},
+	{
 		title: "Agents can call tools",
 		summary:
 			"Agents now use tools mid-conversation in a bounded multi-step loop: the workspace's own knowledge-base tools, external MCP servers you register, native HTTP fetch + web search, and a read-only Astra Data API query. Pick exactly which tools each agent may use in the agent form; tool calls and their results render as inline expandable cards in chat. Tools beyond the built-ins are opt-in per agent.",

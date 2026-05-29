@@ -9,6 +9,66 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-05-29
+
+Hardening + docs/UX polish on top of 0.4.0. **No API contract changes
+and no data migration** — this release simplifies surfaces and fixes a
+bug, it doesn't change the wire model. The headlines are a **unified
+agent editor** and a deliberately **simpler access-control UI**.
+
+### Added
+
+- **Unified agent editor.** All three agent create/edit surfaces — the
+  workspace overview, the dedicated Agents page, and the chat
+  zero-state — now share one form and dialog (`AgentFormDialog`, which
+  owns the tool-catalog fetch so no surface can omit it). The tool
+  picker and every other field are available everywhere. When a
+  workspace has no external tools the picker shows an empty-state
+  callout linking to MCP settings, and each agent card/row carries an
+  "all tools / N tools" scope badge.
+- **Published documentation site** at
+  <https://datastax.github.io/ai-workbench/> (VitePress → GitHub Pages),
+  linked from the README, plus a public
+  [`docs/whats-new-0.4.0.md`](docs/whats-new-0.4.0.md) narrative.
+
+### Changed
+
+- **Simplified access control (UI only).** Role-based API keys
+  (Viewer / Editor / Admin) are now the single access-control surface in
+  the web app. The advanced row-level access-control prototype — raw
+  principals, per-row policies, and the "view as" picker — is no longer
+  surfaced in the UI. It remains fully available through the HTTP API
+  and the `aiw` CLI for advanced operators; no backend or schema change.
+- **CLI polish.** `aiw principal` and `aiw policy` are hidden from
+  `aiw --help` (still fully functional for scripting); the `--workspace`
+  flag description and the "--workspace is required" error are
+  consistent across commands; `aiw login --oidc --output json` now emits
+  a JSON result envelope for scripting parity.
+- **Leaner README** focused on getting an end user running, with the
+  dev/contributor detail consolidated into
+  [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- **Consistent error messaging** in the web UI — workspace, knowledge-
+  base, document, and service panels now route load errors through the
+  shared `formatApiError` helper.
+- Unified `vitest` versions across workspaces and added a `format:check`
+  gate to `npm run check`.
+
+### Fixed
+
+- **Agent tool selector missing on the workspace-overview dialogs.**
+  Creating or editing an agent from the workspace overview silently hid
+  the Tools section because that dialog never fetched the tool catalog;
+  the shared dialog now owns the fetch, so tools appear on every
+  surface.
+- The `aiw` CLI version constant was stale at `0.3.0` (missed in the
+  0.4.0 cut); it now reports the correct version.
+
+### Removed
+
+- The web UI's principals panel, policy-audit panel, "view as" picker,
+  and per-document visibility editor (the RLAC prototype surfaces). The
+  underlying API and CLI commands are unchanged.
+
 ## [0.4.0] — 2026-05-28
 
 Headline: **two flagship capabilities — agent tool-calling and

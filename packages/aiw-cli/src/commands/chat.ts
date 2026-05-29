@@ -27,7 +27,10 @@ export const chatCommand = defineCommand({
 		description: "Open a chat session with an agent (Ctrl-D to exit).",
 	},
 	args: {
-		workspace: { type: "string", description: "Workspace ID" },
+		workspace: {
+			type: "string",
+			description: "Workspace ID (defaults to profile.defaultWorkspace)",
+		},
 		agent: { type: "string", description: "Agent ID" },
 		conversation: {
 			type: "string",
@@ -40,7 +43,10 @@ export const chatCommand = defineCommand({
 		const ctx = await loadContext(args);
 		const ws = args.workspace?.trim() || ctx.resolved.profile.defaultWorkspace;
 		const agent = args.agent?.trim();
-		if (!ws) throw new Error("--workspace is required.");
+		if (!ws)
+			throw new Error(
+				"--workspace is required (or set defaultWorkspace in your profile).",
+			);
 		if (!agent) throw new Error("--agent is required.");
 
 		let conversationId = args.conversation?.trim();

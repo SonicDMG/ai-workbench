@@ -12,29 +12,27 @@ import {
 } from "@/components/ui/dialog";
 import { useUpdateDocument } from "@/hooks/useDocuments";
 import { useAsyncIngestFile } from "@/hooks/useIngest";
-import { useRlacEnabled } from "@/hooks/useRlac";
 import { formatApiError } from "@/lib/api";
 import { isIngestableFile } from "@/lib/files";
 import type { RagDocumentRecord } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
-import { VisibilityPicker } from "./VisibilityPicker";
 
 /**
- * Edit a KB document's metadata + visibility, and optionally replace
- * its file contents.
+ * Edit a KB document's name, and optionally replace its file
+ * contents.
  *
  * Two distinct flows live in this dialog, each with its own Save
  * button so the user understands what's about to happen:
  *
- *   1. **Metadata patch** — rename + change `visible_to`. Sends one
- *      PATCH. Fast, surgical, no chunks touched.
+ *   1. **Metadata patch** — rename. Sends one PATCH. Fast, surgical,
+ *      no chunks touched.
  *   2. **Replace file** — pick a new file from disk. Sends a
  *      multipart ingest with `overwriteOnNameConflict: true` so the
  *      existing chunks are dropped before the new file is chunked
  *      and embedded. The replacement gets a fresh `documentId` (the
  *      runtime can't keep the old id while swapping content) but
- *      the original filename + visibility carry over from whatever
- *      is staged in the form when Replace is clicked.
+ *      the original filename carries over from whatever is staged in
+ *      the form when Replace is clicked.
  *
  * The dialog deliberately does NOT collapse the two flows into one
  * "Save" button. A rename is cheap; re-embedding is expensive. The
@@ -53,13 +51,9 @@ export function EditDocumentDialog({
 }) {
 	const open = doc !== null;
 	const update = useUpdateDocument(workspace, knowledgeBaseId);
-	const rlacEnabled = useRlacEnabled(workspace);
 	const ingest = useAsyncIngestFile(workspace, knowledgeBaseId);
 
 	const [name, setName] = useState<string>(doc?.sourceFilename ?? "");
-	const [visibleTo, setVisibleTo] = useState<readonly string[] | null>(
-		doc?.visibleTo ?? null,
-	);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const [replaceError, setReplaceError] = useState<string | null>(null);
 
@@ -68,27 +62,17 @@ export function EditDocumentDialog({
 	// staged edits).
 	const documentId = doc?.documentId;
 	const sourceFilename = doc?.sourceFilename;
-	const docVisibleTo = doc?.visibleTo;
 	useEffect(() => {
 		if (documentId) {
 			setName(sourceFilename ?? "");
-			setVisibleTo(docVisibleTo ?? null);
 			setReplaceError(null);
 		}
-	}, [documentId, sourceFilename, docVisibleTo]);
+	}, [documentId, sourceFilename]);
 
 	const metadataDirty = useMemo(() => {
 		if (!doc) return false;
-		if ((doc.sourceFilename ?? "") !== name) return true;
-		const original = doc.visibleTo;
-		const staged = visibleTo;
-		if (original === null && staged === null) return false;
-		if (original === null || staged === null) return true;
-		if (original.length !== staged.length) return true;
-		const a = [...original].sort();
-		const b = [...staged].sort();
-		return a.some((v, i) => v !== b[i]);
-	}, [doc, name, visibleTo]);
+		return (doc.sourceFilename ?? "") !== name;
+	}, [doc, name]);
 
 	async function saveMetadata(): Promise<void> {
 		if (!doc) return;
@@ -97,7 +81,6 @@ export function EditDocumentDialog({
 				documentId: doc.documentId,
 				patch: {
 					sourceFilename: name.length > 0 ? name : null,
-					visibleTo,
 				},
 			});
 			toast.success("Document updated");
@@ -126,7 +109,6 @@ export function EditDocumentDialog({
 				file,
 				filename: targetName,
 				overwriteOnNameConflict: true,
-				...(visibleTo !== null && { visibleTo }),
 			});
 			toast.success("Document replaced");
 			onOpenChange(false);
@@ -144,9 +126,8 @@ export function EditDocumentDialog({
 				<DialogHeader>
 					<DialogTitle>Edit document</DialogTitle>
 					<DialogDescription>
-						Rename, change visibility, or replace the file contents. Renaming
-						and re-sharing are instant; replacing re-runs the chunk + embed
-						pipeline.
+						Rename or replace the file contents. Renaming is instant; replacing
+						re-runs the chunk + embed pipeline.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -170,14 +151,6 @@ export function EditDocumentDialog({
 							</span>
 						</label>
 
-						{rlacEnabled ? (
-							<VisibilityPicker
-								workspace={workspace}
-								value={visibleTo}
-								onChange={setVisibleTo}
-							/>
-						) : null}
-
 						<div className="flex items-center justify-end gap-2 border-slate-200 border-t pt-3 dark:border-slate-700">
 							<Button
 								type="button"
@@ -198,8 +171,8 @@ export function EditDocumentDialog({
 									</p>
 									<p className="text-[11px] text-slate-500 dark:text-slate-400">
 										Drops the existing chunks and re-runs the ingest pipeline
-										against a new file. The document keeps its current name +
-										visibility from the form above.
+										against a new file. The document keeps its current name from
+										the form above.
 									</p>
 								</div>
 								<Button

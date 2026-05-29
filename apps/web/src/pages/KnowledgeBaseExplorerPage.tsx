@@ -25,7 +25,6 @@ import { DocumentTable } from "@/components/workspaces/DocumentTable";
 import { EditDocumentDialog } from "@/components/workspaces/EditDocumentDialog";
 import { FileTypeBadge } from "@/components/workspaces/FileTypeBadge";
 import { IngestQueueDialog } from "@/components/workspaces/IngestQueueDialog";
-import { ViewAsPicker } from "@/components/workspaces/ViewAsPicker";
 import { useDeleteDocument, useDocuments } from "@/hooks/useDocuments";
 import { useKnowledgeBase } from "@/hooks/useKnowledgeBases";
 import { useWorkspace } from "@/hooks/useWorkspaces";
@@ -105,7 +104,10 @@ export function KnowledgeBaseExplorerPage() {
 	}
 	if (ws.isError) {
 		return (
-			<ErrorState title="Couldn't load workspace" message={ws.error.message} />
+			<ErrorState
+				title="Couldn't load workspace"
+				message={formatApiError(ws.error)}
+			/>
 		);
 	}
 	if (kb.isError || !kb.data) {
@@ -114,8 +116,9 @@ export function KnowledgeBaseExplorerPage() {
 				<ErrorState
 					title="Knowledge base not found"
 					message={
-						kb.error?.message ??
-						`No knowledge base ${knowledgeBaseId} in this workspace.`
+						kb.isError
+							? formatApiError(kb.error)
+							: `No knowledge base ${knowledgeBaseId} in this workspace.`
 					}
 					actions={
 						<Button variant="secondary" asChild>
@@ -163,15 +166,6 @@ export function KnowledgeBaseExplorerPage() {
 						</div>
 					</div>
 					<div className="flex items-center gap-2">
-						{/*
-						 * View-as is gated on the workspace-level RLAC
-						 * master switch. The per-KB access-control toggle
-						 * was removed — access control is workspace-wide
-						 * now and lives in Workspace Settings.
-						 */}
-						{ws.data?.rlacEnabled ? (
-							<ViewAsPicker workspace={workspaceId} />
-						) : null}
 						<Button
 							variant="secondary"
 							size="sm"
@@ -206,7 +200,7 @@ export function KnowledgeBaseExplorerPage() {
 					) : docs.isError ? (
 						<ErrorState
 							title="Couldn't load documents"
-							message={docs.error.message}
+							message={formatApiError(docs.error)}
 							actions={
 								<Button variant="secondary" onClick={() => docs.refetch()}>
 									<RefreshCw className="h-4 w-4" /> Retry
@@ -222,7 +216,6 @@ export function KnowledgeBaseExplorerPage() {
 							deletingDocumentId={
 								deleteDoc.isPending ? (deleteDoc.variables ?? null) : null
 							}
-							rlacEnabled={ws.data?.rlacEnabled ?? false}
 						/>
 					)}
 				</CardContent>

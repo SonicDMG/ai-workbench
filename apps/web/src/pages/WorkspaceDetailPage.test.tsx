@@ -18,6 +18,7 @@ vi.mock("@/hooks/useFeatures", () => ({
 }));
 vi.mock("@/hooks/useConversations", () => ({
 	useAgents: vi.fn(),
+	useAvailableTools: vi.fn(),
 	useCreateAgent: vi.fn(),
 	useDeleteAgent: vi.fn(),
 	useLlmServices: vi.fn(),
@@ -71,6 +72,7 @@ vi.mock("@/components/workspaces/SeededDefaultsCallout", () => ({
 
 import {
 	useAgents,
+	useAvailableTools,
 	useCreateAgent,
 	useDeleteAgent,
 	useLlmServices,
@@ -93,6 +95,7 @@ afterEach(() => {
 	vi.mocked(useDeleteWorkspace).mockReset();
 	vi.mocked(useFeatures).mockReset();
 	vi.mocked(useAgents).mockReset();
+	vi.mocked(useAvailableTools).mockReset();
 	vi.mocked(useCreateAgent).mockReset();
 	vi.mocked(useUpdateAgent).mockReset();
 	vi.mocked(useDeleteAgent).mockReset();
@@ -121,6 +124,12 @@ function setupBaseHooks() {
 		isError: false,
 		error: null,
 	} as unknown as ReturnType<typeof useAgents>);
+	vi.mocked(useAvailableTools).mockReturnValue({
+		data: [],
+		isLoading: false,
+		isError: false,
+		error: null,
+	} as unknown as ReturnType<typeof useAvailableTools>);
 	vi.mocked(useCreateAgent).mockReturnValue({
 		mutateAsync: vi.fn(),
 		isPending: false,

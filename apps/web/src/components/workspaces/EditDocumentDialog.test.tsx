@@ -5,18 +5,17 @@
  * the spies handed to the mocked hooks and assert that user actions —
  * typing, clicking Save, picking a file — call them with the right
  * payload shape. Render-only assertions live here too where the
- * conditional rendering itself is the behavior (RLAC gate, dialog open
- * state), but every flow that mutates anything is exercised end-to-end
+ * conditional rendering itself is the behavior (dialog open state),
+ * but every flow that mutates anything is exercised end-to-end
  * through the form.
  */
 
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PrincipalRecord, RagDocumentRecord } from "@/lib/schemas";
+import type { RagDocumentRecord } from "@/lib/schemas";
 
 const mocks = vi.hoisted(() => ({
-	rlacState: { enabled: false } as { enabled: boolean },
 	updateMutate: vi.fn(async (_args: unknown) => undefined),
 	ingestMutate: vi.fn(async (_args: unknown) => undefined),
 	toastSuccess: vi.fn(),
@@ -36,21 +35,6 @@ vi.mock("@/hooks/useIngest", () => ({
 		mutateAsync: mocks.ingestMutate,
 		isPending: false,
 	}),
-}));
-
-vi.mock("@/hooks/useRlac", () => ({
-	useRlacEnabled: () => mocks.rlacState.enabled,
-	usePrincipals: () => ({
-		data: [] as PrincipalRecord[],
-		error: null,
-		isLoading: false,
-		isError: false,
-	}),
-}));
-
-vi.mock("@/lib/viewAs", () => ({
-	getViewAsPrincipal: () => null,
-	subscribeViewAs: (_cb: (next: string | null) => void) => () => undefined,
 }));
 
 vi.mock("sonner", () => ({
@@ -84,7 +68,6 @@ function makeDoc(
 }
 
 beforeEach(() => {
-	mocks.rlacState.enabled = false;
 	mocks.updateMutate.mockClear();
 	mocks.updateMutate.mockResolvedValue(undefined);
 	mocks.ingestMutate.mockClear();
@@ -144,7 +127,7 @@ describe("EditDocumentDialog", () => {
 		expect(mocks.updateMutate).toHaveBeenCalledTimes(1);
 		expect(mocks.updateMutate).toHaveBeenCalledWith({
 			documentId: "00000000-0000-4000-8000-000000000003",
-			patch: { sourceFilename: "renamed.md", visibleTo: null },
+			patch: { sourceFilename: "renamed.md" },
 		});
 		expect(mocks.toastSuccess).toHaveBeenCalledWith("Document updated");
 		expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -170,29 +153,6 @@ describe("EditDocumentDialog", () => {
 		expect(mocks.toastSuccess).not.toHaveBeenCalled();
 		expect(mocks.toastError).toHaveBeenCalledTimes(1);
 		expect(onOpenChange).not.toHaveBeenCalled();
-	});
-
-	it("mounts the VisibilityPicker only when rlacEnabled is true", () => {
-		const { rerender } = render(
-			<EditDocumentDialog
-				workspace="ws-1"
-				knowledgeBaseId="kb-1"
-				doc={makeDoc()}
-				onOpenChange={onOpenChange}
-			/>,
-		);
-		expect(screen.queryByText("Visible to")).toBeNull();
-
-		mocks.rlacState.enabled = true;
-		rerender(
-			<EditDocumentDialog
-				workspace="ws-1"
-				knowledgeBaseId="kb-1"
-				doc={makeDoc()}
-				onOpenChange={onOpenChange}
-			/>,
-		);
-		expect(screen.getByText("Visible to")).toBeInTheDocument();
 	});
 
 	it("triggers async ingest with overwriteOnNameConflict when the user picks a replacement file", async () => {

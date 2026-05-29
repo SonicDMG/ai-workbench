@@ -11,7 +11,10 @@ export const searchCommand = defineCommand({
 	},
 	args: {
 		query: { type: "positional", required: true, description: "Search query" },
-		workspace: { type: "string", description: "Workspace ID" },
+		workspace: {
+			type: "string",
+			description: "Workspace ID (defaults to profile.defaultWorkspace)",
+		},
 		kb: { type: "string", description: "Knowledge base ID" },
 		"top-k": {
 			type: "string",
@@ -27,7 +30,10 @@ export const searchCommand = defineCommand({
 		const ctx = await loadContext(args);
 		const ws = args.workspace?.trim() || ctx.resolved.profile.defaultWorkspace;
 		const kb = args.kb?.trim();
-		if (!ws) throw new Error("--workspace is required.");
+		if (!ws)
+			throw new Error(
+				"--workspace is required (or set defaultWorkspace in your profile).",
+			);
 		if (!kb) throw new Error("--kb is required.");
 
 		const topK = args["top-k"] ? Number.parseInt(args["top-k"], 10) : 10;

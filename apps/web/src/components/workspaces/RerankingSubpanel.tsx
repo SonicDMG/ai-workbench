@@ -124,7 +124,7 @@ export function RerankingSubpanel({ workspace }: { workspace: string }) {
 			countLabel="reranking service"
 			rows={list.data}
 			loading={list.isLoading}
-			error={list.isError ? list.error.message : null}
+			error={list.isError ? formatApiError(list.error) : null}
 			onRetry={() => list.refetch()}
 			expanded={open}
 			onToggle={() => setOpen((v) => !v)}

@@ -105,7 +105,10 @@ const list = defineCommand({
 		description: "List principals in a workspace.",
 	},
 	args: {
-		workspace: { type: "string", description: "Workspace ID" },
+		workspace: {
+			type: "string",
+			description: "Workspace ID (defaults to profile.defaultWorkspace)",
+		},
 		profile: { type: "string" },
 		url: { type: "string" },
 		output: { type: "string", description: "human | json" },
@@ -126,7 +129,10 @@ const get = defineCommand({
 	meta: { name: "get", description: "Show a single principal." },
 	args: {
 		id: { type: "positional", required: true, description: "Principal ID" },
-		workspace: { type: "string", description: "Workspace ID" },
+		workspace: {
+			type: "string",
+			description: "Workspace ID (defaults to profile.defaultWorkspace)",
+		},
 		profile: { type: "string" },
 		url: { type: "string" },
 		output: { type: "string", description: "human | json" },
@@ -152,7 +158,10 @@ const create = defineCommand({
 			type: "string",
 			description: "key=value attribute (repeatable: --attribute dept=eng)",
 		},
-		workspace: { type: "string", description: "Workspace ID" },
+		workspace: {
+			type: "string",
+			description: "Workspace ID (defaults to profile.defaultWorkspace)",
+		},
 		profile: { type: "string" },
 		url: { type: "string" },
 		output: { type: "string", description: "human | json" },
@@ -189,7 +198,10 @@ const update = defineCommand({
 			type: "string",
 			description: "key=value attribute (repeatable, replaces all)",
 		},
-		workspace: { type: "string", description: "Workspace ID" },
+		workspace: {
+			type: "string",
+			description: "Workspace ID (defaults to profile.defaultWorkspace)",
+		},
 		profile: { type: "string" },
 		url: { type: "string" },
 		output: { type: "string", description: "human | json" },
@@ -223,7 +235,10 @@ const remove = defineCommand({
 	meta: { name: "delete", description: "Delete a principal." },
 	args: {
 		id: { type: "positional", required: true, description: "Principal ID" },
-		workspace: { type: "string", description: "Workspace ID" },
+		workspace: {
+			type: "string",
+			description: "Workspace ID (defaults to profile.defaultWorkspace)",
+		},
 		profile: { type: "string" },
 		url: { type: "string" },
 		output: { type: "string", description: "human | json" },
@@ -252,6 +267,10 @@ const remove = defineCommand({
 export const principalCommand = defineCommand({
 	meta: {
 		name: "principal",
+		// Hidden from `aiw --help` (advanced row-level access control).
+		// citty still resolves the command by name, so `aiw principal …`
+		// stays fully runnable — see docs/rlac.md.
+		hidden: true,
 		description:
 			"Manage RLAC principals (workspace-scoped identities). See docs/rlac.md.",
 	},

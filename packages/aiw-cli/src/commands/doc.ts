@@ -33,7 +33,10 @@ const upload = defineCommand({
 			required: true,
 			description: "Path to the file to upload",
 		},
-		workspace: { type: "string", description: "Workspace ID" },
+		workspace: {
+			type: "string",
+			description: "Workspace ID (defaults to profile.defaultWorkspace)",
+		},
 		kb: { type: "string", description: "Knowledge base ID" },
 		title: { type: "string", description: "Optional display title" },
 		profile: { type: "string" },
@@ -44,7 +47,10 @@ const upload = defineCommand({
 		const ctx = await loadContext(args);
 		const ws = args.workspace?.trim() || ctx.resolved.profile.defaultWorkspace;
 		const kb = args.kb?.trim();
-		if (!ws) throw new Error("--workspace is required.");
+		if (!ws)
+			throw new Error(
+				"--workspace is required (or set defaultWorkspace in your profile).",
+			);
 		if (!kb) throw new Error("--kb is required.");
 
 		const bytes = await readFile(args.file);

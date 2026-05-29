@@ -106,5 +106,5 @@ test("kb crud: delete confirm dialog requires name match, removes the KB card", 
 	await expect(kbCard).toHaveCount(0);
 
 	// Empty-state copy returns now that no KBs are left in the panel.
-	await expect(page.getByText(/No knowledge bases yet\./)).toBeVisible();
+	await expect(page.getByText(/No knowledge bases yet/)).toBeVisible();
 });

@@ -2,7 +2,11 @@ import { Database, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { ErrorState, LoadingState } from "@/components/common/states";
+import {
+	EmptyState,
+	ErrorState,
+	LoadingState,
+} from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -66,7 +70,7 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 		return (
 			<ErrorState
 				title="Couldn't load knowledge bases"
-				message={list.error.message}
+				message={formatApiError(list.error)}
 				actions={
 					<Button variant="secondary" onClick={() => list.refetch()}>
 						<RefreshCw className="h-4 w-4" /> Retry
@@ -81,17 +85,11 @@ export function KnowledgeBasesPanel({ workspace }: { workspace: string }) {
 	return (
 		<div className="flex flex-col gap-4">
 			{rows.length === 0 ? (
-				<div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
-					<p className="font-medium text-slate-700 dark:text-slate-300">
-						No knowledge bases yet.
-					</p>
-					<p>
-						A knowledge base owns one Astra collection plus the chunking,
-						embedding, and (optionally) reranking services that produce its
-						content. Pick those when you create the KB — service definitions
-						live under Settings.
-					</p>
-				</div>
+				<EmptyState
+					icon={<Database className="h-8 w-8" />}
+					title="No knowledge bases yet"
+					description="A knowledge base owns one Astra collection plus the chunking, embedding, and (optionally) reranking services that produce its content. Pick those when you create the KB — service definitions live under Settings."
+				/>
 			) : (
 				<ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
 					{rows.map((kb) => (

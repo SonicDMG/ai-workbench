@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { WorkspaceCard } from "@/components/workspaces/WorkspaceCard";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
+import { formatApiError } from "@/lib/api";
 
 export function WorkspacesPage() {
 	const { data, isLoading, isError, error, refetch, isFetching } =
@@ -19,7 +20,7 @@ export function WorkspacesPage() {
 		return (
 			<ErrorState
 				title="Couldn't load workspaces"
-				message={error.message}
+				message={formatApiError(error)}
 				actions={
 					<Button variant="secondary" onClick={() => refetch()}>
 						<RefreshCw className="h-4 w-4" />

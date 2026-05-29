@@ -91,7 +91,10 @@ export default defineConfig({
 			},
 			{
 				text: "Project",
-				items: [{ text: "Roadmap", link: "/roadmap" }],
+				items: [
+					{ text: "What's new in 0.4", link: "/whats-new-0.4.0" },
+					{ text: "Roadmap", link: "/roadmap" },
+				],
 			},
 		],
 		footer: {

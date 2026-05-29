@@ -1,7 +1,11 @@
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plug, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, LoadingState } from "@/components/common/states";
+import {
+	EmptyState,
+	ErrorState,
+	LoadingState,
+} from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -31,7 +35,7 @@ import {
  * Streamable HTTP and lets the operator add / edit / delete them. Each
  * enabled server's tools are discovered at turn time and exposed to
  * agents as `mcp:{mcpServerId}:{tool}` (opt-in via the agent's tool
- * allow-list). Modeled on the PrincipalsPanel CRUD shape.
+ * allow-list).
  *
  * Registering a server is workspace *content* (gated to `write`, not the
  * admin `manage` scope), so this panel sits alongside Services rather
@@ -64,10 +68,14 @@ export function McpServersPanel({ workspace }: { workspace: string }) {
 			</div>
 
 			{rows.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
-					No external MCP servers registered. Add one to let this workspace's
-					agents call its tools (opt-in per agent via the tool picker).
-				</div>
+				// No action button here — the always-visible "Add MCP server"
+				// button above the list is the canonical CTA; duplicating it
+				// in the empty state is redundant.
+				<EmptyState
+					icon={<Plug className="h-8 w-8" />}
+					title="No external MCP servers registered"
+					description="Add one to let this workspace's agents call its tools (opt-in per agent via the tool picker)."
+				/>
 			) : (
 				<div className="overflow-x-auto">
 					<table className="w-full text-left text-sm">

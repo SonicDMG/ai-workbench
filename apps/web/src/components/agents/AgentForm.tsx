@@ -1,5 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Plus } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
+import { Link } from "react-router-dom";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { FieldHelp, FieldLabel } from "@/components/ui/field-label";
@@ -112,6 +114,12 @@ export interface AgentFormProps {
 	readonly llmServices: readonly LlmServiceRecord[];
 	readonly rerankingServices: readonly RerankingServiceRecord[];
 	/**
+	 * Workspace id. When provided, the Tools section links to the
+	 * MCP/tool settings so operators can register more tools without
+	 * leaving the form.
+	 */
+	readonly workspaceId?: string;
+	/**
 	 * Selectable tool catalog for this workspace (from
 	 * `GET .../available-tools`). When omitted/empty the tool picker is
 	 * hidden — the agent keeps the default "all built-in tools" behavior.
@@ -130,6 +138,7 @@ export function AgentForm({
 	knowledgeBases,
 	llmServices,
 	rerankingServices,
+	workspaceId,
 	availableTools = [],
 	submitting,
 	onSubmit,
@@ -145,6 +154,7 @@ export function AgentForm({
 	const selectedToolIds = form.watch("toolIds");
 	const errors = form.formState.errors;
 	const toolGroups = groupToolsBySource(availableTools);
+	const hasExternalTools = toolGroups.some((g) => g.source !== "builtin");
 
 	function toggleKb(kbId: string): void {
 		const current = form.getValues("knowledgeBaseIds");
@@ -261,7 +271,7 @@ export function AgentForm({
 				</FieldLabel>
 				<p className="text-xs text-slate-500 dark:text-slate-400">
 					Default RAG scope for conversations against this agent. Leave empty to
-					draw from every KB in the workspace.
+					use the default — every knowledge base in the workspace.
 				</p>
 				{knowledgeBases.length === 0 ? (
 					<p className="text-xs text-slate-500 italic dark:text-slate-400">
@@ -297,15 +307,25 @@ export function AgentForm({
 
 			{toolGroups.length > 0 ? (
 				<div className="flex flex-col gap-1.5">
-					<FieldLabel
-						className="text-sm font-medium"
-						help="The tools this agent may call mid-conversation. Leave every box unchecked to grandfather in all built-in workspace tools (the default). Checking any box switches to an explicit allow-list — only the checked tools are offered (built-in tools must then be checked too). Native and external-MCP tools are always opt-in."
-					>
-						Tools
-					</FieldLabel>
+					<div className="flex items-center justify-between gap-2">
+						<FieldLabel
+							className="text-sm font-medium"
+							help="The tools this agent may call mid-conversation. Leave every box unchecked to grandfather in all built-in workspace tools (the default). Checking any box switches to an explicit allow-list — only the checked tools are offered (built-in tools must then be checked too). Native and external-MCP tools are always opt-in."
+						>
+							Tools
+						</FieldLabel>
+						{workspaceId ? (
+							<Button type="button" variant="ghost" size="sm" asChild>
+								<Link to={`/workspaces/${workspaceId}/settings`}>
+									<Plus className="h-3.5 w-3.5" />
+									Add tools
+								</Link>
+							</Button>
+						) : null}
+					</div>
 					<p className="text-xs text-slate-500 dark:text-slate-400">
 						{selectedToolIds.length === 0
-							? "Using all built-in tools (default). Check tools to set an explicit allow-list."
+							? "Leave empty to use the default — all built-in workspace tools. Check tools to set an explicit allow-list."
 							: `${selectedToolIds.length} tool${selectedToolIds.length === 1 ? "" : "s"} selected.`}
 					</p>
 					<div className="flex flex-col gap-3">
@@ -346,6 +366,22 @@ export function AgentForm({
 								})}
 							</fieldset>
 						))}
+						{!hasExternalTools ? (
+							<div className="rounded-md border border-dashed border-slate-300 p-3 text-xs text-slate-500 dark:border-slate-600 dark:text-slate-400">
+								No external tools are registered for this workspace yet.{" "}
+								{workspaceId ? (
+									<Link
+										to={`/workspaces/${workspaceId}/settings`}
+										className="font-medium text-[var(--color-brand-600)] hover:underline"
+									>
+										Add an MCP server
+									</Link>
+								) : (
+									"Add an MCP server"
+								)}{" "}
+								in Settings to give this agent more tools.
+							</div>
+						) : null}
 					</div>
 				</div>
 			) : null}

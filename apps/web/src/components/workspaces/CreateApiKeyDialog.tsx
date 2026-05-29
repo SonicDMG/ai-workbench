@@ -26,7 +26,7 @@ import { formatApiError } from "@/lib/api";
  *   viewer → [read]                 read-only.
  *   editor → [read, write]          mutate workspace content.
  *   admin  → [read, write, manage]  + admin ops (mint/revoke keys,
- *                                   manage RLAC, delete the workspace).
+ *                                   delete the workspace).
  *
  * Picking a role (rather than raw scopes) keeps the UX legible — most
  * operators think in "what can this key do", not in scope tuples — and
@@ -43,7 +43,7 @@ const ROLE_PRESETS = [
 		label: "Editor",
 		scopeSummary: "read + write",
 		help: [
-			"Retrieval and mutation of workspace content — search, ingest, KB / agent / service CRUD. Same access as keys minted before roles existed. Cannot manage keys, RLAC, or delete the workspace.",
+			"Retrieval and mutation of workspace content — search, ingest, KB / agent / service CRUD. Same access as keys minted before roles existed. Cannot manage keys or delete the workspace.",
 		],
 		scopes: ["read", "write"] as const,
 	},
@@ -69,7 +69,7 @@ const ROLE_PRESETS = [
 		label: "Admin",
 		scopeSummary: "read + write + manage",
 		help: [
-			"Everything an Editor can do, plus admin operations: mint / revoke API keys, manage RLAC principals and policy, and delete the workspace. Issue sparingly — an Admin key can mint more keys.",
+			"Everything an Editor can do, plus admin operations: mint / revoke API keys and delete the workspace. Issue sparingly — an Admin key can mint more keys.",
 		],
 		scopes: ["read", "write", "manage"] as const,
 	},
@@ -193,7 +193,7 @@ export function CreateApiKeyDialog({
 						<div className="flex flex-col gap-2">
 							<FieldLabel
 								htmlFor="key-role"
-								help="The role this key acts as. Viewer is read-only (good for untrusted external agents); Editor can mutate workspace content (first-party tooling); Admin can additionally manage keys, RLAC, and delete the workspace. The role expands into the privilege scopes sent to the server."
+								help="The role this key acts as. Viewer is read-only (good for untrusted external agents); Editor can mutate workspace content (first-party tooling); Admin can additionally manage keys and delete the workspace. The role expands into the privilege scopes sent to the server."
 							>
 								Role
 							</FieldLabel>

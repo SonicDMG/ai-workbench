@@ -1,7 +1,11 @@
 import { KeyRound, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, LoadingState } from "@/components/common/states";
+import {
+	EmptyState,
+	ErrorState,
+	LoadingState,
+} from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -39,7 +43,7 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 		return (
 			<ErrorState
 				title="Couldn't load API keys"
-				message={keys.error.message}
+				message={formatApiError(keys.error)}
 				actions={
 					<Button variant="secondary" onClick={() => keys.refetch()}>
 						<RefreshCw className="h-4 w-4" />
@@ -98,10 +102,14 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
 			</CardHeader>
 			<CardContent className="p-4 pt-3">
 				{rows.length === 0 ? (
-					<div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
-						No keys yet. Create one to let a client authenticate against this
-						workspace.
-					</div>
+					// No action button here — the always-visible "New key" button
+					// in the header is the canonical CTA; duplicating it in the
+					// empty state is redundant.
+					<EmptyState
+						icon={<KeyRound className="h-8 w-8" />}
+						title="No keys yet"
+						description="Create one to let a client authenticate against this workspace."
+					/>
 				) : (
 					/*
 					 * `overflow-x-auto` (not `overflow-hidden`) on the wrapper

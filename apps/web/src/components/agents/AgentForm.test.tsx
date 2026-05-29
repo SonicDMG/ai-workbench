@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AgentForm } from "./AgentForm";
 
@@ -128,7 +129,7 @@ describe("AgentForm", () => {
 		expect(screen.getByTestId("tool-group-native")).toBeInTheDocument();
 		// Default hint communicates the grandfather behavior.
 		expect(
-			screen.getByText(/Using all built-in tools \(default\)/),
+			screen.getByText(/Check tools to set an explicit allow-list/),
 		).toBeInTheDocument();
 
 		await user.type(screen.getByLabelText(/^Name/), "Tooler");
@@ -139,6 +140,41 @@ describe("AgentForm", () => {
 		expect(onSubmit).toHaveBeenCalledWith(
 			expect.objectContaining({ toolIds: ["native:fetch"] }),
 		);
+	});
+
+	it("shows an empty-state callout + 'Add tools' link when only built-in tools exist", () => {
+		render(
+			<MemoryRouter>
+				<AgentForm
+					mode="create"
+					workspaceId="ws-1"
+					knowledgeBases={[]}
+					llmServices={[]}
+					rerankingServices={[]}
+					availableTools={[
+						{
+							id: "search_kb",
+							description: "Semantic search across KBs.",
+							source: "builtin" as const,
+						},
+					]}
+					onSubmit={vi.fn()}
+				/>
+			</MemoryRouter>,
+		);
+		// The Tools section still renders (built-in tools are present)…
+		expect(screen.getByTestId("tool-group-builtin")).toBeInTheDocument();
+		// …and a callout nudges the user to register external tools.
+		expect(
+			screen.getByText(/No external tools are registered/),
+		).toBeInTheDocument();
+		// The shortcut(s) deep-link to the workspace's settings page.
+		const settingsLinks = screen
+			.getAllByRole("link")
+			.filter((a) =>
+				a.getAttribute("href")?.includes("/workspaces/ws-1/settings"),
+			);
+		expect(settingsLinks.length).toBeGreaterThan(0);
 	});
 
 	it("preselects the agent's existing toolIds in edit mode", () => {

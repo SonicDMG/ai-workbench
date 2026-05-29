@@ -11,40 +11,22 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
-import { toast } from "sonner";
-import { AgentForm } from "@/components/agents/AgentForm";
+import { AgentFormDialog } from "@/components/agents/AgentFormDialog";
+import { DeleteAgentDialog } from "@/components/agents/DeleteAgentDialog";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@/components/ui/dialog";
 import { CreateKnowledgeBaseDialog } from "@/components/workspaces/CreateKnowledgeBaseDialog";
 import { KindBadge } from "@/components/workspaces/KindBadge";
 import { KnowledgeBasesPanel } from "@/components/workspaces/KnowledgeBasesPanel";
 import { McpUrlButton } from "@/components/workspaces/McpUrlButton";
-import {
-	useAgents,
-	useCreateAgent,
-	useDeleteAgent,
-	useLlmServices,
-	useUpdateAgent,
-} from "@/hooks/useConversations";
+import { useAgents, useLlmServices } from "@/hooks/useConversations";
 import { useFeatures } from "@/hooks/useFeatures";
 import { useKnowledgeBases } from "@/hooks/useKnowledgeBases";
 import { useRerankingServices } from "@/hooks/useServices";
 import { useWorkspace } from "@/hooks/useWorkspaces";
 import { ApiError, formatApiError } from "@/lib/api";
-import type {
-	AgentRecord,
-	CreateAgentInput,
-	UpdateAgentInput,
-} from "@/lib/schemas";
+import type { AgentRecord } from "@/lib/schemas";
 
 export function WorkspaceDetailPage() {
 	const { workspaceId } = useParams<{ workspaceId: string }>();
@@ -255,23 +237,28 @@ function AgentsHero({ workspaceId }: { workspaceId: string }) {
 					</ul>
 				)}
 			</CardContent>
-			<CreateAgentDialog
+			<AgentFormDialog
 				workspace={workspaceId}
+				mode="create"
 				open={creating}
 				onOpenChange={setCreating}
 				knowledgeBases={knowledgeBases.data ?? []}
 				llmServices={llmServices.data ?? []}
 				rerankingServices={rerankingServices.data ?? []}
 			/>
-			<EditAgentDialog
+			<AgentFormDialog
 				workspace={workspaceId}
+				mode="edit"
 				agent={editing}
-				onClose={() => setEditing(null)}
+				open={editing !== null}
+				onOpenChange={(o) => {
+					if (!o) setEditing(null);
+				}}
 				knowledgeBases={knowledgeBases.data ?? []}
 				llmServices={llmServices.data ?? []}
 				rerankingServices={rerankingServices.data ?? []}
 			/>
-			<DeleteAgentConfirm
+			<DeleteAgentDialog
 				workspace={workspaceId}
 				agent={deleting}
 				onClose={() => setDeleting(null)}
@@ -296,6 +283,11 @@ function AgentSummaryCard({
 	const kbLabel = agent.knowledgeBaseIds.length
 		? `${agent.knowledgeBaseIds.length} KB${agent.knowledgeBaseIds.length === 1 ? "" : "s"}`
 		: "all KBs";
+	// Tool scope mirrors the KB chip: an empty allow-list means "all
+	// built-in tools" (the default); a non-empty set is an explicit count.
+	const toolLabel = agent.toolIds.length
+		? `${agent.toolIds.length} tool${agent.toolIds.length === 1 ? "" : "s"}`
+		: "all tools";
 	// The bound LLM service's model id, mirroring the KB cards' embedding
 	// chip. An agent with no explicit service inherits the workspace's
 	// global chat default; a non-null id that doesn't resolve means the
@@ -330,6 +322,9 @@ function AgentSummaryCard({
 				<div className="mt-auto flex min-w-0 flex-wrap items-center gap-1.5">
 					<span className="inline-flex shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
 						{kbLabel}
+					</span>
+					<span className="inline-flex shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+						{toolLabel}
 					</span>
 					<span
 						className="inline-flex max-w-full items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-300"
@@ -369,152 +364,6 @@ function AgentSummaryCard({
 				</Button>
 			</div>
 		</li>
-	);
-}
-
-interface AgentDialogContext {
-	readonly workspace: string;
-	readonly knowledgeBases: ReturnType<typeof useKnowledgeBases>["data"];
-	readonly llmServices: ReturnType<typeof useLlmServices>["data"];
-	readonly rerankingServices: ReturnType<typeof useRerankingServices>["data"];
-}
-
-function CreateAgentDialog({
-	workspace,
-	open,
-	onOpenChange,
-	knowledgeBases,
-	llmServices,
-	rerankingServices,
-}: AgentDialogContext & {
-	open: boolean;
-	onOpenChange: (v: boolean) => void;
-}) {
-	const create = useCreateAgent(workspace);
-	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-2xl">
-				<DialogHeader>
-					<DialogTitle>New agent</DialogTitle>
-					<DialogDescription>
-						Define a workspace-scoped agent with its own persona and RAG
-						defaults.
-					</DialogDescription>
-				</DialogHeader>
-				<AgentForm
-					mode="create"
-					knowledgeBases={knowledgeBases ?? []}
-					llmServices={llmServices ?? []}
-					rerankingServices={rerankingServices ?? []}
-					submitting={create.isPending}
-					onSubmit={async (values) => {
-						try {
-							await create.mutateAsync(values as CreateAgentInput);
-							toast.success("Agent created");
-							onOpenChange(false);
-						} catch (err) {
-							toast.error("Couldn't create agent", {
-								description: formatApiError(err),
-							});
-						}
-					}}
-					onCancel={() => onOpenChange(false)}
-				/>
-			</DialogContent>
-		</Dialog>
-	);
-}
-
-function EditAgentDialog({
-	workspace,
-	agent,
-	onClose,
-	knowledgeBases,
-	llmServices,
-	rerankingServices,
-}: AgentDialogContext & {
-	agent: AgentRecord | null;
-	onClose: () => void;
-}) {
-	const update = useUpdateAgent(workspace, agent?.agentId ?? "__missing__");
-	if (!agent) return null;
-	return (
-		<Dialog open onOpenChange={(o) => (!o ? onClose() : undefined)}>
-			<DialogContent className="max-w-2xl">
-				<DialogHeader>
-					<DialogTitle>Edit agent</DialogTitle>
-					<DialogDescription>{agent.name}</DialogDescription>
-				</DialogHeader>
-				<AgentForm
-					mode="edit"
-					agent={agent}
-					knowledgeBases={knowledgeBases ?? []}
-					llmServices={llmServices ?? []}
-					rerankingServices={rerankingServices ?? []}
-					submitting={update.isPending}
-					onSubmit={async (values) => {
-						try {
-							await update.mutateAsync(values as UpdateAgentInput);
-							toast.success("Agent updated");
-							onClose();
-						} catch (err) {
-							toast.error("Couldn't save changes", {
-								description: formatApiError(err),
-							});
-						}
-					}}
-					onCancel={onClose}
-				/>
-			</DialogContent>
-		</Dialog>
-	);
-}
-
-function DeleteAgentConfirm({
-	workspace,
-	agent,
-	onClose,
-}: {
-	workspace: string;
-	agent: AgentRecord | null;
-	onClose: () => void;
-}) {
-	const del = useDeleteAgent(workspace);
-	if (!agent) return null;
-	return (
-		<Dialog open onOpenChange={(o) => (!o ? onClose() : undefined)}>
-			<DialogContent>
-				<DialogHeader>
-					<DialogTitle>Delete this agent?</DialogTitle>
-					<DialogDescription>
-						<strong>{agent.name}</strong> will be deleted along with all of its
-						conversations and message history. This cannot be undone.
-					</DialogDescription>
-				</DialogHeader>
-				<DialogFooter>
-					<Button variant="ghost" onClick={onClose} disabled={del.isPending}>
-						Cancel
-					</Button>
-					<Button
-						variant="destructive"
-						disabled={del.isPending}
-						onClick={async () => {
-							try {
-								await del.mutateAsync(agent.agentId);
-								toast.success("Agent deleted");
-								onClose();
-							} catch (err) {
-								toast.error("Couldn't delete agent", {
-									description: formatApiError(err),
-								});
-							}
-						}}
-					>
-						{del.isPending ? "Deleting…" : "Delete agent"}
-					</Button>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
 	);
 }
 

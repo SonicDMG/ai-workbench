@@ -40,13 +40,11 @@ export function DocumentTable({
 	onEdit,
 	onDelete,
 	deletingDocumentId,
-	rlacEnabled,
 }: {
 	docs: readonly RagDocumentRecord[];
 	onSelect?: (doc: RagDocumentRecord) => void;
 	/** When provided, a pencil button renders next to delete that
-	 * opens the edit dialog (rename, change visibility, replace
-	 * file). */
+	 * opens the edit dialog (rename or replace file). */
 	onEdit?: (doc: RagDocumentRecord) => void;
 	/** When provided, a trash button renders on each row that calls
 	 * back to the parent (which usually pops a confirm dialog). */
@@ -54,10 +52,6 @@ export function DocumentTable({
 	/** documentId currently being deleted — disables that row's
 	 * trash button to prevent double-clicks during the round trip. */
 	deletingDocumentId?: string | null;
-	/** Workspace-level RLAC master switch. When false, the
-	 * `visible_to` column is hidden — the chips would be meaningless
-	 * to a user who has no other RLAC affordance in view. */
-	rlacEnabled?: boolean;
 }) {
 	const [sortKey, setSortKey] = useState<SortKey>("ingestedAt");
 	const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -159,11 +153,6 @@ export function DocumentTable({
 							>
 								Ingested
 							</SortHead>
-							{rlacEnabled ? (
-								<th className="px-3 py-2 text-left font-medium w-48">
-									Visible to
-								</th>
-							) : null}
 							{onEdit || onDelete ? <th className="w-20 px-3 py-2" /> : null}
 						</tr>
 					</thead>
@@ -171,7 +160,7 @@ export function DocumentTable({
 						{sorted.length === 0 ? (
 							<tr>
 								<td
-									colSpan={(rlacEnabled ? 7 : 6) + (onEdit || onDelete ? 1 : 0)}
+									colSpan={6 + (onEdit || onDelete ? 1 : 0)}
 									className="px-3 py-6 text-center text-xs text-slate-500 dark:text-slate-400"
 								>
 									No documents match “{filter}”.
@@ -222,31 +211,6 @@ export function DocumentTable({
 											? formatDate(d.ingestedAt)
 											: formatDate(d.updatedAt)}
 									</td>
-									{rlacEnabled ? (
-										<td className="px-3 py-2 text-slate-600 text-xs dark:text-slate-400">
-											{!d.visibleTo ? (
-												<span className="text-slate-400">legacy</span>
-											) : d.visibleTo.length === 0 ? (
-												<span className="text-slate-400">— nobody —</span>
-											) : (
-												<div className="flex flex-wrap gap-1">
-													{d.visibleTo.map((p) => (
-														<span
-															key={p}
-															className={cn(
-																"rounded px-1.5 py-0.5 font-mono text-[10px]",
-																p === "*"
-																	? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
-																	: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
-															)}
-														>
-															{p}
-														</span>
-													))}
-												</div>
-											)}
-										</td>
-									) : null}
 									{onEdit || onDelete ? (
 										<td className="px-3 py-2 text-right">
 											<div className="flex items-center justify-end gap-1">

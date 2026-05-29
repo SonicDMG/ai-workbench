@@ -120,7 +120,7 @@ export function ChunkingSubpanel({ workspace }: { workspace: string }) {
 			countLabel="chunking service"
 			rows={list.data}
 			loading={list.isLoading}
-			error={list.isError ? list.error.message : null}
+			error={list.isError ? formatApiError(list.error) : null}
 			onRetry={() => list.refetch()}
 			expanded={open}
 			onToggle={() => setOpen((v) => !v)}

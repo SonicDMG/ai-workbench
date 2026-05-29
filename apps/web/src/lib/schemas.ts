@@ -1248,37 +1248,6 @@ export const KIND_DESCRIPTIONS: Record<WorkspaceKind, string> = {
 };
 
 /* ====================================================================== */
-/* RLAC prototype frontend schemas — principals, policy preview, audit.   */
-/* ====================================================================== */
-
-export const PrincipalRecordSchema = z.object({
-	workspaceId: z.string().uuid(),
-	principalId: z.string(),
-	label: z.string().nullable(),
-	attributes: z.record(z.string(), z.string()),
-	createdAt: z.string(),
-	updatedAt: z.string(),
-});
-export type PrincipalRecord = z.infer<typeof PrincipalRecordSchema>;
-export const PrincipalPageSchema = paginatedSchema(PrincipalRecordSchema);
-
-export const CreatePrincipalInputSchema = z.object({
-	principalId: z
-		.string()
-		.min(1, "Principal id is required")
-		.regex(/^[A-Za-z0-9._@:+-]+$/, "Use letters, digits, @ . _ : + - only"),
-	label: z.string().max(200).nullable().optional(),
-	attributes: z.record(z.string(), z.string()).optional(),
-});
-export type CreatePrincipalInput = z.infer<typeof CreatePrincipalInputSchema>;
-
-export const UpdatePrincipalInputSchema = z.object({
-	label: z.string().max(200).nullable().optional(),
-	attributes: z.record(z.string(), z.string()).optional(),
-});
-export type UpdatePrincipalInput = z.infer<typeof UpdatePrincipalInputSchema>;
-
-/* ====================================================================== */
 /* External MCP servers (0.4.0 A2 backend; A6 settings UI).               */
 /*                                                                        */
 /* Per-workspace registry of remote MCP servers the agents can reach.     */
@@ -1328,40 +1297,6 @@ export const UpdateMcpServerInputSchema = z
 	})
 	.strict();
 export type UpdateMcpServerInput = z.infer<typeof UpdateMcpServerInputSchema>;
-
-export const PolicyValidationIssueSchema = z.object({
-	code: z.string(),
-	message: z.string(),
-	hint: z.string().optional(),
-});
-export type PolicyValidationIssue = z.infer<typeof PolicyValidationIssueSchema>;
-
-export const PolicyCompilePreviewResponseSchema = z.object({
-	ok: z.boolean(),
-	parseError: z.string().nullable(),
-	issues: z.array(PolicyValidationIssueSchema),
-	compiledFilter: z.unknown().nullable(),
-	principalId: z.string().nullable(),
-});
-export type PolicyCompilePreviewResponse = z.infer<
-	typeof PolicyCompilePreviewResponseSchema
->;
-
-export const PolicyAuditRecordSchema = z.object({
-	workspaceId: z.string().uuid(),
-	auditDay: z.string(),
-	ts: z.string(),
-	decisionId: z.string().uuid(),
-	principalId: z.string().nullable(),
-	knowledgeBaseId: z.string().uuid(),
-	resourceId: z.string(),
-	action: z.enum(["list", "get", "search", "ingest", "update", "delete"]),
-	decision: z.enum(["allow", "deny", "filter"]),
-	reason: z.string(),
-	compiledFilterJson: z.string().nullable(),
-});
-export type PolicyAuditRecord = z.infer<typeof PolicyAuditRecordSchema>;
-export const PolicyAuditPageSchema = paginatedSchema(PolicyAuditRecordSchema);
 
 /**
  * Setup-wizard envelope returned by `GET /setup-status`. Mirrors the

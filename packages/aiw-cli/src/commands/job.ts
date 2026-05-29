@@ -29,7 +29,10 @@ const status = defineCommand({
 	meta: { name: "status", description: "Show the status of an async job." },
 	args: {
 		id: { type: "positional", required: true, description: "Job ID" },
-		workspace: { type: "string", description: "Workspace ID" },
+		workspace: {
+			type: "string",
+			description: "Workspace ID (defaults to profile.defaultWorkspace)",
+		},
 		profile: { type: "string" },
 		url: { type: "string" },
 		output: { type: "string", description: "human | json" },
@@ -37,7 +40,10 @@ const status = defineCommand({
 	async run({ args }) {
 		const ctx = await loadContext(args);
 		const ws = args.workspace?.trim() || ctx.resolved.profile.defaultWorkspace;
-		if (!ws) throw new Error("--workspace is required.");
+		if (!ws)
+			throw new Error(
+				"--workspace is required (or set defaultWorkspace in your profile).",
+			);
 		const job = await request(
 			ctx.request,
 			`/api/v1/workspaces/${encodeURIComponent(ws)}/jobs/${encodeURIComponent(args.id)}`,

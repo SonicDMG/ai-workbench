@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, api, formatApiError } from "./api";
 import { setAuthToken } from "./authToken";
-import {
-	setActiveWorkspaceId,
-	setViewAsPrincipal,
-	workspaceIdFromApiPath,
-} from "./viewAs";
 
 const WORKSPACE = {
 	workspaceId: "00000000-0000-4000-8000-000000000001",
@@ -275,66 +270,4 @@ describe("api client request contract", () => {
 		// back on restores the previous policy.
 		expect(parsed).not.toHaveProperty("policyDsl");
 	});
-
-	it("sends x-view-as-principal derived from the request path (RLAC)", async () => {
-		// Regression: the API client used to read the view-as principal
-		// from a React-side "active workspace" state that the
-		// ViewAsPicker set on mount. On the first page load — before
-		// the picker's effect ran — the documents query fired without
-		// the header and got 401'd. The path-parse approach below makes
-		// the resolution lifecycle-independent: the header is derived
-		// from the URL we're calling, so it's always present when the
-		// user has previously picked a principal for that workspace.
-		const ws = "00000000-0000-4000-8000-000000000abc";
-		setViewAsPrincipalForWorkspaceUnderTest(ws, "admin");
-		fetchMock().mockResolvedValue(
-			jsonResponse({ items: [], nextCursor: null }),
-		);
-
-		await api.listPrincipals(ws);
-
-		const call = fetchMock().mock.calls[0];
-		const init = call?.[1] as RequestInit;
-		const headers = init.headers as Record<string, string>;
-		expect(headers["x-view-as-principal"]).toBe("admin");
-	});
-
-	it("omits x-view-as-principal when the request path is not workspace-scoped", async () => {
-		// Auth-config + similar non-workspace endpoints must not pick
-		// up a stray view-as header.
-		const ws = "00000000-0000-4000-8000-000000000abc";
-		setViewAsPrincipalForWorkspaceUnderTest(ws, "admin");
-		fetchMock().mockResolvedValue(
-			jsonResponse({ mcp: { enabled: false, baseUrl: null } }),
-		);
-
-		await api.getFeatures();
-
-		const init = fetchMock().mock.calls[0]?.[1] as RequestInit;
-		const headers = init.headers as Record<string, string>;
-		expect(headers["x-view-as-principal"]).toBeUndefined();
-	});
-
-	it("parses workspace id out of both absolute and relative API paths", () => {
-		expect(workspaceIdFromApiPath("/api/v1/workspaces/abc/principals")).toBe(
-			"abc",
-		);
-		expect(workspaceIdFromApiPath("/workspaces/abc/knowledge-bases")).toBe(
-			"abc",
-		);
-		expect(workspaceIdFromApiPath("/workspaces/abc?cursor=x")).toBe("abc");
-		expect(workspaceIdFromApiPath("/api/v1/health")).toBeNull();
-	});
 });
-
-// Helper: write a per-workspace view-as value without relying on the
-// `setActiveWorkspaceId` path (which mirrors the production picker's
-// lifecycle but isn't what we're testing here). Localstorage is shared
-// across the suite; reset by re-binding the workspace.
-function setViewAsPrincipalForWorkspaceUnderTest(
-	workspaceId: string,
-	principal: string,
-): void {
-	setActiveWorkspaceId(workspaceId);
-	setViewAsPrincipal(principal);
-}

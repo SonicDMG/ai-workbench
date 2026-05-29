@@ -25,7 +25,26 @@ import {
 	writeConfig,
 } from "../config.js";
 import { ExitCode } from "../exit-codes.js";
-import { fail, info, success, warn } from "../output.js";
+import { HttpError, request } from "../http.js";
+import { fail, info, type OutputFormat, success, warn } from "../output.js";
+import { WhoAmISchema } from "../types.js";
+
+/**
+ * Result envelope for `aiw login --oidc`. Mirrors the shape the
+ * API-key path emits from `login.ts` so `--output json` is identical
+ * across both auth flows (`{ profile, url, configPath, verified,
+ * role, scopes }`).
+ */
+export interface DeviceFlowLoginResult {
+	readonly profile: string;
+	readonly url: string;
+	readonly configPath: string;
+	readonly verified: boolean;
+	// `null` = runtime reports this caller as unscoped (all scopes);
+	// `undefined` = verification never ran (e.g. /auth/me failed).
+	readonly role: string | null | undefined;
+	readonly scopes: readonly string[] | null | undefined;
+}
 
 interface DeviceAuthorization {
 	readonly device_code: string;
@@ -51,29 +70,40 @@ const SLOW_DOWN_INCREMENT_SECONDS = 5;
 export async function runDeviceFlowLogin(opts: {
 	readonly url: string;
 	readonly profileName: string;
-}): Promise<void> {
+	/** Output mode. `human` (default) prints progress + a success
+	 * banner; `json` stays silent on stdout so the caller can emit a
+	 * single machine-readable envelope. */
+	readonly format?: OutputFormat;
+}): Promise<DeviceFlowLoginResult> {
+	const format = opts.format ?? "human";
+	const human = format === "human";
 	const baseUrl = opts.url.replace(/\/+$/, "");
 
 	const dev = await startDeviceAuthorization(baseUrl);
 
 	const verification = dev.verification_uri_complete ?? dev.verification_uri;
-	info(
-		[
-			"Open this URL in your browser to approve the login:",
-			`  ${verification}`,
-			dev.verification_uri_complete
-				? `(plain URL: ${dev.verification_uri})`
-				: "",
-			`Enter the code: ${dev.user_code}`,
-			`The code expires in ${Math.round(dev.expires_in / 60)} minute(s).`,
-			"",
-			"Waiting for approval (Ctrl+C to cancel)…",
-		]
-			.filter(Boolean)
-			.join("\n"),
-	);
+	// The device-flow prompt (verification URL + user code) is only
+	// meaningful to a human at a terminal; in json mode the caller
+	// drives approval out-of-band, so keep stdout/stderr quiet.
+	if (human) {
+		info(
+			[
+				"Open this URL in your browser to approve the login:",
+				`  ${verification}`,
+				dev.verification_uri_complete
+					? `(plain URL: ${dev.verification_uri})`
+					: "",
+				`Enter the code: ${dev.user_code}`,
+				`The code expires in ${Math.round(dev.expires_in / 60)} minute(s).`,
+				"",
+				"Waiting for approval (Ctrl+C to cancel)…",
+			]
+				.filter(Boolean)
+				.join("\n"),
+		);
+	}
 
-	const tokens = await pollForToken(baseUrl, dev);
+	const tokens = await pollForToken(baseUrl, dev, human);
 
 	const expiresAt = tokens.expires_in
 		? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
@@ -92,16 +122,54 @@ export async function runDeviceFlowLogin(opts: {
 	const next = setProfile(current, opts.profileName, profile);
 	await writeConfig(next, loc);
 
-	success(`Saved profile "${opts.profileName}" at ${loc.file}.`);
-	if (expiresAt) {
-		info(
-			`Token expires at ${expiresAt} — re-run \`aiw login --oidc\` to refresh.`,
-		);
-	} else {
-		info(
-			"Runtime didn't return an `expires_in`; if commands start 401-ing, re-run `aiw login --oidc`.",
-		);
+	if (human) {
+		success(`Saved profile "${opts.profileName}" at ${loc.file}.`);
+		if (expiresAt) {
+			info(
+				`Token expires at ${expiresAt} — re-run \`aiw login --oidc\` to refresh.`,
+			);
+		} else {
+			info(
+				"Runtime didn't return an `expires_in`; if commands start 401-ing, re-run `aiw login --oidc`.",
+			);
+		}
 	}
+
+	const result: DeviceFlowLoginResult = {
+		profile: opts.profileName,
+		url: opts.url,
+		configPath: loc.file,
+		verified: false,
+		role: undefined,
+		scopes: undefined,
+	};
+
+	// Best-effort verification, mirroring the API-key path: confirm the
+	// freshly minted token is accepted and surface the caller's role +
+	// scopes. A failure here is non-fatal — the credential is already
+	// saved, and `aiw whoami` can be re-run once the runtime is
+	// reachable.
+	try {
+		const me = await request({ profile }, "/auth/me", WhoAmISchema);
+		return { ...result, verified: true, role: me.role, scopes: me.scopes };
+	} catch (err: unknown) {
+		if (human) {
+			fail(`Saved the profile but /auth/me failed: ${describe(err)}.`);
+			if (err instanceof HttpError && err.status === 401) {
+				info(
+					"The token was saved but the runtime rejected it — it may have expired or the OIDC verifier rejected its claims. Re-run `aiw login --oidc`.",
+				);
+			} else {
+				info("Run `aiw whoami` once the runtime is reachable.");
+			}
+		}
+		return result;
+	}
+}
+
+function describe(err: unknown): string {
+	if (err instanceof Error) return err.message;
+	return String(err);
 }
 
 async function startDeviceAuthorization(
@@ -151,12 +219,16 @@ async function startDeviceAuthorization(
 async function pollForToken(
 	baseUrl: string,
 	dev: DeviceAuthorization,
+	human: boolean,
 ): Promise<DeviceTokenSuccess> {
 	const deadline =
 		Date.now() + (dev.expires_in - POLL_DEADLINE_FUDGE_SECONDS) * 1000;
 	let interval = Math.max(1, dev.interval) * 1000;
 
-	const spinner = p.spinner();
+	// In json mode the spinner would pollute stdout/stderr, so swap in
+	// a no-op spinner. The fatal `fail()` lines below still fire — a
+	// failed login must surface its reason regardless of output mode.
+	const spinner = human ? p.spinner() : { start: () => {}, stop: () => {} };
 	spinner.start("Waiting for browser approval…");
 	try {
 		while (Date.now() < deadline) {
@@ -193,9 +265,11 @@ async function pollForToken(
 			}
 			if (code === "slow_down") {
 				interval += SLOW_DOWN_INCREMENT_SECONDS * 1000;
-				warn(
-					`IdP asked us to slow down — increasing poll interval to ${interval / 1000}s.`,
-				);
+				if (human) {
+					warn(
+						`IdP asked us to slow down — increasing poll interval to ${interval / 1000}s.`,
+					);
+				}
 				continue;
 			}
 			if (code === "expired_token") {

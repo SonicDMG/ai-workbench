@@ -140,7 +140,7 @@ export function EmbeddingSubpanel({ workspace }: { workspace: string }) {
 			countLabel="embedding service"
 			rows={list.data}
 			loading={list.isLoading}
-			error={list.isError ? list.error.message : null}
+			error={list.isError ? formatApiError(list.error) : null}
 			onRetry={() => list.refetch()}
 			expanded={open}
 			onToggle={() => setOpen((v) => !v)}

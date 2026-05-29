@@ -109,7 +109,10 @@ const preview = defineCommand({
 			description:
 				"Principal id to bind for $principal.* / current_principal_id() resolution",
 		},
-		workspace: { type: "string", description: "Workspace ID" },
+		workspace: {
+			type: "string",
+			description: "Workspace ID (defaults to profile.defaultWorkspace)",
+		},
 		profile: { type: "string" },
 		url: { type: "string" },
 		output: { type: "string", description: "human | json" },
@@ -151,7 +154,10 @@ const auditList = defineCommand({
 			type: "string",
 			description: "Max rows (1-500, default per runtime)",
 		},
-		workspace: { type: "string", description: "Workspace ID" },
+		workspace: {
+			type: "string",
+			description: "Workspace ID (defaults to profile.defaultWorkspace)",
+		},
 		profile: { type: "string" },
 		url: { type: "string" },
 		output: { type: "string", description: "human | json" },
@@ -183,6 +189,10 @@ const auditList = defineCommand({
 export const policyCommand = defineCommand({
 	meta: {
 		name: "policy",
+		// Hidden from `aiw --help` (advanced row-level access control).
+		// citty still resolves the command by name, so `aiw policy …`
+		// stays fully runnable — see docs/rlac.md.
+		hidden: true,
 		description:
 			"Preview RLAC policies and inspect the audit log. See docs/rlac.md.",
 	},

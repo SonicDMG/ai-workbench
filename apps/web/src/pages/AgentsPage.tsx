@@ -9,9 +9,9 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
-import { toast } from "sonner";
-import { AgentForm } from "@/components/agents/AgentForm";
+import { AgentFormDialog } from "@/components/agents/AgentFormDialog";
 import { AgentTemplateGallery } from "@/components/agents/AgentTemplateGallery";
+import { DeleteAgentDialog } from "@/components/agents/DeleteAgentDialog";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,23 +23,12 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import {
-	useAgents,
-	useAvailableTools,
-	useCreateAgent,
-	useDeleteAgent,
-	useLlmServices,
-	useUpdateAgent,
-} from "@/hooks/useConversations";
+import { useAgents, useLlmServices } from "@/hooks/useConversations";
 import { useKnowledgeBases } from "@/hooks/useKnowledgeBases";
 import { useRerankingServices } from "@/hooks/useServices";
 import { useWorkspace } from "@/hooks/useWorkspaces";
 import { ApiError, formatApiError } from "@/lib/api";
-import type {
-	AgentRecord,
-	CreateAgentInput,
-	UpdateAgentInput,
-} from "@/lib/schemas";
+import type { AgentRecord } from "@/lib/schemas";
 import { formatDate } from "@/lib/utils";
 
 /**
@@ -112,7 +101,6 @@ function AgentsCard({ workspace }: { workspace: string }) {
 	const llmServices = useLlmServices(workspace);
 	const knowledgeBases = useKnowledgeBases(workspace);
 	const rerankingServices = useRerankingServices(workspace);
-	const availableTools = useAvailableTools(workspace);
 	const [creating, setCreating] = useState(false);
 	const [templating, setTemplating] = useState(false);
 	const [editing, setEditing] = useState<AgentRecord | null>(null);
@@ -183,14 +171,14 @@ function AgentsCard({ workspace }: { workspace: string }) {
 				)}
 			</CardContent>
 
-			<CreateAgentDialog
+			<AgentFormDialog
 				workspace={workspace}
+				mode="create"
 				open={creating}
 				onOpenChange={setCreating}
 				knowledgeBases={knowledgeBases.data ?? []}
 				llmServices={llmServices.data ?? []}
 				rerankingServices={rerankingServices.data ?? []}
-				availableTools={availableTools.data ?? []}
 			/>
 			<TemplateGalleryDialog
 				workspace={workspace}
@@ -198,16 +186,19 @@ function AgentsCard({ workspace }: { workspace: string }) {
 				open={templating}
 				onOpenChange={setTemplating}
 			/>
-			<EditAgentDialog
+			<AgentFormDialog
 				workspace={workspace}
+				mode="edit"
 				agent={editing}
-				onClose={() => setEditing(null)}
+				open={editing !== null}
+				onOpenChange={(o) => {
+					if (!o) setEditing(null);
+				}}
 				knowledgeBases={knowledgeBases.data ?? []}
 				llmServices={llmServices.data ?? []}
 				rerankingServices={rerankingServices.data ?? []}
-				availableTools={availableTools.data ?? []}
 			/>
-			<DeleteAgentConfirm
+			<DeleteAgentDialog
 				workspace={workspace}
 				agent={deleting}
 				onClose={() => setDeleting(null)}
@@ -271,6 +262,9 @@ function AgentRow({
 	const kbLabel = agent.knowledgeBaseIds.length
 		? `${agent.knowledgeBaseIds.length} KB${agent.knowledgeBaseIds.length === 1 ? "" : "s"} bound`
 		: "draws from all KBs";
+	const toolLabel = agent.toolIds.length
+		? `${agent.toolIds.length} tool${agent.toolIds.length === 1 ? "" : "s"}`
+		: "all tools";
 	return (
 		<li className="flex items-start justify-between gap-3 py-3">
 			<div className="min-w-0 flex-1">
@@ -281,7 +275,7 @@ function AgentRow({
 					</p>
 				) : null}
 				<p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-					{llmLabel} · {kbLabel}
+					{llmLabel} · {kbLabel} · {toolLabel}
 					{agent.rerankEnabled ? " · reranking on" : ""} · updated{" "}
 					{formatDate(agent.updatedAt)}
 				</p>
@@ -305,156 +299,5 @@ function AgentRow({
 				</Button>
 			</div>
 		</li>
-	);
-}
-
-interface AgentDialogContext {
-	readonly workspace: string;
-	readonly knowledgeBases: ReturnType<typeof useKnowledgeBases>["data"];
-	readonly llmServices: ReturnType<typeof useLlmServices>["data"];
-	readonly rerankingServices: ReturnType<typeof useRerankingServices>["data"];
-	readonly availableTools: ReturnType<typeof useAvailableTools>["data"];
-}
-
-function CreateAgentDialog({
-	workspace,
-	open,
-	onOpenChange,
-	knowledgeBases,
-	llmServices,
-	rerankingServices,
-	availableTools,
-}: AgentDialogContext & {
-	open: boolean;
-	onOpenChange: (v: boolean) => void;
-}) {
-	const create = useCreateAgent(workspace);
-	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-2xl">
-				<DialogHeader>
-					<DialogTitle>New agent</DialogTitle>
-					<DialogDescription>
-						Define a workspace-scoped agent with its own persona and RAG
-						defaults.
-					</DialogDescription>
-				</DialogHeader>
-				<AgentForm
-					mode="create"
-					knowledgeBases={knowledgeBases ?? []}
-					llmServices={llmServices ?? []}
-					rerankingServices={rerankingServices ?? []}
-					availableTools={availableTools ?? []}
-					submitting={create.isPending}
-					onSubmit={async (values) => {
-						try {
-							await create.mutateAsync(values as CreateAgentInput);
-							toast.success("Agent created");
-							onOpenChange(false);
-						} catch (err) {
-							toast.error("Couldn't create agent", {
-								description: formatApiError(err),
-							});
-						}
-					}}
-					onCancel={() => onOpenChange(false)}
-				/>
-			</DialogContent>
-		</Dialog>
-	);
-}
-
-function EditAgentDialog({
-	workspace,
-	agent,
-	onClose,
-	knowledgeBases,
-	llmServices,
-	rerankingServices,
-	availableTools,
-}: AgentDialogContext & {
-	agent: AgentRecord | null;
-	onClose: () => void;
-}) {
-	const update = useUpdateAgent(workspace, agent?.agentId ?? "__missing__");
-	if (!agent) return null;
-	return (
-		<Dialog open onOpenChange={(o) => (!o ? onClose() : undefined)}>
-			<DialogContent className="max-w-2xl">
-				<DialogHeader>
-					<DialogTitle>Edit agent</DialogTitle>
-					<DialogDescription>{agent.name}</DialogDescription>
-				</DialogHeader>
-				<AgentForm
-					mode="edit"
-					agent={agent}
-					knowledgeBases={knowledgeBases ?? []}
-					llmServices={llmServices ?? []}
-					rerankingServices={rerankingServices ?? []}
-					availableTools={availableTools ?? []}
-					submitting={update.isPending}
-					onSubmit={async (values) => {
-						try {
-							await update.mutateAsync(values as UpdateAgentInput);
-							toast.success("Agent updated");
-							onClose();
-						} catch (err) {
-							toast.error("Couldn't save changes", {
-								description: formatApiError(err),
-							});
-						}
-					}}
-					onCancel={onClose}
-				/>
-			</DialogContent>
-		</Dialog>
-	);
-}
-
-function DeleteAgentConfirm({
-	workspace,
-	agent,
-	onClose,
-}: {
-	workspace: string;
-	agent: AgentRecord | null;
-	onClose: () => void;
-}) {
-	const del = useDeleteAgent(workspace);
-	if (!agent) return null;
-	return (
-		<Dialog open onOpenChange={(o) => (!o ? onClose() : undefined)}>
-			<DialogContent>
-				<DialogHeader>
-					<DialogTitle>Delete this agent?</DialogTitle>
-					<DialogDescription>
-						<strong>{agent.name}</strong> will be deleted along with all of its
-						conversations and message history. This cannot be undone.
-					</DialogDescription>
-				</DialogHeader>
-				<DialogFooter>
-					<Button variant="ghost" onClick={onClose} disabled={del.isPending}>
-						Cancel
-					</Button>
-					<Button
-						variant="destructive"
-						disabled={del.isPending}
-						onClick={async () => {
-							try {
-								await del.mutateAsync(agent.agentId);
-								toast.success("Agent deleted");
-								onClose();
-							} catch (err) {
-								toast.error("Couldn't delete agent", {
-									description: formatApiError(err),
-								});
-							}
-						}}
-					>
-						{del.isPending ? "Deleting…" : "Delete agent"}
-					</Button>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
 	);
 }

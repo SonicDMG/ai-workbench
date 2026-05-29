@@ -41,7 +41,6 @@ import {
 	type CreateKnowledgeFilterInput,
 	type CreateLlmServiceInput,
 	type CreateMcpServerInput,
-	type CreatePrincipalInput,
 	type CreateRerankingServiceInput,
 	type CreateWorkspaceInput,
 	type DocumentChunk,
@@ -79,13 +78,6 @@ import {
 	type PlaygroundCommandInput,
 	type PlaygroundCommandResponse,
 	PlaygroundCommandResponseSchema,
-	PolicyAuditPageSchema,
-	type PolicyAuditRecord,
-	type PolicyCompilePreviewResponse,
-	PolicyCompilePreviewResponseSchema,
-	PrincipalPageSchema,
-	type PrincipalRecord,
-	PrincipalRecordSchema,
 	RagDocumentPageSchema,
 	type RagDocumentRecord,
 	RagDocumentRecordSchema,
@@ -111,7 +103,6 @@ import {
 	type UpdateKnowledgeFilterInput,
 	type UpdateLlmServiceInput,
 	type UpdateMcpServerInput,
-	type UpdatePrincipalInput,
 	type UpdateRerankingServiceInput,
 	type UpdateWorkspaceInput,
 	type Workspace,
@@ -119,10 +110,6 @@ import {
 	WorkspaceRecordSchema,
 } from "./schemas";
 import { fetchAuthConfig, loginHref, refreshSession } from "./session";
-import {
-	getViewAsPrincipalForWorkspace,
-	workspaceIdFromApiPath,
-} from "./viewAs";
 
 const BASE = "/api/v1";
 const CLIENT_PAGE_LIMIT = 200;
@@ -191,19 +178,6 @@ async function request<T>(
 		? { authorization: `Bearer ${token}` }
 		: {};
 
-	// RLAC: when the "view as" picker has a value for this request's
-	// workspace, send it on every request. Resolution is driven by
-	// the request path itself, not by React lifecycle — that way the
-	// first fetch from a freshly-loaded KB page gets the right
-	// header even before the picker component has mounted. The
-	// backend ignores the header unless auth is disabled, the caller
-	// is a bootstrap operator, or `WB_DEV_MODE=1`.
-	const workspaceForRequest = workspaceIdFromApiPath(path);
-	const viewAs = getViewAsPrincipalForWorkspace(workspaceForRequest);
-	const viewAsHeader: Record<string, string> = viewAs
-		? { "x-view-as-principal": viewAs }
-		: {};
-
 	// Multipart bodies set their own `content-type` (with the
 	// boundary) when the browser serializes them. Leaving the default
 	// `application/json` in place would clobber that and the server
@@ -220,7 +194,6 @@ async function request<T>(
 		headers: {
 			...defaultHeaders,
 			...authHeader,
-			...viewAsHeader,
 			...(init.headers ?? {}),
 		},
 	});
@@ -1250,78 +1223,6 @@ export const api = {
 			{ method: "GET" },
 			JobRecordSchema,
 		),
-
-	/* ====== RLAC prototype ====== */
-
-	listPrincipals: (workspaceId: string): Promise<PrincipalRecord[]> =>
-		requestAllPages(
-			`/workspaces/${workspaceId}/principals`,
-			PrincipalPageSchema,
-		),
-
-	createPrincipal: (
-		workspaceId: string,
-		input: CreatePrincipalInput,
-	): Promise<PrincipalRecord> =>
-		request(
-			`/workspaces/${workspaceId}/principals`,
-			{ method: "POST", body: JSON.stringify(input) },
-			PrincipalRecordSchema,
-		),
-
-	updatePrincipal: (
-		workspaceId: string,
-		principalId: string,
-		patch: UpdatePrincipalInput,
-	): Promise<PrincipalRecord> =>
-		request(
-			`/workspaces/${workspaceId}/principals/${encodeURIComponent(principalId)}`,
-			{ method: "PATCH", body: JSON.stringify(patch) },
-			PrincipalRecordSchema,
-		),
-
-	deletePrincipal: (workspaceId: string, principalId: string): Promise<void> =>
-		request(
-			`/workspaces/${workspaceId}/principals/${encodeURIComponent(principalId)}`,
-			{ method: "DELETE" },
-			null,
-		),
-
-	compilePolicy: (
-		workspaceId: string,
-		params: { readonly dsl: string; readonly principalId?: string | null },
-	): Promise<PolicyCompilePreviewResponse> =>
-		request(
-			`/workspaces/${workspaceId}/policy/compile-preview`,
-			{
-				method: "POST",
-				body: JSON.stringify({
-					dsl: params.dsl,
-					...(params.principalId ? { principalId: params.principalId } : {}),
-				}),
-			},
-			PolicyCompilePreviewResponseSchema,
-		),
-
-	listPolicyAudit: (
-		workspaceId: string,
-		query: {
-			readonly principalId?: string;
-			readonly knowledgeBaseId?: string;
-			readonly limit?: number;
-		} = {},
-	): Promise<PolicyAuditRecord[]> => {
-		const params = new URLSearchParams();
-		if (query.principalId) params.set("principalId", query.principalId);
-		if (query.knowledgeBaseId)
-			params.set("knowledgeBaseId", query.knowledgeBaseId);
-		if (query.limit !== undefined) params.set("limit", String(query.limit));
-		const qs = params.toString();
-		return requestAllPages(
-			`/workspaces/${workspaceId}/policy/audit${qs ? `?${qs}` : ""}`,
-			PolicyAuditPageSchema,
-		);
-	},
 
 	/* ====== External MCP servers (0.4.0) ====== */
 

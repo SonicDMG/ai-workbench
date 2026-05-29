@@ -1,12 +1,19 @@
-import { ArrowLeft, ArrowRight, Bot, Plus, Sparkles } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { ArrowLeft, ArrowRight, Bot, Sparkles } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
+import { AgentForm } from "@/components/agents/AgentForm";
 import { AgentTemplateGallery } from "@/components/agents/AgentTemplateGallery";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { FieldHelp } from "@/components/ui/field-label";
-import { useCreateAgent } from "@/hooks/useConversations";
+import {
+	useAvailableTools,
+	useCreateAgent,
+	useLlmServices,
+} from "@/hooks/useConversations";
+import { useKnowledgeBases } from "@/hooks/useKnowledgeBases";
+import { useRerankingServices } from "@/hooks/useServices";
 import { formatApiError } from "@/lib/api";
+import type { CreateAgentInput } from "@/lib/schemas";
 
 interface CreateFirstAgentProps {
 	workspaceId: string;
@@ -21,11 +28,7 @@ type View = "gallery" | "custom";
  * who deleted everything (or whose seed step failed) can re-add one
  * of the standard personas in a single click. A "Create my own"
  * affordance toggles to {@link CustomAgentForm} for users who want
- * full control over name + system prompt.
- *
- * The custom form path is the historical zero-state surface — its
- * behavior + tests are unchanged; only its placement moved behind
- * a toggle.
+ * full control over the agent's persona, knowledge bases, and tools.
  */
 export function CreateFirstAgent({
 	workspaceId,
@@ -85,13 +88,16 @@ interface CustomAgentFormProps {
 }
 
 /**
- * Hand-built agent form. Captures a name (required) + an optional
- * system prompt and creates the agent before handing the new id to
- * `onCreated` so the parent can switch to it.
+ * Custom agent builder for the chat zero-state. Renders the shared
+ * {@link AgentForm} inline (the same form used by the workspace
+ * overview and the Agents page) so first-time users get the full
+ * experience — name, system prompt, knowledge bases, LLM binding,
+ * tools, and reranking — rather than a stripped-down fork. On success
+ * it hands the new agent id to `onCreated` so the parent can switch
+ * the chat to it.
  *
- * Exported so existing tests that drove the historical zero-state
- * form by typing into its inputs keep working without going through
- * the gallery toggle.
+ * Exported so the chat zero-state tests can drive the custom path
+ * directly without toggling through the gallery.
  */
 export function CustomAgentForm({
 	workspaceId,
@@ -99,26 +105,10 @@ export function CustomAgentForm({
 	onBack,
 }: CustomAgentFormProps) {
 	const create = useCreateAgent(workspaceId);
-	const [name, setName] = useState("");
-	const [systemPrompt, setSystemPrompt] = useState("");
-
-	const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
-		e.preventDefault();
-		const trimmedName = name.trim();
-		if (trimmedName.length === 0) return;
-		try {
-			const agent = await create.mutateAsync({
-				name: trimmedName,
-				systemPrompt: systemPrompt.trim() ? systemPrompt.trim() : null,
-			});
-			toast.success(`Agent '${agent.name}' created`);
-			onCreated(agent.agentId);
-		} catch (err) {
-			toast.error("Couldn't create agent", {
-				description: formatApiError(err),
-			});
-		}
-	};
+	const knowledgeBases = useKnowledgeBases(workspaceId);
+	const llmServices = useLlmServices(workspaceId);
+	const rerankingServices = useRerankingServices(workspaceId);
+	const availableTools = useAvailableTools(workspaceId);
 
 	return (
 		<Card>
@@ -135,8 +125,8 @@ export function CustomAgentForm({
 							Create your first agent
 						</h2>
 						<p className="text-xs text-slate-500 dark:text-slate-400">
-							An agent owns its conversations, system prompt, and (later)
-							knowledge bases.
+							An agent owns its conversations, system prompt, knowledge bases,
+							and tools.
 						</p>
 					</div>
 					{onBack ? (
@@ -146,56 +136,29 @@ export function CustomAgentForm({
 						</Button>
 					) : null}
 				</div>
-				<form
-					onSubmit={onSubmit}
-					className="flex flex-col gap-3"
-					aria-label="Create agent"
-				>
-					<div className="flex flex-col gap-1 text-sm">
-						<div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
-							<label htmlFor="custom-agent-name">Name</label>
-							<FieldHelp help="Shown in agent pickers and conversation history. Pick something memorable — you can rename it later." />
-						</div>
-						<input
-							id="custom-agent-name"
-							type="text"
-							required
-							value={name}
-							onChange={(e) => setName(e.target.value)}
-							placeholder="e.g. Bobby"
-							className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--color-brand-600)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-100)] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
-						/>
-					</div>
-					<div className="flex flex-col gap-1 text-sm">
-						<div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
-							<label htmlFor="custom-agent-system-prompt">
-								System prompt{" "}
-								<span className="font-normal text-slate-400 dark:text-slate-500">
-									(optional)
-								</span>
-							</label>
-							<FieldHelp help="The persona / instructions injected at the top of every conversation. Leave it blank to fall back to the runtime's default helpful-assistant prompt." />
-						</div>
-						<textarea
-							id="custom-agent-system-prompt"
-							rows={3}
-							value={systemPrompt}
-							onChange={(e) => setSystemPrompt(e.target.value)}
-							placeholder="You are a helpful assistant grounded in this workspace."
-							className="resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--color-brand-600)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-100)] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
-						/>
-					</div>
-					<div className="flex justify-end">
-						<Button
-							type="submit"
-							variant="brand"
-							disabled={create.isPending || name.trim().length === 0}
-						>
-							<Plus className="h-4 w-4" />
-							{create.isPending ? "Creating…" : "Create agent"}
-						</Button>
-					</div>
-				</form>
+				<AgentForm
+					mode="create"
+					workspaceId={workspaceId}
+					knowledgeBases={knowledgeBases.data ?? []}
+					llmServices={llmServices.data ?? []}
+					rerankingServices={rerankingServices.data ?? []}
+					availableTools={availableTools.data ?? []}
+					submitting={create.isPending}
+					onSubmit={async (values) => {
+						try {
+							const agent = await create.mutateAsync(
+								values as CreateAgentInput,
+							);
+							toast.success(`Agent '${agent.name}' created`);
+							onCreated(agent.agentId);
+						} catch (err) {
+							toast.error("Couldn't create agent", {
+								description: formatApiError(err),
+							});
+						}
+					}}
+					onCancel={onBack}
+				/>
 			</CardContent>
 		</Card>
 	);

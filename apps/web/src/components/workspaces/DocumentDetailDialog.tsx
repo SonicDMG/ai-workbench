@@ -1,8 +1,6 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { Hash, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { useEffect, useRef } from "react";
 import {
 	Dialog,
 	DialogContent,
@@ -10,15 +8,13 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { useDocumentChunks, useUpdateDocument } from "@/hooks/useDocuments";
-import { useRlacEnabled } from "@/hooks/useRlac";
+import { useDocumentChunks } from "@/hooks/useDocuments";
 import { formatApiError } from "@/lib/api";
 import { formatFileSize } from "@/lib/files";
 import type { DocumentChunk, RagDocumentRecord } from "@/lib/schemas";
 import { cn, formatDate } from "@/lib/utils";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
 import { FileTypeBadge } from "./FileTypeBadge";
-import { VisibilityPicker } from "./VisibilityPicker";
 
 /**
  * Read-only metadata view for one KB document. Opens from the
@@ -48,7 +44,6 @@ export function DocumentDetailDialog({
 		doc?.documentId,
 		{ enabled: open && doc?.status === "ready" },
 	);
-	const rlacEnabled = useRlacEnabled(workspace);
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-2xl">
@@ -115,18 +110,7 @@ export function DocumentDetailDialog({
 							/>
 							<KV label="MIME / type" value={doc.fileType ?? "—"} mono />
 							<KV label="Content hash" value={doc.contentHash ?? "—"} mono />
-							{rlacEnabled ? (
-								<KV label="Owner" value={doc.ownerPrincipalId ?? "—"} mono />
-							) : null}
 						</div>
-
-						{rlacEnabled ? (
-							<VisibilityEditor
-								workspace={workspace}
-								knowledgeBaseId={knowledgeBaseId}
-								doc={doc}
-							/>
-						) : null}
 
 						{Object.keys(doc.metadata).length > 0 ? (
 							<div className="flex flex-col gap-1.5">
@@ -235,7 +219,7 @@ function ChunksList({
 	if (query.isError) {
 		return (
 			<p className="text-xs text-red-700 dark:text-red-300">
-				Couldn't load chunks: {query.error.message}
+				Couldn't load chunks: {formatApiError(query.error)}
 			</p>
 		);
 	}
@@ -286,79 +270,5 @@ function ChunksList({
 				);
 			})}
 		</ol>
-	);
-}
-
-/**
- * RLAC: edit `visibleTo` on an existing document. Defers to the
- * shared `VisibilityPicker` for the UX and the doc-update mutation
- * for persistence.
- *
- * Bills itself as "dirty" until the staged selection matches the
- * record — `Save` then PATCHes the doc and the parent query
- * invalidates the doc list so the table re-renders with the new
- * chips.
- */
-function VisibilityEditor({
-	workspace,
-	knowledgeBaseId,
-	doc,
-}: {
-	readonly workspace: string;
-	readonly knowledgeBaseId: string;
-	readonly doc: RagDocumentRecord;
-}) {
-	const selectedDocumentId = doc.documentId;
-	const docVisibleTo = doc.visibleTo ?? null;
-	const [staged, setStaged] = useState<readonly string[] | null>(docVisibleTo);
-	useEffect(() => {
-		if (selectedDocumentId.length === 0) return;
-		setStaged(docVisibleTo);
-	}, [selectedDocumentId, docVisibleTo]);
-	const update = useUpdateDocument(workspace, knowledgeBaseId);
-
-	const dirty = useMemo(() => {
-		const a = docVisibleTo;
-		const b = staged;
-		if (a === null && b === null) return false;
-		if (a === null || b === null) return true;
-		if (a.length !== b.length) return true;
-		const sortedA = [...a].sort();
-		const sortedB = [...b].sort();
-		return sortedA.some((v, i) => v !== sortedB[i]);
-	}, [docVisibleTo, staged]);
-
-	async function save() {
-		try {
-			await update.mutateAsync({
-				documentId: doc.documentId,
-				patch: { visibleTo: staged },
-			});
-			toast.success("Visibility updated");
-		} catch (err) {
-			toast.error(`Couldn't update visibility: ${formatApiError(err)}`);
-		}
-	}
-
-	return (
-		<div className="flex flex-col gap-2">
-			<VisibilityPicker
-				workspace={workspace}
-				value={staged}
-				onChange={setStaged}
-			/>
-			<div className="flex items-center justify-end gap-2 text-xs text-slate-500 dark:text-slate-400">
-				{dirty ? <span>Unsaved changes</span> : <span>Up to date</span>}
-				<Button
-					type="button"
-					variant="brand"
-					size="sm"
-					onClick={save}
-					disabled={!dirty || update.isPending}
-				>
-					{update.isPending ? "Saving…" : "Save visibility"}
-				</Button>
-			</div>
-		</div>
 	);
 }

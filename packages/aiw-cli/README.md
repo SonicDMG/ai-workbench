@@ -106,6 +106,20 @@ Run `aiw <command> --help` for full flags. `--output {human,json}` is
 accepted everywhere — `human` is the default; `json` is shaped for
 scripting and `jq`.
 
+### Advanced (scripting)
+
+Two further command groups drive row-level access control (RLAC):
+
+- `aiw principal …` — manage workspace-scoped identities.
+- `aiw policy …` — preview policy DSL fragments and read the audit log.
+
+These are **hidden from `aiw --help`** to keep the top-level surface
+focused, but they remain fully functional — `aiw principal list`,
+`aiw policy preview`, etc. all work as normal, and each accepts the
+usual `--workspace` / `--output` flags. See
+[`../../docs/rlac.md`](../../docs/rlac.md) for the principal model,
+the policy DSL, and the audit-log shape.
+
 ## Exit codes
 
 Scripts wrapping `aiw` should branch on these — they're stable across
@@ -125,6 +139,10 @@ supplied a bad flag":
 The mapping comes from the server-side error code first, then
 degrades to the HTTP status. Full table:
 [`packages/aiw-cli/src/exit-codes.ts`](./src/exit-codes.ts).
+
+> **Note:** `aiw doctor` uses a narrower, diagnostics-specific mapping
+> rather than the table above: exit `0` = all checks pass, `1` = a
+> check failed, `2` = warnings only.
 
 ## Network behaviour
 

@@ -16,6 +16,10 @@ vi.mock("@/lib/api", () => ({
 		listKbDocuments: vi.fn(() => Promise.resolve([])),
 	},
 	ApiError: class ApiError extends Error {},
+	// DocumentDetailDialog (rendered via the chunk-detail overlay) formats
+	// its chunk-load error through this helper.
+	formatApiError: (err: unknown) =>
+		err instanceof Error ? err.message : "Unknown error",
 }));
 
 import { api } from "@/lib/api";

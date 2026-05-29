@@ -52,4 +52,25 @@ export function Button({
 	);
 }
 
+/**
+ * Icon-only button that forces an accessible name at the type level.
+ *
+ * Icon-only controls have no visible text, so an `aria-label` is the
+ * only thing screen-reader users have to go on. Plain `<Button
+ * size="icon">` makes that label optional, which is exactly the gap
+ * that lets unlabeled icon buttons slip through review. `IconButton`
+ * closes it: `aria-label` is required (TS errors without it) and the
+ * size is pinned to `"icon"` so callers can't accidentally widen it.
+ *
+ * Prefer this over `<Button size="icon">` for any new icon-only
+ * affordance.
+ */
+export interface IconButtonProps extends Omit<ButtonProps, "size"> {
+	"aria-label": string;
+}
+
+export function IconButton({ className, ...props }: IconButtonProps) {
+	return <Button size="icon" className={className} {...props} />;
+}
+
 export { buttonVariants };

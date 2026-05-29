@@ -1,7 +1,7 @@
 /**
  * `aiw completion` — emit shell-completion scripts for the user's
- * shell of choice. Hand-rolled because citty v0.1.6 doesn't ship a
- * completion generator.
+ * shell of choice. Hand-rolled because citty ^0.2.2 (the pinned
+ * version) doesn't ship a completion generator.
  *
  * Walks the top-level subcommand tree (one level deep — that's where
  * the discoverability win lives; per-flag completion is left for a

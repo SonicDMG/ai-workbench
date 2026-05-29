@@ -28,8 +28,6 @@ import { ApiKeysPanel } from "@/components/workspaces/ApiKeysPanel";
 import { DeleteDialog } from "@/components/workspaces/DeleteDialog";
 import { KindBadge } from "@/components/workspaces/KindBadge";
 import { McpServersPanel } from "@/components/workspaces/McpServersPanel";
-import { PolicyAuditPanel } from "@/components/workspaces/PolicyAuditPanel";
-import { PrincipalsPanel } from "@/components/workspaces/PrincipalsPanel";
 import { SeededDefaultsCallout } from "@/components/workspaces/SeededDefaultsCallout";
 import { ServicesPanel } from "@/components/workspaces/ServicesPanel";
 import { TestConnectionPanel } from "@/components/workspaces/TestConnectionPanel";
@@ -54,8 +52,8 @@ export function WorkspaceSettingsPage() {
 	const { data, isLoading, isError, error } = useWorkspace(workspaceId);
 	const update = useUpdateWorkspace(workspaceId ?? "");
 	const del = useDeleteWorkspace();
-	// RBAC gating: admin-only surfaces (API keys, RLAC controls, delete)
-	// are hidden/disabled for non-admins. `canManage` defaults permissive
+	// RBAC gating: admin-only surfaces (API keys, delete) are
+	// hidden/disabled for non-admins. `canManage` defaults permissive
 	// when there's no role signal (see useRole) — the server stays the
 	// authoritative gate.
 	const { canManage } = useRole();
@@ -211,18 +209,7 @@ export function WorkspaceSettingsPage() {
 			</SettingsSection>
 
 			{canManage ? (
-				<>
-					<ApiKeysPanel workspace={data.workspaceId} />
-
-					<AccessControlToggle workspace={data} />
-
-					{data.rlacEnabled ? (
-						<>
-							<PrincipalsPanel workspace={data.workspaceId} />
-							<PolicyAuditPanel workspace={data.workspaceId} />
-						</>
-					) : null}
-				</>
+				<ApiKeysPanel workspace={data.workspaceId} />
 			) : (
 				<AdminOnlyNote />
 			)}
@@ -371,10 +358,10 @@ function SectionIcon({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Placeholder shown in place of the admin-only sections (API keys, RLAC
- * controls, principals, policy audit) when the signed-in caller isn't an
- * admin. Naming the gap is friendlier than silently dropping the cards —
- * a Viewer/Editor sees *why* the controls are absent rather than
+ * Placeholder shown in place of the admin-only sections (API keys,
+ * workspace deletion) when the signed-in caller isn't an admin. Naming
+ * the gap is friendlier than silently dropping the cards — a
+ * Viewer/Editor sees *why* the controls are absent rather than
  * wondering if the page failed to load.
  */
 function AdminOnlyNote() {
@@ -389,9 +376,9 @@ function AdminOnlyNote() {
 						Admin-only controls hidden
 					</p>
 					<p className="mt-1 leading-relaxed">
-						API keys, access-control settings, and workspace deletion require
-						the <code>manage</code> scope (the Admin role). Ask a workspace
-						admin if you need access to these.
+						API keys and workspace deletion require the <code>manage</code>{" "}
+						scope (the Admin role). Ask a workspace admin if you need access to
+						these.
 					</p>
 				</div>
 			</CardContent>
@@ -424,78 +411,6 @@ function SettingsSection({
 				</div>
 			</CardHeader>
 			<CardContent className="p-4 pt-3">{children}</CardContent>
-		</Card>
-	);
-}
-
-/**
- * Workspace-level RLAC master switch.
- *
- * The current model is binary: when off, every KB read returns
- * everything (no row filter, no audit emission). When on, every KB
- * read filters through the canonical visibility-list predicate, the
- * View-as picker appears in the KB header + ingest dialog, and the
- * Principals + Policy-audit panels appear below this card in the
- * settings page.
- *
- * Per-KB customization (Off / Visibility list / Custom DSL) used to
- * live in the KB explorer header. It's gone — one switch per
- * workspace is enough for the prototype's demo flow.
- */
-function AccessControlToggle({ workspace }: { workspace: Workspace }) {
-	const update = useUpdateWorkspace(workspace.workspaceId);
-
-	async function flip(next: boolean): Promise<void> {
-		try {
-			await update.mutateAsync({ rlacEnabled: next });
-			toast.success(
-				next ? "Access control enabled" : "Access control disabled",
-			);
-		} catch (err) {
-			toast.error(`Couldn't update access control: ${formatApiError(err)}`);
-		}
-	}
-
-	return (
-		<Card className="overflow-hidden shadow-sm">
-			<CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 bg-slate-50/70 p-4 dark:bg-slate-900/60">
-				<div className="flex min-w-0 items-start gap-3">
-					<SectionIcon>
-						<ShieldCheck className="h-4 w-4" />
-					</SectionIcon>
-					<div className="min-w-0">
-						<CardTitle className="text-base">Access control</CardTitle>
-						<p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-							Row-level access control. When on, every KB read is filtered
-							against each document's <code>visible_to</code> list and the
-							View-as picker, principal management, and audit log become
-							available. When off, every member of the workspace sees every
-							document.{" "}
-							<a
-								href="https://github.com/datastax/ai-workbench/blob/main/docs/rlac.md"
-								target="_blank"
-								rel="noreferrer"
-								className="font-medium text-slate-700 hover:underline dark:text-slate-200"
-							>
-								Learn more →
-							</a>
-						</p>
-					</div>
-				</div>
-				<label className="flex shrink-0 items-center gap-2 text-sm">
-					<input
-						type="checkbox"
-						checked={workspace.rlacEnabled}
-						onChange={(e) => void flip(e.target.checked)}
-						disabled={update.isPending}
-						className="h-4 w-4"
-						aria-label="Enable access control"
-					/>
-					<span className="font-medium text-slate-700 dark:text-slate-200">
-						{workspace.rlacEnabled ? "Enabled" : "Disabled"}
-					</span>
-				</label>
-			</CardHeader>
 		</Card>
 	);
 }

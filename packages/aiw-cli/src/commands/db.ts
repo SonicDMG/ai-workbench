@@ -198,7 +198,10 @@ const ingest = defineCommand({
 			description: "Astra database name or ID (context only today)",
 		},
 		file: { type: "string", description: "Path to the file to upload" },
-		workspace: { type: "string", description: "Workspace ID" },
+		workspace: {
+			type: "string",
+			description: "Workspace ID (defaults to profile.defaultWorkspace)",
+		},
 		"knowledge-base": { type: "string", description: "Knowledge base ID" },
 		kb: { type: "string", description: "Alias for --knowledge-base" },
 		title: { type: "string", description: "Optional display title" },

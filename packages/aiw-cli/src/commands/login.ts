@@ -147,7 +147,15 @@ export const loginCommand = defineCommand({
 				);
 				process.exit(ExitCode.USAGE_ERROR);
 			}
-			await runDeviceFlowLogin({ url, profileName });
+			// Device flow emits its own human-readable progress; in json
+			// mode it stays silent and hands back the same envelope shape
+			// the API-key path emits, which we print here for parity.
+			const oidcResult = await runDeviceFlowLogin({
+				url,
+				profileName,
+				format,
+			});
+			if (format === "json") emit(format, oidcResult, () => "");
 			return;
 		}
 
