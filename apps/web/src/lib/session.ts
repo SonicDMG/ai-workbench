@@ -8,11 +8,27 @@
  * exactly like lib/api.ts does.
  */
 
+export type Role = "viewer" | "editor" | "admin";
+
 export interface SessionSubject {
 	readonly id: string;
 	readonly label: string | null;
 	readonly type: "apiKey" | "oidc" | "bootstrap";
 	readonly workspaceScopes: readonly string[] | null;
+	/**
+	 * The caller's effective RBAC role, or `null` when no role applies
+	 * (an OIDC subject with no `auth.oidc.roleMapping` configured carries
+	 * every scope and so reports no role). Drives admin-action gating via
+	 * {@link useRole}. The HTTP routes remain authoritative — this only
+	 * decides what the UI offers, never what the server permits.
+	 */
+	readonly role: Role | null;
+	/**
+	 * The caller's effective privilege scopes, or `null` for "all scopes"
+	 * (OIDC / bootstrap without a concrete list). `useRole` derives admin
+	 * capability from `manage` ∈ scopes when present.
+	 */
+	readonly scopes: readonly string[] | null;
 	/** Unix seconds when the access token expires, or null when the
 	 * token is opaque (no JWT exp claim). Used to schedule silent
 	 * refresh before the runtime starts rejecting requests. */

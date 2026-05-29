@@ -197,6 +197,47 @@ role still overrides the claim role for that workspace. With no
 `roleMapping`, OIDC behavior is unchanged (all scopes) — so this is a
 deliberate opt-in, not a silent restriction.
 
+### Surfacing role + scopes (UI / CLI gating)
+
+`GET /auth/me` reports the caller's **effective role and privilege
+scopes** alongside the existing identity fields:
+
+```json
+{
+  "id": "carol",
+  "label": "carol@ex.com",
+  "type": "oidc",
+  "workspaceScopes": ["..."],
+  "role": "admin",
+  "scopes": ["read", "write", "manage"],
+  "expiresAt": 1777230000,
+  "canRefresh": true
+}
+```
+
+`role` and `scopes` are each `null` when no gate applies — an OIDC
+subject with no `roleMapping` carries every scope and reports
+`{ role: null, scopes: null }`. An API-key subject reports its concrete
+scope array, labelled with the matching role when the set corresponds to
+a whole role (e.g. `["read"]` → `viewer`). This is a **pure projection**
+for client gating; the authoritative gate is always the route-level
+`requireScope` / `manageRouteScope` enforcement above, never this field.
+
+Consumers:
+
+- **Web UI** — the `useRole()` hook reads `/auth/me` and hides/disables
+  admin-only affordances for non-admins: API-key management, the
+  access-control (RLAC) toggle, principal + policy panels, and the
+  workspace-delete button (all on the workspace settings page). Gating
+  is **permissive by default** — when there is no role signal (login
+  disabled, or an unscoped subject) the controls show, because the
+  server still enforces the real rule. A positive `viewer`/`editor` role
+  (or a concrete scope list without `manage`) hides them.
+- **CLI** — `aiw whoami` and `aiw login` surface the role + scopes; a
+  `403 forbidden` carrying a "missing required scope" message is
+  translated into role guidance ("mint a key with the Admin role"),
+  mirroring the existing 401 login-guidance.
+
 ### Header format
 
 `Authorization: Bearer <token>` (RFC 6750). Any other scheme

@@ -48,6 +48,8 @@ describe("UserMenu", () => {
 			label: "ada@example.com",
 			type: "oidc",
 			workspaceScopes: [],
+			role: null,
+			scopes: null,
 			expiresAt: 1777230000,
 			canRefresh: true,
 		});

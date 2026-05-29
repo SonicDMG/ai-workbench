@@ -48,6 +48,8 @@ import {
 	generateVerifier,
 } from "../auth/oidc/login/pkce.js";
 import type { AuthResolver } from "../auth/resolver.js";
+import { roleForScopes, scopesForRole } from "../auth/roles.js";
+import type { AuthSubject } from "../auth/types.js";
 import type { AuthConfig } from "../config/schema.js";
 import { audit } from "../lib/audit.js";
 import { logger } from "../lib/logger.js";
@@ -244,11 +246,20 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 		const payload = cookieValue ? cookie.verify(cookieValue) : null;
 		const expiresAt = payload ? jwtExpSecondsOrNull(payload.accessToken) : null;
 		const canRefresh = Boolean(payload?.refreshToken);
+		// RBAC (0.4.0): surface the caller's effective role + privilege
+		// scopes so the SPA can gate admin-only affordances (API-key
+		// management, RLAC controls, workspace delete) without re-deriving
+		// the policy client-side. `null` for either field means "no gate
+		// applies" — an OIDC subject without a configured role mapping
+		// carries every scope, exactly as `requireScope()` treats it.
+		const { role, scopes } = effectiveRoleAndScopes(auth.subject);
 		return c.json({
 			id: auth.subject.id,
 			label: auth.subject.label,
 			type: auth.subject.type,
 			workspaceScopes: auth.subject.workspaceScopes,
+			role,
+			scopes,
 			expiresAt,
 			canRefresh,
 		});
@@ -702,4 +713,38 @@ function jwtExpSecondsOrNull(token: string): number | null {
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Project a subject's effective RBAC role + privilege scopes for the
+ * `/auth/me` response so the SPA can gate admin-only UI.
+ *
+ * The shapes the runtime can hand us here:
+ *
+ *   - **OIDC with a role mapping** (`auth.oidc.roleMapping`) — the
+ *     subject carries a concrete `role` but `scopes: null` (the
+ *     principal-resolver only derives scopes on workspace-scoped routes,
+ *     which `/auth/me` is not). Expand the role into its scope set so the
+ *     UI sees both.
+ *   - **OIDC without a mapping** — `role` absent, `scopes: null`. Report
+ *     `{ role: null, scopes: null }`: no client-side gate applies, which
+ *     matches how `requireScope()` treats a null scope list (pass).
+ *   - **API key / bootstrap** — `scopes` is a concrete (possibly empty)
+ *     array and there's no `role`. Label it with the matching role when
+ *     the scope set corresponds to a whole role (so a `["read"]` key
+ *     reads as `viewer`), else leave `role: null` and surface the raw
+ *     scopes. Bootstrap operators carry `scopes: null` → no gate.
+ *
+ * Pure projection — never widens privileges; the authoritative gate is
+ * the HTTP route's `requireScope` / `manageRouteScope`, not this field.
+ */
+function effectiveRoleAndScopes(subject: AuthSubject): {
+	role: string | null;
+	scopes: readonly string[] | null;
+} {
+	const scopes =
+		subject.scopes ??
+		(subject.role !== undefined ? scopesForRole(subject.role) : null);
+	const role = subject.role ?? (scopes ? roleForScopes(scopes) : null);
+	return { role, scopes };
 }
