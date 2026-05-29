@@ -23,6 +23,7 @@
  */
 
 import { z } from "@hono/zod-openapi";
+import type { ChatConfig } from "../../config/schema.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { KnowledgeBaseRecord } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
@@ -36,9 +37,13 @@ import {
 import type { Logger } from "../../lib/logger.js";
 import { resolveKb } from "../../routes/api-v1/kb-descriptor.js";
 import { dispatchSearch } from "../../routes/api-v1/search-dispatch.js";
+import type { SecretResolver } from "../../secrets/provider.js";
 import type { RetrievedChunk } from "../prompt.js";
 import type { AstraQuerySnapshot } from "../retrieval.js";
 import type { ToolDefinition } from "../types.js";
+import { astraTools } from "./providers/astra.js";
+import { nativeTools } from "./providers/native.js";
+import { remoteMcpTools } from "./providers/remote-mcp.js";
 
 /**
  * Side-channel a tool can use to surface artifacts the agent dispatcher
@@ -741,29 +746,55 @@ export interface AgentToolset {
 }
 
 /**
+ * Construction-time context handed to each tool provider so it can
+ * build its tools — resolve credentials, read runtime config, reach the
+ * data plane. Distinct from {@link AgentToolDeps}, which is the
+ * *execution* context passed when a resolved tool actually runs.
+ */
+export interface ToolProviderContext {
+	readonly workspaceId: string;
+	readonly store: ControlPlaneStore;
+	readonly drivers: VectorStoreDriverRegistry;
+	readonly embedders: EmbedderFactory;
+	readonly secrets: SecretResolver;
+	readonly chatConfig: ChatConfig | null;
+	readonly logger?: Pick<Logger, "warn" | "debug">;
+}
+
+/**
  * Resolve the toolset an agent may use from its `toolIds` allow-list.
  *
  *   - empty `toolIds` → all built-in workspace tools (grandfathered:
- *                       existing agents keep today's behavior).
- *   - non-empty       → exactly the named subset.
+ *                       existing agents keep today's behavior). External
+ *                       sources aren't even built — no remote MCP
+ *                       round-trip for a default agent.
+ *   - non-empty       → the named subset across the full candidate pool
+ *                       (built-in + native + Astra + remote-MCP).
  *
- * External-MCP / native / Astra tools (A2–A4) are opt-in: they will
- * join the candidate pool here and are only ever included when a tool
- * id explicitly lists them.
+ * Native / Astra / remote-MCP tools (A2–A4) are contributed by the
+ * provider modules under `./providers/`; each is opt-in and only ever
+ * included when a tool id explicitly lists it.
  */
-export function resolveAgentToolset(toolIds: readonly string[]): AgentToolset {
-	// Candidate pool: built-in workspace tools. A2–A4 concat their
-	// resolved tools onto this before the allow-list filter.
-	const candidates: readonly AgentTool[] = DEFAULT_AGENT_TOOLS;
-	const allowed =
-		toolIds.length === 0
-			? candidates
-			: candidates.filter((t) => toolIds.includes(t.definition.name));
-	const byName = new Map(allowed.map((t) => [t.definition.name, t] as const));
-	return {
-		tools: allowed,
-		resolve: (name) => byName.get(name) ?? null,
-	};
+export async function resolveAgentToolset(
+	toolIds: readonly string[],
+	ctx: ToolProviderContext,
+): Promise<AgentToolset> {
+	if (toolIds.length === 0) {
+		return toolsetOf(DEFAULT_AGENT_TOOLS);
+	}
+	const candidates: readonly AgentTool[] = [
+		...DEFAULT_AGENT_TOOLS,
+		...(await nativeTools(ctx)),
+		...(await astraTools(ctx)),
+		...(await remoteMcpTools(ctx)),
+	];
+	const allowed = candidates.filter((t) => toolIds.includes(t.definition.name));
+	return toolsetOf(allowed);
+}
+
+function toolsetOf(tools: readonly AgentTool[]): AgentToolset {
+	const byName = new Map(tools.map((t) => [t.definition.name, t] as const));
+	return { tools, resolve: (name) => byName.get(name) ?? null };
 }
 
 /* ------------------------------ helpers ---------------------------- */

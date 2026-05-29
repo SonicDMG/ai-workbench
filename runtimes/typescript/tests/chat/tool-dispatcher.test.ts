@@ -18,6 +18,8 @@ import {
 import { MemoryControlPlaneStore } from "../../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../../src/drivers/registry.js";
+import { EnvSecretProvider } from "../../src/secrets/env.js";
+import { SecretResolver } from "../../src/secrets/provider.js";
 import { makeFakeEmbedderFactory } from "../helpers/embedder.js";
 
 async function fixture(): Promise<{
@@ -29,11 +31,17 @@ async function fixture(): Promise<{
 	const drivers = new VectorStoreDriverRegistry(new Map([["mock", driver]]));
 	const embedders = makeFakeEmbedderFactory();
 	const ws = await store.createWorkspace({ name: "ws", kind: "mock" });
-	return {
-		deps: { workspaceId: ws.uid, store, drivers, embedders },
-		// All built-in tools available (empty allow-list = grandfathered).
-		toolset: resolveAgentToolset([]),
-	};
+	const deps: AgentToolDeps = { workspaceId: ws.uid, store, drivers, embedders };
+	// All built-in tools available (empty allow-list = grandfathered).
+	const toolset = await resolveAgentToolset([], {
+		workspaceId: ws.uid,
+		store,
+		drivers,
+		embedders,
+		secrets: new SecretResolver({ env: new EnvSecretProvider() }),
+		chatConfig: null,
+	});
+	return { deps, toolset };
 }
 
 describe("executeWorkspaceTool", () => {

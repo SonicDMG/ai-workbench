@@ -131,7 +131,15 @@ export async function resolveAgentChat(
 	// workspace tools. The OpenAI-compatible adapter forwards `tools[]`
 	// and parses `tool_calls` back out; the dispatcher loop only iterates
 	// when a completion actually emits tool calls.
-	const toolset = resolveAgentToolset(agent.toolIds);
+	const toolset = await resolveAgentToolset(agent.toolIds, {
+		workspaceId,
+		store,
+		drivers: deps.drivers,
+		embedders: deps.embedders,
+		secrets,
+		chatConfig: chatConfig ?? null,
+		logger: deps.logger,
+	});
 
 	return {
 		chatService: chat,
