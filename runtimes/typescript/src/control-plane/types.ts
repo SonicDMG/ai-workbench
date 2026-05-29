@@ -443,6 +443,40 @@ export interface McpToolRecord {
 	readonly updatedAt: string;
 }
 
+/**
+ * A registered **external MCP server** the workspace's agents can reach
+ * (0.4.0, A2). Distinct from {@link McpToolRecord} (a single tool in the
+ * Stage-2 per-tool registry): this row describes a *remote server* the
+ * runtime connects to over Streamable HTTP; the runtime discovers the
+ * server's tools at turn time via `tools/list` and adapts each into an
+ * agent tool named `mcp:{mcpServerId}:{toolName}`.
+ *
+ * Workspace-scoped. The server URL is validated through the same SSRF
+ * guard as service endpoints (cloud-metadata / link-local blocked);
+ * `credentialRef` resolves through the {@link SecretRef} machinery — the
+ * raw bearer token never lands in a record. `allowedTools`, when present,
+ * filters the discovered tool set to that allow-list (empty/absent = all
+ * the server advertises). `enabled: false` keeps the row registered but
+ * contributes no tools to any agent.
+ */
+export interface McpServerRecord {
+	readonly workspaceId: string;
+	readonly mcpServerId: string;
+	readonly label: string;
+	readonly url: string;
+	/** {@link SecretRef} for the server's bearer credential, or null. */
+	readonly credentialRef: SecretRef | null;
+	readonly enabled: boolean;
+	/**
+	 * Optional allow-list of remote tool names to expose. Empty / null =
+	 * every tool the server advertises. Stored sorted + deduped by the
+	 * store contract.
+	 */
+	readonly allowedTools: readonly string[] | null;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+}
+
 /** Document under the new schema. Replaces `DocumentRecord`. */
 export interface RagDocumentRecord {
 	readonly workspaceId: string;

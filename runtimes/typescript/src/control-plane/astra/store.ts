@@ -42,6 +42,7 @@ import { makeEmbeddingServiceMethods } from "./embedding-services.js";
 import { makeKnowledgeBaseMethods } from "./knowledge-bases.js";
 import { makeKnowledgeFilterMethods } from "./knowledge-filters.js";
 import { makeLlmServiceMethods } from "./llm-services.js";
+import { makeMcpServerMethods } from "./mcp-servers.js";
 import { makePolicyAuditMethods } from "./policy-audit.js";
 import { makePrincipalMethods } from "./principals.js";
 import { makeRagDocumentMethods } from "./rag-documents.js";
@@ -69,6 +70,7 @@ function buildAstraStore(tables: TablesBundle): ControlPlaneStore {
 		...makeConversationMethods(state),
 		...makeChatMessageMethods(state),
 		...makePrincipalMethods(state),
+		...makeMcpServerMethods(state),
 		...makePolicyAuditMethods(state),
 	};
 }

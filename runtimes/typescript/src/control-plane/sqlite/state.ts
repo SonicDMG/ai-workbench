@@ -93,6 +93,8 @@ function primaryKeyOf(table: Table, row: Record<string, unknown>): string {
 				return [row.workspaceId, row.conversationId, row.messageId];
 			case "principals":
 				return [row.workspaceId, row.principalId];
+			case "mcp-servers":
+				return [row.workspaceId, row.mcpServerId];
 			case "policy-audit":
 				// Append-only; `decisionId` is a freshly minted UUID per row.
 				return [row.decisionId];

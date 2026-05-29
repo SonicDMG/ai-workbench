@@ -32,6 +32,7 @@ import { makeEmbeddingServiceMethods } from "./embedding-services.js";
 import { makeKnowledgeBaseMethods } from "./knowledge-bases.js";
 import { makeKnowledgeFilterMethods } from "./knowledge-filters.js";
 import { makeLlmServiceMethods } from "./llm-services.js";
+import { makeMcpServerMethods } from "./mcp-servers.js";
 import { makePolicyAuditMethods } from "./policy-audit.js";
 import { makePrincipalMethods } from "./principals.js";
 import { makeRagDocumentMethods } from "./rag-documents.js";
@@ -64,6 +65,7 @@ function createState(): MemoryStoreState {
 		messages: new Map(),
 		principals: new Map(),
 		policyAudit: new Map(),
+		mcpServers: new Map(),
 	};
 	state.apiKeyRepo = new MemoryApiKeyRepository((w) =>
 		assertWorkspace(state, w),
@@ -91,6 +93,7 @@ function buildMemoryStore(): ControlPlaneStore {
 		...makeConversationMethods(state),
 		...makeChatMessageMethods(state),
 		...makePrincipalMethods(state),
+		...makeMcpServerMethods(state),
 		...makePolicyAuditMethods(state),
 	};
 }

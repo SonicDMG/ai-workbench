@@ -29,6 +29,7 @@ import { knowledgeBaseRoutes } from "../routes/api-v1/knowledge-bases.js";
 import { knowledgeFilterRoutes } from "../routes/api-v1/knowledge-filters.js";
 import { llmServiceRoutes } from "../routes/api-v1/llm-services.js";
 import { mcpRoutes } from "../routes/api-v1/mcp.js";
+import { mcpServerRoutes } from "../routes/api-v1/mcp-servers.js";
 import { playgroundRoutes } from "../routes/api-v1/playground.js";
 import { policyRoutes } from "../routes/api-v1/policy.js";
 import { principalRoutes } from "../routes/api-v1/principals.js";
@@ -219,6 +220,13 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 					ingestService,
 					knowledgeBaseService,
 				}),
+		},
+		// External MCP server registry (0.4.0 A2). Workspace content —
+		// mutations gated to `write` by `mutatingRouteWriteScope`.
+		{
+			id: "mcp_servers",
+			mountPath: WORKSPACE_MOUNT,
+			build: () => mcpServerRoutes(ctx.store),
 		},
 		// RLAC prototype: principal CRUD + policy compile-preview + audit.
 		{

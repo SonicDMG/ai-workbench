@@ -30,6 +30,7 @@ import type {
 	KnowledgeBaseRow,
 	KnowledgeFilterRow,
 	LlmServiceRow,
+	McpServerRow,
 	McpToolRow,
 	MessageRow,
 	PolicyAuditRow,
@@ -75,6 +76,8 @@ export interface TablesBundle {
 	readonly rerankingServices: TableLike<RerankingServiceRow>;
 	readonly llmServices: TableLike<LlmServiceRow>;
 	readonly mcpTools: TableLike<McpToolRow>;
+	/** Registered external MCP servers (0.4.0 A2). */
+	readonly mcpServers: TableLike<McpServerRow>;
 	readonly ragDocuments: TableLike<RagDocumentRow>;
 	readonly ragDocumentsByStatus: TableLike<RagDocumentByStatusRow>;
 	readonly ragDocumentsByHash: TableLike<RagDocumentByContentHashRow>;
