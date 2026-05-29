@@ -34,6 +34,7 @@ import type {
 	KnowledgeBaseRow,
 	KnowledgeFilterRow,
 	LlmServiceRow,
+	McpServerRow,
 	McpToolRow,
 	MessageRow,
 	PolicyAuditRow,
@@ -195,6 +196,10 @@ export function createFakeTablesBundle(): TablesBundle {
 			["llm_service_id"],
 		),
 		mcpTools: new FakeTable<McpToolRow>(["workspace_id"], ["tool_id"]),
+		mcpServers: new FakeTable<McpServerRow>(
+			["workspace_id"],
+			["mcp_server_id"],
+		),
 		ragDocuments: new FakeTable<RagDocumentRow>(
 			["workspace_id", "knowledge_base_id"],
 			["document_id"],

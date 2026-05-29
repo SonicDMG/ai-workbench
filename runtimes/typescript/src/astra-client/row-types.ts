@@ -238,6 +238,30 @@ export interface McpToolRow {
 	updated_at: Iso;
 }
 
+/**
+ * Registered external MCP server (0.4.0 A2). Distinct from
+ * {@link McpToolRow} (the Stage-2 per-tool registry): this row is a
+ * *remote server* the runtime connects to over Streamable HTTP.
+ *
+ * `allowed_tools` is a serialized JSON array (or null) rather than a
+ * Cassandra `SET<TEXT>` so the `null` (expose every advertised tool) vs
+ * `[]` (expose none) distinction the tool resolver needs survives the
+ * round-trip — `SET<TEXT>` collapses an empty set to null on read.
+ */
+export interface McpServerRow {
+	workspace_id: Uuid;
+	mcp_server_id: Uuid;
+	label: string;
+	url: string;
+	credential_ref: string | null;
+	/** Nullable for legacy rows; the converter reads null/missing as `true`. */
+	enabled: boolean | null;
+	/** Serialized JSON `string[]` (allow-list) or null (= expose all). */
+	allowed_tools: string | null;
+	created_at: Iso;
+	updated_at: Iso;
+}
+
 export interface RagDocumentRow {
 	workspace_id: Uuid;
 	knowledge_base_id: Uuid;

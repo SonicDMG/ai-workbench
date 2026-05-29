@@ -341,6 +341,37 @@ export const MCP_TOOLS_DEFINITION = {
 	},
 } as const satisfies CreateTableDefinition;
 
+/**
+ * `wb_config_mcp_servers_by_workspace` — registered external MCP servers
+ * (0.4.0 A2). One row per remote server the workspace's agents may reach
+ * over Streamable HTTP. Distinct from `wb_config_mcp_tools_by_workspace`
+ * (the Stage-2 per-tool registry above): the runtime discovers each
+ * server's tools at turn time via `tools/list`, so the registry stores
+ * the *connection*, not individual tools.
+ *
+ * `allowed_tools` is `text` (a serialized JSON array) rather than
+ * `SET<TEXT>` so the null-vs-empty allow-list distinction survives the
+ * round-trip — the Data API collapses an empty `SET` to null on read.
+ */
+export const MCP_SERVERS_TABLE = "wb_config_mcp_servers_by_workspace";
+export const MCP_SERVERS_DEFINITION = {
+	columns: {
+		workspace_id: "uuid",
+		mcp_server_id: "uuid",
+		label: "text",
+		url: "text",
+		credential_ref: "text",
+		enabled: "boolean",
+		allowed_tools: "text", // serialized JSON string[] or null
+		created_at: "timestamp",
+		updated_at: "timestamp",
+	},
+	primaryKey: {
+		partitionBy: ["workspace_id"],
+		partitionSort: { mcp_server_id: 1 },
+	},
+} as const satisfies CreateTableDefinition;
+
 /* ----------------------------- rag layer -------------------------- */
 
 /** `wb_rag_documents_by_knowledge_base` — primary docs view, by KB. */

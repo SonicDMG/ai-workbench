@@ -20,6 +20,7 @@ import type {
 	KnowledgeBaseRecord,
 	KnowledgeFilterRecord,
 	LlmServiceRecord,
+	McpServerRecord,
 	MessageRecord,
 	PolicyAuditRecord,
 	PrincipalRecord,
@@ -65,6 +66,9 @@ export interface MemoryStoreState {
 	// append-only list keyed by workspace.
 	readonly principals: Map<string, Map<string, PrincipalRecord>>;
 	readonly policyAudit: Map<string, PolicyAuditRecord[]>;
+	// External MCP servers (0.4.0 A2). Workspace-scoped, same shape as
+	// every other `Map<workspaceId, Map<recordId, Record>>` aggregate.
+	readonly mcpServers: Map<string, Map<string, McpServerRecord>>;
 }
 
 /** Throws {@link ControlPlaneNotFoundError} if the workspace is missing. */

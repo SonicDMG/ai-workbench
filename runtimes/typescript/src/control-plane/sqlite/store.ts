@@ -33,6 +33,7 @@ import { makeEmbeddingServiceMethods } from "../file/embedding-services.js";
 import { makeKnowledgeBaseMethods } from "../file/knowledge-bases.js";
 import { makeKnowledgeFilterMethods } from "../file/knowledge-filters.js";
 import { makeLlmServiceMethods } from "../file/llm-services.js";
+import { makeMcpServerMethods } from "../file/mcp-servers.js";
 import { makePolicyAuditMethods } from "../file/policy-audit.js";
 import { makePrincipalMethods } from "../file/principals.js";
 import { makeRagDocumentMethods } from "../file/rag-documents.js";
@@ -71,6 +72,7 @@ function buildSqliteStore(state: SqliteStoreState): ControlPlaneStore {
 		...makeConversationMethods(state),
 		...makeChatMessageMethods(state),
 		...makePrincipalMethods(state),
+		...makeMcpServerMethods(state),
 		...makePolicyAuditMethods(state),
 	};
 }
