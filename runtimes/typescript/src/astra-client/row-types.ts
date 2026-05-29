@@ -378,11 +378,22 @@ export interface JobRow {
 	 * the owning replica went away and re-claims them. */
 	leased_by: string | null;
 	leased_at: Iso | null;
-	/** Serialized `IngestInputSnapshot` for `ingest` jobs created via
-	 * the async path. The orphan-sweeper reads it back on reclaim to
-	 * replay the pipeline. Same `text`-column pattern as
-	 * `result_json`; converters parse/stringify on the boundary. */
-	ingest_input_json: string | null;
+	/**
+	 * Serialized kind-tagged `JobInputSnapshot` for resumable jobs. The
+	 * orphan-sweeper reads it back on reclaim and hands it to the
+	 * kind's resume callback. Same `text`-column pattern as
+	 * `result_json`; converters parse/stringify on the boundary.
+	 *
+	 * Supersedes {@link ingest_input_json}, which was ingest-specific.
+	 */
+	input_snapshot_json: string | null;
+	/**
+	 * @deprecated Legacy ingest-only snapshot column, superseded by
+	 * {@link input_snapshot_json}. Added additively before the rename;
+	 * still read for back-compat on rows written against it, never
+	 * written on fresh inserts. Optional so converters can omit it.
+	 */
+	ingest_input_json?: string | null;
 }
 
 /* ================================================================== */

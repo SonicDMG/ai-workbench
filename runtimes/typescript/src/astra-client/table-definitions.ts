@@ -655,11 +655,17 @@ export const JOBS_DEFINITION = {
 		// missing columns get added.
 		leased_by: "text",
 		leased_at: "timestamp",
-		// Snapshot of the original `IngestInput` (text + metadata +
-		// chunker opts) for `ingest` jobs created via the async path.
-		// The orphan sweeper reads it back on reclaim and replays the
-		// pipeline instead of marking the job failed. `text` so
-		// arbitrary JSON survives — same pattern as `result_json`.
+		// Kind-tagged resume snapshot for resumable jobs. The orphan
+		// sweeper reads it back on reclaim and hands it to the kind's
+		// resume callback (for `ingest`, the original IngestInput —
+		// text + metadata + chunker opts). `text` so arbitrary JSON
+		// survives — same pattern as `result_json`.
+		input_snapshot_json: "text",
+		// Legacy ingest-only snapshot column. Superseded by
+		// `input_snapshot_json`; kept in the definition (and the
+		// additive-migration list) so existing deployments that already
+		// added it stay schema-consistent and rows written against it
+		// remain readable. Never written on fresh inserts.
 		ingest_input_json: "text",
 	},
 	primaryKey: {

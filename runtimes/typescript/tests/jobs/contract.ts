@@ -1,19 +1,56 @@
 /**
  * Shared behavioral contract for {@link JobStore}.
  *
- * Every backend (memory, file, astra) runs the same assertions against
- * a factory-produced instance — keeps behavior identical across
+ * Every backend (memory, file, astra, sqlite) runs the same assertions
+ * against a factory-produced instance — keeps behavior identical across
  * impls modulo durability, and gives each new backend an immediate
  * wire of what "correct" means.
+ *
+ * Includes an end-to-end durability slice (D2): a real
+ * {@link JobOrphanSweeper} backed by the store reclaims a stale-leased
+ * job of a non-ingest kind and replays it through a registered
+ * {@link ResumeRegistry} callback — proving resume generalizes past
+ * ingest against every backend's `findStaleRunning` + `claim` +
+ * snapshot round-trip.
  */
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { ControlPlaneNotFoundError } from "../../src/control-plane/errors.js";
+import { ResumeRegistry } from "../../src/jobs/resume-registry.js";
 import type { JobStore } from "../../src/jobs/store.js";
-import type { JobRecord } from "../../src/jobs/types.js";
+import {
+	JobOrphanSweeper,
+	type SweepCallback,
+	type SweepHandle,
+	type SweepScheduler,
+} from "../../src/jobs/sweeper.js";
+import type { JobKind, JobRecord } from "../../src/jobs/types.js";
 
 const WORKSPACE_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const WORKSPACE_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+
+/** A job kind with no wire schema and no producer — stands in for a
+ * future resumable kind (reindex, bulk export) to prove resume isn't
+ * ingest-specific. Cast because `JobKind` is a closed literal union;
+ * the store layer treats `kind` as an opaque string. */
+const SECOND_KIND = "reindex" as JobKind;
+
+/** Manual scheduler so the sweeper test drives `tick()` synchronously
+ * instead of waiting on a real timer. */
+class ManualSweepScheduler implements SweepScheduler {
+	private cb: SweepCallback | null = null;
+	start(callback: SweepCallback): SweepHandle {
+		this.cb = callback;
+		return {
+			stop: () => {
+				this.cb = null;
+			},
+		};
+	}
+	async tick(): Promise<void> {
+		if (this.cb) await this.cb();
+	}
+}
 
 export type JobStoreFactory = () => Promise<{
 	readonly store: JobStore;
@@ -242,9 +279,9 @@ export function runJobStoreContract(
 			}
 		});
 
-		test("create persists ingestInput snapshot when supplied", async () => {
-			// The async-ingest route stamps the original IngestInput on
-			// the job so the orphan sweeper can replay it on reclaim.
+		test("create persists inputSnapshot when supplied", async () => {
+			// Resumable async routes stamp a kind-tagged snapshot on the
+			// job so the orphan sweeper can replay it on reclaim.
 			// Round-tripping through every backend matters because the
 			// sweeper reads from whichever store the runtime is using.
 			const { store, cleanup } = await factory();
@@ -252,43 +289,68 @@ export function runJobStoreContract(
 				const job = await store.create({
 					workspace: WORKSPACE_A,
 					kind: "ingest",
-					ingestInput: {
+					inputSnapshot: {
 						text: "alpha bravo charlie",
 						metadata: { source: "test.md" },
 						chunker: { maxChars: 80 },
 					},
 				});
-				expect(job.ingestInput).toEqual({
+				expect(job.inputSnapshot).toEqual({
 					text: "alpha bravo charlie",
 					metadata: { source: "test.md" },
 					chunker: { maxChars: 80 },
 				});
 				const fetched = await store.get(WORKSPACE_A, job.jobId);
-				expect(fetched?.ingestInput).toEqual(job.ingestInput);
+				expect(fetched?.inputSnapshot).toEqual(job.inputSnapshot);
 			} finally {
 				await cleanup?.();
 			}
 		});
 
-		test("ingestInput defaults to null when omitted at create", async () => {
-			// Sync ingests and non-ingest jobs allocate without an
-			// input snapshot — null is the explicit "nothing to
-			// resume" signal the sweeper checks.
+		test("create accepts the deprecated ingestInput alias (back-compat)", async () => {
+			// The ingest service still passes `ingestInput`; it must land
+			// in the kind-agnostic `inputSnapshot` field so the sweeper
+			// reads it back uniformly.
+			const { store, cleanup } = await factory();
+			try {
+				const job = await store.create({
+					workspace: WORKSPACE_A,
+					kind: "ingest",
+					ingestInput: {
+						text: "legacy field",
+						metadata: { source: "old.md" },
+					},
+				});
+				expect(job.inputSnapshot).toEqual({
+					text: "legacy field",
+					metadata: { source: "old.md" },
+				});
+				const fetched = await store.get(WORKSPACE_A, job.jobId);
+				expect(fetched?.inputSnapshot).toEqual(job.inputSnapshot);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("inputSnapshot defaults to null when omitted at create", async () => {
+			// Sync ingests and non-resumable jobs allocate without a
+			// snapshot — null is the explicit "nothing to resume" signal
+			// the sweeper checks.
 			const { store, cleanup } = await factory();
 			try {
 				const job = await store.create({
 					workspace: WORKSPACE_A,
 					kind: "ingest",
 				});
-				expect(job.ingestInput).toBeNull();
+				expect(job.inputSnapshot).toBeNull();
 				const fetched = await store.get(WORKSPACE_A, job.jobId);
-				expect(fetched?.ingestInput).toBeNull();
+				expect(fetched?.inputSnapshot).toBeNull();
 			} finally {
 				await cleanup?.();
 			}
 		});
 
-		test("ingestInput survives unrelated updates", async () => {
+		test("inputSnapshot survives unrelated updates", async () => {
 			// Heartbeats and progress patches must not clobber the
 			// snapshot — the sweeper expects to read it back unchanged
 			// any time after create.
@@ -297,13 +359,13 @@ export function runJobStoreContract(
 				const job = await store.create({
 					workspace: WORKSPACE_A,
 					kind: "ingest",
-					ingestInput: { text: "snapshot stays put" },
+					inputSnapshot: { text: "snapshot stays put" },
 				});
 				await store.update(WORKSPACE_A, job.jobId, { status: "running" });
 				const after = await store.update(WORKSPACE_A, job.jobId, {
 					processed: 5,
 				});
-				expect(after.ingestInput).toEqual({ text: "snapshot stays put" });
+				expect(after.inputSnapshot).toEqual({ text: "snapshot stays put" });
 			} finally {
 				await cleanup?.();
 			}
@@ -454,6 +516,100 @@ export function runJobStoreContract(
 						"wb-replica-x",
 					),
 				).toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("sweeper resumes a stale non-ingest job via the resume registry", async () => {
+			// D2 end-to-end: a real JobOrphanSweeper backed by this store
+			// reclaims a stale-leased `running` job of a *second* kind and
+			// replays it through the registered resume callback instead of
+			// marking it failed. Exercises this backend's findStaleRunning
+			// + claim + snapshot round-trip — proving resume isn't
+			// ingest-specific.
+			const { store, cleanup } = await factory();
+			try {
+				const snapshot = { target: "kb-42", reason: "schema-change" };
+				const job = await store.create({
+					workspace: WORKSPACE_A,
+					kind: SECOND_KIND,
+					inputSnapshot: snapshot,
+				});
+				await store.update(WORKSPACE_A, job.jobId, {
+					status: "running",
+					leasedBy: "wb-replica-old",
+					leasedAt: "2020-01-01T00:00:00.000Z",
+				});
+
+				const resume = vi.fn(async () => undefined);
+				const resumes = new ResumeRegistry().register(SECOND_KIND, resume);
+				const scheduler = new ManualSweepScheduler();
+				const sweeper = new JobOrphanSweeper({
+					jobs: store,
+					replicaId: "wb-replica-resumer",
+					graceMs: 1_000,
+					scheduler,
+					resumes,
+				});
+				sweeper.start();
+				await scheduler.tick();
+				sweeper.stop();
+
+				// The registered callback ran with the persisted snapshot,
+				// and the sweeper did NOT mark the job failed (the resume
+				// callback owns driving it to terminal).
+				expect(resume).toHaveBeenCalledTimes(1);
+				expect(resume).toHaveBeenCalledWith({
+					workspaceId: WORKSPACE_A,
+					jobId: job.jobId,
+					replicaId: "wb-replica-resumer",
+					snapshot,
+				});
+				const after = await store.get(WORKSPACE_A, job.jobId);
+				expect(after?.status).toBe("running");
+				expect(after?.leasedBy).toBe("wb-replica-resumer");
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("sweeper marks a stale job failed when its kind has no resume callback", async () => {
+			// The fallback half of the registry contract: a kind with no
+			// registered resume callback (even with a snapshot present)
+			// flows through mark-failed so SSE clients see a terminal
+			// state. Runs against every backend.
+			const { store, cleanup } = await factory();
+			try {
+				const job = await store.create({
+					workspace: WORKSPACE_A,
+					kind: SECOND_KIND,
+					inputSnapshot: { target: "kb-7" },
+				});
+				await store.update(WORKSPACE_A, job.jobId, {
+					status: "running",
+					leasedBy: "wb-replica-old",
+					leasedAt: "2020-01-01T00:00:00.000Z",
+				});
+
+				// Registry has a callback for `ingest` but NOT for SECOND_KIND.
+				const resumes = new ResumeRegistry().register("ingest", vi.fn());
+				const scheduler = new ManualSweepScheduler();
+				const sweeper = new JobOrphanSweeper({
+					jobs: store,
+					replicaId: "wb-replica-sweep",
+					graceMs: 1_000,
+					scheduler,
+					resumes,
+				});
+				sweeper.start();
+				await scheduler.tick();
+				sweeper.stop();
+
+				const after = await store.get(WORKSPACE_A, job.jobId);
+				expect(after?.status).toBe("failed");
+				expect(after?.errorMessage).toMatch(/no resume hook/);
+				expect(after?.leasedBy).toBeNull();
 			} finally {
 				await cleanup?.();
 			}

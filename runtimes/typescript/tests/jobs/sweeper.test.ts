@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { MemoryJobStore } from "../../src/jobs/memory-store.js";
+import { ResumeRegistry } from "../../src/jobs/resume-registry.js";
 import {
 	JobOrphanSweeper,
 	type SweepCallback,
@@ -183,16 +184,16 @@ describe("JobOrphanSweeper", () => {
 		expect(scheduler.callbackCount).toBe(0);
 	});
 
-	test("invokes resume callback with the persisted ingestInput on reclaim", async () => {
-		// When the orphan carries a persisted IngestInputSnapshot AND a
-		// resume hook is wired, the sweeper hands off to the worker
-		// instead of marking the job failed. Verifies the (workspace,
-		// jobId, replicaId, input) handoff shape.
+	test("invokes the registered resume callback with the persisted snapshot on reclaim", async () => {
+		// When the orphan carries a persisted snapshot AND its kind has a
+		// registered resume callback, the sweeper hands off to that
+		// callback instead of marking the job failed. Verifies the
+		// (workspaceId, jobId, replicaId, snapshot) handoff shape.
 		const jobs = new MemoryJobStore();
 		const job = await jobs.create({
 			workspace: WORKSPACE_A,
 			kind: "ingest",
-			ingestInput: {
+			inputSnapshot: {
 				text: "resume me",
 				metadata: { source: "abandoned.md" },
 			},
@@ -204,13 +205,14 @@ describe("JobOrphanSweeper", () => {
 		});
 
 		const resume = vi.fn(async () => undefined);
+		const resumes = new ResumeRegistry().register("ingest", resume);
 		const scheduler = new ManualSweepScheduler();
 		const sweeper = new JobOrphanSweeper({
 			jobs,
 			replicaId: "wb-replica-resumer",
 			graceMs: 1_000,
 			scheduler,
-			resume,
+			resumes,
 		});
 		sweeper.start();
 		await scheduler.tick();
@@ -220,7 +222,7 @@ describe("JobOrphanSweeper", () => {
 			workspaceId: WORKSPACE_A,
 			jobId: job.jobId,
 			replicaId: "wb-replica-resumer",
-			input: { text: "resume me", metadata: { source: "abandoned.md" } },
+			snapshot: { text: "resume me", metadata: { source: "abandoned.md" } },
 		});
 		// The sweeper does NOT mark the job failed when handing off —
 		// the worker drives terminal state itself.
@@ -231,15 +233,15 @@ describe("JobOrphanSweeper", () => {
 	});
 
 	test("falls back to mark-failed when no resume hook is wired", async () => {
-		// If the runtime declines to provide a resume callback,
-		// orphans-with-input still flow through the legacy "fail
+		// If the runtime declines to register a resume callback for the
+		// kind, orphans-with-snapshot still flow through the legacy "fail
 		// cleanly" path so SSE clients see a terminal state. The
 		// errorMessage hints at the missing hook.
 		const jobs = new MemoryJobStore();
 		const job = await jobs.create({
 			workspace: WORKSPACE_A,
 			kind: "ingest",
-			ingestInput: { text: "would-be resumed" },
+			inputSnapshot: { text: "would-be resumed" },
 		});
 		await jobs.update(WORKSPACE_A, job.jobId, {
 			status: "running",
@@ -263,10 +265,10 @@ describe("JobOrphanSweeper", () => {
 		sweeper.stop();
 	});
 
-	test("falls back to mark-failed when ingestInput is null even with a resume hook", async () => {
-		// Pre-snapshot rows (or non-ingest kinds in the future) have no
-		// input to replay; the sweeper must skip the resume path so the
-		// hook isn't called with `input: null`.
+	test("falls back to mark-failed when the snapshot is null even with a registered resume callback", async () => {
+		// Pre-snapshot rows (or kinds that don't persist a snapshot) have
+		// nothing to replay; the sweeper must skip the resume path so the
+		// callback isn't called with a null snapshot.
 		const jobs = new MemoryJobStore();
 		const job = await jobs.create({
 			workspace: WORKSPACE_A,
@@ -279,13 +281,14 @@ describe("JobOrphanSweeper", () => {
 		});
 
 		const resume = vi.fn();
+		const resumes = new ResumeRegistry().register("ingest", resume);
 		const scheduler = new ManualSweepScheduler();
 		const sweeper = new JobOrphanSweeper({
 			jobs,
 			replicaId: "wb-replica-x",
 			graceMs: 1_000,
 			scheduler,
-			resume,
+			resumes,
 		});
 		sweeper.start();
 		await scheduler.tick();

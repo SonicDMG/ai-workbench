@@ -39,13 +39,14 @@ import { ControlPlaneNotFoundError } from "../control-plane/errors.js";
 import { applyUpdate } from "./memory-store.js";
 import type { JobListener, JobStore, Unsubscribe } from "./store.js";
 import { JobSubscriptions } from "./subscriptions.js";
-import type {
-	CreateJobInput,
-	IngestInputSnapshot,
-	JobKind,
-	JobRecord,
-	JobStatus,
-	UpdateJobInput,
+import {
+	type CreateJobInput,
+	type JobInputSnapshot,
+	type JobKind,
+	type JobRecord,
+	type JobStatus,
+	resolveInputSnapshot,
+	type UpdateJobInput,
 } from "./types.js";
 
 /** Tunable poll interval and scheduler. Tests inject a manual
@@ -128,7 +129,7 @@ export class AstraJobStore implements JobStore {
 			updatedAt: now,
 			leasedBy: null,
 			leasedAt: null,
-			ingestInput: input.ingestInput ?? null,
+			inputSnapshot: resolveInputSnapshot(input),
 		};
 		await this.tables.jobs.insertOne(jobToRow(record));
 		return record;
@@ -348,7 +349,13 @@ function jobToRow(r: JobRecord): JobRow {
 		updated_at: r.updatedAt,
 		leased_by: r.leasedBy,
 		leased_at: r.leasedAt,
-		ingest_input_json: r.ingestInput ? JSON.stringify(r.ingestInput) : null,
+		// New writes land in the kind-agnostic `input_snapshot_json`
+		// column. The legacy `ingest_input_json` column is left null on
+		// fresh writes — it's read-only back-compat (see jobFromRow).
+		input_snapshot_json: r.inputSnapshot
+			? JSON.stringify(r.inputSnapshot)
+			: null,
+		ingest_input_json: null,
 	};
 }
 
@@ -371,13 +378,23 @@ function jobFromRow(row: JobRow): JobRecord {
 		errorMessage: row.error_message,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
-		// Backfill for rows persisted before the lease + ingestInput
+		// Backfill for rows persisted before the lease + snapshot
 		// columns existed (and for tests that hand-craft rows without
-		// them).
+		// them). The snapshot reads from the kind-agnostic
+		// `input_snapshot_json` column and falls back to the legacy
+		// `ingest_input_json` column so jobs written before the column
+		// was added still resume.
 		leasedBy: row.leased_by ?? null,
 		leasedAt: row.leased_at ?? null,
-		ingestInput: row.ingest_input_json
-			? (JSON.parse(row.ingest_input_json) as IngestInputSnapshot)
-			: null,
+		inputSnapshot: parseSnapshot(
+			row.input_snapshot_json ?? row.ingest_input_json,
+		),
 	};
+}
+
+/** Parse a serialized snapshot text column, or null when absent. */
+function parseSnapshot(
+	json: string | null | undefined,
+): JobInputSnapshot | null {
+	return json ? (JSON.parse(json) as JobInputSnapshot) : null;
 }

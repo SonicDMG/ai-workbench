@@ -168,6 +168,15 @@ const ADDITIVE_COLUMN_MIGRATIONS = [
 		column: "ingest_input_json",
 		definition: JOBS_DEFINITION.columns.ingest_input_json,
 	},
+	// Kind-agnostic resume snapshot (D2). Added additively alongside
+	// the legacy `ingest_input_json` rather than renaming it, so
+	// deployments with the old column keep resuming and pre-existing
+	// rows stay readable.
+	{
+		table: JOBS_TABLE,
+		column: "input_snapshot_json",
+		definition: JOBS_DEFINITION.columns.input_snapshot_json,
+	},
 	// RLAC prototype additive columns. Existing deployments pick them
 	// up on next boot; new deployments get them from the table DDL.
 	{

@@ -26,7 +26,14 @@ import { ControlPlaneNotFoundError } from "../control-plane/errors.js";
 import { applyUpdate } from "./memory-store.js";
 import type { JobListener, JobStore, Unsubscribe } from "./store.js";
 import { JobSubscriptions } from "./subscriptions.js";
-import type { CreateJobInput, JobRecord, UpdateJobInput } from "./types.js";
+import {
+	type CreateJobInput,
+	hydrateJobRow,
+	type JobRecord,
+	type PersistedJobRow,
+	resolveInputSnapshot,
+	type UpdateJobInput,
+} from "./types.js";
 
 export interface SqliteJobStoreOptions {
 	/** Path to the SQLite database file, or `":memory:"`. */
@@ -79,7 +86,7 @@ export class SqliteJobStore implements JobStore {
 			updatedAt: now,
 			leasedBy: null,
 			leasedAt: null,
-			ingestInput: input.ingestInput ?? null,
+			inputSnapshot: resolveInputSnapshot(input),
 		};
 		this.db
 			.prepare(`INSERT INTO jobs (workspace, job_id, data) VALUES (?, ?, ?)`)
@@ -183,18 +190,14 @@ export class SqliteJobStore implements JobStore {
 	}
 
 	/**
-	 * Parse a stored row, backfilling lease + ingestInput columns on
-	 * records persisted before those fields existed — identical
-	 * back-compat handling to {@link FileJobStore.readAll}.
+	 * Parse a stored row, backfilling lease + snapshot columns on
+	 * records persisted before those fields existed and migrating the
+	 * legacy `ingestInput` field into `inputSnapshot` — identical
+	 * back-compat handling to {@link FileJobStore.readAll}, shared via
+	 * {@link hydrateJobRow}.
 	 */
 	private hydrate(data: string): JobRecord {
-		const r = JSON.parse(data) as Partial<JobRecord>;
-		return {
-			...(r as JobRecord),
-			leasedBy: r.leasedBy ?? null,
-			leasedAt: r.leasedAt ?? null,
-			ingestInput: r.ingestInput ?? null,
-		};
+		return hydrateJobRow(JSON.parse(data) as PersistedJobRow);
 	}
 
 	private write(record: JobRecord): void {
