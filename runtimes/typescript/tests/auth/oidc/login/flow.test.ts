@@ -320,10 +320,18 @@ describe("/auth/* flow", () => {
 				id: string;
 				label: string | null;
 				type: string;
+				role: string | null;
+				scopes: readonly string[] | null;
 			};
 			expect(me.id).toBe("alice");
 			expect(me.label).toBe("alice@ex.com");
 			expect(me.type).toBe("oidc");
+			// RBAC: with no `auth.oidc.roleMapping` configured, an OIDC
+			// subject carries no role and every scope — both fields report
+			// null so the SPA applies no client-side gate (matching how
+			// `requireScope()` treats a null scope list).
+			expect(me.role).toBeNull();
+			expect(me.scopes).toBeNull();
 
 			// 5. An actual workspace-scoped API call with just the cookie.
 			const apiRes = await fx.app.request(
@@ -667,5 +675,206 @@ describe("/auth/* without browser-login configured", () => {
 
 		const loginRes = await app.request("/auth/login");
 		expect(loginRes.status).toBe(404);
+	});
+});
+
+describe("/auth/me role + scope projection (RBAC)", () => {
+	let privateKey: CryptoKey;
+	let imported: Awaited<ReturnType<typeof importJWK>>;
+	beforeAll(async () => {
+		const f = await makeFixtures();
+		privateKey = f.privateKey;
+		imported = f.imported;
+	});
+
+	// Build an app whose OIDC config maps the `groups` claim onto a role
+	// (B3). Mirrors `buildAppWithLogin` but threads a `roleMapping` and a
+	// `groups` claim through so we can assert `/auth/me` expands the
+	// resolved role into its privilege scopes.
+	async function buildAppWithRoleMapping() {
+		const store = new MemoryControlPlaneStore();
+		const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+		const drivers = new VectorStoreDriverRegistry(
+			new Map([["mock", new MockVectorStoreDriver()]]),
+		);
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+
+		const base = authConfig();
+		if (!base.oidc) throw new Error("test auth config must include oidc");
+		const cfg: AuthConfig = {
+			...base,
+			oidc: {
+				...base.oidc,
+				roleMapping: {
+					claim: "groups",
+					values: { "wb-admins": "admin", "wb-editors": "editor" },
+					default: "viewer",
+				},
+			},
+		};
+		const cookie = makeCookieSigner(generateSessionKey());
+		const pending = new MemoryPendingLoginStore();
+		const getKey = async () =>
+			imported as Awaited<ReturnType<typeof importJWK>>;
+		const oidc = cfg.oidc;
+		if (!oidc) throw new Error("test auth config must include oidc");
+		const auth = new AuthResolver({
+			mode: "oidc",
+			anonymousPolicy: "reject",
+			verifiers: [new OidcVerifier({ config: oidc, getKey })],
+		});
+
+		const mintedByCode = new Map<string, string>();
+		const origFetch = globalThis.fetch;
+		globalThis.fetch = (async (
+			input: URL | string | Request,
+			init?: RequestInit,
+		) => {
+			const url =
+				typeof input === "string"
+					? input
+					: input instanceof URL
+						? input.toString()
+						: input.url;
+			if (url.endsWith("/token")) {
+				const body = new URLSearchParams(String(init?.body ?? ""));
+				const code = body.get("code") ?? "";
+				const token = mintedByCode.get(code);
+				if (!token) {
+					return new Response(JSON.stringify({ error: "invalid_grant" }), {
+						status: 400,
+					});
+				}
+				return new Response(
+					JSON.stringify({
+						access_token: token,
+						token_type: "Bearer",
+						expires_in: 3600,
+						id_token: token,
+						refresh_token: `rt-${code}`,
+					}),
+					{ status: 200 },
+				);
+			}
+			return origFetch(input as Request, init);
+		}) as typeof fetch;
+
+		const app = createApp({
+			store,
+			drivers,
+			secrets,
+			auth,
+			embedders: makeFakeEmbedderFactory(),
+			login: {
+				authConfig: cfg,
+				endpoints: {
+					authorizationEndpoint: `${ISSUER}/authorize`,
+					tokenEndpoint: `${ISSUER}/token`,
+					endSessionEndpoint: null,
+					jwksUri: `${ISSUER}/jwks`,
+					deviceAuthorizationEndpoint: null,
+				},
+				clientSecret: null,
+				cookie,
+				pending,
+				publicOrigin: null,
+				trustProxyHeaders: false,
+			},
+		});
+
+		return {
+			app,
+			workspace: ws,
+			mintedByCode,
+			restoreFetch: () => {
+				globalThis.fetch = origFetch;
+			},
+		};
+	}
+
+	// Mint a JWT that additionally carries a `groups` array so the
+	// role-mapping path has something to resolve against.
+	async function mintJwtWithGroups(
+		sub: string,
+		groups: string[],
+		scopes: string[],
+	): Promise<string> {
+		return await new SignJWT({
+			sub,
+			email: `${sub}@ex.com`,
+			wb_workspace_scopes: scopes,
+			groups,
+		})
+			.setProtectedHeader({ alg: ALG, kid: KID })
+			.setIssuedAt()
+			.setIssuer(ISSUER)
+			.setAudience(AUD)
+			.setExpirationTime("2h")
+			.sign(privateKey);
+	}
+
+	async function loginAndReadMe(
+		fx: Awaited<ReturnType<typeof buildAppWithRoleMapping>>,
+		code: string,
+	): Promise<{ role: string | null; scopes: readonly string[] | null }> {
+		const loginRes = await fx.app.request("/auth/login", {
+			headers: { host: "app.test" },
+		});
+		const state = new URL(
+			loginRes.headers.get("location") ?? "",
+		).searchParams.get("state");
+		const cbRes = await fx.app.request(
+			`/auth/callback?state=${state}&code=${code}`,
+			{ headers: { host: "app.test" } },
+		);
+		const setCookie = cbRes.headers.get("set-cookie") ?? "";
+		const cookieValue = setCookie.slice(
+			"wb_session=".length,
+			setCookie.indexOf(";"),
+		);
+		const meRes = await fx.app.request("/auth/me", {
+			headers: { cookie: `wb_session=${cookieValue}` },
+		});
+		expect(meRes.status).toBe(200);
+		return (await meRes.json()) as {
+			role: string | null;
+			scopes: readonly string[] | null;
+		};
+	}
+
+	test("admin group → role 'admin' + [read, write, manage] scopes", async () => {
+		const fx = await buildAppWithRoleMapping();
+		try {
+			const code = "code-admin";
+			fx.mintedByCode.set(
+				code,
+				await mintJwtWithGroups("carol", ["wb-admins"], [fx.workspace.uid]),
+			);
+			const me = await loginAndReadMe(fx, code);
+			expect(me.role).toBe("admin");
+			expect(me.scopes).toEqual(["read", "write", "manage"]);
+		} finally {
+			fx.restoreFetch();
+		}
+	});
+
+	test("no matching group → viewer floor + [read] scope", async () => {
+		const fx = await buildAppWithRoleMapping();
+		try {
+			const code = "code-viewer";
+			fx.mintedByCode.set(
+				code,
+				await mintJwtWithGroups(
+					"dave",
+					["some-other-group"],
+					[fx.workspace.uid],
+				),
+			);
+			const me = await loginAndReadMe(fx, code);
+			expect(me.role).toBe("viewer");
+			expect(me.scopes).toEqual(["read"]);
+		} finally {
+			fx.restoreFetch();
+		}
 	});
 });

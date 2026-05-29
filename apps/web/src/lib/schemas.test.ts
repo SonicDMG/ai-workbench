@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { components } from "./api-types.generated";
 import {
+	ApiKeyScopeSchema,
 	SecretRefSchema,
 	WorkspaceKindSchema,
 	WorkspacePageSchema,
@@ -87,6 +88,24 @@ describe("schema/openapi drift detection", () => {
 		expect([...enumValues].sort()).toEqual(
 			["astra", "hcd", "mock", "openrag"].sort(),
 		);
+	});
+
+	test("ApiKeyScopeSchema enum matches the generated OpenAPI type", () => {
+		// `ApiKeyScope` gained `manage` in 0.4.0 (the admin tier). Same
+		// guard as the workspace-kind drift check: the exhaustiveness
+		// record below stops compiling if the backend adds/removes a
+		// scope, forcing the hand-written Zod enum to be updated in
+		// lockstep with a `gen:types` refresh.
+		type RuntimeScope = components["schemas"]["ApiKeyScope"];
+		const exhaust: Record<RuntimeScope, true> = {
+			read: true,
+			write: true,
+			manage: true,
+		};
+		void exhaust;
+
+		const enumValues = ApiKeyScopeSchema.options;
+		expect([...enumValues].sort()).toEqual(["manage", "read", "write"].sort());
 	});
 });
 

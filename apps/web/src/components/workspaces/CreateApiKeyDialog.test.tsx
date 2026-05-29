@@ -55,8 +55,8 @@ describe("CreateApiKeyDialog", () => {
 		await waitFor(() =>
 			expect(mutateAsync).toHaveBeenCalledWith({
 				label: "ci",
-				// Default-selected preset is "Read + Write" — matches the
-				// behavior of keys minted before this picker existed.
+				// Default-selected role is Editor (read + write) — matches the
+				// behavior of keys minted before the role picker existed.
 				scopes: ["read", "write"],
 			}),
 		);
@@ -65,6 +65,54 @@ describe("CreateApiKeyDialog", () => {
 			screen.getByText("wb_test_fake_key_for_ui_reveal"),
 		).toBeInTheDocument();
 		expect(toast.success).toHaveBeenCalledWith("API key 'ci' created");
+	});
+
+	it("sends [read] when Viewer is picked and [read, write, manage] for Admin", async () => {
+		mutateAsync.mockResolvedValue({
+			plaintext: "wb_test_fake_key",
+			key: { label: "k" },
+		});
+		const user = userEvent.setup();
+		const { unmount } = render(
+			<CreateApiKeyDialog
+				workspace="00000000-0000-4000-8000-000000000001"
+				open
+				onOpenChange={() => {}}
+			/>,
+		);
+
+		await user.type(screen.getByLabelText("Label"), "external-agent");
+		await user.click(screen.getByRole("radio", { name: /Viewer/ }));
+		await user.click(screen.getByRole("button", { name: "Create key" }));
+		await waitFor(() =>
+			expect(mutateAsync).toHaveBeenCalledWith({
+				label: "external-agent",
+				scopes: ["read"],
+			}),
+		);
+		unmount();
+
+		mutateAsync.mockReset();
+		mutateAsync.mockResolvedValue({
+			plaintext: "wb_test_fake_key",
+			key: { label: "k" },
+		});
+		render(
+			<CreateApiKeyDialog
+				workspace="00000000-0000-4000-8000-000000000001"
+				open
+				onOpenChange={() => {}}
+			/>,
+		);
+		await user.type(screen.getByLabelText("Label"), "admin-tool");
+		await user.click(screen.getByRole("radio", { name: /Admin/ }));
+		await user.click(screen.getByRole("button", { name: "Create key" }));
+		await waitFor(() =>
+			expect(mutateAsync).toHaveBeenCalledWith({
+				label: "admin-tool",
+				scopes: ["read", "write", "manage"],
+			}),
+		);
 	});
 
 	it("keeps submit disabled until a nonblank label is entered", async () => {

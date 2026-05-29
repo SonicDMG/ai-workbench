@@ -47,6 +47,8 @@ const ACTIVE_SUBJECT: SessionSubject = {
 	label: "Alice",
 	type: "oidc",
 	workspaceScopes: null,
+	role: null,
+	scopes: null,
 	expiresAt: Math.floor(Date.now() / 1000) + 600, // 10 min from now
 	canRefresh: true,
 };

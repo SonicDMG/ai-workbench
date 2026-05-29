@@ -4601,7 +4601,7 @@ export interface components {
 			expiresAt: string | null;
 		};
 		/** @enum {string} */
-		ApiKeyScope: "read" | "write";
+		ApiKeyScope: "read" | "write" | "manage";
 		CreatedApiKeyResponse: {
 			/** @example wb_live_abc123xyz789_… */
 			plaintext: string;
@@ -5743,23 +5743,28 @@ export interface components {
 			attributes: {
 				[key: string]: string;
 			};
+			role: components["schemas"]["Role"];
 			/** Format: date-time */
 			createdAt: string;
 			/** Format: date-time */
 			updatedAt: string;
 		};
+		/** @enum {string} */
+		Role: "viewer" | "editor" | "admin";
 		CreatePrincipalInput: {
 			principalId: string;
 			label?: string | null;
 			attributes?: {
 				[key: string]: string;
 			};
+			role?: components["schemas"]["Role"] & unknown;
 		};
 		UpdatePrincipalInput: {
 			label?: string | null;
 			attributes?: {
 				[key: string]: string;
 			};
+			role?: components["schemas"]["Role"];
 		};
 		PolicyCompilePreviewResponse: {
 			ok: boolean;

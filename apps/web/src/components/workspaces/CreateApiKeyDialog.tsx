@@ -18,29 +18,39 @@ import { useCreateApiKey } from "@/hooks/useApiKeys";
 import { formatApiError } from "@/lib/api";
 
 /**
- * Two-tier scope picker presets. Wider granularity (e.g. splitting
- * write into `write:ingest` / `write:admin`) lands when the routes
- * that consume it do; until then a toggle between "read only" and
- * "read + write" matches what the server accepts.
- */
-/**
+ * Role-based key presets (0.4.0 RBAC). A key is minted by picking a
+ * role; the role expands into the privilege scopes sent on the create
+ * request. This mirrors the server's role → scope mapping
+ * (`runtimes/typescript/src/auth/roles.ts`):
+ *
+ *   viewer → [read]                 read-only.
+ *   editor → [read, write]          mutate workspace content.
+ *   admin  → [read, write, manage]  + admin ops (mint/revoke keys,
+ *                                   manage RLAC, delete the workspace).
+ *
+ * Picking a role (rather than raw scopes) keeps the UX legible — most
+ * operators think in "what can this key do", not in scope tuples — and
+ * the key list collapses the same scope sets back to a role label.
+ *
  * `help` is rendered as plain React children (not markdown), so the
  * shape is a flat list of strings / `<code>` spans. Keeping it in a
  * data array (rather than literal JSX inside the render) lets the
- * picker stay a single map over `SCOPE_PRESETS`.
+ * picker stay a single map over `ROLE_PRESETS`.
  */
-const SCOPE_PRESETS = [
+const ROLE_PRESETS = [
 	{
-		id: "read-write" as const,
-		label: "Read + Write",
+		id: "editor" as const,
+		label: "Editor",
+		scopeSummary: "read + write",
 		help: [
-			"Full access — both retrieval and mutation. Same as keys minted before this picker existed.",
+			"Retrieval and mutation of workspace content — search, ingest, KB / agent / service CRUD. Same access as keys minted before roles existed. Cannot manage keys, RLAC, or delete the workspace.",
 		],
 		scopes: ["read", "write"] as const,
 	},
 	{
-		id: "read-only" as const,
-		label: "Read only",
+		id: "viewer" as const,
+		label: "Viewer",
+		scopeSummary: "read",
 		help: [
 			"Retrieval only — ",
 			{ code: "search_kb" },
@@ -50,9 +60,18 @@ const SCOPE_PRESETS = [
 			{ code: "ingest_text" },
 			", ",
 			{ code: "delete_document" },
-			") and other mutating routes.",
+			") and every mutating route. Good for external agents you don't fully trust.",
 		],
 		scopes: ["read"] as const,
+	},
+	{
+		id: "admin" as const,
+		label: "Admin",
+		scopeSummary: "read + write + manage",
+		help: [
+			"Everything an Editor can do, plus admin operations: mint / revoke API keys, manage RLAC principals and policy, and delete the workspace. Issue sparingly — an Admin key can mint more keys.",
+		],
+		scopes: ["read", "write", "manage"] as const,
 	},
 ] as const;
 
@@ -94,13 +113,16 @@ export function CreateApiKeyDialog({
 }) {
 	const create = useCreateApiKey(workspace);
 	const [label, setLabel] = useState("");
-	const [preset, setPreset] =
-		useState<(typeof SCOPE_PRESETS)[number]["id"]>("read-write");
+	// Default to Editor (read + write) — the same effective access keys
+	// carried before the role picker existed, so the common "mint a key
+	// for first-party tooling" path is unchanged by default.
+	const [role, setRole] =
+		useState<(typeof ROLE_PRESETS)[number]["id"]>("editor");
 	const [plaintext, setPlaintext] = useState<string | null>(null);
 
 	function reset() {
 		setLabel("");
-		setPreset("read-write");
+		setRole("editor");
 		setPlaintext(null);
 		create.reset();
 	}
@@ -108,10 +130,10 @@ export function CreateApiKeyDialog({
 	async function submit() {
 		const trimmed = label.trim();
 		if (!trimmed) return;
-		const chosen = SCOPE_PRESETS.find((p) => p.id === preset);
-		// Should always resolve — the preset id is constrained — but fall
-		// back to the "read + write" default rather than refusing to
-		// submit if a future preset is removed in a refactor.
+		const chosen = ROLE_PRESETS.find((p) => p.id === role);
+		// Should always resolve — the role id is constrained — but fall
+		// back to the Editor (read + write) default rather than refusing
+		// to submit if a future preset is removed in a refactor.
 		const scopes = chosen?.scopes ?? ["read", "write"];
 		try {
 			const res = await create.mutateAsync({
@@ -170,37 +192,42 @@ export function CreateApiKeyDialog({
 						</div>
 						<div className="flex flex-col gap-2">
 							<FieldLabel
-								htmlFor="key-scopes"
-								help="Privilege tiers this key carries. Pick Read only for keys that go to external agents you don't fully trust; pick Read + Write for first-party tooling that ingests or maintains KB content."
+								htmlFor="key-role"
+								help="The role this key acts as. Viewer is read-only (good for untrusted external agents); Editor can mutate workspace content (first-party tooling); Admin can additionally manage keys, RLAC, and delete the workspace. The role expands into the privilege scopes sent to the server."
 							>
-								Scopes
+								Role
 							</FieldLabel>
 							<div
-								id="key-scopes"
+								id="key-role"
 								className="flex flex-col gap-2"
 								role="radiogroup"
-								aria-label="Key scopes"
+								aria-label="Key role"
 							>
-								{SCOPE_PRESETS.map((p) => (
+								{ROLE_PRESETS.map((p) => (
 									<label
 										key={p.id}
 										className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 transition-colors ${
-											preset === p.id
+											role === p.id
 												? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] dark:bg-[var(--color-brand-950)]/30"
 												: "border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
 										}`}
 									>
 										<input
 											type="radio"
-											name="key-scopes"
+											name="key-role"
 											value={p.id}
-											checked={preset === p.id}
-											onChange={() => setPreset(p.id)}
+											checked={role === p.id}
+											onChange={() => setRole(p.id)}
 											className="mt-1"
 										/>
-										<div className="flex flex-col gap-0.5">
-											<span className="text-sm font-medium text-slate-900 dark:text-slate-100">
-												{p.label}
+										<div className="flex min-w-0 flex-col gap-0.5">
+											<span className="flex flex-wrap items-center gap-2">
+												<span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+													{p.label}
+												</span>
+												<code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+													{p.scopeSummary}
+												</code>
 											</span>
 											<span className="text-xs text-slate-500 dark:text-slate-400">
 												{renderHelpFragments(p.help)}

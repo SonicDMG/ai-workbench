@@ -15,7 +15,7 @@ import { docCommand } from "./commands/doc.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { jobCommand } from "./commands/job.js";
 import { kbCommand } from "./commands/kb.js";
-import { loginCommand } from "./commands/login.js";
+import { hintForForbidden, loginCommand } from "./commands/login.js";
 import { logoutCommand } from "./commands/logout.js";
 import { policyCommand } from "./commands/policy.js";
 import { principalCommand } from "./commands/principal.js";
@@ -66,8 +66,13 @@ telemetry.emit("command_run", { command: commandNameFromArgv(process.argv) });
 
 runMain(main).catch((err: unknown) => {
 	if (err instanceof HttpError) {
+		// For a 403, prefer role-specific RBAC guidance (which scope is
+		// missing → which role to mint) over the generic registry hint
+		// the runtime attaches. Falls back to the server hint when the
+		// message isn't a recognized authz denial.
+		const roleHint = err.status === 403 ? hintForForbidden(err.message) : null;
 		fail(`${err.code}: ${err.message}`, {
-			hint: err.hint,
+			hint: roleHint ?? err.hint,
 			docs: err.docs,
 			requestId: err.requestId,
 		});
