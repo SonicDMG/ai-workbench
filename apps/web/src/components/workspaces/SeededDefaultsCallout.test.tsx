@@ -95,6 +95,7 @@ function agentFixture(name: string): AgentRecord {
 		userPrompt: null,
 		llmServiceId: null,
 		knowledgeBaseIds: [],
+		toolIds: [],
 		rerankEnabled: false,
 		rerankingServiceId: null,
 		rerankMaxResults: null,

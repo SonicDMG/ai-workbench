@@ -3,6 +3,7 @@ import type { components } from "./api-types.generated";
 import {
 	ApiKeyScopeSchema,
 	SecretRefSchema,
+	ToolSourceSchema,
 	WorkspaceKindSchema,
 	WorkspacePageSchema,
 	WorkspaceRecordSchema,
@@ -106,6 +107,26 @@ describe("schema/openapi drift detection", () => {
 
 		const enumValues = ApiKeyScopeSchema.options;
 		expect([...enumValues].sort()).toEqual(["manage", "read", "write"].sort());
+	});
+
+	test("ToolSourceSchema enum matches the generated OpenAPI type", () => {
+		// `AvailableTool.source` (0.4.0 A6) drives the agent-form tool
+		// catalog grouping. Same exhaustiveness guard as above: adding/
+		// removing a tool source in the backend breaks this until the Zod
+		// enum is updated alongside a `gen:types` refresh.
+		type RuntimeSource = components["schemas"]["AvailableTool"]["source"];
+		const exhaust: Record<RuntimeSource, true> = {
+			builtin: true,
+			native: true,
+			astra: true,
+			mcp: true,
+		};
+		void exhaust;
+
+		const enumValues = ToolSourceSchema.options;
+		expect([...enumValues].sort()).toEqual(
+			["astra", "builtin", "mcp", "native"].sort(),
+		);
 	});
 });
 

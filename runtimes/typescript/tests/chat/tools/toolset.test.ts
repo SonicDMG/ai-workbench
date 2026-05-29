@@ -14,6 +14,7 @@ import { executeWorkspaceTool } from "../../../src/chat/tools/dispatcher.js";
 import {
 	type AgentToolDeps,
 	DEFAULT_AGENT_TOOLS,
+	listCandidateTools,
 	resolveAgentToolset,
 	type ToolProviderContext,
 } from "../../../src/chat/tools/registry.js";
@@ -97,5 +98,57 @@ describe("executeWorkspaceTool — execution-time allow-list gate", () => {
 		const result = await executeWorkspaceTool(call("search_kb"), ts, stubDeps);
 		expect(result.resultText).toMatch(/no tools enabled/);
 		expect(result.outcome).toBe("denied");
+	});
+});
+
+describe("listCandidateTools — agent-form catalog (A6)", () => {
+	test("returns the built-in pool classified as builtin for a bare workspace", async () => {
+		const catalog = await listCandidateTools(await makeCtx());
+		// Every built-in tool is present and classified `builtin`.
+		expect(catalog.map((t) => t.id).sort()).toEqual([...ALL_NAMES].sort());
+		expect(catalog.every((t) => t.source === "builtin")).toBe(true);
+		// Each entry carries the model-facing description verbatim.
+		const searchKb = catalog.find((t) => t.id === "search_kb");
+		expect(searchKb?.description.length).toBeGreaterThan(0);
+		// A bare mock workspace wires no native / astra / mcp tools.
+		expect(catalog.some((t) => t.source !== "builtin")).toBe(false);
+	});
+
+	test("includes the native fetch tool (classified native) when configured", async () => {
+		const base = await makeCtx();
+		const ctx: ToolProviderContext = {
+			...base,
+			chatConfig: {
+				enabled: true,
+				provider: "openrouter",
+				tokenRef: "env:T",
+				baseUrl: null,
+				model: "m",
+				maxOutputTokens: 256,
+				retrievalK: 4,
+				allowDataCollection: false,
+				systemPrompt: null,
+				tools: {
+					fetch: {
+						enabled: true,
+						timeoutMs: 10_000,
+						maxResponseBytes: 1_048_576,
+					},
+					webSearch: {
+						enabled: false,
+						provider: null,
+						apiKeyRef: null,
+						timeoutMs: 10_000,
+						maxResults: 5,
+					},
+				},
+			},
+		};
+		const catalog = await listCandidateTools(ctx);
+		const fetchTool = catalog.find((t) => t.id === "native:fetch");
+		expect(fetchTool).toBeDefined();
+		expect(fetchTool?.source).toBe("native");
+		// web_search stays off (not fully configured).
+		expect(catalog.some((t) => t.id === "native:web_search")).toBe(false);
 	});
 });

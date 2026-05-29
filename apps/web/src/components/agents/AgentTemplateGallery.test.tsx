@@ -62,6 +62,7 @@ const AGENT_RECORD: AgentRecord = {
 	userPrompt: null,
 	llmServiceId: null,
 	knowledgeBaseIds: [],
+	toolIds: [],
 	rerankEnabled: false,
 	rerankingServiceId: null,
 	rerankMaxResults: null,

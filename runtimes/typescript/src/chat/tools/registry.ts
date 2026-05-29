@@ -797,6 +797,71 @@ function toolsetOf(tools: readonly AgentTool[]): AgentToolset {
 	return { tools, resolve: (name) => byName.get(name) ?? null };
 }
 
+/* --------------------------- tool catalog -------------------------- */
+
+/** Where a candidate tool comes from. Drives the catalog grouping in the UI. */
+export type ToolSource = "builtin" | "native" | "astra" | "mcp";
+
+/**
+ * One selectable entry in the agent-form tool picker. `id` is the
+ * namespaced tool id an agent lists in its `toolIds` allow-list
+ * (`mcp:{serverId}:{tool}`, `native:fetch`, `astra:data_api`, or a
+ * built-in name like `search_kb`).
+ */
+export interface ToolCandidate {
+	readonly id: string;
+	readonly description: string;
+	readonly source: ToolSource;
+}
+
+/** Built-in tool names, used to classify a candidate's source. */
+const BUILTIN_TOOL_NAMES: ReadonlySet<string> = new Set(
+	DEFAULT_AGENT_TOOLS.map((t) => t.definition.name),
+);
+
+/**
+ * Classify a tool by its (namespaced) id. Built-ins use bare names;
+ * the provider modules use a `{source}:…` prefix. A built-in name wins
+ * over any prefix coincidence because the built-in set is explicit.
+ */
+function classifyToolSource(id: string): ToolSource {
+	if (BUILTIN_TOOL_NAMES.has(id)) return "builtin";
+	if (id.startsWith("native:")) return "native";
+	if (id.startsWith("astra:")) return "astra";
+	if (id.startsWith("mcp:")) return "mcp";
+	// Defensive default: an unprefixed, non-built-in id is treated as a
+	// built-in for catalog purposes (it can only have come from the
+	// built-in registry expanding).
+	return "builtin";
+}
+
+/**
+ * Enumerate the FULL candidate tool pool for a workspace, regardless of
+ * any agent's allow-list — the selectable catalog the agent form offers.
+ * Composes the same providers as {@link resolveAgentToolset} (built-in +
+ * native + Astra + remote-MCP), so the catalog reflects exactly what is
+ * actually wired for the workspace: native tools only when configured,
+ * the Astra tool only for astra/hcd workspaces, and remote-MCP tools
+ * per registered+enabled server. Each provider isolates its own failures
+ * (an unreachable MCP server contributes nothing) so the catalog never
+ * fails wholesale.
+ */
+export async function listCandidateTools(
+	ctx: ToolProviderContext,
+): Promise<readonly ToolCandidate[]> {
+	const candidates: readonly AgentTool[] = [
+		...DEFAULT_AGENT_TOOLS,
+		...(await nativeTools(ctx)),
+		...(await astraTools(ctx)),
+		...(await remoteMcpTools(ctx)),
+	];
+	return candidates.map((t) => ({
+		id: t.definition.name,
+		description: t.definition.description,
+		source: classifyToolSource(t.definition.name),
+	}));
+}
+
 /* ------------------------------ helpers ---------------------------- */
 
 function truncate(s: string, max: number): string {

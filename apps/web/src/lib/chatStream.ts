@@ -13,6 +13,17 @@ import type { ChatMessage } from "@/lib/schemas";
 import { ChatMessageRecordSchema } from "@/lib/schemas";
 
 /**
+ * A single tool call the model emitted in a `tool-call` SSE event.
+ * `arguments` is the raw JSON string the model produced (already a
+ * string on the wire — not parsed) so the UI can pretty-print it.
+ */
+export interface ToolCallRequest {
+	readonly id: string;
+	readonly name: string;
+	readonly arguments: string;
+}
+
+/**
  * Events the consumer fires while the stream is in flight. The
  * caller is expected to drive its own state machine off these —
  * `useSendConversationStream` uses them to update the cached message list.
@@ -21,6 +32,16 @@ export type ChatStreamUiEvent =
 	| { readonly type: "user-message"; readonly message: ChatMessage }
 	| { readonly type: "token"; readonly delta: string }
 	| { readonly type: "token-reset" }
+	| {
+			readonly type: "tool-call";
+			readonly toolCalls: readonly ToolCallRequest[];
+	  }
+	| {
+			readonly type: "tool-result";
+			readonly toolCallId: string;
+			readonly name: string;
+			readonly content: string;
+	  }
 	| { readonly type: "done"; readonly assistant: ChatMessage }
 	| { readonly type: "error"; readonly assistant: ChatMessage };
 
@@ -122,6 +143,46 @@ function dispatch(
 	}
 	if (raw.event === "token-reset") {
 		onEvent({ type: "token-reset" });
+		return;
+	}
+	if (raw.event === "tool-call") {
+		// `{ toolCalls: [{ id, name, arguments }] }` — see
+		// MessageStreamToolCallEvent in the runtime OpenAPI schemas. Drop
+		// entries missing the required string fields rather than crashing
+		// the whole stream on a malformed payload.
+		const parsed = JSON.parse(raw.data) as { toolCalls?: unknown };
+		const toolCalls = Array.isArray(parsed.toolCalls)
+			? parsed.toolCalls.filter(
+					(t): t is ToolCallRequest =>
+						typeof t === "object" &&
+						t !== null &&
+						typeof (t as ToolCallRequest).id === "string" &&
+						typeof (t as ToolCallRequest).name === "string" &&
+						typeof (t as ToolCallRequest).arguments === "string",
+				)
+			: [];
+		if (toolCalls.length > 0) onEvent({ type: "tool-call", toolCalls });
+		return;
+	}
+	if (raw.event === "tool-result") {
+		// `{ toolCallId, name, content }` — see MessageStreamToolResultEvent.
+		const parsed = JSON.parse(raw.data) as {
+			toolCallId?: unknown;
+			name?: unknown;
+			content?: unknown;
+		};
+		if (
+			typeof parsed.toolCallId === "string" &&
+			typeof parsed.name === "string" &&
+			typeof parsed.content === "string"
+		) {
+			onEvent({
+				type: "tool-result",
+				toolCallId: parsed.toolCallId,
+				name: parsed.name,
+				content: parsed.content,
+			});
+		}
 		return;
 	}
 	if (raw.event === "stream-error") {

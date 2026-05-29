@@ -39,6 +39,7 @@ const createState = {
 const streamState = {
 	send: vi.fn<(content: string) => Promise<string | null>>(),
 	pendingDelta: "",
+	toolCards: [] as readonly import("@/lib/toolCards").ToolCardState[],
 	pending: false,
 	error: null as string | null,
 	cancel: vi.fn(),
@@ -68,6 +69,7 @@ vi.mock("@/hooks/useConversations", () => ({
 	useSendConversationStream: () => ({
 		send: streamState.send,
 		pendingDelta: streamState.pendingDelta,
+		toolCards: streamState.toolCards,
 		pending: streamState.pending,
 		error: streamState.error,
 		cancel: streamState.cancel,
@@ -93,6 +95,7 @@ function makeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
 		userPrompt: null,
 		llmServiceId: null,
 		knowledgeBaseIds: [],
+		toolIds: [],
 		rerankEnabled: false,
 		rerankingServiceId: null,
 		rerankMaxResults: null,
@@ -149,6 +152,7 @@ beforeEach(() => {
 	createState.isPending = false;
 	streamState.send = vi.fn();
 	streamState.pendingDelta = "";
+	streamState.toolCards = [];
 	streamState.pending = false;
 	streamState.error = null;
 	streamState.cancel = vi.fn();
@@ -246,6 +250,42 @@ describe("ConversationThread", () => {
 			/>,
 		);
 		expect(screen.getByTestId("agent-streaming")).toBeInTheDocument();
+	});
+
+	it("renders inline tool-call cards while the SSE reply is in flight", () => {
+		conversationState.data = makeConv();
+		messagesState.data = [makeMessage({ role: "user", content: "ping" })];
+		streamState.pending = true;
+		streamState.pendingDelta = "";
+		streamState.toolCards = [
+			{
+				id: "c1",
+				name: "search_kb",
+				arguments: '{"query":"billing"}',
+				result: "2 hits",
+				status: "done",
+			},
+			{
+				id: "c2",
+				name: "native:fetch",
+				arguments: "{}",
+				result: null,
+				status: "running",
+			},
+		];
+		renderInRouter(
+			<ConversationThread
+				workspaceId="ws-1"
+				agent={makeAgent()}
+				conversationId="conv-1"
+				onDeleted={() => {}}
+			/>,
+		);
+		// Both cards render; the running one shows its in-flight indicator.
+		expect(screen.getAllByTestId("tool-call-card")).toHaveLength(2);
+		expect(screen.getByText("search_kb")).toBeInTheDocument();
+		expect(screen.getByText("native:fetch")).toBeInTheDocument();
+		expect(screen.getByTestId("tool-call-running")).toBeInTheDocument();
 	});
 
 	it("disables Send while a reply is streaming and exposes a Cancel affordance", () => {

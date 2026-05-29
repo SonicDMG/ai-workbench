@@ -805,6 +805,10 @@ export const AgentRecordSchema = z.object({
 	userPrompt: z.string().nullish(),
 	llmServiceId: z.string().uuid().nullish(),
 	knowledgeBaseIds: z.array(z.string().uuid()).default([]),
+	// Per-agent tool allow-list (0.4.0). Empty → all built-in tools
+	// (grandfathered). `default([])` keeps older wire records (pre-toolIds)
+	// parsing cleanly.
+	toolIds: z.array(z.string()).default([]),
 	rerankEnabled: z.boolean(),
 	rerankingServiceId: z.string().uuid().nullish(),
 	rerankMaxResults: z.number().int().nullish(),
@@ -822,6 +826,7 @@ export const CreateAgentInputSchema = z.object({
 	userPrompt: z.string().nullable().optional(),
 	llmServiceId: z.string().uuid().nullable().optional(),
 	knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+	toolIds: z.array(z.string().min(1)).optional(),
 	rerankEnabled: z.boolean().optional(),
 	rerankingServiceId: z.string().uuid().nullable().optional(),
 	rerankMaxResults: z.number().int().positive().nullable().optional(),
@@ -836,12 +841,43 @@ export const UpdateAgentInputSchema = z
 		userPrompt: z.string().nullable().optional(),
 		llmServiceId: z.string().uuid().nullable().optional(),
 		knowledgeBaseIds: z.array(z.string().uuid()).optional(),
+		toolIds: z.array(z.string().min(1)).optional(),
 		rerankEnabled: z.boolean().optional(),
 		rerankingServiceId: z.string().uuid().nullable().optional(),
 		rerankMaxResults: z.number().int().positive().nullable().optional(),
 	})
 	.strict();
 export type UpdateAgentInput = z.infer<typeof UpdateAgentInputSchema>;
+
+/**
+ * Source of a selectable tool, derived from the generated OpenAPI type.
+ * The Zod enum below is kept in sync via the schemas.test.ts drift check
+ * (mirrors the WorkspaceKind / ApiKeyScope pattern).
+ */
+export type ToolSource = components["schemas"]["AvailableTool"]["source"];
+
+export const ToolSourceSchema = z.enum([
+	"builtin",
+	"native",
+	"astra",
+	"mcp",
+]) satisfies z.ZodType<ToolSource>;
+
+/**
+ * One selectable entry in the agent-form tool picker, from
+ * `GET .../available-tools`. `id` is the namespaced tool id an agent
+ * lists in its `toolIds` allow-list.
+ */
+export const AvailableToolSchema = z.object({
+	id: z.string(),
+	description: z.string(),
+	source: ToolSourceSchema,
+});
+export type AvailableTool = z.infer<typeof AvailableToolSchema>;
+
+export const AvailableToolListSchema = z.object({
+	items: z.array(AvailableToolSchema),
+});
 
 /**
  * Agent template catalog entry. Static runtime data — `templateId` is
@@ -1241,6 +1277,57 @@ export const UpdatePrincipalInputSchema = z.object({
 	attributes: z.record(z.string(), z.string()).optional(),
 });
 export type UpdatePrincipalInput = z.infer<typeof UpdatePrincipalInputSchema>;
+
+/* ====================================================================== */
+/* External MCP servers (0.4.0 A2 backend; A6 settings UI).               */
+/*                                                                        */
+/* Per-workspace registry of remote MCP servers the agents can reach.     */
+/* The runtime discovers each enabled server's tools at turn time and     */
+/* exposes them as `mcp:{mcpServerId}:{tool}` agent tools.                */
+/* ====================================================================== */
+
+export const McpServerRecordSchema = z.object({
+	workspaceId: z.string().uuid(),
+	mcpServerId: z.string().uuid(),
+	label: z.string(),
+	url: z.string(),
+	credentialRef: z.string().nullable(),
+	enabled: z.boolean(),
+	// `null` = expose every tool the server advertises; `[]` = expose none.
+	allowedTools: z.array(z.string()).nullable(),
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type McpServerRecord = z.infer<typeof McpServerRecordSchema>;
+export const McpServerPageSchema = paginatedSchema(McpServerRecordSchema);
+
+export const CreateMcpServerInputSchema = z.object({
+	label: z.string().min(1, "Label is required").max(200),
+	// http(s) only; the runtime re-validates (SSRF guard) at dial time.
+	url: z
+		.string()
+		.url("Must be a valid http(s) URL")
+		.regex(/^https?:\/\//i, "Must start with http:// or https://"),
+	credentialRef: SecretRefSchema.nullable().optional(),
+	enabled: z.boolean().optional(),
+	allowedTools: z.array(z.string().min(1)).nullable().optional(),
+});
+export type CreateMcpServerInput = z.infer<typeof CreateMcpServerInputSchema>;
+
+export const UpdateMcpServerInputSchema = z
+	.object({
+		label: z.string().min(1).max(200).optional(),
+		url: z
+			.string()
+			.url("Must be a valid http(s) URL")
+			.regex(/^https?:\/\//i, "Must start with http:// or https://")
+			.optional(),
+		credentialRef: SecretRefSchema.nullable().optional(),
+		enabled: z.boolean().optional(),
+		allowedTools: z.array(z.string().min(1)).nullable().optional(),
+	})
+	.strict();
+export type UpdateMcpServerInput = z.infer<typeof UpdateMcpServerInputSchema>;
 
 export const PolicyValidationIssueSchema = z.object({
 	code: z.string(),

@@ -75,10 +75,103 @@ describe("AgentForm", () => {
 			systemPrompt: null,
 			llmServiceId: null,
 			knowledgeBaseIds: ["00000000-0000-4000-8000-000000000aaa"],
+			// Empty selection → the "all built-in tools" default.
+			toolIds: [],
 			rerankEnabled: false,
 			rerankingServiceId: null,
 			rerankMaxResults: null,
 		});
+	});
+
+	const sampleTools = [
+		{
+			id: "search_kb",
+			description: "Semantic search across KBs.",
+			source: "builtin" as const,
+		},
+		{
+			id: "native:fetch",
+			description: "GET/POST a URL.",
+			source: "native" as const,
+		},
+	];
+
+	it("hides the tool picker when no tools are available", () => {
+		render(
+			<AgentForm
+				mode="create"
+				knowledgeBases={[]}
+				llmServices={[]}
+				rerankingServices={[]}
+				onSubmit={vi.fn()}
+			/>,
+		);
+		expect(screen.queryByText("Tools")).not.toBeInTheDocument();
+	});
+
+	it("groups available tools by source and emits selected toolIds", async () => {
+		const onSubmit = vi.fn().mockResolvedValue(undefined);
+		const user = userEvent.setup();
+		render(
+			<AgentForm
+				mode="create"
+				knowledgeBases={[]}
+				llmServices={[]}
+				rerankingServices={[]}
+				availableTools={sampleTools}
+				onSubmit={onSubmit}
+			/>,
+		);
+
+		// Grouped by source — both groups present.
+		expect(screen.getByTestId("tool-group-builtin")).toBeInTheDocument();
+		expect(screen.getByTestId("tool-group-native")).toBeInTheDocument();
+		// Default hint communicates the grandfather behavior.
+		expect(
+			screen.getByText(/Using all built-in tools \(default\)/),
+		).toBeInTheDocument();
+
+		await user.type(screen.getByLabelText(/^Name/), "Tooler");
+		await user.click(screen.getByRole("checkbox", { name: /native:fetch/ }));
+		await user.click(screen.getByRole("button", { name: /Create agent/ }));
+
+		await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+		expect(onSubmit).toHaveBeenCalledWith(
+			expect.objectContaining({ toolIds: ["native:fetch"] }),
+		);
+	});
+
+	it("preselects the agent's existing toolIds in edit mode", () => {
+		render(
+			<AgentForm
+				mode="edit"
+				agent={{
+					workspaceId: "00000000-0000-4000-8000-000000000001",
+					agentId: "00000000-0000-4000-8000-000000000bbb",
+					name: "Existing",
+					description: null,
+					systemPrompt: null,
+					userPrompt: null,
+					llmServiceId: null,
+					knowledgeBaseIds: [],
+					toolIds: ["search_kb"],
+					rerankEnabled: false,
+					rerankingServiceId: null,
+					rerankMaxResults: null,
+					createdAt: "2026-04-01T00:00:00Z",
+					updatedAt: "2026-04-01T00:00:00Z",
+				}}
+				knowledgeBases={[]}
+				llmServices={[]}
+				rerankingServices={[]}
+				availableTools={sampleTools}
+				onSubmit={vi.fn()}
+			/>,
+		);
+		expect(screen.getByRole("checkbox", { name: /search_kb/ })).toBeChecked();
+		expect(
+			screen.getByRole("checkbox", { name: /native:fetch/ }),
+		).not.toBeChecked();
 	});
 
 	it("populates from an existing agent in edit mode", () => {
@@ -95,6 +188,7 @@ describe("AgentForm", () => {
 					userPrompt: null,
 					llmServiceId: null,
 					knowledgeBaseIds: [],
+					toolIds: [],
 					rerankEnabled: false,
 					rerankingServiceId: null,
 					rerankMaxResults: null,

@@ -124,6 +124,9 @@ export function makeAgentMethods(state: AstraStoreState): AgentRepo {
 				...(patch.knowledgeBaseIds !== undefined && {
 					knowledgeBaseIds: freezeStringSet(patch.knowledgeBaseIds),
 				}),
+				...(patch.toolIds !== undefined && {
+					toolIds: freezeStringSet(patch.toolIds),
+				}),
 				...(patch.rerankEnabled !== undefined && {
 					rerankEnabled: patch.rerankEnabled,
 				}),
@@ -144,6 +147,7 @@ export function makeAgentMethods(state: AstraStoreState): AgentRepo {
 						description: nextRow.description,
 						system_prompt: nextRow.system_prompt,
 						user_prompt: nextRow.user_prompt,
+						tool_ids: nextRow.tool_ids,
 						llm_service_id: nextRow.llm_service_id,
 						knowledge_base_ids: nextRow.knowledge_base_ids,
 						rerank_enabled: nextRow.rerank_enabled,

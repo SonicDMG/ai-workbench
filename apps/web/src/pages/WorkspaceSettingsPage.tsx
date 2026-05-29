@@ -3,6 +3,7 @@ import {
 	Cog,
 	ExternalLink,
 	Info,
+	Network,
 	Pencil,
 	ServerCog,
 	ShieldCheck,
@@ -26,6 +27,7 @@ import {
 import { ApiKeysPanel } from "@/components/workspaces/ApiKeysPanel";
 import { DeleteDialog } from "@/components/workspaces/DeleteDialog";
 import { KindBadge } from "@/components/workspaces/KindBadge";
+import { McpServersPanel } from "@/components/workspaces/McpServersPanel";
 import { PolicyAuditPanel } from "@/components/workspaces/PolicyAuditPanel";
 import { PrincipalsPanel } from "@/components/workspaces/PrincipalsPanel";
 import { SeededDefaultsCallout } from "@/components/workspaces/SeededDefaultsCallout";
@@ -198,6 +200,14 @@ export function WorkspaceSettingsPage() {
 				icon={<ServerCog className="h-4 w-4" />}
 			>
 				<ServicesPanel workspace={data.workspaceId} />
+			</SettingsSection>
+
+			<SettingsSection
+				title="MCP servers"
+				description="Remote MCP servers this workspace's agents can call. Each enabled server's tools are discovered at chat time and offered to agents that opt in via their tool allow-list."
+				icon={<Network className="h-4 w-4" />}
+			>
+				<McpServersPanel workspace={data.workspaceId} />
 			</SettingsSection>
 
 			{canManage ? (
