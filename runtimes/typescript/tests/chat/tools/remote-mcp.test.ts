@@ -176,7 +176,9 @@ describe("remoteMcpTools — discovery + execution round-trip", () => {
 			toolset,
 			execDeps,
 		);
-		expect(result).toBe("echo: world");
+		// A5 wraps the dispatcher result as { resultText, outcome }.
+		expect(result.resultText).toBe("echo: world");
+		expect(result.outcome).toBe("success");
 	});
 
 	test("resolveAgentToolset includes a remote tool only when toolIds name it", async () => {
