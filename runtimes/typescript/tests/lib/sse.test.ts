@@ -184,7 +184,7 @@ function jobRecord(status: JobStatus, updatedAt: string): JobRecord {
 		updatedAt,
 		leasedBy: null,
 		leasedAt: null,
-		ingestInput: null,
+		inputSnapshot: null,
 	};
 }
 
