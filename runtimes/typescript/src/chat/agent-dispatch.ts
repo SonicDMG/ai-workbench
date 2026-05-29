@@ -35,6 +35,7 @@ import {
 import type { RetrievedChunk } from "../chat/prompt.js";
 import { assemblePrompt } from "../chat/prompt.js";
 import type { AstraQuerySnapshot } from "../chat/retrieval.js";
+import type { OnToolInvoke } from "../chat/tools/dispatcher.js";
 import {
 	type AgentToolDeps,
 	DEFAULT_AGENT_TOOLS,
@@ -90,6 +91,11 @@ export interface AgentSseWriter {
 	onAbort(handler: () => void): void;
 }
 
+/**
+ * Re-export the tool-invoke audit seam so route handlers can type their
+ * `onToolInvoke` closure without reaching into `chat/tools/dispatcher.js`.
+ */
+export type { OnToolInvoke };
 /** Re-export so the route layer can advertise the same set in its OpenAPI metadata. */
 export { buildAgentMetadata, DEFAULT_AGENT_TOOLS };
 
@@ -158,6 +164,7 @@ export async function dispatchAgentSend(
 	deps: AgentDispatchDeps,
 	ctx: AgentDispatchContext,
 	body: AgentDispatchBody,
+	onToolInvoke?: OnToolInvoke,
 ): Promise<AgentSendResult> {
 	const resolved = await resolveAgentChat(deps, ctx);
 	const { workspaceId, agent, conversation } = ctx;
@@ -252,6 +259,8 @@ export async function dispatchAgentSend(
 			toolResolved,
 			completion.toolCalls,
 			prevTs,
+			undefined,
+			onToolInvoke,
 		);
 		prevTs = toolStep.endTs;
 		turns.push(...toolStep.turns);
@@ -305,6 +314,7 @@ export async function dispatchAgentSendStream(
 	body: AgentDispatchBody,
 	sse: AgentSseWriter,
 	serializer: AgentStreamSerializer,
+	onToolInvoke?: OnToolInvoke,
 ): Promise<void> {
 	const resolved = await resolveAgentChat(deps, ctx);
 	const { workspaceId, agent, conversation } = ctx;
@@ -457,6 +467,7 @@ export async function dispatchAgentSendStream(
 						}),
 					});
 				},
+				onToolInvoke,
 			);
 			prevTs = toolStep.endTs;
 			turns.push(...toolStep.turns);

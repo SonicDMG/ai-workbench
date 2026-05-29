@@ -53,6 +53,7 @@ export type AuditAction =
 	| "agent.delete"
 	| "job.claim"
 	| "mcp.invoke"
+	| "tool.invoke"
 	| "auth.api_denied"
 	| "auth.bootstrap_use"
 	| "auth.csrf_rejected"
