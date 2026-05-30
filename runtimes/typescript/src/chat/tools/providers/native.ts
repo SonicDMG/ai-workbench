@@ -24,6 +24,7 @@
  * No code execution this release (documented non-goal).
  */
 
+import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { z } from "@hono/zod-openapi";
 import type {
@@ -49,9 +50,9 @@ export const NATIVE_WEB_SEARCH_TOOL_ID = "native:web_search";
  *
  * Only `http`/`https` are allowed; literal-IP hosts are matched against
  * the blocked ranges; the cloud-metadata hostnames are denied by name.
- * A DNS name that *resolves* to a private IP is not caught here (would
- * need a resolve-then-pin) — that residual risk is documented; the
- * redirect guard + the operator opt-in gate bound it.
+ * A DNS *name* that resolves to a blocked IP is caught by
+ * {@link resolvedSsrfRejectReason} (this sync check is its first pass),
+ * which resolves the host and re-runs the range checks on every address.
  */
 const BLOCKED_HOSTNAMES = new Set(["localhost", "metadata.google.internal"]);
 
@@ -106,6 +107,87 @@ function ssrfRejectReason(rawUrl: string): string | null {
 	}
 	if (kind === 6 && isBlockedIpv6(literal)) {
 		return `host '${host}' resolves to a private / loopback / link-local address`;
+	}
+	return null;
+}
+
+/* -------- DNS-resolution SSRF guard (resolve-and-validate) -------- */
+
+/** A resolved address from a {@link HostResolver}. */
+export interface ResolvedAddress {
+	readonly address: string;
+	readonly family: number;
+}
+
+/**
+ * Resolve a hostname to its IP addresses. Mirrors `dns.lookup(host,
+ * { all: true })` — the OS resolver `fetch` itself would use — so what we
+ * validate is what the connection would target.
+ */
+export type HostResolver = (
+	hostname: string,
+) => Promise<readonly ResolvedAddress[]>;
+
+const defaultHostResolver: HostResolver = (hostname) =>
+	dnsLookup(hostname, { all: true });
+
+// Test seam (mirrors `setEndpointEgressPolicy`): override the resolver the
+// native:fetch SSRF pre-flight uses, so tests can exercise the
+// domain-resolves-to-internal path without real DNS.
+let nativeFetchHostResolver: HostResolver = defaultHostResolver;
+
+export function setNativeFetchHostResolver(resolver: HostResolver): void {
+	nativeFetchHostResolver = resolver;
+}
+
+export function resetNativeFetchHostResolver(): void {
+	nativeFetchHostResolver = defaultHostResolver;
+}
+
+/**
+ * Full pre-flight host check for a model-supplied URL: the synchronous
+ * literal-IP / blocked-name checks in {@link ssrfRejectReason}, PLUS —
+ * for DNS names — resolution and validation of every resolved address
+ * against the same blocked ranges. Closes the "a domain that resolves to
+ * 169.254.169.254 / 10.x / loopback slips past the literal check" SSRF
+ * hole (e.g. an attacker-controlled host reached via prompt injection).
+ * Fails closed: a host that won't resolve, resolves to nothing, or
+ * resolves to ANY blocked address is refused.
+ *
+ * Residual: a sub-second DNS rebind between this resolution and the one
+ * `fetch` performs is still possible; fully closing it needs connection
+ * pinning to the validated IP. The narrowed window plus `safeFetch`'s
+ * `redirect: "error"` bound that residual risk.
+ */
+export async function resolvedSsrfRejectReason(
+	rawUrl: string,
+	resolveHost: HostResolver,
+): Promise<string | null> {
+	const literalReason = ssrfRejectReason(rawUrl);
+	if (literalReason) return literalReason;
+
+	// ssrfRejectReason already accepted the URL, so this parse succeeds.
+	const host = new URL(rawUrl).hostname.toLowerCase();
+	const literal =
+		host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+	// A literal IP was already range-checked synchronously above.
+	if (isIP(literal) !== 0) return null;
+
+	let addresses: readonly ResolvedAddress[];
+	try {
+		addresses = await resolveHost(host);
+	} catch {
+		return `host '${host}' could not be resolved`;
+	}
+	if (addresses.length === 0) {
+		return `host '${host}' did not resolve to any address`;
+	}
+	for (const { address, family } of addresses) {
+		const blocked =
+			family === 6 ? isBlockedIpv6(address) : isBlockedIpv4(address);
+		if (blocked) {
+			return `host '${host}' resolves to a private / loopback / metadata address (${address})`;
+		}
 	}
 	return null;
 }
@@ -248,7 +330,10 @@ function buildFetchTool(cfg: FetchToolConfig): AgentTool {
 			const { url, body } = parsed.data;
 			const method = parsed.data.method ?? "GET";
 
-			const reject = ssrfRejectReason(url);
+			const reject = await resolvedSsrfRejectReason(
+				url,
+				nativeFetchHostResolver,
+			);
 			if (reject) {
 				return `Error: refusing to fetch '${url}' — ${reject}.`;
 			}

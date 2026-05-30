@@ -11,9 +11,11 @@
  */
 
 import { describe, expect, test } from "vitest";
+import type { JobStore } from "../../src/jobs/store.js";
 import type { JobRecord, JobStatus } from "../../src/jobs/types.js";
 import {
 	AsyncEventQueue,
+	runJobEventStream,
 	SseEmitter,
 	type SseSink,
 	shouldEmitOnResume,
@@ -217,5 +219,57 @@ describe("shouldEmitOnResume", () => {
 			true,
 		);
 		expect(shouldEmitOnResume(failed, "2026-01-01T00:00:09.000Z")).toBe(true);
+	});
+});
+
+describe("runJobEventStream — shutdown drain", () => {
+	test("ends the stream on drainSignal without a terminal `done`, and unsubscribes", async () => {
+		const { sink, writes } = recordingSink();
+		// Capture via an object property (not a `let`) to dodge TS's
+		// closure-narrowing of a reassigned-only-inside-a-callback variable.
+		const cap: { fn?: (r: JobRecord) => void; unsubbed: boolean } = {
+			unsubbed: false,
+		};
+		const jobs = {
+			subscribe: async (
+				_ws: string,
+				_id: string,
+				cb: (r: JobRecord) => void,
+			) => {
+				cap.fn = cb;
+				return () => {
+					cap.unsubbed = true;
+				};
+			},
+		} as unknown as JobStore;
+
+		const drain = new AbortController();
+		const done = runJobEventStream(sink, {
+			jobs,
+			workspaceId: "w",
+			jobId: "j",
+			lastEventId: null,
+			serialize: (r) => JSON.stringify({ status: r.status }),
+			onAbort: () => {}, // no client-disconnect in this scenario
+			drainSignal: drain.signal,
+		});
+
+		// A running (non-terminal) snapshot: emits one `job` frame, after
+		// which the stream would otherwise stay open indefinitely.
+		cap.fn?.(jobRecord("running", "2026-01-01T00:00:01.000Z"));
+		await new Promise((r) => setTimeout(r, 0)); // let the drain loop write it
+
+		// Runtime shutdown fires the drain signal.
+		drain.abort();
+
+		// The stream ends promptly (the promise resolves) instead of hanging
+		// until the client disconnects or the force-kill timeout trips.
+		await done;
+
+		expect(cap.unsubbed).toBe(true);
+		// Exactly one `job` event and crucially NO terminal `done`: the job
+		// is still running, so we close the socket (client reconnects +
+		// resumes) rather than falsely signalling completion.
+		expect(writes.map((w) => w.event)).toEqual(["job"]);
 	});
 });

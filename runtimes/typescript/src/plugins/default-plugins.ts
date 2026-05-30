@@ -101,7 +101,8 @@ function defaultPluginList(ctx: RoutePluginContext): readonly RoutePlugin[] {
 		{
 			id: "jobs",
 			mountPath: WORKSPACE_MOUNT,
-			build: () => jobRoutes({ jobs: ctx.jobs }),
+			build: () =>
+				jobRoutes({ jobs: ctx.jobs, shutdownSignal: ctx.shutdownSignal }),
 		},
 		{
 			id: "api_keys",

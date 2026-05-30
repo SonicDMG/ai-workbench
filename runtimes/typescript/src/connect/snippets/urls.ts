@@ -13,10 +13,3 @@ export function mcpUrl(publicBaseUrl: string, workspaceId: string): string {
 export function restBaseUrl(publicBaseUrl: string): string {
 	return `${publicBaseUrl}/api/v1`;
 }
-
-export function workspaceUrl(
-	publicBaseUrl: string,
-	workspaceId: string,
-): string {
-	return `${publicBaseUrl}/api/v1/workspaces/${workspaceId}`;
-}

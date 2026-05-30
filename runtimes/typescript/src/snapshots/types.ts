@@ -249,25 +249,3 @@ export function buildInsertChunksSnapshot(args: {
 		batch: { documentId: args.documentId, batchSize: args.batchSize },
 	};
 }
-
-export function buildDeleteByDocumentSnapshot(args: {
-	readonly envelope: SnapshotEnvelope;
-	readonly documentId: string;
-}): AstraDeleteByDocumentSnapshot {
-	return {
-		kind: "delete_by_document",
-		...args.envelope,
-		filter: { documentId: args.documentId },
-	};
-}
-
-export function buildDeleteChunkSnapshot(args: {
-	readonly envelope: SnapshotEnvelope;
-	readonly chunkId: string;
-}): AstraDeleteChunkSnapshot {
-	return {
-		kind: "delete_chunk",
-		...args.envelope,
-		filter: { chunkId: args.chunkId },
-	};
-}

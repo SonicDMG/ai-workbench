@@ -36,6 +36,15 @@ import { BUILD_TIME, COMMIT, VERSION } from "../version.js";
  */
 export interface ReadinessSignal {
 	draining: boolean;
+	/**
+	 * Aborts when the runtime begins shutting down. Long-lived SSE streams
+	 * (the job-events stream) observe it and end promptly: closing the
+	 * connection lets the client's EventSource reconnect to a surviving
+	 * replica and resume via `Last-Event-ID`, and lets `server.close()`
+	 * finish instead of waiting out the drain timeout on a stream that
+	 * would otherwise stay open for the life of a running job.
+	 */
+	readonly shutdownSignal?: AbortSignal;
 }
 
 export function operationalRoutes(

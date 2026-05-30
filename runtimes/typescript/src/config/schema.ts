@@ -20,10 +20,6 @@
 
 import { z } from "zod";
 
-const Id = z
-	.string()
-	.regex(/^[a-z][a-z0-9-]{0,63}$/, "must match /^[a-z][a-z0-9-]{0,63}$/");
-
 // Provider portion follows RFC 3986 URI-scheme syntax — lowercase letter
 // followed by lowercase letters, digits, `+`, `-`, or `.`. The path is
 // everything after the FIRST colon, so providers like
@@ -96,8 +92,6 @@ const TelemetrySchema = z
 		url: z.string().url().nullable().default(null),
 	})
 	.default({ enabled: false, url: null });
-
-export type TelemetryConfig = z.infer<typeof TelemetrySchema>;
 
 /**
  * Native agent-tool guardrails (0.4.0, A3). Off by default — both
@@ -750,11 +744,6 @@ export type Config = z.infer<typeof ConfigSchema>;
 export type ControlPlaneConfig = Config["controlPlane"];
 export type AuthConfig = Config["auth"];
 export type OidcConfig = z.infer<typeof OidcSchema>;
-export type OidcClientConfig = z.infer<typeof OidcClientSchema>;
 export type SeedWorkspace = z.infer<typeof SeedWorkspaceSchema>;
 export type ChatConfig = z.infer<typeof ChatSchema>;
 export type McpConfig = z.infer<typeof McpSchema>;
-
-// Lightweight alias to keep `Id` reachable for callers that want the
-// same validator applied elsewhere (e.g. request validation).
-export const IdSchema = Id;

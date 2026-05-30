@@ -110,12 +110,6 @@ export function setEndpointEgressPolicy(
 	endpointEgressPolicy.blockPrivateNetworks = policy.blockPrivateNetworks;
 }
 
-export function getEndpointEgressPolicy(): Readonly<{
-	blockPrivateNetworks: boolean;
-}> {
-	return { blockPrivateNetworks: endpointEgressPolicy.blockPrivateNetworks };
-}
-
 function isPrivateNetworkHost(host: string): boolean {
 	if (host === "localhost") return true;
 	if (LOOPBACK_V4.test(host)) return true;
@@ -1416,14 +1410,6 @@ export const ConversationIdParamSchema = z
 	.uuid()
 	.openapi({
 		param: { name: "conversationId", in: "path" },
-		example: "11111111-2222-3333-4444-555555555555",
-	});
-
-export const ChatMessageIdParamSchema = z
-	.string()
-	.uuid()
-	.openapi({
-		param: { name: "messageId", in: "path" },
 		example: "11111111-2222-3333-4444-555555555555",
 	});
 

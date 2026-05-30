@@ -119,7 +119,3 @@ function buildEnvelope(
 	};
 	return { error: envelope };
 }
-
-export function errorResponse(c: Context<AppEnv>, err: ApiError) {
-	return c.json(errorEnvelope(c, err), err.status);
-}

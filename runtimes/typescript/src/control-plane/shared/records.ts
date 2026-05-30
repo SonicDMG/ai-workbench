@@ -8,6 +8,7 @@
  * doesn't touch `this`, it can move here.
  */
 
+import type { KeysetKey } from "../../lib/pagination.js";
 import { nowIso } from "../defaults.js";
 import type { CreateAgentInput } from "../store.js";
 import type {
@@ -93,6 +94,30 @@ export function byMessageTsAsc(a: MessageRecord, b: MessageRecord): number {
 	if (a.messageId > b.messageId) return 1;
 	return 0;
 }
+
+/**
+ * Keyset sort position for a conversation: `created_at` primary,
+ * `conversation_id` tiebreak. Paired with {@link CONVERSATION_PAGE_DIRECTION}
+ * (descending) it reproduces {@link byConversationCreatedAtDesc}.
+ */
+export function conversationKeysetKey(c: ConversationRecord): KeysetKey {
+	return { k: c.createdAt, id: c.conversationId };
+}
+
+/**
+ * Keyset sort position for a message: `message_ts` primary, `message_id`
+ * tiebreak. Paired with {@link MESSAGE_PAGE_DIRECTION} (ascending) it
+ * reproduces {@link byMessageTsAsc}.
+ */
+export function messageKeysetKey(m: MessageRecord): KeysetKey {
+	return { k: m.messageTs, id: m.messageId };
+}
+
+/** Conversations page newest-first (`created_at DESC`). */
+export const CONVERSATION_PAGE_DIRECTION = "desc" as const;
+
+/** Messages page oldest-first (`message_ts ASC`). */
+export const MESSAGE_PAGE_DIRECTION = "asc" as const;
 
 /**
  * Oldest-first sort for agent rows. Agent listing uses creation order

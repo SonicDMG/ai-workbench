@@ -18,6 +18,11 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+	type KeysetDirection,
+	type KeysetKey,
+	paginateKeyset,
+} from "../../lib/pagination.js";
 import { ControlPlaneNotFoundError } from "../errors.js";
 import {
 	type AgentServiceReferenceField,
@@ -118,9 +123,26 @@ export const TABLE_FILES: Record<Table, string> = {
 };
 
 /**
+ * Request shape for {@link FileStoreState.readPage}. The same partition
+ * is described two ways so each backend uses the cheaper one: `partition`
+ * is the leading pk-component tuple a pushdown backend (sqlite) range-scans
+ * its index with; `inPartition` is the equivalent JS predicate a
+ * whole-table backend (file) filters by. Keep them in sync at the call
+ * site — they must select identical rows.
+ */
+export interface ReadPageOptions<K extends Table> {
+	readonly partition: readonly string[];
+	readonly inPartition: (row: TableRow<K>) => boolean;
+	readonly keyOf: (row: TableRow<K>) => KeysetKey;
+	readonly direction: KeysetDirection;
+	readonly after: KeysetKey | null;
+	readonly limit: number;
+}
+
+/**
  * Shared file-backed state. Holds the per-table mutex map, the root
- * directory, and bound `readAll` / `mutate` helpers that each slice
- * uses for all I/O.
+ * directory, and bound `readAll` / `mutate` / `readPage` helpers that
+ * each slice uses for all I/O.
  */
 export interface FileStoreState {
 	readonly root: string;
@@ -133,6 +155,16 @@ export interface FileStoreState {
 			result: R;
 		},
 	): Promise<R>;
+	/**
+	 * Keyset-paginate one partition of `table`. The seam exists so the
+	 * sqlite backend can push the partition scope down to its pk index
+	 * (overriding the file impl, which reads the whole table); both finish
+	 * the keyset slice through the shared `paginateKeyset`.
+	 */
+	readPage<K extends Table>(
+		table: K,
+		opts: ReadPageOptions<K>,
+	): Promise<{ items: TableRow<K>[]; nextKey: KeysetKey | null }>;
 }
 
 function createMutexes(): Record<Table, Mutex> {
@@ -204,11 +236,28 @@ export function createFileStoreState(root: string): FileStoreState {
 		});
 	}
 
+	async function readPage<K extends Table>(
+		table: K,
+		opts: ReadPageOptions<K>,
+	): Promise<{ items: TableRow<K>[]; nextKey: KeysetKey | null }> {
+		// No index — read the table, filter to the partition, then keyset-
+		// slice in memory. The sqlite backend overrides this with a pk-range
+		// scan (see ../sqlite/state.ts); both share `paginateKeyset`.
+		const rows = (await readAll(table)).filter(opts.inPartition);
+		return paginateKeyset(rows, {
+			after: opts.after,
+			limit: opts.limit,
+			direction: opts.direction,
+			keyOf: opts.keyOf,
+		});
+	}
+
 	return {
 		root,
 		mutexes,
 		readAll,
 		mutate,
+		readPage,
 	};
 }
 

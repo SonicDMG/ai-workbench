@@ -66,6 +66,12 @@ export interface RoutePluginContext {
 	 * that don't care about metrics can omit it.
 	 */
 	readonly metrics?: RuntimeMetrics;
+	/**
+	 * Aborts when the runtime begins shutting down. Threaded to the
+	 * job-events SSE stream so it can end promptly on shutdown (see
+	 * {@link ../routes/operational.ReadinessSignal.shutdownSignal}).
+	 */
+	readonly shutdownSignal?: AbortSignal;
 }
 
 export interface RoutePlugin {

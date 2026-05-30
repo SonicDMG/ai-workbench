@@ -31,13 +31,6 @@ export const SCOPE_READ = "read";
 export const SCOPE_WRITE = "write";
 export const SCOPE_MANAGE = "manage";
 
-/** Every scope the runtime understands, least-privileged first. */
-export const ALL_SCOPES: readonly string[] = Object.freeze([
-	SCOPE_READ,
-	SCOPE_WRITE,
-	SCOPE_MANAGE,
-]);
-
 const ROLE_SCOPES: Readonly<Record<Role, readonly string[]>> = Object.freeze({
 	viewer: Object.freeze([SCOPE_READ]),
 	editor: Object.freeze([SCOPE_READ, SCOPE_WRITE]),

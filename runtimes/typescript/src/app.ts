@@ -562,6 +562,7 @@ export function createApp(opts: AppOptions): OpenAPIHono<AppEnv> {
 		ingestSemaphore,
 		chatService: opts.chatService ?? null,
 		chatConfig: opts.chatConfig ?? null,
+		shutdownSignal: opts.readiness?.shutdownSignal,
 		mcpConfig: opts.mcpConfig ?? { enabled: true, exposeChat: false },
 		replicaId,
 		extractors,

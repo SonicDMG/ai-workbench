@@ -37,11 +37,6 @@ export interface StringLiteralNode {
 	readonly value: Literal;
 }
 
-export interface ArrayLiteralNode {
-	readonly kind: "array";
-	readonly values: readonly Literal[];
-}
-
 export interface RowRefNode {
 	readonly kind: "row";
 	readonly column: string;

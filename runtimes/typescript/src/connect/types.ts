@@ -121,23 +121,6 @@ export interface ConnectSnippet {
 }
 
 /**
- * Aggregate response shape for `GET /connect/snippets`. Carries enough
- * top-level context that the UI can render the endpoint card (MCP
- * URL, REST base URL, the API-key env-var hint) without a second
- * round-trip.
- */
-export interface ConnectSnippetsResponse {
-	readonly workspaceId: string;
-	readonly knowledgeBaseId: string | null;
-	readonly publicBaseUrl: string;
-	readonly mcpUrl: string;
-	readonly restBaseUrl: string;
-	readonly mcpEnabled: boolean;
-	readonly apiKeyEnvVar: string;
-	readonly targets: readonly ConnectSnippet[];
-}
-
-/**
  * The contract every framework module implements.
  */
 export type SnippetGenerator = (ctx: SnippetContext) => ConnectSnippet;

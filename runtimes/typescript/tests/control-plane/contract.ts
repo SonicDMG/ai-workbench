@@ -20,11 +20,47 @@ import {
 	ControlPlaneNotFoundError,
 } from "../../src/control-plane/errors.js";
 import type { ControlPlaneStore } from "../../src/control-plane/store.js";
+import {
+	decodeKeysetCursor,
+	encodeKeysetCursor,
+	type KeysetKey,
+} from "../../src/lib/pagination.js";
 
 export type ContractFactory = () => Promise<{
 	readonly store: ControlPlaneStore;
 	readonly cleanup?: () => Promise<void>;
 }>;
+
+/**
+ * Walk every page of a keyset-paginated list, round-tripping the cursor
+ * through the wire codec between pages (exactly as the route layer will),
+ * and asserting the cursor strictly advances (a repeated cursor means a
+ * stalled walk — the failure mode the web client surfaces as a hard
+ * `pagination_loop` error). Returns the ids in page order.
+ */
+async function drainPaged<T>(
+	fetchPage: (after: KeysetKey | null) => Promise<{
+		readonly items: readonly T[];
+		readonly nextKey: KeysetKey | null;
+	}>,
+	idOf: (item: T) => string,
+): Promise<string[]> {
+	const ids: string[] = [];
+	const seenCursors = new Set<string>();
+	let after: KeysetKey | null = null;
+	for (let guard = 0; guard < 500; guard++) {
+		const page = await fetchPage(after);
+		ids.push(...page.items.map(idOf));
+		if (page.nextKey === null) return ids;
+		const cursor = encodeKeysetCursor(page.nextKey);
+		expect(seenCursors.has(cursor), "keyset cursor must strictly advance").toBe(
+			false,
+		);
+		seenCursors.add(cursor);
+		after = decodeKeysetCursor(cursor);
+	}
+	throw new Error("drainPaged did not terminate");
+}
 
 export function runContract(name: string, factory: ContractFactory): void {
 	describe(`ControlPlaneStore contract: ${name}`, () => {
@@ -939,6 +975,182 @@ export function runContract(name: string, factory: ContractFactory): void {
 					{ metadata: { model: undefined } },
 				);
 				expect(dropped.metadata).toEqual({ finish_reason: "stop" });
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("listChatMessagesPage walks the whole history oldest-first in pages", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
+					title: "t",
+				});
+				const ids: string[] = [];
+				for (let i = 0; i < 7; i++) {
+					const m = await store.appendChatMessage(ws.uid, conv.conversationId, {
+						role: i % 2 === 0 ? "user" : "agent",
+						content: `m${i}`,
+						messageTs: `2026-05-30T00:00:0${i}.000Z`,
+					});
+					ids.push(m.messageId);
+				}
+				const walked = await drainPaged(
+					(after) =>
+						store.listChatMessagesPage(ws.uid, conv.conversationId, {
+							after,
+							limit: 3,
+						}),
+					(m) => m.messageId,
+				);
+				// Oldest-first, every message exactly once across the pages.
+				expect(walked).toEqual(ids);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("listChatMessagesPage pages same-millisecond messages via the id tiebreak", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
+					title: "t",
+				});
+				const ts = "2026-05-30T00:00:00.000Z";
+				const ids: string[] = [];
+				for (let i = 0; i < 5; i++) {
+					const m = await store.appendChatMessage(ws.uid, conv.conversationId, {
+						role: "user",
+						content: `same-${i}`,
+						messageTs: ts, // identical timestamp — the id tiebreak carries paging
+					});
+					ids.push(m.messageId);
+				}
+				const walked = await drainPaged(
+					(after) =>
+						store.listChatMessagesPage(ws.uid, conv.conversationId, {
+							after,
+							limit: 2,
+						}),
+					(m) => m.messageId,
+				);
+				// All five returned exactly once — no skips, no duplicates, no stall.
+				expect(walked).toHaveLength(5);
+				expect([...walked].sort()).toEqual([...ids].sort());
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("listChatMessagesPage is stable when a message is inserted above the cursor", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
+					title: "t",
+				});
+				for (let i = 1; i <= 4; i++) {
+					await store.appendChatMessage(ws.uid, conv.conversationId, {
+						role: "user",
+						content: `m${i}`,
+						messageTs: `2026-05-30T00:00:0${i}.000Z`,
+					});
+				}
+				const p1 = await store.listChatMessagesPage(
+					ws.uid,
+					conv.conversationId,
+					{
+						after: null,
+						limit: 2,
+					},
+				);
+				expect(p1.items.map((m) => m.content)).toEqual(["m1", "m2"]);
+				expect(p1.nextKey).not.toBeNull();
+				// Insert a NEW message ABOVE the cursor (earlier ts) between fetches.
+				await store.appendChatMessage(ws.uid, conv.conversationId, {
+					role: "user",
+					content: "inserted",
+					messageTs: "2026-05-30T00:00:00.500Z",
+				});
+				// Page 2 resumes strictly past the cursor — the insert above it does
+				// not shift the caller's position (the keyset invariant).
+				const p2 = await store.listChatMessagesPage(
+					ws.uid,
+					conv.conversationId,
+					{
+						after: p1.nextKey,
+						limit: 2,
+					},
+				);
+				expect(p2.items.map((m) => m.content)).toEqual(["m3", "m4"]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("listConversationsPage walks an agent's conversations newest-first in pages", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				const created: string[] = [];
+				for (let i = 0; i < 5; i++) {
+					const conv = await store.createConversation(ws.uid, agent.agentId, {
+						title: `c${i}`,
+					});
+					created.push(conv.conversationId);
+					await new Promise((r) => setTimeout(r, 2)); // distinct createdAt
+				}
+				const walked = await drainPaged(
+					(after) =>
+						store.listConversationsPage(ws.uid, agent.agentId, {
+							after,
+							limit: 2,
+						}),
+					(c) => c.conversationId,
+				);
+				// Newest-first → reverse creation order.
+				expect(walked).toEqual([...created].reverse());
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("listChatMessagesPage yields the complete ordered history for any page limit", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
+					title: "t",
+				});
+				const ids: string[] = [];
+				for (let i = 0; i < 13; i++) {
+					const m = await store.appendChatMessage(ws.uid, conv.conversationId, {
+						role: "user",
+						content: `m${i}`,
+						messageTs: `2026-05-30T00:00:00.${i.toString().padStart(3, "0")}Z`,
+					});
+					ids.push(m.messageId);
+				}
+				// Limit-independence: every page size reconstructs the same
+				// ordered set with no gaps, duplicates, or cursor stalls.
+				for (const limit of [1, 2, 3, 5, 13, 50]) {
+					const walked = await drainPaged(
+						(after) =>
+							store.listChatMessagesPage(ws.uid, conv.conversationId, {
+								after,
+								limit,
+							}),
+						(m) => m.messageId,
+					);
+					expect(walked, `limit=${limit}`).toEqual(ids);
+				}
 			} finally {
 				await cleanup?.();
 			}

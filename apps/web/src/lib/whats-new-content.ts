@@ -31,58 +31,22 @@ export const WHATS_NEW_VERSION = APP_VERSION;
  */
 export const WHATS_NEW_HIGHLIGHTS: readonly WhatsNewItem[] = [
 	{
-		title: "A cleaner agent editor and simpler access control",
+		title: "Faster chat history on long conversations",
 		summary:
-			"Creating or editing an agent now uses the same full form everywhere — the workspace overview, the Agents page, and the chat zero-state — so the tool picker is always available. Workspace access control now centers on role-based API keys (Viewer / Editor / Admin); the advanced row-level prototype moved out of the app and stays available via the API and the aiw CLI.",
+			"Opening a conversation now loads its messages a page at a time with a keyset cursor instead of pulling the whole transcript on every request — on every storage backend. Long-running chats stay snappy and the runtime no longer materialises the entire conversation just to show the latest turns. The wire shape is unchanged, so existing clients keep working.",
 	},
 	{
-		title: "Agents can call tools",
+		title: "Safer web access for agents",
 		summary:
-			"Agents now use tools mid-conversation in a bounded multi-step loop: the workspace's own knowledge-base tools, external MCP servers you register, native HTTP fetch + web search, and a read-only Astra Data API query. Pick exactly which tools each agent may use in the agent form; tool calls and their results render as inline expandable cards in chat. Tools beyond the built-ins are opt-in per agent.",
+			"The built-in fetch tool now resolves a URL's hostname and checks every resolved address before connecting, closing a path where a public-looking domain could point an agent at an internal or cloud-metadata address. Private, loopback, and metadata targets are refused — by name, by literal IP, and now by what the name actually resolves to.",
 		link: {
 			label: "Configure an agent's tools",
 			href: "/agents",
 		},
 	},
 	{
-		title: "Connect external MCP servers",
+		title: "Smoother restarts",
 		summary:
-			"Register Model Context Protocol servers per workspace in Settings, then allow-list their tools onto an agent. The runtime discovers each server's tools at turn time and calls them over the standard MCP protocol — credentials stay behind a secret reference and the server URL is SSRF-guarded.",
-		link: {
-			label: "Add an MCP server",
-			href: "/settings",
-		},
-	},
-	{
-		title: "Roles & scoped API keys (RBAC)",
-		summary:
-			"Access is now gated by coarse roles — viewer (read), editor (read + write), and admin (everything). Issue API keys with a role/scope from the API-keys panel. Admin-only actions (issuing keys, managing RLAC, deleting a workspace) require the new `manage` scope. Heads-up: a pre-0.4.0 read+write key can no longer perform those admin actions — re-mint an admin key.",
-		link: {
-			label: "Manage API keys & roles",
-			href: "/settings",
-		},
-	},
-	{
-		title: "Sign in with your IdP (device flow)",
-		summary:
-			"`aiw login --oidc` adds RFC 8628 device-flow login alongside the API-key paste flow — authorize in the browser, no token to copy. Map your IdP groups/claims to workbench roles with `auth.oidc.roleMapping`.",
-		link: {
-			label: "Auth & rotation guide",
-			href: "https://github.com/datastax/ai-workbench/blob/main/docs/auth.md",
-		},
-	},
-	{
-		title: "Durable single-node storage (SQLite)",
-		summary:
-			'A new `driver: "sqlite"` control-plane backend gives durable, low-overhead persistence for single-node installs — row-level writes instead of the file backend rewriting whole JSON files on every change. Recommended for chat-heavy deployments that don\'t run on Astra.',
-		link: {
-			label: "Configuration reference",
-			href: "https://github.com/datastax/ai-workbench/blob/main/docs/configuration.md",
-		},
-	},
-	{
-		title: "More resilient jobs & streaming",
-		summary:
-			"Background jobs of any kind now resume after a restart (not just ingest), chat streams reconnect with Last-Event-ID, cancelling a chat aborts the in-flight model call, and a dropped stream still records a final assistant turn. Plus every tool call is recorded as a `tool.invoke` audit event.",
+			"During a graceful shutdown, live job-progress streams now close cleanly so the browser reconnects to the next replica (or the restarted process) and picks up where it left off via Last-Event-ID — no more streams hanging until the shutdown timeout. Rolling restarts and deploys are quieter as a result.",
 	},
 ];

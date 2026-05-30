@@ -571,24 +571,6 @@ export function authLoginRoutes(opts: AuthLoginRoutesOptions): Hono<AppEnv> {
 	return app;
 }
 
-/**
- * Read the session cookie off a request and return the encrypted access
- * token. Used by the AuthResolver when no Authorization header was
- * sent. Kept out of resolver.ts so resolver.ts stays mode-agnostic.
- */
-export function sessionCookieAccessToken(
-	req: Request,
-	cookieName: string,
-	cookie: CookieSigner,
-): string | null {
-	const header = req.headers.get("cookie");
-	const raw = parseCookie(header, cookieName);
-	if (!raw) return null;
-	const payload = cookie.verify(raw);
-	if (!payload) return null;
-	return payload.accessToken;
-}
-
 function sanitizeRedirect(value: string | undefined): string {
 	if (!value) return "/";
 	if (!SAFE_PATH_RE.test(value)) return "/";

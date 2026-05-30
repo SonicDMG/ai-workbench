@@ -22,11 +22,15 @@
  */
 
 import { createServer, type Server } from "node:http";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
 	NATIVE_FETCH_TOOL_ID,
 	NATIVE_WEB_SEARCH_TOOL_ID,
 	nativeTools,
+	type ResolvedAddress,
+	resetNativeFetchHostResolver,
+	resolvedSsrfRejectReason,
+	setNativeFetchHostResolver,
 } from "../../../src/chat/tools/providers/native.js";
 import type {
 	AgentTool,
@@ -47,6 +51,18 @@ const PUBLIC_URL = "https://example.test/resource";
 // tools close over their config + resolved key at construction time, so
 // a bare stub satisfies `execute(rawArgs, deps)`.
 const stubDeps = {} as AgentToolDeps;
+
+// The native:fetch SSRF pre-flight now resolves DNS names. Point the
+// resolver at a fixed PUBLIC address by default so the existing
+// public-host tests (which use the non-resolving `*.test` TLD) don't
+// depend on real DNS; individual tests override it to model an internal
+// resolution. Reset after each test so the real resolver is restored.
+beforeEach(() => {
+	setNativeFetchHostResolver(async () => [
+		{ address: "93.184.216.34", family: 4 },
+	]);
+});
+afterEach(() => resetNativeFetchHostResolver());
 
 /* ------------------------------- fixtures ------------------------------- */
 
@@ -282,6 +298,97 @@ describe("native:fetch — SSRF rejection (refused before any fetch)", () => {
 		const tool = await fetchTool();
 		await tool.execute({ url: PUBLIC_URL }, stubDeps);
 		expect(spy).toHaveBeenCalledTimes(1);
+	});
+
+	test("refuses a DNS host that resolves to an internal address", async () => {
+		// Attacker-controlled domain (reachable via prompt injection) that
+		// resolves to the cloud-metadata IP — invisible to the literal check.
+		setNativeFetchHostResolver(async () => [
+			{ address: "169.254.169.254", family: 4 },
+		]);
+		const spy = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(new Response(null, { status: 200 }));
+		const tool = await fetchTool();
+		const result = await tool.execute(
+			{ url: "https://innocent-looking.test/" },
+			stubDeps,
+		);
+		expect(result).toMatch(/^Error:/);
+		expect(result).toMatch(/resolves to a private/i);
+		expect(spy).not.toHaveBeenCalled();
+	});
+});
+
+/* ------------------ SSRF: resolve-and-validate (unit) ------------------ */
+
+describe("resolvedSsrfRejectReason — resolve-and-validate", () => {
+	const publicV4: readonly ResolvedAddress[] = [
+		{ address: "93.184.216.34", family: 4 },
+	];
+
+	test("passes a domain that resolves only to public addresses", async () => {
+		expect(
+			await resolvedSsrfRejectReason("https://ok.test/", async () => publicV4),
+		).toBeNull();
+	});
+
+	test("refuses a domain that resolves to a blocked address", async () => {
+		const reason = await resolvedSsrfRejectReason(
+			"https://evil.test/",
+			async () => [{ address: "10.1.2.3", family: 4 }],
+		);
+		expect(reason).toMatch(/resolves to a private/i);
+	});
+
+	test("fails closed if ANY resolved address is blocked", async () => {
+		const reason = await resolvedSsrfRejectReason(
+			"https://mixed.test/",
+			async () => [
+				{ address: "93.184.216.34", family: 4 },
+				{ address: "169.254.169.254", family: 4 },
+			],
+		);
+		expect(reason).toMatch(/169\.254\.169\.254/);
+	});
+
+	test("fails closed when resolution throws", async () => {
+		const reason = await resolvedSsrfRejectReason(
+			"https://nx.test/",
+			async () => {
+				throw new Error("ENOTFOUND");
+			},
+		);
+		expect(reason).toMatch(/could not be resolved/i);
+	});
+
+	test("fails closed when resolution returns nothing", async () => {
+		const reason = await resolvedSsrfRejectReason(
+			"https://empty.test/",
+			async () => [],
+		);
+		expect(reason).toMatch(/did not resolve/i);
+	});
+
+	test("skips resolution for a literal IP (caught synchronously)", async () => {
+		let called = false;
+		const reason = await resolvedSsrfRejectReason(
+			"http://10.0.0.1/",
+			async () => {
+				called = true;
+				return publicV4;
+			},
+		);
+		expect(reason).toMatch(/private/i);
+		expect(called).toBe(false);
+	});
+
+	test("decodes an IPv6-mapped-IPv4 resolved address and blocks it", async () => {
+		const reason = await resolvedSsrfRejectReason(
+			"https://v6.test/",
+			async () => [{ address: "::ffff:169.254.169.254", family: 6 }],
+		);
+		expect(reason).toMatch(/resolves to a private/i);
 	});
 });
 

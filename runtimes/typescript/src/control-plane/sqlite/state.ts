@@ -35,7 +35,13 @@
  */
 
 import type DatabaseConstructor from "better-sqlite3";
-import type { FileStoreState, Table, TableRow } from "../file/state.js";
+import { type KeysetKey, paginateKeyset } from "../../lib/pagination.js";
+import type {
+	FileStoreState,
+	ReadPageOptions,
+	Table,
+	TableRow,
+} from "../file/state.js";
 import { TABLE_FILES } from "../file/state.js";
 
 /** Concrete row stored in SQLite — surrogate `seq`, logical `pk`, JSON `data`. */
@@ -253,6 +259,34 @@ export function createSqliteStoreState(
 		return Promise.resolve(run());
 	}
 
+	function readPage<K extends Table>(
+		table: K,
+		opts: ReadPageOptions<K>,
+	): Promise<{ items: TableRow<K>[]; nextKey: KeysetKey | null }> {
+		// Range-scan the UNIQUE pk index for just this partition instead of
+		// reading the whole table. Every pk is
+		// `${partition.join(NUL)}\u0000<trailing-id>`, so the half-open range
+		// [prefix+\u0000, prefix+\u0001) selects exactly this partition — and
+		// never a sibling whose id shares a string prefix, because the
+		// NUL/\u0001 delimiter sits between the prefix and the id. The keyset
+		// slice within the partition runs through the shared `paginateKeyset`,
+		// so ordering + cursor semantics match every other backend.
+		const phys = physicalTable(table);
+		const prefix = opts.partition.map((p) => String(p)).join("\u0000");
+		const stored = db
+			.prepare(`SELECT data FROM "${phys}" WHERE pk >= ? AND pk < ?`)
+			.all(`${prefix}\u0000`, `${prefix}\u0001`) as { data: string }[];
+		const rows = stored.map((r) => JSON.parse(r.data) as TableRow<K>);
+		return Promise.resolve(
+			paginateKeyset(rows, {
+				after: opts.after,
+				limit: opts.limit,
+				direction: opts.direction,
+				keyOf: opts.keyOf,
+			}),
+		);
+	}
+
 	return {
 		// `root` is part of the FileStoreState shape (the file backend
 		// uses it for its directory); the SQLite backend keys off the
@@ -266,6 +300,7 @@ export function createSqliteStoreState(
 		mutexes: {} as FileStoreState["mutexes"],
 		readAll,
 		mutate,
+		readPage,
 		db,
 	};
 }

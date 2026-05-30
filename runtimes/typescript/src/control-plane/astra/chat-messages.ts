@@ -8,11 +8,18 @@
 
 import { randomUUID } from "node:crypto";
 import { messageFromRow, messageToRow } from "../../astra-client/converters.js";
+import {
+	type KeysetPage,
+	type ListPageOptions,
+	paginateKeyset,
+} from "../../lib/pagination.js";
 import { nowIso } from "../defaults.js";
 import { ControlPlaneNotFoundError } from "../errors.js";
 import {
 	byMessageTsAsc,
+	MESSAGE_PAGE_DIRECTION,
 	mergeMetadata as mergeMessageMetadata,
+	messageKeysetKey,
 } from "../shared/records.js";
 import type {
 	AppendChatMessageInput,
@@ -35,6 +42,28 @@ export function makeChatMessageMethods(
 				.find({ workspace_id: workspaceId, conversation_id: chatId })
 				.toArray();
 			return rows.map(messageFromRow).sort(byMessageTsAsc);
+		},
+
+		async listChatMessagesPage(
+			workspaceId: string,
+			chatId: string,
+			opts: ListPageOptions,
+		): Promise<KeysetPage<MessageRecord>> {
+			await assertChat(state, workspaceId, chatId);
+			// The `find` filter IS the partition lookup (single-partition,
+			// server-side). The keyset slice within the partition runs locally
+			// through the shared `paginateKeyset` so ordering + cursor semantics
+			// match every backend — including against the test fake bundle,
+			// which doesn't honor cluster keys.
+			const rows = await state.tables.messages
+				.find({ workspace_id: workspaceId, conversation_id: chatId })
+				.toArray();
+			return paginateKeyset(rows.map(messageFromRow), {
+				after: opts.after,
+				limit: opts.limit,
+				direction: MESSAGE_PAGE_DIRECTION,
+				keyOf: messageKeysetKey,
+			});
 		},
 
 		async appendChatMessage(

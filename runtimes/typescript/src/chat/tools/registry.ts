@@ -719,10 +719,6 @@ export const DEFAULT_AGENT_TOOLS: readonly AgentTool[] = Object.freeze([
 	listChunks,
 ]);
 
-export function defaultToolDefinitions(): readonly ToolDefinition[] {
-	return DEFAULT_AGENT_TOOLS.map((t) => t.definition);
-}
-
 /**
  * Resolve a tool by name. Returns `null` when the model hallucinated a
  * tool that doesn't exist — the dispatcher echoes a `tool` turn with

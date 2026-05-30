@@ -7,6 +7,7 @@
  * `*ConversationMessage*`.
  */
 
+import type { KeysetPage, ListPageOptions } from "../../lib/pagination.js";
 import type { AgentRole, MessageRecord } from "../types.js";
 
 /**
@@ -57,6 +58,20 @@ export interface ChatMessageRepo {
 		workspaceId: string,
 		conversationId: string,
 	): Promise<readonly MessageRecord[]>;
+
+	/**
+	 * One keyset page of a conversation's message history, oldest-first
+	 * (`message_ts ASC`, `message_id` tiebreak). The page contains ALL
+	 * roles — tool turns and tool-call scaffolding included; the route
+	 * layer filters to the user-visible subset and over-fetches to fill
+	 * the requested page. For the model's FULL prompt history (never
+	 * truncated to a page) use {@link listChatMessages}.
+	 */
+	listChatMessagesPage(
+		workspaceId: string,
+		conversationId: string,
+		opts: ListPageOptions,
+	): Promise<KeysetPage<MessageRecord>>;
 
 	/**
 	 * Append a turn. Throws `ControlPlaneNotFoundError` if the

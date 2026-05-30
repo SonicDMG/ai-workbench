@@ -4,6 +4,7 @@
  * in a sibling repo partitioned by (workspace, conversation).
  */
 
+import type { KeysetPage, ListPageOptions } from "../../lib/pagination.js";
 import type { ConversationRecord } from "../types.js";
 
 /**
@@ -32,6 +33,16 @@ export interface ConversationRepo {
 		workspaceId: string,
 		agentId: string,
 	): Promise<readonly ConversationRecord[]>;
+
+	/**
+	 * One keyset page of an agent's conversations, newest-first
+	 * (`created_at DESC`, `conversation_id ASC` tiebreak).
+	 */
+	listConversationsPage(
+		workspaceId: string,
+		agentId: string,
+		opts: ListPageOptions,
+	): Promise<KeysetPage<ConversationRecord>>;
 	getConversation(
 		workspaceId: string,
 		agentId: string,

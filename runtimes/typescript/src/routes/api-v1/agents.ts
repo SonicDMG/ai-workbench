@@ -26,10 +26,12 @@ import {
 	templateToCreateAgentInput,
 } from "../../control-plane/agent-templates.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
+import { messageKeysetKey } from "../../control-plane/shared/records.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type {
 	AgentRecord,
 	ConversationRecord,
+	MessageRecord,
 } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
@@ -37,7 +39,13 @@ import { audit } from "../../lib/audit.js";
 import { ApiError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
-import { paginate } from "../../lib/pagination.js";
+import {
+	clampLimit,
+	decodeKeysetCursor,
+	encodeKeysetCursor,
+	type KeysetKey,
+	paginate,
+} from "../../lib/pagination.js";
 import { safeErrorMessage } from "../../lib/safe-error.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
@@ -387,8 +395,17 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		async (c) => {
 			const { workspaceId, agentId } = c.req.valid("param");
 			const query = c.req.valid("query");
-			const rows = await store.listConversations(workspaceId, agentId);
-			return c.json(paginate(rows.map(toConversationWire), query), 200);
+			const page = await store.listConversationsPage(workspaceId, agentId, {
+				after: decodeKeysetCursor(query.cursor),
+				limit: clampLimit(query.limit),
+			});
+			return c.json(
+				{
+					items: page.items.map(toConversationWire),
+					nextCursor: page.nextKey ? encodeKeysetCursor(page.nextKey) : null,
+				},
+				200,
+			);
 		},
 	);
 
@@ -569,6 +586,71 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		return { agent, conversation };
 	}
 
+	/**
+	 * Keyset-page the user-visible message transcript. The store pages RAW
+	 * rows (tool turns + the model's pre-tool-call placeholders included);
+	 * those scaffolding rows stay in storage so `assemblePrompt` can replay
+	 * the full tool-call loop, but they're hidden from the public listing.
+	 *
+	 * Because the visibility filter drops an unpredictable fraction of rows,
+	 * we over-fetch raw pages and keep only visible rows until we fill
+	 * `limit`, then stamp the cursor from the LAST row we kept. A page can
+	 * therefore come back shorter than `limit` (or empty) with a non-null
+	 * cursor when the tail is all scaffolding — clients drain on the cursor,
+	 * never on an empty page. Work stays bounded: each round fetches ~`limit`
+	 * raw rows and a normal transcript fills in 1–3 rounds.
+	 */
+	async function pageVisibleMessages(
+		workspaceId: string,
+		conversationId: string,
+		query: { readonly limit?: number; readonly cursor?: string },
+	): Promise<{
+		items: ReturnType<typeof toChatMessageWire>[];
+		nextCursor: string | null;
+	}> {
+		const limit = clampLimit(query.limit);
+		let after: KeysetKey | null = decodeKeysetCursor(query.cursor);
+		const kept: MessageRecord[] = [];
+		let cursorKey: KeysetKey | null = null;
+		let exhausted = false;
+		// Guards a pathologically scaffolding-only tail. If tripped we still
+		// return a cursor (exhausted stays false), so the client keeps
+		// draining rather than silently truncating the transcript.
+		const maxRounds = 64;
+		for (let round = 0; round < maxRounds; round++) {
+			const raw = await store.listChatMessagesPage(
+				workspaceId,
+				conversationId,
+				{
+					after,
+					limit,
+				},
+			);
+			let filledMidPage = false;
+			for (const m of raw.items) {
+				if (kept.length >= limit) {
+					// A further row exists beyond a full page → there's more.
+					filledMidPage = true;
+					break;
+				}
+				cursorKey = messageKeysetKey(m);
+				if (isUserVisibleMessage(m)) kept.push(m);
+			}
+			if (filledMidPage) break;
+			if (raw.nextKey === null) {
+				exhausted = true;
+				break;
+			}
+			after = raw.nextKey;
+			if (kept.length >= limit) break; // full exactly at the page boundary
+		}
+		return {
+			items: kept.map(toChatMessageWire),
+			nextCursor:
+				exhausted || cursorKey === null ? null : encodeKeysetCursor(cursorKey),
+		};
+	}
+
 	app.openapi(
 		createRoute({
 			method: "get",
@@ -602,14 +684,10 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 			if (!resolved) {
 				throw new ControlPlaneNotFoundError("conversation", conversationId);
 			}
-			const rows = await store.listChatMessages(workspaceId, conversationId);
-			// Hide internal scaffolding turns (tool results + the model's
-			// pre-tool-call placeholders) from the user-facing transcript.
-			// They stay in storage so `assemblePrompt` can still replay
-			// the full tool-call loop on subsequent turns; this filter only
-			// affects the public listing.
-			const visible = rows.filter(isUserVisibleMessage).map(toChatMessageWire);
-			return c.json(paginate(visible, query), 200);
+			return c.json(
+				await pageVisibleMessages(workspaceId, conversationId, query),
+				200,
+			);
 		},
 	);
 

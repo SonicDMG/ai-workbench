@@ -37,6 +37,12 @@ import { toWireJob } from "./serdes/index.js";
 
 export interface JobsRouteDeps {
 	readonly jobs: JobStore;
+	/**
+	 * Aborts on runtime shutdown. Threaded into the job-events SSE loop so
+	 * a long-lived stream ends promptly instead of holding the connection
+	 * open past `server.close()`'s drain window.
+	 */
+	readonly shutdownSignal?: AbortSignal;
 }
 
 export function jobRoutes(deps: JobsRouteDeps): OpenAPIHono<AppEnv> {
@@ -106,6 +112,7 @@ export function jobRoutes(deps: JobsRouteDeps): OpenAPIHono<AppEnv> {
 				lastEventId,
 				serialize: (record) => JSON.stringify(toWireJob(record)),
 				onAbort: (handler) => stream.onAbort(handler),
+				drainSignal: deps.shutdownSignal,
 			});
 		});
 	});

@@ -135,18 +135,6 @@ export function assertScope(c: Context<AppEnv>, scope: string): void {
 }
 
 /**
- * Hono middleware adapter for {@link assertScope}. Convenience so a
- * route module can `app.use("...", requireScope("write"))` instead of
- * sprinkling assertions inside handlers.
- */
-export function requireScope(scope: string): MiddlewareHandler<AppEnv> {
-	return async (c, next) => {
-		assertScope(c, scope);
-		await next();
-	};
-}
-
-/**
  * Workspace-route middleware: reject mutating REST requests when the
  * caller is missing the `write` scope. Mounts after
  * {@link workspaceRouteAuthz} so workspace membership has already

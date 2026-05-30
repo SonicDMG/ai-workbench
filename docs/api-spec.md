@@ -71,6 +71,25 @@ Paginated responses use:
 When `nextCursor` is non-null, pass it back as `?cursor=...` to read
 the next page. Malformed cursors return `400 invalid_cursor`.
 
+The chat surface — an agent's **conversations**
+(`GET /agents/{a}/conversations`) and a conversation's **messages**
+(`GET /agents/{a}/conversations/{c}/messages`) — uses **keyset**
+cursors so an unbounded, write-heavy transcript pages without the
+runtime materializing the whole conversation per request. Two
+consequences for clients:
+
+- **Cursors are opaque and are not stable across deploys.** A cursor
+  minted before a deploy may return `400 invalid_cursor` after one;
+  restart from the first page.
+- **Drain on the cursor, not on emptiness.** Because internal
+  tool-call scaffolding is filtered out of the public message listing,
+  a page can come back with fewer than `limit` items (or even empty)
+  while `nextCursor` is still non-null. Keep following `nextCursor`
+  until it is `null`; do not stop on a short or empty page.
+
+The bounded control-plane list endpoints (workspaces, services,
+knowledge bases, API keys, agents, …) keep simple offset cursors.
+
 ### Error envelope
 
 All error responses share one envelope:

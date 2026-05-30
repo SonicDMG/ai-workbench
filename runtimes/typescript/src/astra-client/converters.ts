@@ -315,11 +315,6 @@ function stringifyJsonObject(value: Readonly<Record<string, unknown>>): string {
 	return JSON.stringify(value);
 }
 
-/* --------------------------- workspace ---------------------------- */
-
-export const configWorkspaceToRow = workspaceToRow;
-export const configWorkspaceFromRow = workspaceFromRow;
-
 /* ------------------------- knowledge base ------------------------- */
 
 export function knowledgeBaseToRow(r: KnowledgeBaseRecord): KnowledgeBaseRow {
@@ -761,19 +756,6 @@ export function ragDocumentByStatusToRow(
 	};
 }
 
-export function ragDocumentByStatusFromRow(
-	row: RagDocumentByStatusRow,
-): RagDocumentStatusEntry {
-	return {
-		workspaceId: asUuidString(row.workspace_id),
-		knowledgeBaseId: asUuidString(row.knowledge_base_id),
-		status: row.status,
-		documentId: asUuidString(row.document_id),
-		sourceFilename: row.source_filename,
-		ingestedAt: row.ingested_at,
-	};
-}
-
 export function ragDocumentByHashToRow(
 	r: RagDocumentHashEntry,
 ): RagDocumentByContentHashRow {
@@ -782,17 +764,6 @@ export function ragDocumentByHashToRow(
 		workspace_id: r.workspaceId,
 		knowledge_base_id: r.knowledgeBaseId,
 		document_id: r.documentId,
-	};
-}
-
-export function ragDocumentByHashFromRow(
-	row: RagDocumentByContentHashRow,
-): RagDocumentHashEntry {
-	return {
-		contentHash: row.content_hash,
-		workspaceId: asUuidString(row.workspace_id),
-		knowledgeBaseId: asUuidString(row.knowledge_base_id),
-		documentId: asUuidString(row.document_id),
 	};
 }
 

@@ -4,6 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import type { KeysetPage, ListPageOptions } from "../../lib/pagination.js";
 import { nowIso } from "../defaults.js";
 import {
 	ControlPlaneConflictError,
@@ -11,6 +12,8 @@ import {
 } from "../errors.js";
 import {
 	byConversationCreatedAtDesc,
+	CONVERSATION_PAGE_DIRECTION,
+	conversationKeysetKey,
 	freezeStringSet,
 } from "../shared/records.js";
 import type {
@@ -34,6 +37,23 @@ export function makeConversationMethods(
 			return all
 				.filter((c) => c.workspaceId === workspaceId && c.agentId === agentId)
 				.sort(byConversationCreatedAtDesc);
+		},
+
+		async listConversationsPage(
+			workspaceId: string,
+			agentId: string,
+			opts: ListPageOptions,
+		): Promise<KeysetPage<ConversationRecord>> {
+			await assertWorkspace(state, workspaceId);
+			return state.readPage("conversations", {
+				partition: [workspaceId, agentId],
+				inPartition: (c) =>
+					c.workspaceId === workspaceId && c.agentId === agentId,
+				keyOf: conversationKeysetKey,
+				direction: CONVERSATION_PAGE_DIRECTION,
+				after: opts.after,
+				limit: opts.limit,
+			});
 		},
 
 		async getConversation(

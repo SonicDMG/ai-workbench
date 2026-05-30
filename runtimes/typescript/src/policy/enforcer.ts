@@ -30,10 +30,7 @@
  * `docs/rlac-prototype/data-api-design-ask.md`.
  */
 
-import type {
-	ControlPlaneStore,
-	PolicyAuditRepo,
-} from "../control-plane/store.js";
+import type { PolicyAuditRepo } from "../control-plane/store.js";
 import type {
 	KnowledgeBaseRecord,
 	PolicyAction,
@@ -236,9 +233,3 @@ export async function assertPolicyAllowsMutation(
 		);
 	}
 }
-
-/**
- * Convenience type alias the route layer imports — same identity as
- * the full store so tests can use either.
- */
-export type PolicyEnforcerStore = ControlPlaneStore;

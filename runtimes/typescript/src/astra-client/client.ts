@@ -47,7 +47,6 @@ import {
 	API_KEYS_TABLE,
 	CHUNKING_SERVICES_DEFINITION,
 	CHUNKING_SERVICES_TABLE,
-	CONFIG_WORKSPACES_TABLE,
 	CONVERSATIONS_DEFINITION,
 	CONVERSATIONS_TABLE,
 	EMBEDDING_SERVICES_DEFINITION,
@@ -249,7 +248,7 @@ export async function openAstraClient(
 		apiKeys: db.table<ApiKeyRow>(API_KEYS_TABLE),
 		apiKeyLookup: db.table<ApiKeyLookupRow>(API_KEY_LOOKUP_TABLE),
 		// Knowledge-base schema (issue #98).
-		configWorkspaces: db.table<ConfigWorkspaceRow>(CONFIG_WORKSPACES_TABLE),
+		configWorkspaces: db.table<ConfigWorkspaceRow>(WORKSPACES_TABLE),
 		knowledgeBases: db.table<KnowledgeBaseRow>(KNOWLEDGE_BASES_TABLE),
 		knowledgeFilters: db.table<KnowledgeFilterRow>(KNOWLEDGE_FILTERS_TABLE),
 		chunkingServices: db.table<ChunkingServiceRow>(CHUNKING_SERVICES_TABLE),

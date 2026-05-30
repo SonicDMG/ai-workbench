@@ -191,7 +191,14 @@ async function main(): Promise<void> {
 		);
 	}
 
-	const readiness = { draining: false };
+	// Aborted at the start of graceful shutdown so long-lived SSE streams
+	// (job events) end promptly rather than holding the connection open
+	// past `server.close()`'s drain window.
+	const shutdownController = new AbortController();
+	const readiness = {
+		draining: false,
+		shutdownSignal: shutdownController.signal,
+	};
 	const replicaId = config.runtime.replicaId ?? generateReplicaId();
 
 	// In-process bound on concurrent ingest workers. Shared between the
@@ -345,6 +352,9 @@ async function main(): Promise<void> {
 		}
 		shuttingDown = true;
 		readiness.draining = true;
+		// End in-flight job-events SSE streams now so they don't hold their
+		// connections open through the drain window (clients reconnect + resume).
+		shutdownController.abort();
 		logger.info(
 			{ signal, timeoutMs: SHUTDOWN_TIMEOUT_MS },
 			"shutting down — /readyz now returns 503, draining in-flight requests",

@@ -223,15 +223,3 @@ export function createExtractorRegistry(
 		},
 	};
 }
-
-/**
- * The set of file extensions the extractor surface can ingest. The
- * web UI uses this list to filter the file picker — keep it in sync
- * with the dispatcher's routing rules.
- */
-export const SUPPORTED_INGEST_EXTENSIONS: ReadonlySet<string> = new Set([
-	...TEXT_EXTENSIONS,
-	...PDF_EXTENSIONS,
-	...DOCX_EXTENSIONS,
-	...XLSX_EXTENSIONS,
-]);

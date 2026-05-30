@@ -271,9 +271,6 @@ export type KnowledgeBaseLanguage = "en" | "fr" | "multi" | (string & {});
 /** Speaker role on an agent message. */
 export type AgentRole = "user" | "agent" | "tool" | "system";
 
-/** Backward-compatible type alias for older converter/test imports. */
-export type ConfigWorkspaceRecord = WorkspaceRecord;
-
 /** A Knowledge Base — replaces `CatalogRecord` + (most of) `VectorStoreRecord`. */
 export interface KnowledgeBaseRecord {
 	readonly workspaceId: string;

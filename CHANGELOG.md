@@ -9,6 +9,62 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-05-30
+
+Hardening continues on the 0.4.x line, with one new capability:
+**store-level keyset pagination for the chat surface**. The wire shape is
+unchanged (`{ items, nextCursor }`) and there is **no data migration** —
+this release changes how a conversation's history is read, tightens a
+fetch-tool SSRF boundary, and makes shutdown cleaner.
+
+### Added
+
+- **Keyset pagination for chat history.** An agent's conversations
+  (`GET .../conversations`) and a conversation's messages
+  (`GET .../conversations/{c}/messages`) now page with an opaque **keyset**
+  cursor instead of an offset, pushed down into all four control-plane
+  backends (memory, file, SQLite, Astra) so the runtime stops
+  materialising the whole conversation on every list call — SQLite uses a
+  real `pk`-indexed partition scan. The model's prompt assembly and the
+  MCP façade continue to read **full** history; paging never truncates
+  what the model sees. The user-visible message listing still filters
+  internal tool-call scaffolding, so a page may be shorter than `limit`
+  (or empty) with a non-null cursor — drain on the cursor, not on an empty
+  page. See [`docs/api-spec.md`](docs/api-spec.md).
+
+### Changed
+
+- **Chat list cursors are now keyset, not offset.** They remain opaque and
+  are **not stable across deploys**: a client mid-pagination across an
+  upgrade gets `400 invalid_cursor` and restarts from the first page.
+  Unlike an offset, a row inserted or deleted *above* the cursor no longer
+  shifts the caller's position. The bounded control-plane list surfaces
+  (workspaces, services, knowledge bases, API keys, agents, …) keep their
+  existing offset cursors.
+- **Conservative dependency refresh** across all workspaces (patch/minor
+  only); `npm audit` reports **0 known vulnerabilities**.
+
+### Fixed
+
+- **Cleaner graceful shutdown with active job streams.** A long-lived
+  `.../jobs/{id}/events` SSE stream no longer holds its connection open
+  through the shutdown drain window: on `SIGTERM` the stream ends so the
+  client's `EventSource` reconnects (to a surviving replica or after
+  restart) and resumes via `Last-Event-ID`, and `server.close()` finishes
+  promptly instead of waiting out the timeout.
+
+### Security
+
+- **Closed a DNS-based SSRF hole in the `native:fetch` agent tool.** The
+  tool's URL is model-supplied (so reachable via prompt injection) and
+  previously range-checked only literal-IP hosts — a DNS *name* that
+  resolved to `169.254.169.254`, a `10.x` address, loopback, etc. slipped
+  through. It now resolves the host and validates **every** resolved
+  address against the same blocked ranges, failing closed (a host that
+  won't resolve, resolves to nothing, or resolves to any blocked address
+  is refused). `safeFetch`'s `redirect: "error"` still bounds the residual
+  sub-second rebind window.
+
 ## [0.4.1] — 2026-05-29
 
 Hardening + docs/UX polish on top of 0.4.0. **No API contract changes

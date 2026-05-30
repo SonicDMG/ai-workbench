@@ -6,6 +6,11 @@
  */
 
 import { randomUUID } from "node:crypto";
+import {
+	type KeysetPage,
+	type ListPageOptions,
+	paginateKeyset,
+} from "../../lib/pagination.js";
 import { nowIso } from "../defaults.js";
 import {
 	ControlPlaneConflictError,
@@ -13,6 +18,8 @@ import {
 } from "../errors.js";
 import {
 	byConversationCreatedAtDesc,
+	CONVERSATION_PAGE_DIRECTION,
+	conversationKeysetKey,
 	freezeStringSet,
 } from "../shared/records.js";
 import type {
@@ -41,6 +48,21 @@ export function makeConversationMethods(
 			// Newest-first matches the table's `created_at DESC` cluster
 			// ordering.
 			return Array.from(byChat.values()).sort(byConversationCreatedAtDesc);
+		},
+
+		async listConversationsPage(
+			workspaceId: string,
+			agentId: string,
+			opts: ListPageOptions,
+		): Promise<KeysetPage<ConversationRecord>> {
+			await assertWorkspace(state, workspaceId);
+			const byChat = state.conversations.get(`${workspaceId}:${agentId}`);
+			return paginateKeyset(byChat ? Array.from(byChat.values()) : [], {
+				after: opts.after,
+				limit: opts.limit,
+				direction: CONVERSATION_PAGE_DIRECTION,
+				keyOf: conversationKeysetKey,
+			});
 		},
 
 		async getConversation(

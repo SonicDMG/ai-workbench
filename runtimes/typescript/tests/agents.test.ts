@@ -14,6 +14,7 @@ import { AuthResolver } from "../src/auth/resolver.js";
 import type { ChatService } from "../src/chat/types.js";
 import { DEFAULT_WORKSPACE_AGENTS } from "../src/control-plane/defaults.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
+import type { AppendChatMessageInput } from "../src/control-plane/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
 import { EnvSecretProvider } from "../src/secrets/env.js";
@@ -772,5 +773,128 @@ describe("available-tools route (A6 tool catalog)", () => {
 			`/api/v1/workspaces/${randomUUID()}/available-tools`,
 		);
 		expect(res.status).toBe(404);
+	});
+
+	test("GET messages keyset-pages the visible transcript, draining cursors past scaffolding", async () => {
+		const { app, store } = makeAppAndStore({
+			chatService: makeFakeChatService(),
+		});
+		const ws = await createWorkspace(app);
+		const aid = await createAgent(app, ws);
+		const convRes = await app.request(
+			`/api/v1/workspaces/${ws}/agents/${aid}/conversations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ title: "long" }),
+			},
+		);
+		const cid = (await json(convRes)).conversationId as string;
+
+		// 6 visible turns interleaved with 4 scaffolding rows (tool-call
+		// placeholders + tool results), at strictly increasing timestamps.
+		const turns: ReadonlyArray<Omit<AppendChatMessageInput, "messageTs">> = [
+			{ role: "user", content: "q1" },
+			{
+				role: "agent",
+				authorId: aid,
+				content: "thinking…",
+				toolCallPayload: { toolCalls: [{ id: "c1", name: "t" }] },
+				metadata: { finish_reason: "tool_calls" },
+			},
+			{
+				role: "tool",
+				toolId: "t",
+				toolResponse: { content: "{}", toolCallId: "c1" },
+			},
+			{
+				role: "agent",
+				authorId: aid,
+				content: "a1",
+				metadata: { finish_reason: "stop" },
+			},
+			{ role: "user", content: "q2" },
+			{
+				role: "agent",
+				authorId: aid,
+				content: "thinking…",
+				toolCallPayload: { toolCalls: [{ id: "c2", name: "t" }] },
+				metadata: { finish_reason: "tool_calls" },
+			},
+			{
+				role: "tool",
+				toolId: "t",
+				toolResponse: { content: "{}", toolCallId: "c2" },
+			},
+			{
+				role: "agent",
+				authorId: aid,
+				content: "a2",
+				metadata: { finish_reason: "stop" },
+			},
+			{ role: "user", content: "q3" },
+			{
+				role: "agent",
+				authorId: aid,
+				content: "a3",
+				metadata: { finish_reason: "stop" },
+			},
+		];
+		let i = 0;
+		for (const t of turns) {
+			i += 1;
+			await store.appendChatMessage(ws, cid, {
+				...t,
+				messageTs: `2026-05-01T00:00:00.0${i.toString().padStart(2, "0")}Z`,
+			});
+		}
+
+		// Drain the messages endpoint at limit=2, following nextCursor.
+		const seen: Array<string | null> = [];
+		const seenCursors = new Set<string>();
+		let cursor: string | null = null;
+		for (let guard = 0; guard < 50; guard += 1) {
+			const url = `/api/v1/workspaces/${ws}/agents/${aid}/conversations/${cid}/messages?limit=2${
+				cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""
+			}`;
+			const res = await app.request(url);
+			expect(res.status).toBe(200);
+			const body = await json(res);
+			for (const m of body.items as Array<{ content: string | null }>) {
+				seen.push(m.content);
+			}
+			if (body.nextCursor === null) break;
+			// A repeated cursor would mean a stalled walk.
+			expect(seenCursors.has(body.nextCursor)).toBe(false);
+			seenCursors.add(body.nextCursor);
+			cursor = body.nextCursor;
+		}
+
+		// Only the 6 visible turns, oldest-first, exactly once — scaffolding
+		// never surfaces despite the keyset cursor stepping over it.
+		expect(seen).toEqual(["q1", "a1", "q2", "a2", "q3", "a3"]);
+		// R4 guard: the model's full history (scaffolding included) is
+		// untouched in storage — the page methods never truncate it.
+		expect(await store.listChatMessages(ws, cid)).toHaveLength(10);
+	});
+
+	test("GET messages rejects a malformed keyset cursor with 400 invalid_cursor", async () => {
+		const app = makeApp({ chatService: makeFakeChatService() });
+		const ws = await createWorkspace(app);
+		const aid = await createAgent(app, ws);
+		const convRes = await app.request(
+			`/api/v1/workspaces/${ws}/agents/${aid}/conversations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ title: "c" }),
+			},
+		);
+		const cid = (await json(convRes)).conversationId as string;
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/agents/${aid}/conversations/${cid}/messages?cursor=%21%21%21not-base64%21%21%21`,
+		);
+		expect(res.status).toBe(400);
+		expect((await json(res)).error.code).toBe("invalid_cursor");
 	});
 });

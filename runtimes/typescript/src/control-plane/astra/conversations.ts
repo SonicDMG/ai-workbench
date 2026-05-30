@@ -9,6 +9,11 @@ import {
 	conversationFromRow,
 	conversationToRow,
 } from "../../astra-client/converters.js";
+import {
+	type KeysetPage,
+	type ListPageOptions,
+	paginateKeyset,
+} from "../../lib/pagination.js";
 import { nowIso } from "../defaults.js";
 import {
 	ControlPlaneConflictError,
@@ -16,6 +21,8 @@ import {
 } from "../errors.js";
 import {
 	byConversationCreatedAtDesc,
+	CONVERSATION_PAGE_DIRECTION,
+	conversationKeysetKey,
 	freezeStringSet,
 } from "../shared/records.js";
 import type {
@@ -42,6 +49,25 @@ export function makeConversationMethods(
 			// side, but the fake bundle in tests doesn't honor cluster keys.
 			// Sort defensively so tests and prod agree.
 			return rows.map(conversationFromRow).sort(byConversationCreatedAtDesc);
+		},
+
+		async listConversationsPage(
+			workspaceId: string,
+			agentId: string,
+			opts: ListPageOptions,
+		): Promise<KeysetPage<ConversationRecord>> {
+			await assertWorkspace(state, workspaceId);
+			// Single-partition server read; keyset slice runs locally so the
+			// page order matches every backend even against the test fake.
+			const rows = await state.tables.conversations
+				.find({ workspace_id: workspaceId, agent_id: agentId })
+				.toArray();
+			return paginateKeyset(rows.map(conversationFromRow), {
+				after: opts.after,
+				limit: opts.limit,
+				direction: CONVERSATION_PAGE_DIRECTION,
+				keyOf: conversationKeysetKey,
+			});
 		},
 
 		async getConversation(

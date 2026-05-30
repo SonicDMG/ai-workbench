@@ -222,6 +222,13 @@ export interface JobEventStreamOptions {
 	readonly serialize: (record: JobRecord) => string;
 	/** Register a one-shot client-disconnect hook (Hono `stream.onAbort`). */
 	readonly onAbort: (handler: () => void) => void;
+	/**
+	 * Aborts when the runtime is shutting down. The loop ends promptly
+	 * (closing the connection) so the client's EventSource reconnects and
+	 * resumes via `Last-Event-ID`, and `server.close()` doesn't block on
+	 * this stream. No terminal `done` is emitted — the job hasn't finished.
+	 */
+	readonly drainSignal?: AbortSignal;
 }
 
 /**
@@ -243,7 +250,15 @@ export async function runJobEventStream(
 	sink: SseSink,
 	options: JobEventStreamOptions,
 ): Promise<void> {
-	const { jobs, workspaceId, jobId, lastEventId, serialize, onAbort } = options;
+	const {
+		jobs,
+		workspaceId,
+		jobId,
+		lastEventId,
+		serialize,
+		onAbort,
+		drainSignal,
+	} = options;
 	const emitter = new SseEmitter(sink);
 	const queue = new AsyncEventQueue<JobRecord>();
 
@@ -253,11 +268,22 @@ export async function runJobEventStream(
 		queue.push(record);
 	});
 
-	// Client disconnect: stop the subscription and let the drain loop end.
-	onAbort(() => {
+	// Client disconnect AND runtime shutdown end the stream the same way:
+	// unsubscribe and close the queue so the drain loop finishes and the
+	// SSE handler returns. On shutdown the client is still connected, so
+	// closing the socket prompts its EventSource to reconnect (to a
+	// surviving replica, or after restart) and resume from Last-Event-ID —
+	// we deliberately do NOT emit a terminal `done`, which would falsely
+	// signal that the still-running job had finished.
+	const endStream = () => {
 		unsub();
 		queue.close();
-	});
+	};
+	onAbort(endStream);
+	if (drainSignal) {
+		if (drainSignal.aborted) endStream();
+		else drainSignal.addEventListener("abort", endStream);
+	}
 
 	try {
 		for await (const record of queue.drain()) {
@@ -282,6 +308,9 @@ export async function runJobEventStream(
 			}
 		}
 	} finally {
+		// Drop the shutdown listener so a naturally-finished stream doesn't
+		// leak a handler on the process-lifetime shutdown signal.
+		drainSignal?.removeEventListener("abort", endStream);
 		unsub();
 		queue.close();
 	}

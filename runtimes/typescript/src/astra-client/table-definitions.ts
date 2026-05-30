@@ -100,10 +100,6 @@ export const API_KEY_LOOKUP_DEFINITION = {
 
 /* --------------------------- config layer ------------------------- */
 
-/** Backward-compatible aliases for older imports. */
-export const CONFIG_WORKSPACES_TABLE = WORKSPACES_TABLE;
-export const CONFIG_WORKSPACES_DEFINITION = WORKSPACES_DEFINITION;
-
 /**
  * `wb_config_knowledge_bases_by_workspace` — replaces
  * `wb_catalog_by_workspace`. References execution services by id;

@@ -14,7 +14,6 @@ import type {
 	DistanceMetric,
 	KnowledgeBaseStatus,
 	LexicalConfig,
-	RerankingConfig,
 	ServiceStatus,
 } from "./types.js";
 
@@ -46,14 +45,6 @@ export const DEFAULT_LEXICAL: LexicalConfig = Object.freeze({
 	enabled: false,
 	analyzer: null,
 	options: Object.freeze({}) as Readonly<Record<string, string>>,
-});
-
-export const DEFAULT_RERANKING: RerankingConfig = Object.freeze({
-	enabled: false,
-	provider: null,
-	model: null,
-	endpoint: null,
-	secretRef: null,
 });
 
 export function nowIso(): string {

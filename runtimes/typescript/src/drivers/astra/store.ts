@@ -17,7 +17,7 @@
  *     `updatedAt`.
  */
 
-import { DataAPIClient, type Db } from "@datastax/astra-db-ts";
+import { DataAPIClient } from "@datastax/astra-db-ts";
 import type {
 	VectorStoreRecord,
 	WorkspaceRecord,
@@ -834,6 +834,3 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 		return value;
 	}
 }
-
-/** Exposed so tests can assert on the connection-cache shape. */
-export const _AstraDbTypeGuard: Db | undefined = undefined;

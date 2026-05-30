@@ -143,17 +143,6 @@ export async function assertAgent(
 	}
 }
 
-export async function assertPrincipal(
-	state: MemoryStoreState,
-	workspace: string,
-	principalId: string,
-): Promise<void> {
-	await assertWorkspace(state, workspace);
-	if (!state.principals.get(workspace)?.has(principalId)) {
-		throw new ControlPlaneNotFoundError("principal", principalId);
-	}
-}
-
 /**
  * Resolve a conversation across any agent in the workspace. Used by
  * `appendChatMessage` / `listChatMessages` / `updateChatMessage`,

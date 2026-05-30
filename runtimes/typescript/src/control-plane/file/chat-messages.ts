@@ -5,6 +5,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import type { KeysetPage, ListPageOptions } from "../../lib/pagination.js";
 import { nowIso } from "../defaults.js";
 import {
 	ControlPlaneConflictError,
@@ -12,7 +13,9 @@ import {
 } from "../errors.js";
 import {
 	byMessageTsAsc,
+	MESSAGE_PAGE_DIRECTION,
 	mergeMetadata as mergeMessageMetadata,
+	messageKeysetKey,
 } from "../shared/records.js";
 import type {
 	AppendChatMessageInput,
@@ -35,6 +38,23 @@ export function makeChatMessageMethods(state: FileStoreState): ChatMessageRepo {
 					(m) => m.workspaceId === workspaceId && m.conversationId === chatId,
 				)
 				.sort(byMessageTsAsc);
+		},
+
+		async listChatMessagesPage(
+			workspaceId: string,
+			chatId: string,
+			opts: ListPageOptions,
+		): Promise<KeysetPage<MessageRecord>> {
+			await assertChat(state, workspaceId, chatId);
+			return state.readPage("messages", {
+				partition: [workspaceId, chatId],
+				inPartition: (m) =>
+					m.workspaceId === workspaceId && m.conversationId === chatId,
+				keyOf: messageKeysetKey,
+				direction: MESSAGE_PAGE_DIRECTION,
+				after: opts.after,
+				limit: opts.limit,
+			});
 		},
 
 		async appendChatMessage(
