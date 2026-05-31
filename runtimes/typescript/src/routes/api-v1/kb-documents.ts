@@ -54,6 +54,7 @@ import { cascadeDeleteRagDocument } from "../../services/document-cascade.js";
 import { createIngestService } from "../../services/ingest-service.js";
 import { parseIngestFileForm } from "./ingest-file-form.js";
 import { resolveKb } from "./kb-descriptor.js";
+import { resolveRlacDefaults } from "./rlac-defaults.js";
 import { toWireJob } from "./serdes/index.js";
 
 export interface KbDocumentRouteDeps {
@@ -264,20 +265,27 @@ export function kbDocumentRoutes(
 				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
 			const ws = await store.getWorkspace(workspaceId);
 			const principal = getRequestPrincipal(c);
-			const defaultedBody =
-				(ws?.rlacEnabled ?? false) &&
-				body.visibleTo === undefined &&
-				principal !== null
-					? {
-							...body,
-							visibleTo: [principal.id],
-							ownerPrincipalId: body.ownerPrincipalId ?? principal.id,
-						}
-					: body;
+			const defaults = resolveRlacDefaults(
+				ws?.rlacEnabled ?? false,
+				principal,
+				{
+					visibleTo: body.visibleTo,
+					ownerPrincipalId: body.ownerPrincipalId,
+				},
+			);
 			const record = await store.createRagDocument(
 				workspaceId,
 				knowledgeBaseId,
-				{ ...defaultedBody, uid: body.documentId },
+				{
+					...body,
+					...(defaults.visibleTo != null && {
+						visibleTo: [...defaults.visibleTo],
+					}),
+					...(defaults.ownerPrincipalId !== undefined && {
+						ownerPrincipalId: defaults.ownerPrincipalId,
+					}),
+					uid: body.documentId,
+				},
 			);
 			return c.json(record, 201);
 		},
@@ -341,21 +349,27 @@ export function kbDocumentRoutes(
 				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
 			const ws = await store.getWorkspace(workspaceId);
 			const principal = getRequestPrincipal(c);
-			const defaultedBody =
-				(ws?.rlacEnabled ?? false) &&
-				body.visibleTo === undefined &&
-				principal !== null
-					? {
-							...body,
-							visibleTo: [principal.id],
-							ownerPrincipalId: body.ownerPrincipalId ?? principal.id,
-						}
-					: body;
+			const defaults = resolveRlacDefaults(
+				ws?.rlacEnabled ?? false,
+				principal,
+				{
+					visibleTo: body.visibleTo,
+					ownerPrincipalId: body.ownerPrincipalId,
+				},
+			);
 
 			const outcome = await ingestService.ingest(
 				workspaceId,
 				knowledgeBaseId,
-				defaultedBody,
+				{
+					...body,
+					...(defaults.visibleTo != null && {
+						visibleTo: [...defaults.visibleTo],
+					}),
+					...(defaults.ownerPrincipalId !== undefined && {
+						ownerPrincipalId: defaults.ownerPrincipalId,
+					}),
+				},
 				{ async: asyncMode === "true" },
 			);
 
@@ -477,17 +491,15 @@ export function kbDocumentRoutes(
 			if (!kbForRlac)
 				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
 			const wsForRlac = await store.getWorkspace(workspaceId);
-			const rlacOn = wsForRlac?.rlacEnabled ?? false;
 			const principal = getRequestPrincipal(c);
-			const resolvedVisibleTo =
-				parsed.callerVisibleTo !== undefined
-					? parsed.callerVisibleTo
-					: rlacOn && principal !== null
-						? [principal.id]
-						: undefined;
-			const resolvedOwnerPrincipalId =
-				parsed.ownerPrincipalId ??
-				(rlacOn && principal !== null ? principal.id : undefined);
+			const defaults = resolveRlacDefaults(
+				wsForRlac?.rlacEnabled ?? false,
+				principal,
+				{
+					visibleTo: parsed.callerVisibleTo,
+					ownerPrincipalId: parsed.ownerPrincipalId,
+				},
+			);
 
 			const outcome = await ingestService.ingest(
 				workspaceId,
@@ -506,11 +518,11 @@ export function kbDocumentRoutes(
 					metadata: parsed.metadata,
 					...(parsed.chunker !== undefined && { chunker: parsed.chunker }),
 					overwriteOnNameConflict: parsed.overwriteOnNameConflict,
-					...(resolvedVisibleTo !== undefined && {
-						visibleTo: [...resolvedVisibleTo],
+					...(defaults.visibleTo != null && {
+						visibleTo: [...defaults.visibleTo],
 					}),
-					...(resolvedOwnerPrincipalId !== undefined && {
-						ownerPrincipalId: resolvedOwnerPrincipalId,
+					...(defaults.ownerPrincipalId !== undefined && {
+						ownerPrincipalId: defaults.ownerPrincipalId,
 					}),
 				},
 				{ async: asyncMode },

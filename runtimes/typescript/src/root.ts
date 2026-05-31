@@ -314,6 +314,33 @@ async function main(): Promise<void> {
 		);
 	}
 
+	// Opt-in one-shot orphan reconciliation (astra only). Sweeps
+	// dependents stranded by a partial cross-partition cascade under the
+	// legacy parent-row-first delete path; best-effort, never blocks
+	// startup. New orphans don't occur under the children-first
+	// deleteWorkspace, so this stays off by default.
+	if (
+		config.controlPlane.driver === "astra" &&
+		config.controlPlane.reconcileOrphansOnStart &&
+		store.reconcileOrphans
+	) {
+		try {
+			const report = await store.reconcileOrphans();
+			logger.info(
+				{
+					workspaces: report.workspaces,
+					partialFailures: report.partialFailures,
+				},
+				"reconcileOrphansOnStart swept orphaned workspace dependents",
+			);
+		} catch (err) {
+			logger.warn(
+				{ err: err instanceof Error ? err.message : String(err) },
+				"reconcileOrphansOnStart failed; continuing startup",
+			);
+		}
+	}
+
 	const port = config.runtime.port;
 	const server = serve({ fetch: app.fetch, port }, async (info) => {
 		const workspaces = await store.listWorkspaces();

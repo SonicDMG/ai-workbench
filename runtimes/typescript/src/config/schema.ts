@@ -476,6 +476,16 @@ const ControlPlaneSchema = z.discriminatedUnion("driver", [
 		keyspace: z.string().min(1).default("default_keyspace"),
 		jobsResume: JobsResumeSchema.optional(),
 		/**
+		 * One-shot orphan reconciliation on startup (off by default). When
+		 * `true`, the runtime runs `reconcileOrphans()` once during boot to
+		 * sweep dependents stranded by a partial cross-partition cascade
+		 * under the legacy parent-row-first delete path. The current
+		 * children-first `deleteWorkspace` prevents new orphans, so leave
+		 * this off unless cleaning up after a known incident. Operator-gated
+		 * by workbench.yaml ownership.
+		 */
+		reconcileOrphansOnStart: z.boolean().optional(),
+		/**
 		 * Cross-replica job-subscriber poll interval, ms. Each Astra
 		 * job subscriber polls the underlying record at this cadence
 		 * to pick up updates that landed on a *different* replica

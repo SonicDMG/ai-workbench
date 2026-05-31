@@ -15,6 +15,7 @@ import {
 } from "@datastax/astra-db-ts";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import {
+	ControlPlaneCascadeError,
 	ControlPlaneConflictError,
 	ControlPlaneNotFoundError,
 	ControlPlaneUnavailableError,
@@ -48,6 +49,13 @@ export function mapControlPlaneError(err: unknown): MappedError | null {
 		return {
 			status: 503,
 			code: "control_plane_unavailable",
+			message: err.message,
+		};
+	}
+	if (err instanceof ControlPlaneCascadeError) {
+		return {
+			status: 500,
+			code: "cascade_incomplete",
 			message: err.message,
 		};
 	}

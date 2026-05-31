@@ -270,6 +270,7 @@ multi-writer-safe.
 | `keyspace` | string | no (default `default_keyspace`) | Keyspace hosting the `wb_*` control-plane tables. Defaults to `default_keyspace` — the keyspace Astra DB auto-creates on every new database — so out-of-the-box deployments boot without pre-creating one. |
 | `jobPollIntervalMs` | int (50–60000) | `500` | Cross-replica job-subscriber poll interval in ms. Each subscribed `(workspace, jobId)` pair is re-read at this cadence so SSE clients on a different replica from the worker still see updates. Same-replica updates fan out instantly; the poller is a no-op when no one is subscribed. Raise for cost-sensitive deployments where second-scale staleness is fine; lower for hot SSE paths. Astra-only — `memory` and `file` are single-replica by definition. |
 | `jobsResume` | object | off | Cross-replica orphan-sweeper config. See below. |
+| `reconcileOrphansOnStart` | bool | `false` | Run a one-shot orphaned-dependent reconciliation at boot. See below. Astra-only. |
 
 The runtime creates the `wb_*` tables at startup if they don't exist
 (using `createTable(..., { ifNotExists: true })`). The keyspace
@@ -303,6 +304,26 @@ controlPlane:
     graceMs: 60000     # how stale a lease must be before reclaim
     intervalMs: 60000  # how often each replica scans
 ```
+
+#### `controlPlane.reconcileOrphansOnStart` (astra)
+
+Off by default. When `true`, the runtime runs a single
+`reconcileOrphans()` pass during startup: it scans the `wb_*` dependent
+tables for rows whose owning workspace row no longer exists — the
+signature of a partial cross-partition cascade failure — and re-runs the
+idempotent dependent-delete cascade for each such workspace id.
+
+You shouldn't normally need it. `deleteWorkspace` is **children-first,
+parent-last**: it removes every dependent partition before the workspace
+row and, on any partial failure (Astra has no cross-partition
+transaction), leaves the workspace row intact and returns
+`500 cascade_incomplete` so the delete is simply retried — the cascade is
+idempotent, so the retry completes it. New orphans therefore don't occur.
+This flag exists to mop up orphans left by older deployments (which
+deleted the workspace row first) or out-of-band row deletions. Enable it,
+restart once, then turn it back off. It is operator-gated by
+`workbench.yaml` ownership and never blocks startup — a reconcile failure
+is logged and boot continues.
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|

@@ -160,4 +160,30 @@ export interface ControlPlaneStore
 
 	/** Optional: release connections and flush buffers. Idempotent. */
 	close?(): Promise<void>;
+
+	/**
+	 * Optional: repair dependents orphaned by a partial cross-partition
+	 * cascade failure — a dependent row whose owning workspace row is
+	 * already gone. Re-runs the (idempotent) dependent-delete cascade for
+	 * each such workspace id. Safe to run any time; a no-op when there's
+	 * nothing to reconcile. Backends with atomic cascades (memory) don't
+	 * implement it; the cross-partition Astra backend does.
+	 */
+	reconcileOrphans?(): Promise<OrphanReconcileReport>;
+}
+
+/**
+ * Outcome of {@link ControlPlaneStore.reconcileOrphans}: how many
+ * orphaned workspace ids were found (dependents present, workspace row
+ * absent) and had their dependent rows swept.
+ */
+export interface OrphanReconcileReport {
+	/** Orphaned workspace ids found (dependents present, workspace gone). */
+	readonly workspaces: number;
+	/**
+	 * How many of those still had at least one dependent delete fail
+	 * during the sweep — they stay orphaned and are retried on a later
+	 * run. `0` means every orphan found was fully swept.
+	 */
+	readonly partialFailures: number;
 }

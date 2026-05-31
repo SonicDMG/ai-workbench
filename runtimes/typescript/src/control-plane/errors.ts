@@ -57,3 +57,29 @@ export class ControlPlaneUnavailableError extends Error {
 		this.name = "ControlPlaneUnavailableError";
 	}
 }
+
+/**
+ * A cross-partition cascade delete partially failed: some dependent
+ * partitions were removed but at least one `deleteMany` rejected. The
+ * parent row is deliberately left in place so the operation stays
+ * **retryable** — re-issuing the delete re-runs the idempotent cascade
+ * and removes the now-childless parent, so a transient Data API failure
+ * never strands orphaned dependents. Maps to 500 `cascade_incomplete`.
+ */
+export class ControlPlaneCascadeError extends Error {
+	constructor(
+		public readonly resource: string,
+		public readonly id: string,
+		public readonly failed: number,
+		public readonly total: number,
+		public readonly cause?: unknown,
+	) {
+		super(
+			`cascade delete of ${resource} '${id}' partially failed: ${failed} of ` +
+				`${total} dependent deletes rejected. The ${resource} row was left ` +
+				`intact — retry to complete the cascade.`,
+			{ cause },
+		);
+		this.name = "ControlPlaneCascadeError";
+	}
+}

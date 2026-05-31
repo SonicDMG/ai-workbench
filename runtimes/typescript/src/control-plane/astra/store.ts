@@ -46,6 +46,7 @@ import { makeMcpServerMethods } from "./mcp-servers.js";
 import { makePolicyAuditMethods } from "./policy-audit.js";
 import { makePrincipalMethods } from "./principals.js";
 import { makeRagDocumentMethods } from "./rag-documents.js";
+import { makeReconcileMethods } from "./reconcile.js";
 import { makeRerankingServiceMethods } from "./reranking-services.js";
 import type { AstraStoreState } from "./state.js";
 import { makeWorkspaceMethods } from "./workspaces.js";
@@ -72,6 +73,7 @@ function buildAstraStore(tables: TablesBundle): ControlPlaneStore {
 		...makePrincipalMethods(state),
 		...makeMcpServerMethods(state),
 		...makePolicyAuditMethods(state),
+		...makeReconcileMethods(state),
 	};
 }
 

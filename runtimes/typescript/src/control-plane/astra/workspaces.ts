@@ -16,6 +16,7 @@ import {
 } from "../../astra-client/converters.js";
 import { byCreatedAtThenId, nowIso } from "../defaults.js";
 import {
+	ControlPlaneCascadeError,
 	ControlPlaneConflictError,
 	ControlPlaneNotFoundError,
 } from "../errors.js";
@@ -114,83 +115,121 @@ export function makeWorkspaceMethods(state: AstraStoreState): WorkspaceRepo {
 		async deleteWorkspace(uid: string): Promise<{ deleted: boolean }> {
 			const existing = await state.tables.workspaces.findOne({ uid });
 			if (!existing) return { deleted: false };
-			// Tear down the prefix-lookup entries before the owning table so a
-			// concurrent verify can't hit a lookup pointing at a just-deleted
-			// key row.
-			const keyRows = await state.tables.apiKeys
-				.find({ workspace: uid })
-				.toArray();
-			for (const row of keyRows) {
-				await state.tables.apiKeyLookup.deleteOne({ prefix: row.prefix });
+			// Children-before-parent: remove every dependent partition
+			// first, then the workspace row LAST and only if they all
+			// succeeded. Astra has no cross-partition transaction, so a
+			// partial failure leaves the workspace row intact and raises a
+			// retryable ControlPlaneCascadeError — re-issuing
+			// deleteWorkspace re-runs the idempotent cascade and removes
+			// the now-childless row, so a transient Data API failure never
+			// strands orphaned dependents. `reconcileOrphans` mops up any
+			// orphans left by the older parent-row-first code path.
+			const results = await deleteWorkspaceDependents(state, uid);
+			const failed = results.filter((r) => r.status === "rejected");
+			if (failed.length > 0) {
+				throw new ControlPlaneCascadeError(
+					"workspace",
+					uid,
+					failed.length,
+					results.length,
+					(failed[0] as PromiseRejectedResult).reason,
+				);
 			}
-			// Astra Data API requires the *full* partition key on
-			// `deleteMany`, so for tables partitioned by (workspace_id, X)
-			// we enumerate the dependent rows up front and issue one
-			// deleteMany per partition. Read the dependents *before*
-			// removing the workspace row — purely defensive; the dependent
-			// tables don't FK back to the workspace row, but it keeps the
-			// "everything we need to delete" snapshot consistent.
-			const [kbs, agents, conversations] = await Promise.all([
-				state.tables.knowledgeBases.find({ workspace_id: uid }).toArray(),
-				state.tables.agents.find({ workspace_id: uid }).toArray(),
-				state.tables.conversations.find({ workspace_id: uid }).toArray(),
-			]);
 			await state.tables.workspaces.deleteOne({ uid });
-			const deletes: Promise<unknown>[] = [
-				state.tables.apiKeys.deleteMany({ workspace: uid }),
-				// Single-column partitions — workspace_id alone is the full PK.
-				state.tables.knowledgeBases.deleteMany({ workspace_id: uid }),
-				state.tables.chunkingServices.deleteMany({ workspace_id: uid }),
-				state.tables.embeddingServices.deleteMany({ workspace_id: uid }),
-				state.tables.rerankingServices.deleteMany({ workspace_id: uid }),
-				state.tables.llmServices.deleteMany({ workspace_id: uid }),
-				state.tables.agents.deleteMany({ workspace_id: uid }),
-			];
-			// (workspace_id, knowledge_base_id) partitions.
-			for (const kb of kbs) {
-				deletes.push(
-					state.tables.knowledgeFilters.deleteMany({
-						workspace_id: uid,
-						knowledge_base_id: kb.knowledge_base_id,
-					}),
-					state.tables.ragDocuments.deleteMany({
-						workspace_id: uid,
-						knowledge_base_id: kb.knowledge_base_id,
-					}),
-				);
-				// (workspace_id, knowledge_base_id, status) partitions —
-				// fan out across the closed DocumentStatus enum so we don't
-				// have to scan the index first.
-				for (const status of DOCUMENT_STATUSES) {
-					deletes.push(
-						state.tables.ragDocumentsByStatus.deleteMany({
-							workspace_id: uid,
-							knowledge_base_id: kb.knowledge_base_id,
-							status,
-						}),
-					);
-				}
-			}
-			// Chat cascade: (workspace_id, agent_id) for conversations,
-			// (workspace_id, conversation_id) for messages.
-			for (const agent of agents) {
-				deletes.push(
-					state.tables.conversations.deleteMany({
-						workspace_id: uid,
-						agent_id: agent.agent_id,
-					}),
-				);
-			}
-			for (const conv of conversations) {
-				deletes.push(
-					state.tables.messages.deleteMany({
-						workspace_id: uid,
-						conversation_id: conv.conversation_id,
-					}),
-				);
-			}
-			await Promise.all(deletes);
 			return { deleted: true };
 		},
 	};
+}
+
+/**
+ * Run every dependent-partition delete for one workspace id,
+ * concurrently, returning the settled results so the caller decides
+ * whether the parent row may be removed.
+ *
+ * Astra's Data API requires the *full* partition key on `deleteMany`, so
+ * tables partitioned by `(workspace_id, X)` are enumerated up front and
+ * deleted one partition at a time. Every delete is idempotent (it
+ * no-ops once the rows are gone), so this is safe to re-run after a
+ * partial failure.
+ *
+ * Shared by {@link makeWorkspaceMethods}'s `deleteWorkspace`
+ * (children-first, then the workspace row) and `reconcileOrphans`
+ * (children only — the workspace row is already gone).
+ *
+ * Snapshot window: KB / agent / conversation sub-partitions are
+ * enumerated once up front, so a child written into a *new* sub-partition
+ * after that read (e.g. a conversation created mid-delete) can survive —
+ * an inherent limit of partitioned deletes with no cross-partition
+ * transaction. A normal `deleteWorkspace` isn't racing concurrent writes
+ * to the same workspace, and `reconcileOrphans` is the backstop.
+ */
+export async function deleteWorkspaceDependents(
+	state: AstraStoreState,
+	uid: string,
+): Promise<PromiseSettledResult<unknown>[]> {
+	const [kbs, agents, conversations, keyRows] = await Promise.all([
+		state.tables.knowledgeBases.find({ workspace_id: uid }).toArray(),
+		state.tables.agents.find({ workspace_id: uid }).toArray(),
+		state.tables.conversations.find({ workspace_id: uid }).toArray(),
+		state.tables.apiKeys.find({ workspace: uid }).toArray(),
+	]);
+	const deletes: Promise<unknown>[] = [
+		// Prefix-lookup index rows keyed by their own prefix. Folded into
+		// the cascade batch; auth re-reads the key row, so a brief window
+		// where a lookup outlives its key row during the sweep is benign.
+		...keyRows.map((row) =>
+			state.tables.apiKeyLookup.deleteOne({ prefix: row.prefix }),
+		),
+		state.tables.apiKeys.deleteMany({ workspace: uid }),
+		// Single-column partitions — workspace_id alone is the full PK.
+		state.tables.knowledgeBases.deleteMany({ workspace_id: uid }),
+		state.tables.chunkingServices.deleteMany({ workspace_id: uid }),
+		state.tables.embeddingServices.deleteMany({ workspace_id: uid }),
+		state.tables.rerankingServices.deleteMany({ workspace_id: uid }),
+		state.tables.llmServices.deleteMany({ workspace_id: uid }),
+		state.tables.agents.deleteMany({ workspace_id: uid }),
+	];
+	// (workspace_id, knowledge_base_id) partitions.
+	for (const kb of kbs) {
+		deletes.push(
+			state.tables.knowledgeFilters.deleteMany({
+				workspace_id: uid,
+				knowledge_base_id: kb.knowledge_base_id,
+			}),
+			state.tables.ragDocuments.deleteMany({
+				workspace_id: uid,
+				knowledge_base_id: kb.knowledge_base_id,
+			}),
+		);
+		// (workspace_id, knowledge_base_id, status) partitions — fan out
+		// across the closed DocumentStatus enum so we don't scan first.
+		for (const status of DOCUMENT_STATUSES) {
+			deletes.push(
+				state.tables.ragDocumentsByStatus.deleteMany({
+					workspace_id: uid,
+					knowledge_base_id: kb.knowledge_base_id,
+					status,
+				}),
+			);
+		}
+	}
+	// Chat cascade: (workspace_id, agent_id) conversations,
+	// (workspace_id, conversation_id) messages.
+	for (const agent of agents) {
+		deletes.push(
+			state.tables.conversations.deleteMany({
+				workspace_id: uid,
+				agent_id: agent.agent_id,
+			}),
+		);
+	}
+	for (const conv of conversations) {
+		deletes.push(
+			state.tables.messages.deleteMany({
+				workspace_id: uid,
+				conversation_id: conv.conversation_id,
+			}),
+		);
+	}
+	return Promise.allSettled(deletes);
 }

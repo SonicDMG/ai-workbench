@@ -29,6 +29,7 @@ destination for the envelope's `docs` field.
 | [`agent_not_found`](#agent-not-found) | 404 | The agent does not exist in this workspace; create one before sending messages. |
 | [`agent_template_not_found`](#agent-template-not-found) | 404 | The agent template is not registered; pick one from `GET /api/v1/agent-templates`. |
 | [`api_key_not_found`](#api-key-not-found) | 404 | The API key does not exist or was revoked. |
+| [`cascade_incomplete`](#cascade-incomplete) | 500 | A workspace delete partially failed across Astra partitions; the workspace was left intact — retry the delete to complete the idempotent cascade. |
 | [`chat_disabled`](#chat-disabled) | 503 | No chat provider is configured; uncomment the `chat` block in workbench.yaml or bind an LLM service to the agent. |
 | [`chat_message_not_found`](#chat-message-not-found) | 404 | The chat message does not exist in this conversation. |
 | [`chat_not_found`](#chat-not-found) | 404 | The chat thread does not exist for this workspace. |
@@ -112,6 +113,11 @@ destination for the envelope's `docs` field.
 
 - **Default status**: `404`
 - **Hint**: The API key does not exist or was revoked.
+
+## cascade_incomplete
+
+- **Default status**: `500`
+- **Hint**: A workspace delete partially failed across Astra partitions; the workspace was left intact — retry the delete to complete the idempotent cascade.
 
 ## chat_disabled
 

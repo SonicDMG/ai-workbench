@@ -147,6 +147,11 @@ const REGISTRY = new Map<string, ErrorCodeDescriptor>([
 		"The control-plane backend is unreachable; verify Astra connectivity or the file driver path.",
 	),
 	entry(
+		"cascade_incomplete",
+		500,
+		"A workspace delete partially failed across Astra partitions; the workspace was left intact — retry the delete to complete the idempotent cascade.",
+	),
+	entry(
 		"workspace_not_found",
 		404,
 		"The workspace does not exist or your principal cannot see it; run `aiw workspace list` to verify.",
