@@ -18,7 +18,6 @@ import type { RagDocumentRecord } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
 import type { EmbedderFactory } from "../../embeddings/factory.js";
 import type { ExtractorRegistry } from "../../ingest/extractors/index.js";
-import { ExtractError } from "../../ingest/extractors/index.js";
 import {
 	CHUNK_INDEX_KEY,
 	CHUNK_TEXT_KEY,
@@ -53,6 +52,7 @@ import {
 } from "../../policy/enforcer.js";
 import { cascadeDeleteRagDocument } from "../../services/document-cascade.js";
 import { createIngestService } from "../../services/ingest-service.js";
+import { parseIngestFileForm } from "./ingest-file-form.js";
 import { resolveKb } from "./kb-descriptor.js";
 import { toWireJob } from "./serdes/index.js";
 
@@ -467,157 +467,7 @@ export function kbDocumentRoutes(
 				);
 			}
 
-			const fileEntry = form.get("file");
-			if (!(fileEntry instanceof File)) {
-				throw new ApiError(
-					"missing_file",
-					"multipart request must include a `file` field with the document bytes",
-					400,
-				);
-			}
-			if (fileEntry.size === 0) {
-				throw new ApiError("empty_file", "uploaded file is empty", 400);
-			}
-
-			const parserField = (form.get("parser") as string | null) ?? "auto";
-			if (
-				parserField !== "auto" &&
-				parserField !== "native" &&
-				parserField !== "docling"
-			) {
-				throw new ApiError(
-					"invalid_parser",
-					`parser must be "auto", "native", or "docling"; got "${parserField}"`,
-					400,
-				);
-			}
-
-			const bytes = new Uint8Array(await fileEntry.arrayBuffer());
-
-			let extracted: Awaited<ReturnType<ExtractorRegistry["extract"]>>;
-			try {
-				extracted = await extractors.extract(
-					{
-						bytes,
-						filename: fileEntry.name,
-						mimeType: (fileEntry.type ?? "").toLowerCase(),
-					},
-					{ parser: parserField },
-				);
-			} catch (err) {
-				if (err instanceof ExtractError) {
-					const status =
-						err.code === "unsupported_file_type"
-							? 415
-							: err.code === "docling_unavailable"
-								? 503
-								: 422;
-					throw new ApiError(err.code, err.message, status);
-				}
-				throw err;
-			}
-
-			const metadataField = form.get("metadata") as string | null;
-			let metadata: Record<string, string> | undefined;
-			if (metadataField) {
-				try {
-					const parsed = JSON.parse(metadataField);
-					if (
-						parsed === null ||
-						typeof parsed !== "object" ||
-						Array.isArray(parsed)
-					) {
-						throw new Error("metadata must be a JSON object of strings");
-					}
-					metadata = {} as Record<string, string>;
-					for (const [k, v] of Object.entries(
-						parsed as Record<string, unknown>,
-					)) {
-						if (typeof v !== "string") {
-							throw new Error(`metadata field "${k}" must be a string`);
-						}
-						metadata[k] = v;
-					}
-				} catch (err) {
-					throw new ApiError(
-						"invalid_metadata",
-						`metadata field is not valid JSON: ${
-							err instanceof Error ? err.message : String(err)
-						}`,
-						400,
-					);
-				}
-			}
-			// Stamp the parser provenance into metadata so the UI / audit
-			// trail can tell native uploads from docling ones without
-			// re-running the dispatcher. Caller-supplied metadata wins
-			// only when they didn't reuse the reserved keys.
-			metadata = {
-				...(metadata ?? {}),
-				ingestParser: extracted.parser,
-				...(extracted.parserVersion
-					? { ingestParserVersion: extracted.parserVersion }
-					: {}),
-			};
-
-			const chunkerField = form.get("chunker") as string | null;
-			let chunker: Record<string, unknown> | undefined;
-			if (chunkerField) {
-				try {
-					const parsed = JSON.parse(chunkerField);
-					if (
-						parsed === null ||
-						typeof parsed !== "object" ||
-						Array.isArray(parsed)
-					) {
-						throw new Error("chunker must be a JSON object");
-					}
-					chunker = parsed as Record<string, unknown>;
-				} catch (err) {
-					throw new ApiError(
-						"invalid_chunker",
-						`chunker field is not valid JSON: ${
-							err instanceof Error ? err.message : String(err)
-						}`,
-						400,
-					);
-				}
-			}
-
-			const overwrite =
-				(form.get("overwriteOnNameConflict") as string | null) === "true";
-			const documentId = (form.get("documentId") as string | null) ?? undefined;
-			const sourceDocId =
-				(form.get("sourceDocId") as string | null) ?? undefined;
-
-			// RLAC: caller may supply `visibleTo` as a JSON-encoded
-			// string array, and `ownerPrincipalId` as a plain string.
-			// Parse here; defaulting happens below in the same shape
-			// the text-ingest route uses.
-			const visibleToField = form.get("visibleTo") as string | null;
-			let callerVisibleTo: readonly string[] | undefined;
-			if (visibleToField) {
-				try {
-					const parsed = JSON.parse(visibleToField);
-					if (
-						!Array.isArray(parsed) ||
-						parsed.some((v) => typeof v !== "string")
-					) {
-						throw new Error("visibleTo must be a JSON array of strings");
-					}
-					callerVisibleTo = parsed as string[];
-				} catch (err) {
-					throw new ApiError(
-						"invalid_visible_to",
-						`visibleTo field is not a valid JSON string-array: ${
-							err instanceof Error ? err.message : String(err)
-						}`,
-						400,
-					);
-				}
-			}
-			const ownerPrincipalIdField =
-				(form.get("ownerPrincipalId") as string | null) ?? undefined;
+			const parsed = await parseIngestFileForm(form, extractors);
 
 			// RLAC defaulting: match the kb-documents text-ingest route.
 			const kbForRlac = await store.getKnowledgeBase(
@@ -630,28 +480,32 @@ export function kbDocumentRoutes(
 			const rlacOn = wsForRlac?.rlacEnabled ?? false;
 			const principal = getRequestPrincipal(c);
 			const resolvedVisibleTo =
-				callerVisibleTo !== undefined
-					? callerVisibleTo
+				parsed.callerVisibleTo !== undefined
+					? parsed.callerVisibleTo
 					: rlacOn && principal !== null
 						? [principal.id]
 						: undefined;
 			const resolvedOwnerPrincipalId =
-				ownerPrincipalIdField ??
+				parsed.ownerPrincipalId ??
 				(rlacOn && principal !== null ? principal.id : undefined);
 
 			const outcome = await ingestService.ingest(
 				workspaceId,
 				knowledgeBaseId,
 				{
-					text: extracted.text,
-					sourceFilename: fileEntry.name,
-					fileType: fileEntry.type || null,
-					fileSize: fileEntry.size,
-					...(documentId !== undefined && { documentId }),
-					...(sourceDocId !== undefined && { sourceDocId }),
-					metadata,
-					...(chunker !== undefined && { chunker }),
-					overwriteOnNameConflict: overwrite,
+					text: parsed.text,
+					sourceFilename: parsed.sourceFilename,
+					fileType: parsed.fileType,
+					fileSize: parsed.fileSize,
+					...(parsed.documentId !== undefined && {
+						documentId: parsed.documentId,
+					}),
+					...(parsed.sourceDocId !== undefined && {
+						sourceDocId: parsed.sourceDocId,
+					}),
+					metadata: parsed.metadata,
+					...(parsed.chunker !== undefined && { chunker: parsed.chunker }),
+					overwriteOnNameConflict: parsed.overwriteOnNameConflict,
 					...(resolvedVisibleTo !== undefined && {
 						visibleTo: [...resolvedVisibleTo],
 					}),

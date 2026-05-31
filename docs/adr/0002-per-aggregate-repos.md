@@ -85,12 +85,15 @@ interfaces.
 **Deferred:**
 
 - The per-aggregate **impl** extraction — splitting each ~1500-line
-  backend file into composable per-aggregate modules — is queued as
-  a follow-up. That work uses these interfaces as the seam. *Update
-  (2026-05, [#199](https://github.com/datastax/ai-workbench/pull/199)):
-  the memory backend has been extracted into per-aggregate slices
-  under `control-plane/memory/`; `file/` and `astra/` remain
-  monolithic for now.*
+  backend file into composable per-aggregate modules — used these
+  interfaces as the seam and is now **complete**. *Update (2026-05,
+  [#199](https://github.com/datastax/ai-workbench/pull/199)): the
+  memory backend was extracted into per-aggregate slices under
+  `control-plane/memory/`. Update (2026-05,
+  [#213](https://github.com/datastax/ai-workbench/pull/213)): `file/`
+  and `astra/` were split the same way — all three backends now share
+  the per-aggregate slice layout, so a thin `store.ts` shell composes
+  one module per aggregate.*
 - Pagination cursors as a first-class repo capability (currently the
   list methods return everything and `paginate()` slices in memory)
   is a separate P1 tracked outside this ADR.

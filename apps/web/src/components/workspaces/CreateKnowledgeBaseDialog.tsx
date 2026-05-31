@@ -37,6 +37,7 @@ import type {
 	EmbeddingServiceRecord,
 	KnowledgeBaseCreateResponse,
 } from "@/lib/schemas";
+import { RerankingServiceField } from "./RerankingServiceField";
 
 type Mode = "create" | "attach";
 
@@ -556,39 +557,13 @@ export function CreateKnowledgeBaseDialog({
 						) : null}
 					</div>
 
-					<div className="flex flex-col gap-1.5">
-						<FieldLabel
-							htmlFor="kb-rerank"
-							help="Optional second-pass ranking that can reorder retrieved matches after the vector search returns candidates."
-						>
-							Reranking service (optional)
-						</FieldLabel>
-						<Select
-							value={form.watch("rerankingServiceId") ?? ""}
-							onValueChange={(v) =>
-								form.setValue("rerankingServiceId", v === "_none_" ? "" : v)
-							}
-							disabled={rerankings.isLoading}
-						>
-							<SelectTrigger id="kb-rerank">
-								<SelectValue placeholder="No reranker" />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="_none_">No reranker</SelectItem>
-								{reranks.map((s) => (
-									<SelectItem
-										key={s.rerankingServiceId}
-										value={s.rerankingServiceId}
-									>
-										{s.name}
-										<span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
-											({s.provider}:{s.modelName})
-										</span>
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</div>
+					<RerankingServiceField
+						id="kb-rerank"
+						value={form.watch("rerankingServiceId") || null}
+						onChange={(v) => form.setValue("rerankingServiceId", v ?? "")}
+						services={reranks}
+						disabled={rerankings.isLoading}
+					/>
 
 					<div className="flex flex-col gap-1.5">
 						<FieldLabel

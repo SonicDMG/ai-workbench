@@ -1152,6 +1152,10 @@ are deterministic, so replay is idempotent. Older jobs without an
 input snapshot, or future job kinds that cannot replay yet, are
 claimed and marked failed so clients still see a terminal state.
 
+The cross-replica subscription model, lease/heartbeat protocol, and
+orphan-sweeper design are documented in full in
+[`cross-replica-jobs.md`](cross-replica-jobs.md).
+
 
 ## `/api/v1/workspaces/{workspaceId}/llm-services`
 

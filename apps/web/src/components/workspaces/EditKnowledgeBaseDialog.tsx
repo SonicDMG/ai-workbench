@@ -25,6 +25,7 @@ import { useUpdateKnowledgeBase } from "@/hooks/useKnowledgeBases";
 import { useRerankingServices } from "@/hooks/useServices";
 import { formatApiError } from "@/lib/api";
 import type { KnowledgeBaseRecord } from "@/lib/schemas";
+import { RerankingServiceField } from "./RerankingServiceField";
 
 const FormSchema = z.object({
 	description: z.string().optional(),
@@ -67,6 +68,8 @@ export function EditKnowledgeBaseDialog({
 			rerankingServiceId: NO_RERANKER,
 		},
 	});
+
+	const selectedReranker = form.watch("rerankingServiceId");
 
 	// Reset whenever the dialog opens with a different KB so the form
 	// reflects the row the user clicked, not stale state from the
@@ -181,37 +184,20 @@ export function EditKnowledgeBaseDialog({
 						</Select>
 					</div>
 
-					<div className="flex flex-col gap-1.5">
-						<FieldLabel
-							htmlFor="kb-edit-rerank"
-							help="Optional second-pass ranking applied after the vector search returns candidates."
-						>
-							Reranking service (optional)
-						</FieldLabel>
-						<Select
-							value={form.watch("rerankingServiceId") ?? NO_RERANKER}
-							onValueChange={(v) => form.setValue("rerankingServiceId", v)}
-							disabled={rerankings.isLoading}
-						>
-							<SelectTrigger id="kb-edit-rerank">
-								<SelectValue placeholder="No reranker" />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value={NO_RERANKER}>No reranker</SelectItem>
-								{reranks.map((s) => (
-									<SelectItem
-										key={s.rerankingServiceId}
-										value={s.rerankingServiceId}
-									>
-										{s.name}
-										<span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
-											({s.provider}:{s.modelName})
-										</span>
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</div>
+					<RerankingServiceField
+						id="kb-edit-rerank"
+						value={
+							selectedReranker && selectedReranker !== NO_RERANKER
+								? selectedReranker
+								: null
+						}
+						onChange={(v) =>
+							form.setValue("rerankingServiceId", v ?? NO_RERANKER)
+						}
+						services={reranks}
+						disabled={rerankings.isLoading}
+						help="Optional second-pass ranking applied after the vector search returns candidates."
+					/>
 
 					<div className="flex flex-col gap-1.5">
 						<FieldLabel
