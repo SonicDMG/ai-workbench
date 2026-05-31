@@ -28,6 +28,11 @@ The Vite dev server proxies `/api/*`, `/auth/*`, and `/docs` to
 the target with `VITE_API_TARGET` — see
 [`apps/web/.env.example`](./apps/web/.env.example).
 
+> The two commands above install only what the runtime + UI dev loop
+> needs. `npm run setup` installs all four packages at once — root,
+> runtime, web, and the `aiw` CLI — so run it (or `npm run
+> install:cli`) before working on [`packages/aiw-cli`](./packages/aiw-cli).
+
 The default in-memory control plane needs no secrets. To exercise
 the Astra-backed control plane, copy
 [`.env.example`](./.env.example) to `.env` and fill in
@@ -49,6 +54,10 @@ npm --prefix apps/web run typecheck   # Web UI
 npm test                              # TS runtime — Vitest + conformance drift guard
 npm --prefix apps/web test            # Web UI — Vitest + jsdom
 ```
+
+Or run `npm run check` to execute the full gate in one shot — lint,
+format check, typecheck, all three test suites, and the runtime, web,
+and CLI builds.
 
 Coverage thresholds are enforced in `vitest.config.ts` for both
 packages — `npm run test:coverage` (root → TS runtime) and

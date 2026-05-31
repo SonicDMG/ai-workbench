@@ -66,6 +66,7 @@ export default defineConfig({
 				items: [
 					{ text: "API spec", link: "/api-spec" },
 					{ text: "Authentication", link: "/auth" },
+					{ text: "Errors", link: "/errors" },
 					{ text: "Conformance", link: "/conformance" },
 				],
 			},
@@ -74,6 +75,16 @@ export default defineConfig({
 				items: [
 					{ text: "Agents", link: "/agents" },
 					{ text: "MCP server", link: "/mcp" },
+					{ text: "Astra CLI discovery", link: "/astra-cli" },
+				],
+			},
+			{
+				text: "Operations",
+				items: [
+					{ text: "Production checklist", link: "/production" },
+					{ text: "Docker", link: "/docker" },
+					{ text: "Telemetry", link: "/telemetry" },
+					{ text: "Audit log", link: "/audit" },
 				],
 			},
 			{
@@ -87,11 +98,14 @@ export default defineConfig({
 						text: "Cross-replica jobs",
 						link: "/cross-replica-jobs",
 					},
+					{ text: "Route plugins", link: "/route-plugins" },
+					{ text: "Row-level access control", link: "/rlac" },
 				],
 			},
 			{
 				text: "Project",
 				items: [
+					{ text: "What's new in 0.4.2", link: "/whats-new-0.4.2" },
 					{ text: "What's new in 0.4", link: "/whats-new-0.4.0" },
 					{ text: "Roadmap", link: "/roadmap" },
 				],

@@ -219,6 +219,29 @@ clobber each other.
 |-------|------|----------|-------|
 | `root` | string | yes | Directory that will hold `workspaces.json` et al. Created if absent. |
 
+#### `sqlite`
+
+```yaml
+controlPlane:
+  driver: sqlite
+  path: /var/lib/workbench/workbench.db
+```
+
+SQLite via `better-sqlite3`, in WAL mode. Same durability and
+single-node posture as `file`, but row-level writes instead of a
+whole-file rewrite per mutation — built for chat-heavy deployments
+where the `file` backend goes quadratic as conversations grow. Not
+safe for multiple writers; run one replica per database file. WAL
+sidecars (`-wal`, `-shm`) live beside the database file. A `path` of
+`:memory:` selects an ephemeral in-process database (tests and
+throwaway demos).
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `path` | string | yes | Database file path. Parent directory must exist. `:memory:` selects an ephemeral in-process database. |
+| `jobsResume` | object | off | Cross-replica orphan-sweeper config (see below). Single-node SQLite rarely needs it. |
+| `jobPollIntervalMs` | int (50–60000) | — | Accepted for symmetry with `astra`; unused by the in-process SQLite job store, which fans out updates with no poller. |
+
 #### `astra`
 
 ```yaml
@@ -252,7 +275,7 @@ The runtime creates the `wb_*` tables at startup if they don't exist
 (using `createTable(..., { ifNotExists: true })`). The keyspace
 itself must already exist.
 
-#### `controlPlane.jobsResume` (file / astra)
+#### `controlPlane.jobsResume` (file / sqlite / astra)
 
 Off by default — only useful for clustered deployments where one
 replica can crash mid-ingest while another stays up. Single-replica
@@ -537,9 +560,9 @@ Future providers (Vault, AWS SM, etc.) plug into the same
 At startup the runtime enforces:
 
 - Every `${VAR}` reference resolves or has a default.
-- `controlPlane.driver` is one of `memory | file | astra`.
+- `controlPlane.driver` is one of `memory | file | sqlite | astra`.
 - Driver-specific required fields are present (e.g. `root` for file,
-  `endpoint` + `tokenRef` for astra).
+  `path` for sqlite, `endpoint` + `tokenRef` for astra).
 - Every `tokenRef` / `credentials` value matches the
   `<prefix>:<path>` shape.
 - `seedWorkspaces` is only non-empty when

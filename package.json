@@ -27,7 +27,7 @@
 		"test:web": "npm --prefix apps/web test",
 		"test:cli": "npm --prefix packages/aiw-cli test",
 		"typecheck": "npm --prefix runtimes/typescript run typecheck && npm --prefix apps/web run typecheck && npm --prefix packages/aiw-cli run typecheck",
-		"check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run test:web && npm run test:cli && npm run build && npm run build:cli",
+		"check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run test:web && npm run test:cli && npm run build && npm run build:web && npm run build:cli",
 		"conformance:mock": "npm --prefix runtimes/typescript run conformance:mock",
 		"conformance:regenerate": "npm --prefix runtimes/typescript run conformance:regenerate",
 		"smoke:astra": "npm --prefix runtimes/typescript run smoke:astra",
