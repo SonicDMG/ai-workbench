@@ -25,7 +25,8 @@ runnable artifact and a stable slice of the HTTP contract.
 | Agents-1 | Agent + conversation CRUD over the agentic tables | ✅ Shipped |
 | Agents-2 | Agent send + streaming pipeline (generalize chat-5 to any agent) + LLM-services CRUD + Bobbie retirement | ✅ Shipped |
 | Chat-6 | Retire HuggingFace; unify chat + embeddings on OpenAI-compatibility — OpenRouter (hosted default), direct OpenAI (BYOK), Ollama (offline); live tool-calling model catalog | ✅ Shipped (0.3.0) |
-| 7+ | Native non-OpenAI-compatible providers, MCP tool calls, polish | Planned (see "Next steps") |
+| Agents-3 | Agent **calls** MCP tools (client-side) — `connectMcpClient` + `remoteMcpTools` + dispatcher | ✅ Shipped (0.4.0; 0.5.0 hardening — see "Next steps") |
+| 7+ | Native non-OpenAI-compatible providers, polish | Planned (see "Next steps") |
 
 ## Phase 0 — Bootstrap ✅
 
@@ -418,10 +419,20 @@ Remaining open work in this area:
   providers (e.g. a direct Cohere or Anthropic SDK case) return
   `422 llm_provider_unsupported` until the dispatcher grows a case for
   them; since OpenRouter fronts those vendors, that's now a niche need.
-- **Tool execution via MCP**. Now that the MCP server façade is in,
-  the inverse — letting an agent **call** MCP tools — is the same
-  SDK, just on the client side. Lands alongside
-  `wb_config_mcp_tools_by_workspace` CRUD.
+- **Tool execution via MCP** ✅ **(shipped 0.4.0)**. Agents call remote
+  MCP tools through the same SDK on the client side: `connectMcpClient`
+  (`chat/tools/mcp-client.ts`, SSRF-guarded StreamableHTTP), the
+  `remoteMcpTools` provider (`chat/tools/providers/remote-mcp.ts`,
+  per-server discovery + `mcp:{serverId}:{tool}` namespacing), and the
+  unified dispatcher (`chat/tools/dispatcher.ts`) are all wired and
+  tested. 0.5.0 is **hardening + access control**, not greenfield:
+  save-time `toolId` validation, a `tools:invoke` per-call scope gate,
+  a TTL discovery cache, and a server-grouped picker. The persisted
+  `wb_config_mcp_tools_by_workspace` table is **deliberately deferred** —
+  a per-`(workspace, server, url, credentialRef)` TTL cache
+  (`chat/tools/mcp-discovery-cache.ts`) kills per-turn connect latency
+  without a new table × 4 backends; revisit a persisted catalog only if
+  cross-replica warm-start becomes a need.
 
 ### Per-KB / per-agent rate limiting
 
