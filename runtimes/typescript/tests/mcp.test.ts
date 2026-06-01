@@ -592,7 +592,7 @@ describe("MCP server tools", () => {
 			};
 			expect(payload.outcome).toBe("denied");
 			expect(payload.code).toBe("scope_required");
-			expect(payload.required).toBe("write");
+			expect(payload.required).toBe("write:ingest");
 			expect(payload.subjectScopes).toEqual(["read"]);
 		} finally {
 			await h.cleanup();
@@ -620,13 +620,16 @@ describe("MCP server tools", () => {
 			};
 			expect(payload.outcome).toBe("denied");
 			expect(payload.code).toBe("scope_required");
-			expect(payload.required).toBe("write");
+			expect(payload.required).toBe("write:ingest");
 		} finally {
 			await h.cleanup();
 		}
 	});
 
 	test("ingest_text passes when the caller carries the `write` scope", async () => {
+		// The back-compat proof: a legacy coarse `write` key still passes
+		// the now-fine `write:ingest` gate via containment — no key minted
+		// before 0.5.0 loses MCP write access.
 		const h = await makeMcpHarness({
 			withIngest: true,
 			subjectScopes: ["read", "write"],
@@ -675,6 +678,60 @@ describe("MCP server tools", () => {
 				outcome: string;
 			};
 			expect(payload.outcome).toBe("completed");
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("ingest_text accepts a fine `write:ingest` key", async () => {
+		const h = await makeMcpHarness({
+			withIngest: true,
+			subjectScopes: ["read", "write:ingest"],
+		});
+		try {
+			const { knowledgeBaseId } = await makeKbForIngest(
+				h.store,
+				h.driver,
+				h.workspaceId,
+			);
+			const result = await h.client.callTool({
+				name: "ingest_text",
+				arguments: { knowledgeBaseId, text: "fine write:ingest scope" },
+			});
+			const payload = JSON.parse(textContent(result as never)) as {
+				outcome: string;
+			};
+			expect(payload.outcome).toBe("completed");
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("ingest_text refuses a sibling `write:kb` key (fine facets don't cross)", async () => {
+		// `write:kb` is the KB-structure facet; it must NOT grant the
+		// content facet `write:ingest`. This is the granularity P2 buys —
+		// a key narrowed to KB admin can't push document content.
+		const h = await makeMcpHarness({
+			withIngest: true,
+			subjectScopes: ["read", "write:kb"],
+		});
+		try {
+			const result = (await h.client.callTool({
+				name: "ingest_text",
+				arguments: {
+					knowledgeBaseId: "11111111-2222-4333-8444-555555555555",
+					text: "wrong facet — must not persist",
+				},
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+			expect(result.isError).toBe(true);
+			const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+				outcome: string;
+				code: string;
+				required: string;
+			};
+			expect(payload.outcome).toBe("denied");
+			expect(payload.code).toBe("scope_required");
+			expect(payload.required).toBe("write:ingest");
 		} finally {
 			await h.cleanup();
 		}
@@ -910,7 +967,7 @@ describe("MCP server tools", () => {
 			) as { outcome: string; code: string; required: string };
 			expect(createPayload.outcome).toBe("denied");
 			expect(createPayload.code).toBe("scope_required");
-			expect(createPayload.required).toBe("write");
+			expect(createPayload.required).toBe("write:kb");
 
 			const deleteResult = (await h.client.callTool({
 				name: "delete_knowledge_base",
@@ -924,7 +981,68 @@ describe("MCP server tools", () => {
 			) as { outcome: string; code: string; required: string };
 			expect(deletePayload.outcome).toBe("denied");
 			expect(deletePayload.code).toBe("scope_required");
-			expect(deletePayload.required).toBe("write");
+			expect(deletePayload.required).toBe("write:kb");
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("create_knowledge_base accepts a fine `write:kb` key", async () => {
+		const h = await makeMcpHarness({
+			withKnowledgeBaseService: true,
+			subjectScopes: ["read", "write:kb"],
+		});
+		try {
+			const chunk = await h.store.createChunkingService(h.workspaceId, {
+				name: "c",
+				engine: "langchain_ts",
+			});
+			const embed = await h.store.createEmbeddingService(h.workspaceId, {
+				name: "e",
+				provider: "fake",
+				modelName: "m",
+				embeddingDimension: 4,
+			});
+			const result = await h.client.callTool({
+				name: "create_knowledge_base",
+				arguments: {
+					name: "FineKb",
+					chunkingServiceId: chunk.chunkingServiceId,
+					embeddingServiceId: embed.embeddingServiceId,
+				},
+			});
+			const payload = JSON.parse(textContent(result as never)) as {
+				outcome: string;
+			};
+			expect(payload.outcome).toBe("created");
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("create_knowledge_base refuses a sibling `write:ingest` key", async () => {
+		const h = await makeMcpHarness({
+			withKnowledgeBaseService: true,
+			subjectScopes: ["read", "write:ingest"],
+		});
+		try {
+			const result = (await h.client.callTool({
+				name: "create_knowledge_base",
+				arguments: {
+					name: "Nope",
+					chunkingServiceId: "11111111-2222-4333-8444-555555555555",
+					embeddingServiceId: "11111111-2222-4333-8444-666666666666",
+				},
+			})) as { isError?: boolean; content: Array<{ text?: string }> };
+			expect(result.isError).toBe(true);
+			const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+				outcome: string;
+				code: string;
+				required: string;
+			};
+			expect(payload.outcome).toBe("denied");
+			expect(payload.code).toBe("scope_required");
+			expect(payload.required).toBe("write:kb");
 		} finally {
 			await h.cleanup();
 		}

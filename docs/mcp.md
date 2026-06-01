@@ -64,19 +64,29 @@ API key per agent.**
 
 Workspace API keys carry a `scopes` field (see
 [API-keys card in the workspace UI](../README.md#current-http-surface)).
-The MCP server enforces it on the **write tools** today:
+As of 0.5.0 the MCP server enforces a **fine scope per write tool**,
+matching the scope its REST sibling requires:
 
 | Tool | Required scope |
 |---|---|
-| `ingest_text`, `delete_document`, `create_knowledge_base`, `delete_knowledge_base` | `write` |
+| `ingest_text`, `delete_document` | `write:ingest` |
+| `create_knowledge_base`, `delete_knowledge_base` | `write:kb` |
 | `search_kb`, `list_*`, `get_agent`, `chat_send`, `run_agent` | `read` (passes any authenticated caller) |
 
-A key minted with `scopes: ["read"]` will see read tools work
-normally; a write-tool call returns `isError: true` with a JSON body
-\{ `outcome: "denied"`, `code: "scope_required"`, `required: "write"`,
-`subjectScopes`, `message` \} — same shape MCP clients already handle
-for tool failures, so LangGraph / CrewAI / ADK / MAF / watsonx surface
-the denial as a regular tool error, not a transport-level 403.
+The check is **hierarchical containment**, not exact match: a held
+coarse tier grants its fine grants, so a legacy `["read", "write"]` key
+still passes every write tool exactly as before 0.5.0 (`write` contains
+both `write:ingest` and `write:kb`). The granularity is opt-in — mint a
+key with `["read", "write:ingest"]` and it can push content but not
+create or drop knowledge bases.
+
+A key that lacks a tool's fine scope (e.g. `["read"]`, or
+`["read", "write:kb"]` calling `ingest_text`) gets `isError: true` with a
+JSON body \{ `outcome: "denied"`, `code: "scope_required"`,
+`required: "write:ingest"`, `subjectScopes`, `message` \} — same shape MCP
+clients already handle for tool failures, so LangGraph / CrewAI / ADK /
+MAF / watsonx surface the denial as a regular tool error, not a
+transport-level 403.
 
 OIDC + bootstrap operator credentials and anonymous (dev-mode) callers
 have `scopes: null` and pass every gate — the scope check only fires
@@ -98,10 +108,10 @@ reason strings.
 | `search_kb` | `{ knowledgeBaseId, text? \| vector?, topK?, hybrid?, rerank? }` | JSON array of search hits (`chunkId`, `score`, `documentId`, `content`) |
 | `list_chats` | `{ agentId }` | JSON array of chat summaries (`chatId`, `agentId`, `title`, `knowledgeBaseIds`, `createdAt`) |
 | `list_chat_messages` | `{ chatId }` | Oldest-first message log (`messageId`, `role`, `content`, `messageTs`, `metadata`) |
-| `ingest_text` | `{ knowledgeBaseId, text, sourceFilename?, sourceDocId?, metadata?, overwriteOnNameConflict? }` | JSON envelope with one of three `outcome` values: `completed` (new document — `documentId`, `sourceFilename`, `contentHash`, `chunks`), `duplicate` (content-hash match — pipeline did not run; returns the existing `documentId`), or `name_conflict` (`isError: true` — filename matched but bytes differ; retry with `overwriteOnNameConflict: true` or pick a new name). Runs the same dedup + chunk + embed + upsert pipeline as the REST `POST /ingest`. Always synchronous from the MCP caller's POV. **Requires the `write` scope on the calling key** — read-only keys see `isError: true` + `outcome: "denied"` instead. |
-| `delete_document` | `{ knowledgeBaseId, documentId }` | JSON object with `outcome`: `deleted` (`documentId`, `chunksDropped`) or `not_found` (no row matched the id — returned without `isError` so speculative cleanup doesn't need to branch). Wraps the same cascade helper the REST `DELETE /documents/{id}` route uses; vector chunks come down first, then the control-plane row. **Requires the `write` scope on the calling key.** |
-| `create_knowledge_base` | `{ name, chunkingServiceId, embeddingServiceId, description?, rerankingServiceId?, language?, attach?, vectorCollection? }` | JSON envelope with `outcome: "created"` plus the new `knowledgeBaseId`, resolved `vectorCollection`, and `owned` flag. Wraps the same `KnowledgeBaseService.create` the REST `POST /knowledge-bases` route uses — so the collection-provision + rollback dance runs identically across front doors. Validation failures (`kb_name_taken`, `collection_name_taken`, embedding/dimension mismatch) return `isError: true` with a recognizable `code`. **Requires the `write` scope on the calling key.** |
-| `delete_knowledge_base` | `{ knowledgeBaseId }` | JSON object with `outcome`: `deleted` or `not_found` (idempotent — re-deleting a missing KB returns `not_found` without `isError`). For owned KBs, drops the underlying vector collection first; attached KBs are detached without touching the collection. **Requires the `write` scope on the calling key.** |
+| `ingest_text` | `{ knowledgeBaseId, text, sourceFilename?, sourceDocId?, metadata?, overwriteOnNameConflict? }` | JSON envelope with one of three `outcome` values: `completed` (new document — `documentId`, `sourceFilename`, `contentHash`, `chunks`), `duplicate` (content-hash match — pipeline did not run; returns the existing `documentId`), or `name_conflict` (`isError: true` — filename matched but bytes differ; retry with `overwriteOnNameConflict: true` or pick a new name). Runs the same dedup + chunk + embed + upsert pipeline as the REST `POST /ingest`. Always synchronous from the MCP caller's POV. **Requires the `write:ingest` scope on the calling key** (a coarse `write` key grants it via containment) — keys without it see `isError: true` + `outcome: "denied"` instead. |
+| `delete_document` | `{ knowledgeBaseId, documentId }` | JSON object with `outcome`: `deleted` (`documentId`, `chunksDropped`) or `not_found` (no row matched the id — returned without `isError` so speculative cleanup doesn't need to branch). Wraps the same cascade helper the REST `DELETE /documents/{id}` route uses; vector chunks come down first, then the control-plane row. **Requires the `write:ingest` scope on the calling key** (a coarse `write` key grants it via containment). |
+| `create_knowledge_base` | `{ name, chunkingServiceId, embeddingServiceId, description?, rerankingServiceId?, language?, attach?, vectorCollection? }` | JSON envelope with `outcome: "created"` plus the new `knowledgeBaseId`, resolved `vectorCollection`, and `owned` flag. Wraps the same `KnowledgeBaseService.create` the REST `POST /knowledge-bases` route uses — so the collection-provision + rollback dance runs identically across front doors. Validation failures (`kb_name_taken`, `collection_name_taken`, embedding/dimension mismatch) return `isError: true` with a recognizable `code`. **Requires the `write:kb` scope on the calling key** (a coarse `write` key grants it via containment). |
+| `delete_knowledge_base` | `{ knowledgeBaseId }` | JSON object with `outcome`: `deleted` or `not_found` (idempotent — re-deleting a missing KB returns `not_found` without `isError`). For owned KBs, drops the underlying vector collection first; attached KBs are detached without touching the collection. **Requires the `write:kb` scope on the calling key** (a coarse `write` key grants it via containment). |
 | `chat_send` *(opt-in)* | `{ agentId, chatId, content }` | The assistant's reply as a single text block. Persists both turns through the runtime's global chat service; the system prompt falls back to `DEFAULT_AGENT_SYSTEM_PROMPT` when `chat.systemPrompt` is unset. Use `run_agent` when you want the tool to resolve or create the conversation for you. |
 | `run_agent` *(opt-in)* | `{ agentId, content, conversationId?, title? }` | JSON envelope `{ outcome, conversationId, agentId, content, finishReason, tokenCount, contextChunkIds }`. One-call agent invocation — resolves (or creates) a conversation bound to the agent's KB set, then drives the same retrieval → prompt → complete → persist pipeline as `chat_send`. Honors the agent's stored `systemPrompt`. Returns `outcome: "agent_not_found"` / `"chat_not_found"` / `"completion_error"` for failure shapes; `"completed"` on success. |
 
@@ -127,13 +137,15 @@ service CRUD) stay off the surface. Reasons:
   `delete_document`. `delete_document` itself is scoped to a single
   document at a time (no "delete by filter" surface) so the radius
   stays predictable.
-- **Auth has a coarse two-tier scope today.** Workspace API keys
-  carry `["read"]` or `["read", "write"]`; the write tools
-  (`ingest_text`, `delete_document`) refuse anything without
-  `"write"`. See the **Per-tool scopes** subsection in
-  [Auth](#auth) above for the deny envelope. The split is
-  intentionally narrow — adding `write:ingest` / `write:admin` is an
-  additive change when a use case demands it.
+- **Auth is fine-scoped (0.5.0).** Workspace API keys carry coarse
+  tiers (`["read"]`, `["read", "write"]`) and/or fine grants
+  (`write:ingest`, `write:kb`, …). Each write tool requires its fine
+  scope (`ingest_text` / `delete_document` → `write:ingest`;
+  `create_knowledge_base` / `delete_knowledge_base` → `write:kb`),
+  resolved by hierarchical containment so a coarse `write` key still
+  grants all of them — no key minted before 0.5.0 loses access. See the
+  **Per-tool scopes** subsection in [Auth](#auth) above for the deny
+  envelope.
 - **Most useful surface first.** Retrieval is the killer feature for
   an MCP integration; ingestion is the most-asked-for write tool;
   delete pairs naturally with ingest for agents that maintain their

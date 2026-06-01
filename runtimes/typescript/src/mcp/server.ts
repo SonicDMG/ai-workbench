@@ -74,6 +74,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
+import { subjectGrantsScope } from "../auth/roles.js";
 import type { ResolvedPrincipal } from "../auth/types.js";
 import type { ChatService } from "../chat/types.js";
 import type { ChatConfig } from "../config/schema.js";
@@ -162,7 +163,12 @@ function denyIfMissingScope(
 	content: Array<{ type: "text"; text: string }>;
 } | null {
 	if (subjectScopes === null) return null;
-	if (subjectScopes.includes(required)) return null;
+	// Hierarchical containment, not exact match (mirrors `assertScope` in
+	// auth/authz.ts): a held coarse tier (`write`) grants a required fine
+	// scope (`write:ingest`), so a legacy `["read","write"]` key still
+	// passes the now-fine write-tool gates. A fine key only grants its own
+	// facet — `write:kb` does NOT grant `write:ingest`.
+	if (subjectGrantsScope(subjectScopes, required)) return null;
 	return {
 		isError: true,
 		content: [
@@ -215,18 +221,26 @@ export interface McpServerDeps {
 	 */
 	readonly knowledgeBaseService: KnowledgeBaseService | null;
 	/**
-	 * Privilege tiers the caller carries, projected from the request's
-	 * {@link AuthContext}. Used by the write tools (`ingest_text`,
-	 * `delete_document`) to refuse calls from a `read`-only key with a
-	 * structured tool error instead of running the mutation.
+	 * Privilege scopes the caller carries, projected from the request's
+	 * {@link AuthContext}. Used by the write tools to refuse calls from a
+	 * key that lacks the tool's fine scope with a structured tool error
+	 * instead of running the mutation. Each write tool requires the same
+	 * fine scope its REST sibling does: `ingest_text` / `delete_document`
+	 * → `write:ingest`; `create_knowledge_base` / `delete_knowledge_base`
+	 * → `write:kb`.
 	 *
-	 * Semantics match {@link assertScope} in `auth/authz.ts`:
+	 * Semantics match {@link assertScope} in `auth/authz.ts`, including
+	 * hierarchical containment (a coarse tier grants its fine grants):
 	 *
 	 *   - `null`  — no scope gate applies. Used for anonymous (dev mode)
 	 *               and unscoped subjects (OIDC / bootstrap). Write
 	 *               tools run as before.
 	 *   - `[]`    — concrete empty set. Write tools refuse.
-	 *   - `["read", "write"]` — a key that can do both. Write tools run.
+	 *   - `["read", "write"]` — a legacy coarse key. `write` contains
+	 *               `write:ingest` and `write:kb`, so every write tool
+	 *               runs exactly as before 0.5.0.
+	 *   - `["read", "write:ingest"]` — a content-only key. `ingest_text`
+	 *               / `delete_document` run; the KB-lifecycle tools refuse.
 	 *   - `["read"]` — a read-only key. Write tools refuse.
 	 *
 	 * Read tools (`search_kb`, `list_*`) deliberately do not check —
@@ -744,7 +758,11 @@ function registerIngestTextTool(
 			metadata,
 			overwriteOnNameConflict,
 		}) => {
-			const denial = denyIfMissingScope(subjectScopes, "write", "ingest_text");
+			const denial = denyIfMissingScope(
+				subjectScopes,
+				"write:ingest",
+				"ingest_text",
+			);
 			if (denial) return denial;
 			// IngestService.ingest takes the wire `KbIngestRequest`
 			// shape. We forward what MCP gave us and let the service do
@@ -885,7 +903,7 @@ function registerDeleteDocumentTool(
 		async ({ knowledgeBaseId, documentId }) => {
 			const denial = denyIfMissingScope(
 				deps.subjectScopes,
-				"write",
+				"write:ingest",
 				"delete_document",
 			);
 			if (denial) return denial;
@@ -1035,7 +1053,7 @@ function registerCreateKnowledgeBaseTool(
 		}) => {
 			const denial = denyIfMissingScope(
 				subjectScopes,
-				"write",
+				"write:kb",
 				"create_knowledge_base",
 			);
 			if (denial) return denial;
@@ -1150,7 +1168,7 @@ function registerDeleteKnowledgeBaseTool(
 		async ({ knowledgeBaseId }) => {
 			const denial = denyIfMissingScope(
 				subjectScopes,
-				"write",
+				"write:kb",
 				"delete_knowledge_base",
 			);
 			if (denial) return denial;
