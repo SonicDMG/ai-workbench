@@ -287,3 +287,42 @@ Scope normalization on mint. An unordered set with a duplicate
 persist identically across runtimes.
 
 Fixture: `fixtures/api-key-scope-normalization.json`.
+
+---
+
+## Scenario 22 — `agent-toolid-rejects-unresolved-mcp`
+
+Save-time `toolId` validation (Feature ③ MCP P1). Creating an agent with
+a namespaced `mcp:{serverId}:{tool}` id that doesn't resolve to a
+registered + enabled server in this workspace returns `422
+agent_tool_unresolved`. Bare built-in names and empty `toolIds` are
+unaffected (see `agent-crud-basic`).
+
+Fixture: `fixtures/agent-toolid-rejects-unresolved-mcp.json`.
+
+---
+
+## Scenario 23 — `mcp-server-crud-lifecycle`
+
+External MCP server registry CRUD (Feature ③). A raw `credentialRef` is
+rejected (`400 validation_error`) before it reaches the SecretResolver —
+only a `scheme:name` SecretRef (`env:MCP_TOKEN`) is accepted. Then create,
+list, get, patch (pause + rename), delete (`204`), and confirm the list is
+empty. Pins the mcp-servers registry contract + SecretRef enforcement,
+mirroring `workspace-credentials-must-be-secret-ref`.
+
+Fixture: `fixtures/mcp-server-crud-lifecycle.json`.
+
+---
+
+## Scenario 24 — `available-tools-catalog`
+
+The agent-form tool catalog wire shape (Feature ③ P4). `GET
+/available-tools` on a mock workspace returns the built-in tool pool —
+each item carries `id`, `description`, `source`, and the JSON-Schema
+`inputSchema`. Pins the `AvailableTool` envelope (incl. the 0.5.0
+`serverId` / `serverLabel` / `inputSchema` fields) cross-runtime; live
+remote-MCP tool enumeration needs a reachable server and stays in the
+runtime unit / integration tests.
+
+Fixture: `fixtures/available-tools-catalog.json`.

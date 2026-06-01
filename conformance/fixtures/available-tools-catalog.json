@@ -1,0 +1,178 @@
+{
+	"slug": "available-tools-catalog",
+	"description": "The agent-form tool catalog wire shape (Feature ③ P4). GET /available-tools on a mock workspace returns the built-in tool pool — each item carries id, description, source, and the JSON-Schema inputSchema. Pins the AvailableTool envelope (incl. the 0.5.0 serverId/serverLabel/inputSchema fields) cross-runtime; live remote-MCP tool enumeration needs a reachable server and stays in the runtime unit/integration tests.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentials": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"rlacEnabled": false,
+					"updatedAt": "{{TS}}",
+					"url": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/available-tools"
+			},
+			"response": {
+				"body": {
+					"items": [
+						{
+							"description": "List the knowledge bases available in this workspace. Use this when the user asks what data sources exist, or before deciding which knowledge base to search.",
+							"id": "list_kbs",
+							"inputSchema": {
+								"additionalProperties": false,
+								"properties": {},
+								"type": "object"
+							},
+							"source": "builtin"
+						},
+						{
+							"description": "List documents (titles + ids) in a knowledge base. Pass `knowledgeBaseId` to scope to one KB; omit to list across every KB in the workspace. Useful when the user asks 'what's in my data' at the document level.",
+							"id": "list_documents",
+							"inputSchema": {
+								"additionalProperties": false,
+								"properties": {
+									"knowledgeBaseId": {
+										"description": "UUID of a knowledge base to scope to. Omit to list documents across every KB in the workspace.",
+										"type": "string"
+									}
+								},
+								"type": "object"
+							},
+							"source": "builtin"
+						},
+						{
+							"description": "Count how many documents are registered in a knowledge base. Pass `knowledgeBaseId` to scope; omit to count across every KB in the workspace. Cheaper than list_documents when only the magnitude matters.",
+							"id": "count_documents",
+							"inputSchema": {
+								"additionalProperties": false,
+								"properties": {
+									"knowledgeBaseId": {
+										"description": "UUID of a knowledge base. Omit to count workspace-wide.",
+										"type": "string"
+									}
+								},
+								"type": "object"
+							},
+							"source": "builtin"
+						},
+						{
+							"description": "Quick at-a-glance summary of a knowledge base: name, description, document count, and a short sample of document titles. Pass `knowledgeBaseId` to summarize one KB; omit to summarize each KB in the workspace. Use this for meta queries like 'what's in my data?' or 'tell me about my workspace'.",
+							"id": "summarize_kb",
+							"inputSchema": {
+								"additionalProperties": false,
+								"properties": {
+									"knowledgeBaseId": {
+										"description": "UUID of a knowledge base. Omit to summarize every KB in the workspace.",
+										"type": "string"
+									}
+								},
+								"type": "object"
+							},
+							"source": "builtin"
+						},
+						{
+							"description": "Semantic search across the workspace's knowledge bases. Returns the top matching chunks with a short content preview. Use this when the user asks a content question that requires looking inside the documents (not just listing them). Pass `knowledgeBaseId` to scope to one KB; omit to search every KB.",
+							"id": "search_kb",
+							"inputSchema": {
+								"additionalProperties": false,
+								"properties": {
+									"knowledgeBaseId": {
+										"description": "UUID of a knowledge base to scope to. Omit to search workspace-wide.",
+										"type": "string"
+									},
+									"limit": {
+										"description": "Max chunks to return (default 5, hard cap 8).",
+										"maximum": 8,
+										"minimum": 1,
+										"type": "integer"
+									},
+									"query": {
+										"description": "Natural-language question or phrase to search for, e.g. 'how does the billing flow work?'.",
+										"type": "string"
+									}
+								},
+								"required": ["query"],
+								"type": "object"
+							},
+							"source": "builtin"
+						},
+						{
+							"description": "Fetch a single document's metadata + a short content preview. Use after list_documents/search_kb when the user asks for details on a specific item.",
+							"id": "get_document",
+							"inputSchema": {
+								"additionalProperties": false,
+								"properties": {
+									"documentId": {
+										"description": "Document UUID.",
+										"type": "string"
+									},
+									"knowledgeBaseId": {
+										"description": "Knowledge base UUID.",
+										"type": "string"
+									}
+								},
+								"required": ["knowledgeBaseId", "documentId"],
+								"type": "object"
+							},
+							"source": "builtin"
+						},
+						{
+							"description": "Return the literal chunks (rows / passages) of a specific document, in order. Use this when the user asks for actual content — e.g. 'show me 4 rows of the CSV', 'what's in the document', 'first few entries' — rather than a semantic question that would route through search_kb. Pass `limit` and `offset` to page; chunks are returned sorted by `chunkIndex`.",
+							"id": "list_chunks",
+							"inputSchema": {
+								"additionalProperties": false,
+								"properties": {
+									"documentId": {
+										"description": "Document UUID.",
+										"type": "string"
+									},
+									"knowledgeBaseId": {
+										"description": "Knowledge base UUID.",
+										"type": "string"
+									},
+									"limit": {
+										"description": "Max chunks to return (default 10, hard cap 50).",
+										"maximum": 50,
+										"minimum": 1,
+										"type": "integer"
+									},
+									"offset": {
+										"description": "Number of leading chunks to skip — use to page beyond the first batch.",
+										"minimum": 0,
+										"type": "integer"
+									}
+								},
+								"required": ["knowledgeBaseId", "documentId"],
+								"type": "object"
+							},
+							"source": "builtin"
+						}
+					]
+				},
+				"status": 200
+			},
+			"step": 2
+		}
+	]
+}

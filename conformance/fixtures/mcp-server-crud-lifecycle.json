@@ -1,0 +1,182 @@
+{
+	"slug": "mcp-server-crud-lifecycle",
+	"description": "External MCP server registry CRUD (Feature ③). A raw credentialRef is rejected (400 validation_error) before it can reach the SecretResolver — only a `scheme:name` SecretRef is accepted. Then create with `env:` ref, list, get, patch (pause + rename), delete (204), and confirm the list is empty. Pins the mcp-servers registry contract + SecretRef enforcement (mirrors workspace-credentials-must-be-secret-ref).",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentials": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"rlacEnabled": false,
+					"updatedAt": "{{TS}}",
+					"url": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"credentialRef": "raw-secret-no-scheme",
+					"label": "raw cred",
+					"url": "https://mcp.example.com/mcp"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/mcp-servers"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "validation_error",
+						"docs": "docs/errors.md#validation-error",
+						"hint": "Request body or query string failed schema validation; see the message for the offending field.",
+						"message": "credentialRef: expected '<provider>:<path>', e.g. 'env:FOO'",
+						"requestId": "{{REQID_1}}"
+					}
+				},
+				"status": 400
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"credentialRef": "env:MCP_TOKEN",
+					"label": "Docs MCP",
+					"url": "https://mcp.example.com/mcp"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/mcp-servers"
+			},
+			"response": {
+				"body": {
+					"allowedTools": null,
+					"createdAt": "{{TS}}",
+					"credentialRef": "env:MCP_TOKEN",
+					"enabled": true,
+					"label": "Docs MCP",
+					"mcpServerId": "{{UUID_2}}",
+					"updatedAt": "{{TS}}",
+					"url": "https://mcp.example.com/mcp",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/mcp-servers"
+			},
+			"response": {
+				"body": {
+					"items": [
+						{
+							"allowedTools": null,
+							"createdAt": "{{TS}}",
+							"credentialRef": "env:MCP_TOKEN",
+							"enabled": true,
+							"label": "Docs MCP",
+							"mcpServerId": "{{UUID_2}}",
+							"updatedAt": "{{TS}}",
+							"url": "https://mcp.example.com/mcp",
+							"workspaceId": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
+				"status": 200
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/mcp-servers/{{UUID_2}}"
+			},
+			"response": {
+				"body": {
+					"allowedTools": null,
+					"createdAt": "{{TS}}",
+					"credentialRef": "env:MCP_TOKEN",
+					"enabled": true,
+					"label": "Docs MCP",
+					"mcpServerId": "{{UUID_2}}",
+					"updatedAt": "{{TS}}",
+					"url": "https://mcp.example.com/mcp",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 5
+		},
+		{
+			"request": {
+				"body": {
+					"enabled": false,
+					"label": "Docs MCP (paused)"
+				},
+				"method": "PATCH",
+				"path": "/api/v1/workspaces/{{UUID_1}}/mcp-servers/{{UUID_2}}"
+			},
+			"response": {
+				"body": {
+					"allowedTools": null,
+					"createdAt": "{{TS}}",
+					"credentialRef": "env:MCP_TOKEN",
+					"enabled": false,
+					"label": "Docs MCP (paused)",
+					"mcpServerId": "{{UUID_2}}",
+					"updatedAt": "{{TS}}",
+					"url": "https://mcp.example.com/mcp",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 6
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}/mcp-servers/{{UUID_2}}"
+			},
+			"response": {
+				"body": null,
+				"status": 204
+			},
+			"step": 7
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/mcp-servers"
+			},
+			"response": {
+				"body": {
+					"items": [],
+					"nextCursor": null
+				},
+				"status": 200
+			},
+			"step": 8
+		}
+	]
+}
