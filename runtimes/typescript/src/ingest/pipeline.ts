@@ -31,6 +31,7 @@ import {
 	CHUNK_TEXT_KEY,
 	DOCUMENT_SCOPE_KEY,
 	KB_SCOPE_KEY,
+	VISIBLE_TO_KEY,
 } from "./payload-keys.js";
 import { RecursiveCharacterChunker } from "./recursive-chunker.js";
 
@@ -107,6 +108,20 @@ export async function runKbIngest(
 
 	try {
 		if (chunks.length > 0) {
+			// RLAC: mirror the owning document's visibility onto every
+			// chunk so the policy filter (set-membership on `visible_to`)
+			// pushes down into the vector query. A null/absent `visibleTo`
+			// (RLAC off for this document) leaves the key unset, so chunk
+			// payloads — and unfiltered search — stay unchanged.
+			const document = await store.getRagDocument(
+				workspace.uid,
+				kbId,
+				documentId,
+			);
+			const visibility =
+				document?.visibleTo != null
+					? { [VISIBLE_TO_KEY]: document.visibleTo }
+					: undefined;
 			await dispatchUpsert({
 				ctx: { workspace, descriptor },
 				driver,
@@ -120,6 +135,7 @@ export async function runKbIngest(
 						[DOCUMENT_SCOPE_KEY]: documentId,
 						[CHUNK_INDEX_KEY]: chunk.index,
 						[CHUNK_TEXT_KEY]: chunk.text,
+						...visibility,
 					},
 				})),
 			});

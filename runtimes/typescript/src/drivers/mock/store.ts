@@ -15,6 +15,7 @@
  */
 
 import type { WorkspaceRecord } from "../../control-plane/types.js";
+import { matchesDataApiFilter } from "../../lib/data-api-filter.js";
 import {
 	type AdoptableCollection,
 	CollectionUnavailableError,
@@ -102,15 +103,6 @@ export function mockEmbed(text: string, dimension: number): number[] {
 	const norm = Math.sqrt(sq) || 1;
 	for (let i = 0; i < dimension; i++) out[i] = (out[i] as number) / norm;
 	return out;
-}
-
-function matchesFilter(
-	payload: Readonly<Record<string, unknown>> | undefined,
-	filter: Readonly<Record<string, unknown>> | undefined,
-): boolean {
-	if (!filter) return true;
-	if (!payload) return Object.keys(filter).length === 0;
-	return Object.entries(filter).every(([k, v]) => payload[k] === v);
 }
 
 export class MockVectorStoreDriver implements VectorStoreDriver {
@@ -206,7 +198,7 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 		const limit = Math.max(1, Math.min(req.limit ?? 1000, 1000));
 		const out: import("../vector-store.js").StoredRecord[] = [];
 		for (const rec of store.values()) {
-			if (!matchesFilter(rec.payload, req.filter)) continue;
+			if (!matchesDataApiFilter(rec.payload, req.filter)) continue;
 			out.push({ id: rec.id, payload: rec.payload ?? {} });
 			if (out.length >= limit) break;
 		}
@@ -221,7 +213,7 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 		const texts = this.texts.get(keyOf(ctx));
 		const ids: string[] = [];
 		for (const rec of store.values()) {
-			if (matchesFilter(rec.payload, filter)) ids.push(rec.id);
+			if (matchesDataApiFilter(rec.payload, filter)) ids.push(rec.id);
 		}
 		for (const id of ids) {
 			store.delete(id);
@@ -244,7 +236,7 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 
 		const hits: SearchHit[] = [];
 		for (const rec of store.values()) {
-			if (!matchesFilter(rec.payload, req.filter)) continue;
+			if (!matchesDataApiFilter(rec.payload, req.filter)) continue;
 			hits.push({
 				id: rec.id,
 				score: score(metric, req.vector, rec.vector),

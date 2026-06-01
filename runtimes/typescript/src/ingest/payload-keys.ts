@@ -27,3 +27,16 @@ export const CHUNK_INDEX_KEY = "chunkIndex";
  * embedded paths but keeps the chunk view consistent across
  * drivers. Search hits round-trip this key through `payload`. */
 export const CHUNK_TEXT_KEY = "chunkText";
+
+/** Payload key carrying RLAC visibility — the set of principal ids (or
+ * `"*"` for public) allowed to see the chunk. Mirrors the owning
+ * document's `visibleTo`, stamped at ingest so the RLAC filter the
+ * policy compiler emits (`{ visible_to: <caller> }` set-membership) can
+ * be pushed down into the vector query. **Snake_case is deliberate**: it
+ * must match the column name the compiler emits, since the chunk payload
+ * key and the compiled filter key are the same identifier.
+ *
+ * Stamped only when the document has a non-null `visibleTo` (i.e. RLAC is
+ * in effect for it); RLAC-off documents leave the key unset so their
+ * payloads — and unfiltered search — are unchanged. */
+export const VISIBLE_TO_KEY = "visible_to";

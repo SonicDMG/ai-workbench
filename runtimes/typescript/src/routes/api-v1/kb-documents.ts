@@ -26,6 +26,7 @@ import {
 } from "../../ingest/payload-keys.js";
 import type { JobStore } from "../../jobs/store.js";
 import { audit } from "../../lib/audit.js";
+import { applyDataApiFilterInMemory } from "../../lib/data-api-filter.js";
 import { ApiError } from "../../lib/errors.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
@@ -124,43 +125,25 @@ const KbIngestFileFormSchema = z
 
 /**
  * RLAC: apply the compiled filter returned by the enforcer to an
- * in-memory list of rag documents. Mirrors what the Data API does
- * server-side for the canonical Stefano pattern — only `$or` of
- * single-column matches against `visible_to` is interpreted here. Any
- * other compiled shape falls through to "no filter applied" with the
- * route still passing the filter to the enforcer's audit record.
+ * in-memory list of rag documents. Delegates to the shared Data API
+ * filter interpreter ({@link applyDataApiFilterInMemory}) so this path
+ * filters identically to the mock vector driver and to Astra's
+ * server-side evaluation — one interpreter, no drift.
+ *
+ * The compiler emits snake_case column names (`visible_to`,
+ * `owner_principal_id`); control-plane rows are camelCase, so each row is
+ * projected across the two before matching. A null `visibleTo` (hidden,
+ * admin-only) projects to an empty set — invisible to non-admins, while
+ * the admin-bypass MATCH_ALL filter still returns every row.
  */
 function applyVisibleToFilter(
 	docs: readonly RagDocumentRecord[],
 	filter: Readonly<Record<string, unknown>> | null,
 ): readonly RagDocumentRecord[] {
-	if (!filter) return docs;
-	// MATCH_ALL sentinel from the compiler (admin-bypass collapse, or
-	// every disjunct evaluated to true) — empty filter, no constraint.
-	if (Object.keys(filter).length === 0) return docs;
-	// MATCH_NONE sentinel (every disjunct evaluated to false) — return
-	// zero rows regardless of `visible_to`.
-	if (
-		Object.keys(filter).length === 1 &&
-		(filter as { _aiw_no_match?: unknown })._aiw_no_match === true
-	) {
-		return [];
-	}
-	const orBranches = (filter as { $or?: Array<Record<string, unknown>> }).$or;
-	if (orBranches) {
-		const allowed = new Set<string>();
-		for (const branch of orBranches) {
-			const v = branch.visible_to;
-			if (typeof v === "string") allowed.add(v);
-		}
-		if (allowed.size === 0) return docs;
-		return docs.filter((d) => (d.visibleTo ?? []).some((p) => allowed.has(p)));
-	}
-	const single = (filter as { visible_to?: unknown }).visible_to;
-	if (typeof single === "string") {
-		return docs.filter((d) => (d.visibleTo ?? []).includes(single));
-	}
-	return docs;
+	return applyDataApiFilterInMemory(docs, filter, (d) => ({
+		visible_to: d.visibleTo ?? [],
+		owner_principal_id: d.ownerPrincipalId ?? null,
+	}));
 }
 
 export function kbDocumentRoutes(
