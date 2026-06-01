@@ -41,6 +41,7 @@ import {
 	type CreateKnowledgeFilterInput,
 	type CreateLlmServiceInput,
 	type CreateMcpServerInput,
+	type CreatePrincipalInput,
 	type CreateRerankingServiceInput,
 	type CreateWorkspaceInput,
 	type DocumentChunk,
@@ -78,6 +79,11 @@ import {
 	type PlaygroundCommandInput,
 	type PlaygroundCommandResponse,
 	PlaygroundCommandResponseSchema,
+	type PolicyAuditEntry,
+	PolicyAuditPageSchema,
+	type Principal,
+	PrincipalPageSchema,
+	PrincipalSchema,
 	RagDocumentPageSchema,
 	type RagDocumentRecord,
 	RagDocumentRecordSchema,
@@ -1282,6 +1288,42 @@ export const api = {
 			{ method: "DELETE" },
 			null,
 		),
+
+	/* ====== RLAC: principals + policy audit (0.5.0) ====== */
+
+	listPrincipals: (workspaceId: string): Promise<Principal[]> =>
+		requestAllPages(
+			`/workspaces/${workspaceId}/principals`,
+			PrincipalPageSchema,
+		),
+
+	createPrincipal: (
+		workspaceId: string,
+		input: CreatePrincipalInput,
+	): Promise<Principal> =>
+		request(
+			`/workspaces/${workspaceId}/principals`,
+			{ method: "POST", body: JSON.stringify(stripUndefined(input)) },
+			PrincipalSchema,
+		),
+
+	deletePrincipal: (workspaceId: string, principalId: string): Promise<void> =>
+		request(
+			`/workspaces/${workspaceId}/principals/${encodeURIComponent(principalId)}`,
+			{ method: "DELETE" },
+			null,
+		),
+
+	/** Most-recent policy decisions (single page, newest first). */
+	listPolicyAudit: (
+		workspaceId: string,
+		limit = 50,
+	): Promise<PolicyAuditEntry[]> =>
+		request(
+			`/workspaces/${workspaceId}/policy/audit?limit=${limit}`,
+			{ method: "GET" },
+			PolicyAuditPageSchema,
+		).then((page) => page.items),
 };
 
 function normalizeCreate(input: CreateWorkspaceInput) {

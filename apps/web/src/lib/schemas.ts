@@ -1402,3 +1402,53 @@ export const RecentErrorsResponseSchema = z.object({
 	entries: z.array(RecentErrorEntrySchema),
 });
 export type RecentErrorsResponse = z.infer<typeof RecentErrorsResponseSchema>;
+
+/* ============================ RLAC ============================ */
+
+export const PrincipalRoleSchema = z.enum(["viewer", "editor", "admin"]);
+export type PrincipalRole = z.infer<typeof PrincipalRoleSchema>;
+
+export const PrincipalSchema = z.object({
+	workspaceId: z.string().uuid(),
+	principalId: z.string(),
+	label: z.string().nullable(),
+	attributes: z.record(z.string(), z.string()),
+	role: PrincipalRoleSchema,
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type Principal = z.infer<typeof PrincipalSchema>;
+export const PrincipalPageSchema = paginatedSchema(PrincipalSchema);
+
+export const CreatePrincipalInputSchema = z.object({
+	principalId: z
+		.string()
+		.min(1, "Principal id is required")
+		.max(200)
+		// Slug-ish: the runtime slugifies API-key labels into this space, so
+		// keep the UI-entered id in the same shape to avoid surprises.
+		.regex(
+			/^[a-zA-Z0-9._:-]+$/,
+			"Use letters, numbers, and . _ : - only (no spaces)",
+		),
+	label: z.string().max(200).nullable().optional(),
+	attributes: z.record(z.string(), z.string()).optional(),
+	role: PrincipalRoleSchema.optional(),
+});
+export type CreatePrincipalInput = z.infer<typeof CreatePrincipalInputSchema>;
+
+export const PolicyAuditEntrySchema = z.object({
+	workspaceId: z.string().uuid(),
+	auditDay: z.string(),
+	ts: z.string(),
+	decisionId: z.string(),
+	principalId: z.string().nullable(),
+	knowledgeBaseId: z.string(),
+	resourceId: z.string(),
+	action: z.enum(["list", "get", "search", "ingest", "update", "delete"]),
+	decision: z.enum(["allow", "deny", "filter"]),
+	reason: z.string(),
+	compiledFilterJson: z.string().nullable(),
+});
+export type PolicyAuditEntry = z.infer<typeof PolicyAuditEntrySchema>;
+export const PolicyAuditPageSchema = paginatedSchema(PolicyAuditEntrySchema);

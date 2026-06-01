@@ -5,9 +5,11 @@ import {
 	Info,
 	Network,
 	Pencil,
+	ScrollText,
 	ServerCog,
 	ShieldCheck,
 	Trash2,
+	Users,
 	X,
 } from "lucide-react";
 import { useState } from "react";
@@ -24,10 +26,13 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { AccessControlCard } from "@/components/workspaces/AccessControlCard";
 import { ApiKeysPanel } from "@/components/workspaces/ApiKeysPanel";
 import { DeleteDialog } from "@/components/workspaces/DeleteDialog";
 import { KindBadge } from "@/components/workspaces/KindBadge";
 import { McpServersPanel } from "@/components/workspaces/McpServersPanel";
+import { PolicyAuditPanel } from "@/components/workspaces/PolicyAuditPanel";
+import { PrincipalsPanel } from "@/components/workspaces/PrincipalsPanel";
 import { SeededDefaultsCallout } from "@/components/workspaces/SeededDefaultsCallout";
 import { ServicesPanel } from "@/components/workspaces/ServicesPanel";
 import { TestConnectionPanel } from "@/components/workspaces/TestConnectionPanel";
@@ -209,7 +214,36 @@ export function WorkspaceSettingsPage() {
 			</SettingsSection>
 
 			{canManage ? (
-				<ApiKeysPanel workspace={data.workspaceId} />
+				<>
+					<SettingsSection
+						title="Access control"
+						description="Row-level access control (RLAC). When enabled, every knowledge-base read is filtered by each document's visibility list."
+						icon={<ShieldCheck className="h-4 w-4" />}
+					>
+						<AccessControlCard workspace={data} />
+					</SettingsSection>
+
+					{data.rlacEnabled ? (
+						<>
+							<SettingsSection
+								title="Principals"
+								description="Identities that can appear in a document's visibility set. A principal with the admin attribute can read every document."
+								icon={<Users className="h-4 w-4" />}
+							>
+								<PrincipalsPanel workspace={data.workspaceId} />
+							</SettingsSection>
+							<SettingsSection
+								title="Policy audit"
+								description="Recent access-control decisions made by the policy engine, newest first."
+								icon={<ScrollText className="h-4 w-4" />}
+							>
+								<PolicyAuditPanel workspace={data.workspaceId} />
+							</SettingsSection>
+						</>
+					) : null}
+
+					<ApiKeysPanel workspace={data.workspaceId} />
+				</>
 			) : (
 				<AdminOnlyNote />
 			)}

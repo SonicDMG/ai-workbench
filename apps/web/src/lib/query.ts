@@ -39,6 +39,14 @@ export const keys = {
 		all: (workspaceId: string) =>
 			["workspaces", workspaceId, "mcp-servers"] as const,
 	},
+	principals: {
+		all: (workspaceId: string) =>
+			["workspaces", workspaceId, "principals"] as const,
+	},
+	policyAudit: {
+		all: (workspaceId: string) =>
+			["workspaces", workspaceId, "policy-audit"] as const,
+	},
 	conversations: {
 		all: (workspaceId: string, agentId: string) =>
 			["workspaces", workspaceId, "agents", agentId, "conversations"] as const,
