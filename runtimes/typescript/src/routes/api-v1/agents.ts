@@ -12,6 +12,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
+import { subjectCanInvokeTools } from "../../auth/authz.js";
 import { ForbiddenError, UnauthorizedError } from "../../auth/errors.js";
 import { getRequestPrincipal } from "../../auth/principal-resolver.js";
 import {
@@ -825,6 +826,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 						agent: resolved.agent,
 						conversation: resolved.conversation,
 						principal: getRequestPrincipal(c),
+						toolInvokeAllowed: subjectCanInvokeTools(c),
 					},
 					{ content: body.content },
 					auditToolInvoke(c, workspaceId),
@@ -935,6 +937,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 							agent: resolved.agent,
 							conversation: resolved.conversation,
 							principal: getRequestPrincipal(c),
+							toolInvokeAllowed: subjectCanInvokeTools(c),
 						},
 						{ content: userContent },
 						{
@@ -999,6 +1002,8 @@ function auditToolInvoke(
 			workspaceId,
 			details: {
 				toolName: info.toolName,
+				...(info.source ? { source: info.source } : {}),
+				...(info.mcpServerId ? { mcpServerId: info.mcpServerId } : {}),
 				...(info.reason ? { reason: info.reason } : {}),
 			},
 		});

@@ -91,6 +91,13 @@ export interface AuditDetails {
 	readonly jobKind?: string;
 	/** MCP tool name, e.g. "search_kb". */
 	readonly toolName?: string;
+	/**
+	 * Tool source on a `tool.invoke` — `builtin` / `native` / `astra` /
+	 * `mcp`. Lets SIEM rules filter external (`mcp`) calls from built-ins.
+	 */
+	readonly source?: string;
+	/** MCP server id on an `mcp`-source `tool.invoke`. */
+	readonly mcpServerId?: string;
 	/** OIDC issuer or apiKey scheme on auth events. */
 	readonly scheme?: string;
 	/** Free-form reason for `failure` / `denied` outcomes. */

@@ -194,6 +194,16 @@ same containment check, so coarse keys keep working:
    (The `rlacEnabled` toggle on `PATCH /workspaces/{w}` requires
    `manage:access` in the handler — it shares a route with the
    write-level rename.)
+4. **Agent external-tool gate** — when an agent calls an **external
+   (remote-MCP)** tool mid-conversation, the dispatcher checks
+   `subjectCanInvokeTools(c)`: a scoped key must hold `tools:invoke` or
+   the coarse `write` tier (so legacy `write` keys and the default
+   `["read","write"]` keep working; a read-only or fine `write:*` key is
+   denied). A denied call returns the same `denied` tool outcome as an
+   allow-list miss — the model sees a "not permitted" string and the
+   `tool.invoke` audit row carries `reason: "missing tools:invoke scope"`
+   — so it composes with the SSE/tool-result contract rather than failing
+   the request. Built-in / native / Astra tools are unaffected.
 
 A 403 from a scope gate also carries a structured `requiredScope` field
 on its `auth.api_denied` audit row (e.g. `write:ingest`), so compliance

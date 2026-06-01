@@ -4,6 +4,7 @@ import {
 	assertScope,
 	assertWorkspaceAccess,
 	filterToAccessibleWorkspaces,
+	subjectCanInvokeTools,
 	workspaceRouteAuthz,
 } from "../../src/auth/authz.js";
 import { ForbiddenError } from "../../src/auth/errors.js";
@@ -195,5 +196,30 @@ describe("assertScope", () => {
 		expect(() => assertScope(ctx(authed(null, [])), "read")).toThrow(
 			ForbiddenError,
 		);
+	});
+});
+
+describe("subjectCanInvokeTools (external-tool gate, MCP P3)", () => {
+	test("anonymous and missing-context callers pass through", () => {
+		expect(subjectCanInvokeTools(ctx(anonymous()))).toBe(true);
+		expect(subjectCanInvokeTools(ctx(undefined))).toBe(true);
+	});
+
+	test("unscoped subjects (scopes: null — OIDC / bootstrap) pass", () => {
+		expect(subjectCanInvokeTools(ctx(authed(null, null)))).toBe(true);
+	});
+
+	test("a scoped key passes only with tools:invoke or the coarse write tier", () => {
+		expect(subjectCanInvokeTools(ctx(authed(null, ["read", "write"])))).toBe(
+			true,
+		);
+		expect(
+			subjectCanInvokeTools(ctx(authed(null, ["read", "tools:invoke"]))),
+		).toBe(true);
+		// Read-only and fine write:* keys are denied (the new granularity).
+		expect(subjectCanInvokeTools(ctx(authed(null, ["read"])))).toBe(false);
+		expect(
+			subjectCanInvokeTools(ctx(authed(null, ["read", "write:ingest"]))),
+		).toBe(false);
 	});
 });

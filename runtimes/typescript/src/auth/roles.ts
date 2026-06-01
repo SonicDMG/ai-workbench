@@ -30,6 +30,8 @@ export { ALL_ROLES, DEFAULT_ROLE, isRole, parseRole, type Role };
 export const SCOPE_READ = "read";
 export const SCOPE_WRITE = "write";
 export const SCOPE_MANAGE = "manage";
+/** Scope to drive an agent to invoke EXTERNAL (remote-MCP) tools (0.5.0). */
+export const SCOPE_TOOLS_INVOKE = "tools:invoke";
 
 const ROLE_SCOPES: Readonly<Record<Role, readonly string[]>> = Object.freeze({
 	viewer: Object.freeze([SCOPE_READ]),
@@ -79,4 +81,22 @@ export function subjectGrantsScope(
 	required: string,
 ): boolean {
 	return held.some((h) => scopeGrants(h, required));
+}
+
+/**
+ * Whether a subject may drive an agent to invoke EXTERNAL (remote-MCP)
+ * tools. True when the key explicitly holds `tools:invoke`, OR holds the
+ * coarse `write` tier — in 0.4.x any write-capable key (incl. the default
+ * `["read","write"]`) could already drive MCP tool calls, so coarse
+ * `write` stays a superset of this new capability and existing keys keep
+ * working. A *fine* `write:*` scope (`write:ingest`, …) or a read-only key
+ * does NOT grant it — that's the new granularity (a narrow key can be
+ * denied external tools). Anonymous / unscoped (`scopes: null`) callers
+ * are handled upstream; this operates on an explicit scope list.
+ */
+export function subjectGrantsToolInvoke(held: readonly string[]): boolean {
+	return (
+		subjectGrantsScope(held, SCOPE_TOOLS_INVOKE) ||
+		subjectGrantsScope(held, SCOPE_WRITE)
+	);
 }

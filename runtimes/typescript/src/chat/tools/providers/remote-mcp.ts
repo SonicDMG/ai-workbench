@@ -56,9 +56,33 @@ export interface RemoteMcpDeps {
 
 const defaultDeps: RemoteMcpDeps = { connect: connectMcpClient };
 
+/** The `mcp:` namespace prefix for a remote-MCP agent-tool id. */
+export const MCP_TOOL_PREFIX = "mcp:";
+
 /** Namespaced agent-tool name for a remote MCP tool. */
 export function mcpToolName(mcpServerId: string, toolName: string): string {
-	return `mcp:${mcpServerId}:${toolName}`;
+	return `${MCP_TOOL_PREFIX}${mcpServerId}:${toolName}`;
+}
+
+/** Whether `name` is a remote-MCP tool id (`mcp:{serverId}:{tool}`). */
+export function isRemoteMcpToolName(name: string): boolean {
+	return name.startsWith(MCP_TOOL_PREFIX);
+}
+
+/**
+ * Split a namespaced remote-MCP tool id back into its parts, or `null`
+ * when it isn't one. `serverId` is the segment between the first two
+ * colons; `toolName` is everything after (tool names may themselves
+ * contain colons, so only the first two separators are significant).
+ */
+export function parseMcpToolName(
+	name: string,
+): { readonly mcpServerId: string; readonly toolName: string } | null {
+	if (!isRemoteMcpToolName(name)) return null;
+	const rest = name.slice(MCP_TOOL_PREFIX.length);
+	const sep = rest.indexOf(":");
+	if (sep < 1) return null;
+	return { mcpServerId: rest.slice(0, sep), toolName: rest.slice(sep + 1) };
 }
 
 /**

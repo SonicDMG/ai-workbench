@@ -25,11 +25,13 @@
  */
 
 import type { ToolCall } from "../types.js";
+import { isRemoteMcpToolName } from "./providers/remote-mcp.js";
 import {
 	type AgentTool,
 	type AgentToolDeps,
 	type AgentToolset,
 	DEFAULT_AGENT_TOOLS,
+	type ToolSource,
 } from "./registry.js";
 
 /**
@@ -83,6 +85,15 @@ export interface ToolInvokeOutcome {
  */
 export interface ToolInvokeInfo extends ToolInvokeOutcome {
 	readonly toolName: string;
+	/**
+	 * Where the tool came from — `builtin` / `native` / `astra` / `mcp`.
+	 * Recorded on the `tool.invoke` audit row so SIEM rules can filter
+	 * external (`mcp`) calls. Optional for back-compat; the agent dispatch
+	 * path always sets it.
+	 */
+	readonly source?: ToolSource;
+	/** The MCP server id, when `source === "mcp"`. */
+	readonly mcpServerId?: string;
 }
 
 /**
@@ -200,6 +211,21 @@ export async function executeWorkspaceTool(
 			resultText: capToolOutput(resultText, DEFAULT_TOOL_OUTPUT_CAP_CHARS),
 			outcome: "denied",
 			reason: "tool not available to this agent",
+		};
+	}
+	// `tools:invoke` gate (Feature ③): an external (remote-MCP) tool call
+	// from a caller without the scope is denied here — the same `denied`
+	// outcome + audit path as an allow-list miss, no new error shape, so it
+	// composes with the SSE/tool-result contract. `toolInvokeAllowed`
+	// undefined ⇒ allowed (non-gated callers + the MCP run-agent path).
+	if (deps.toolInvokeAllowed === false && isRemoteMcpToolName(call.name)) {
+		return {
+			resultText: capToolOutput(
+				`Error: tool '${call.name}' was not invoked — calling external MCP tools requires the 'tools:invoke' scope, which the calling key lacks.`,
+				DEFAULT_TOOL_OUTPUT_CAP_CHARS,
+			),
+			outcome: "denied",
+			reason: "missing tools:invoke scope",
 		};
 	}
 	let parsed: unknown;

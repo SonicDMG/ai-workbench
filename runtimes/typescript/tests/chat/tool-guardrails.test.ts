@@ -224,8 +224,15 @@ describe("dispatchAgentSend — onToolInvoke audit hook", () => {
 		const [first] = invocations;
 		expect(first?.toolName).toBe("list_kbs");
 		expect(first?.outcome).toBe("success");
-		// The envelope is name + outcome only — no `arguments`, no secret.
-		expect(Object.keys(first ?? {}).sort()).toEqual(["outcome", "toolName"]);
+		// The envelope is name + outcome + source (a built-in here) — and
+		// crucially NO `arguments`, no secret. `source` lets the audit layer
+		// distinguish external (mcp) calls; it's not sensitive.
+		expect(Object.keys(first ?? {}).sort()).toEqual([
+			"outcome",
+			"source",
+			"toolName",
+		]);
+		expect(first?.source).toBe("builtin");
 		expect(JSON.stringify(first)).not.toContain("sk-super-secret");
 		expect(JSON.stringify(first)).not.toContain("apiKey");
 	});

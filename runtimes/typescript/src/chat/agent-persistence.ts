@@ -17,7 +17,12 @@ import type { AgentRecord, MessageRecord } from "../control-plane/types.js";
 import type { Logger } from "../lib/logger.js";
 import type { RetrievedChunk } from "./prompt.js";
 import { executeWorkspaceTool, type OnToolInvoke } from "./tools/dispatcher.js";
-import type { AgentToolDeps, AgentToolset } from "./tools/registry.js";
+import { parseMcpToolName } from "./tools/providers/remote-mcp.js";
+import {
+	type AgentToolDeps,
+	type AgentToolset,
+	classifyToolSource,
+} from "./tools/registry.js";
 import type { ChatService, ChatTurn, ToolCall } from "./types.js";
 
 export interface PersistTurnDeps {
@@ -208,9 +213,12 @@ export async function executeToolCalls(
 		);
 		// Emit the audit signal first — args are deliberately omitted.
 		if (onToolInvoke) {
+			const mcpServerId = parseMcpToolName(call.name)?.mcpServerId;
 			onToolInvoke({
 				toolName: call.name,
 				outcome,
+				source: classifyToolSource(call.name),
+				...(mcpServerId ? { mcpServerId } : {}),
 				...(reason ? { reason } : {}),
 			});
 		}

@@ -81,6 +81,16 @@ export interface AgentToolDeps {
 	 * null); the dispatch + MCP paths always set it from the request.
 	 */
 	readonly principal?: ResolvedPrincipal | null;
+	/**
+	 * Whether the caller may invoke EXTERNAL (remote-MCP) tools (the
+	 * `tools:invoke` gate). The dispatcher denies an `mcp:`-source call when
+	 * this is explicitly `false`. Optional so test fixtures and non-gated
+	 * callers can omit it: **absent ⇒ allowed** (only an explicit `false`
+	 * denies), keeping existing fixtures and the MCP run-agent path — which
+	 * has no tool loop — unaffected. The REST dispatch route sets it from
+	 * `subjectCanInvokeTools(c)`.
+	 */
+	readonly toolInvokeAllowed?: boolean;
 	readonly logger?: Pick<Logger, "warn" | "debug">;
 	readonly effects?: ToolEffectsSink;
 }
@@ -896,7 +906,7 @@ const BUILTIN_TOOL_NAMES: ReadonlySet<string> = new Set(
  * the provider modules use a `{source}:…` prefix. A built-in name wins
  * over any prefix coincidence because the built-in set is explicit.
  */
-function classifyToolSource(id: string): ToolSource {
+export function classifyToolSource(id: string): ToolSource {
 	if (BUILTIN_TOOL_NAMES.has(id)) return "builtin";
 	if (id.startsWith("native:")) return "native";
 	if (id.startsWith("astra:")) return "astra";

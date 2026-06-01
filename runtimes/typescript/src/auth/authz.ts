@@ -26,7 +26,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { AppEnv } from "../lib/types.js";
 import { ForbiddenError } from "./errors.js";
-import { subjectGrantsScope } from "./roles.js";
+import { subjectGrantsScope, subjectGrantsToolInvoke } from "./roles.js";
 
 export function assertWorkspaceAccess(
 	c: Context<AppEnv>,
@@ -145,6 +145,25 @@ export function assertScope(c: Context<AppEnv>, scope: string): void {
  */
 export function requireScope(c: Context<AppEnv>, scope: string): void {
 	assertScope(c, scope);
+}
+
+/**
+ * Whether the authenticated subject may drive an agent to invoke
+ * EXTERNAL (remote-MCP) tools — the per-call gate the agent dispatcher
+ * applies to `mcp:`-source tool calls (returning the `denied` outcome when
+ * false). Pass-through for anonymous and unscoped (`scopes: null`,
+ * OIDC/bootstrap) subjects exactly like {@link assertScope}; a scoped API
+ * key must hold `tools:invoke` or the coarse `write` tier
+ * ({@link ./roles.subjectGrantsToolInvoke}). Returns a boolean (not a
+ * throw) because the dispatcher folds the denial into the SSE/tool-result
+ * contract rather than failing the request.
+ */
+export function subjectCanInvokeTools(c: Context<AppEnv>): boolean {
+	const auth = c.get("auth");
+	if (!auth || auth.anonymous) return true;
+	const scopes = auth.subject?.scopes;
+	if (scopes === null || scopes === undefined) return true;
+	return subjectGrantsToolInvoke(scopes);
 }
 
 /**

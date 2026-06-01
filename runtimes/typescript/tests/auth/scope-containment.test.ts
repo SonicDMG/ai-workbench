@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { scopeGrants, subjectGrantsScope } from "../../src/auth/roles.js";
+import {
+	scopeGrants,
+	subjectGrantsScope,
+	subjectGrantsToolInvoke,
+} from "../../src/auth/roles.js";
 import {
 	ALL_API_KEY_SCOPES,
 	isApiKeyScope,
@@ -87,5 +91,24 @@ describe("isApiKeyScope / ALL_API_KEY_SCOPES", () => {
 		for (const tier of ["read", "write", "manage"]) {
 			expect(ALL_API_KEY_SCOPES).toContain(tier);
 		}
+	});
+});
+
+describe("subjectGrantsToolInvoke (external-tool gate, MCP P3)", () => {
+	it("is granted by an explicit tools:invoke OR the coarse write tier", () => {
+		expect(subjectGrantsToolInvoke(["tools:invoke"])).toBe(true);
+		// Coarse `write` stays a superset — legacy / default ["read","write"]
+		// keys keep driving MCP tool calls (no silent break).
+		expect(subjectGrantsToolInvoke(["read", "write"])).toBe(true);
+		expect(subjectGrantsToolInvoke(["read", "write", "manage"])).toBe(true);
+	});
+
+	it("is NOT granted by read-only or fine write:* keys (the new granularity)", () => {
+		expect(subjectGrantsToolInvoke(["read"])).toBe(false);
+		expect(subjectGrantsToolInvoke(["read", "read:content"])).toBe(false);
+		// A fine write facet is narrower than coarse write — no external tools.
+		expect(subjectGrantsToolInvoke(["read", "write:ingest"])).toBe(false);
+		expect(subjectGrantsToolInvoke(["manage:keys"])).toBe(false);
+		expect(subjectGrantsToolInvoke([])).toBe(false);
 	});
 });

@@ -11,6 +11,7 @@ import {
 	executeWorkspaceToolByName,
 } from "../../src/chat/tools/dispatcher.js";
 import {
+	type AgentTool,
 	type AgentToolDeps,
 	type AgentToolset,
 	resolveAgentToolset,
@@ -112,5 +113,76 @@ describe("executeWorkspaceToolByName", () => {
 		const { deps } = await fixture();
 		const out = await executeWorkspaceToolByName("nope", {}, deps);
 		expect(out).toMatch(/^Error: tool 'nope' is not available/);
+	});
+});
+
+describe("executeWorkspaceTool — tools:invoke gate (MCP P3)", () => {
+	// Fake tools so the gate can be exercised without a live MCP server:
+	// the dispatcher keys off the `mcp:` name prefix + `toolInvokeAllowed`.
+	const params = {
+		type: "object" as const,
+		properties: {},
+		additionalProperties: false,
+	};
+	const mcpTool: AgentTool = {
+		definition: {
+			name: "mcp:srv-1:echo",
+			description: "echo",
+			parameters: params,
+		},
+		execute: async () => "ran",
+	};
+	const builtinTool: AgentTool = {
+		definition: {
+			name: "search_kb",
+			description: "search",
+			parameters: params,
+		},
+		execute: async () => "ran",
+	};
+	const toolset: AgentToolset = {
+		tools: [mcpTool, builtinTool],
+		resolve: (n) =>
+			[mcpTool, builtinTool].find((t) => t.definition.name === n) ?? null,
+	};
+	const mcpCall = { id: "1", name: "mcp:srv-1:echo", arguments: "{}" };
+
+	test("denies an mcp:-source call when toolInvokeAllowed is false", async () => {
+		const { deps } = await fixture();
+		const out = await executeWorkspaceTool(mcpCall, toolset, {
+			...deps,
+			toolInvokeAllowed: false,
+		});
+		expect(out.outcome).toBe("denied");
+		expect(out.reason).toBe("missing tools:invoke scope");
+		expect(out.resultText).toContain("tools:invoke");
+		expect(out.resultText).not.toContain("ran"); // never executed
+	});
+
+	test("allows the mcp call when toolInvokeAllowed is true", async () => {
+		const { deps } = await fixture();
+		const out = await executeWorkspaceTool(mcpCall, toolset, {
+			...deps,
+			toolInvokeAllowed: true,
+		});
+		expect(out.outcome).toBe("success");
+		expect(out.resultText).toBe("ran");
+	});
+
+	test("absent toolInvokeAllowed means allowed (non-gated callers + MCP run-agent)", async () => {
+		const { deps } = await fixture();
+		const out = await executeWorkspaceTool(mcpCall, toolset, deps);
+		expect(out.outcome).toBe("success");
+	});
+
+	test("the gate is mcp-only — a built-in runs even when invocation is denied", async () => {
+		const { deps } = await fixture();
+		const out = await executeWorkspaceTool(
+			{ id: "1", name: "search_kb", arguments: "{}" },
+			toolset,
+			{ ...deps, toolInvokeAllowed: false },
+		);
+		expect(out.outcome).toBe("success");
+		expect(out.resultText).toBe("ran");
 	});
 });

@@ -68,6 +68,14 @@ export interface AgentResolutionContext {
 	 * dispatch route always sets it from `getRequestPrincipal(c)`.
 	 */
 	readonly principal?: ResolvedPrincipal | null;
+	/**
+	 * Whether the caller may invoke EXTERNAL (remote-MCP) tools (the
+	 * `tools:invoke` gate). Threaded into {@link AgentToolDeps} so the
+	 * dispatcher denies an `mcp:`-source call from a caller without the
+	 * scope. Optional (absent ⇒ allowed); the dispatch route sets it from
+	 * `subjectCanInvokeTools(c)`.
+	 */
+	readonly toolInvokeAllowed?: boolean;
 }
 
 export interface ResolvedAgentChat {
@@ -133,6 +141,7 @@ export async function resolveAgentChat(
 		drivers: deps.drivers,
 		embedders: deps.embedders,
 		principal: ctx.principal,
+		toolInvokeAllowed: ctx.toolInvokeAllowed,
 		logger: deps.logger,
 	};
 
