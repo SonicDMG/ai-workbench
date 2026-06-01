@@ -155,10 +155,25 @@ const WebSearchToolSchema = z
 		maxResults: 5,
 	});
 
+const McpToolsConfigSchema = z
+	.object({
+		// TTL (ms) for the in-process remote-MCP tool-discovery cache
+		// (chat/tools/mcp-discovery-cache.ts). Repeated discovery within the
+		// window — per agent turn, per agent-form open — skips the connect +
+		// `tools/list` round-trip. `0` disables caching (always re-list).
+		// Bounded so a misconfig can't pin stale tools for hours.
+		discoveryTtlMs: z.number().int().min(0).max(3_600_000).default(60_000),
+	})
+	.default({ discoveryTtlMs: 60_000 });
+
 const ChatToolsSchema = z
 	.object({
 		fetch: FetchToolSchema,
 		webSearch: WebSearchToolSchema,
+		// Optional so existing hand-built `ChatToolsConfig` literals (and an
+		// omitted `chat.tools.mcp:` block) stay valid; the discovery cache
+		// falls back to `DEFAULT_MCP_DISCOVERY_TTL_MS` when absent.
+		mcp: McpToolsConfigSchema.optional(),
 	})
 	.default({
 		fetch: { enabled: false, timeoutMs: 10_000, maxResponseBytes: 1_048_576 },
@@ -172,6 +187,7 @@ const ChatToolsSchema = z
 	});
 
 export type ChatToolsConfig = z.infer<typeof ChatToolsSchema>;
+export type McpToolsConfig = z.infer<typeof McpToolsConfigSchema>;
 export type FetchToolConfig = z.infer<typeof FetchToolSchema>;
 export type WebSearchToolConfig = z.infer<typeof WebSearchToolSchema>;
 

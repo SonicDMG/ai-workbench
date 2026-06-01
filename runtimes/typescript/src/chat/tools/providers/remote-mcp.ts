@@ -36,6 +36,12 @@ import {
 	type RemoteMcpSession,
 	type RemoteMcpTool,
 } from "../mcp-client.js";
+import {
+	DEFAULT_MCP_DISCOVERY_TTL_MS,
+	discoveryCacheKey,
+	getCachedDiscovery,
+	setCachedDiscovery,
+} from "../mcp-discovery-cache.js";
 import type { AgentTool, ToolProviderContext } from "../registry.js";
 
 /**
@@ -88,6 +94,40 @@ async function discoverServerTools(
 	ctx: ToolProviderContext,
 	deps: RemoteMcpDeps,
 ): Promise<readonly AgentTool[]> {
+	const rawTools = await discoverRawTools(server, ctx, deps);
+	if (rawTools === null) return []; // discovery failed — never cached
+	// Allow-list + adaptation happen fresh on every call (cheap, in-memory)
+	// so an `allowedTools`-only edit takes effect immediately and each
+	// adapted tool closes over the CURRENT request's `ctx.secrets`.
+	const allowed = filterByAllowList(rawTools, server.allowedTools);
+	return allowed.map((tool) =>
+		adaptRemoteTool(server, tool, ctx.secrets, deps),
+	);
+}
+
+/**
+ * Connect + `tools/list` for one server, memoized in the
+ * {@link mcp-discovery-cache} for `chat.tools.mcp.discoveryTtlMs`. Returns
+ * the raw {@link RemoteMcpTool} descriptors, or `null` on a discovery
+ * failure (which is logged and **never cached** — the next turn retries).
+ */
+async function discoverRawTools(
+	server: McpServerRecord,
+	ctx: ToolProviderContext,
+	deps: RemoteMcpDeps,
+): Promise<readonly RemoteMcpTool[] | null> {
+	const ttlMs =
+		ctx.chatConfig?.tools?.mcp?.discoveryTtlMs ?? DEFAULT_MCP_DISCOVERY_TTL_MS;
+	const key = discoveryCacheKey(
+		ctx.workspaceId,
+		server.mcpServerId,
+		server.url,
+		server.credentialRef,
+	);
+	if (ttlMs > 0) {
+		const cached = getCachedDiscovery(key, Date.now());
+		if (cached !== null) return cached;
+	}
 	let session: RemoteMcpSession | null = null;
 	try {
 		session = await deps.connect({
@@ -96,10 +136,8 @@ async function discoverServerTools(
 			secrets: ctx.secrets,
 		});
 		const remoteTools = await session.listTools();
-		const allowed = filterByAllowList(remoteTools, server.allowedTools);
-		return allowed.map((tool) =>
-			adaptRemoteTool(server, tool, ctx.secrets, deps),
-		);
+		if (ttlMs > 0) setCachedDiscovery(key, remoteTools, Date.now() + ttlMs);
+		return remoteTools;
 	} catch (err) {
 		ctx.logger?.warn?.(
 			{
@@ -110,7 +148,7 @@ async function discoverServerTools(
 			},
 			"remote MCP server unreachable during tool discovery; contributing no tools",
 		);
-		return [];
+		return null;
 	} finally {
 		if (session) {
 			await session.close().catch(() => {

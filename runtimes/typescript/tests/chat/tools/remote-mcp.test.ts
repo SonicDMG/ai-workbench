@@ -18,10 +18,14 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { z } from "zod";
 import { executeWorkspaceTool } from "../../../src/chat/tools/dispatcher.js";
 import { connectMcpClient } from "../../../src/chat/tools/mcp-client.js";
+import {
+	clearMcpDiscoveryCache,
+	invalidateMcpServer,
+} from "../../../src/chat/tools/mcp-discovery-cache.js";
 import {
 	type RemoteMcpDeps,
 	remoteMcpToolsWith,
@@ -32,6 +36,7 @@ import {
 	type ToolProviderContext,
 } from "../../../src/chat/tools/registry.js";
 import type { ToolCall } from "../../../src/chat/types.js";
+import type { ChatConfig } from "../../../src/config/schema.js";
 import { MemoryControlPlaneStore } from "../../../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../../../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../../../src/drivers/registry.js";
@@ -342,5 +347,70 @@ describe("MCP SDK in-memory contract (anchor)", () => {
 		expect(text).toBe("echo: yo");
 		await client.close();
 		await server.close();
+	});
+});
+
+describe("remoteMcpTools — discovery TTL cache (P2)", () => {
+	beforeEach(() => clearMcpDiscoveryCache());
+
+	async function withServer() {
+		const { ctx, store, workspaceId } = await makeCtx();
+		const server = await store.createMcpServer(workspaceId, {
+			label: "Fake",
+			url: "https://fake.example.com/mcp",
+		});
+		return { ctx, store, workspaceId, server };
+	}
+
+	test("a cache hit within TTL skips the second discovery connect", async () => {
+		const { ctx } = await withServer();
+		const servers: McpServer[] = [];
+		const connect = inMemoryConnect(servers);
+		// chatConfig: null → DEFAULT 60s TTL → caching on.
+		await remoteMcpToolsWith(ctx, { connect });
+		const second = await remoteMcpToolsWith(ctx, { connect });
+		// Only ONE discovery connect — the second call hit the cache.
+		expect(servers.length).toBe(1);
+		// The cached descriptors still adapt into both tools.
+		expect(second.length).toBe(2);
+	});
+
+	test("invalidateMcpServer forces a re-list on the next call", async () => {
+		const { ctx, workspaceId, server } = await withServer();
+		const servers: McpServer[] = [];
+		const connect = inMemoryConnect(servers);
+		await remoteMcpToolsWith(ctx, { connect });
+		invalidateMcpServer(workspaceId, server.mcpServerId);
+		await remoteMcpToolsWith(ctx, { connect });
+		expect(servers.length).toBe(2);
+	});
+
+	test("discoveryTtlMs: 0 disables caching (always re-lists)", async () => {
+		const { ctx } = await withServer();
+		const ctx0: ToolProviderContext = {
+			...ctx,
+			chatConfig: {
+				tools: { mcp: { discoveryTtlMs: 0 } },
+			} as unknown as ChatConfig,
+		};
+		const servers: McpServer[] = [];
+		const connect = inMemoryConnect(servers);
+		await remoteMcpToolsWith(ctx0, { connect });
+		await remoteMcpToolsWith(ctx0, { connect });
+		expect(servers.length).toBe(2);
+	});
+
+	test("a discovery failure is not cached — the next call retries", async () => {
+		const { ctx } = await withServer();
+		let attempts = 0;
+		const failingConnect: RemoteMcpDeps["connect"] = async () => {
+			attempts += 1;
+			throw new Error("unreachable");
+		};
+		const first = await remoteMcpToolsWith(ctx, { connect: failingConnect });
+		const second = await remoteMcpToolsWith(ctx, { connect: failingConnect });
+		expect(first).toEqual([]); // failure → no tools
+		expect(second).toEqual([]);
+		expect(attempts).toBe(2); // retried, not served a cached empty
 	});
 });

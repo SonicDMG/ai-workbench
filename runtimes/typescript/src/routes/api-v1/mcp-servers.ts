@@ -18,6 +18,7 @@
  */
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { invalidateMcpServer } from "../../chat/tools/mcp-discovery-cache.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
@@ -164,6 +165,9 @@ export function mcpServerRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 				mcpServerId,
 				body,
 			);
+			// Drop any cached discovery — url / credentialRef / allowedTools
+			// may have changed, so the next turn must re-list.
+			invalidateMcpServer(workspaceId, mcpServerId);
 			return c.json(toWireMcpServer(updated), 200);
 		},
 	);
@@ -190,6 +194,8 @@ export function mcpServerRoutes(store: ControlPlaneStore): OpenAPIHono<AppEnv> {
 			const { deleted } = await store.deleteMcpServer(workspaceId, mcpServerId);
 			if (!deleted)
 				throw new ControlPlaneNotFoundError("mcp server", mcpServerId);
+			// Drop cached discovery for the now-deleted server.
+			invalidateMcpServer(workspaceId, mcpServerId);
 			return c.body(null, 204);
 		},
 	);
