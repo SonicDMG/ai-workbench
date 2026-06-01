@@ -895,19 +895,25 @@ curl -sS -X POST "$ASTRA_DB_API_ENDPOINT/api/json/v1${keyspaceSegment}/${s.colle
 `;
 }
 
-/* ---------------- string + literal escapers ---------------- */
+/* ---------------- string + literal escapers ----------------
+ *
+ * These escapers are shared with the Data API Playground generators
+ * (`./playground-codegen`); they are exported so both modules emit
+ * identical, language-safe string literals without duplicating the
+ * implementation.
+ */
 
-function jsString(s: string): string {
+export function jsString(s: string): string {
 	return JSON.stringify(s);
 }
 
-function pyString(s: string): string {
+export function pyString(s: string): string {
 	// Python and JSON string syntax overlap enough that we can reuse
 	// JSON.stringify for the common case (no triple-quoted multiline).
 	return JSON.stringify(s);
 }
 
-function javaString(s: string): string {
+export function javaString(s: string): string {
 	return JSON.stringify(s);
 }
 
@@ -918,7 +924,7 @@ function javaString(s: string): string {
  * `'\''` shell-escape sequence so the entire body survives bash's
  * single-quote rules intact.
  */
-function escapeCurlBody(body: string): string {
+export function escapeCurlBody(body: string): string {
 	return body.replace(/'/g, "'\\''");
 }
 
