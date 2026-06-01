@@ -77,10 +77,48 @@ export function jobRoutes(deps: JobsRouteDeps): OpenAPIHono<AppEnv> {
 		},
 	);
 
-	// SSE route — registered directly on the app, not via `openapi()`,
-	// because `text/event-stream` doesn't fit the zod-openapi JSON
-	// response model and we want the stream to be a legitimate
-	// keep-alive rather than a finite JSON blob.
+	// SSE route. `text/event-stream` doesn't fit the zod-openapi typed
+	// JSON response model (and we want a real keep-alive stream, not a
+	// finite JSON blob), so we register the path in the OpenAPI document
+	// explicitly — giving the key async-progress endpoint a machine-
+	// readable contract — while keeping the hand-rolled handler below.
+	const jobEventsRoute = createRoute({
+		method: "get",
+		path: "/{workspaceId}/jobs/{jobId}/events",
+		tags: ["jobs"],
+		summary: "Stream job progress (SSE)",
+		description:
+			"Server-Sent Events stream of a job's progress. Each `data:` frame is a JSON-encoded JobRecord (the same shape as `GET /jobs/{jobId}`), replayed immediately on connect and re-emitted on every update; the stream closes once the job reaches a terminal state. Every frame carries `id: <updatedAt>`, so a dropped client can reconnect with `Last-Event-ID` and resume from the last snapshot it saw instead of replaying from scratch.",
+		request: {
+			params: z.object({
+				workspaceId: WorkspaceIdParamSchema,
+				jobId: JobIdParamSchema,
+			}),
+			headers: z.object({
+				"last-event-id": z.string().optional().openapi({
+					description:
+						"Last event `id` (a JobRecord `updatedAt`) the client received; resumes the stream from the next update rather than replaying from scratch.",
+					example: "2026-05-31T12:00:00.000Z",
+				}),
+			}),
+		},
+		responses: {
+			200: {
+				content: {
+					"text/event-stream": {
+						schema: z.string().openapi({
+							description:
+								"SSE frames — `id: <updatedAt>` then `data: <JobRecord JSON>` per update, each terminated by a blank line.",
+						}),
+					},
+				},
+				description: "Job-progress event stream",
+			},
+			...errorResponse(404, "Job not found"),
+		},
+	});
+	app.openAPIRegistry.registerPath(jobEventsRoute);
+
 	app.get("/:workspaceId/jobs/:jobId/events", async (c) => {
 		const workspaceId = c.req.param("workspaceId");
 		const jobId = c.req.param("jobId");

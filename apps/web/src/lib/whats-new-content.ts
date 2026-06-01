@@ -31,22 +31,22 @@ export const WHATS_NEW_VERSION = APP_VERSION;
  */
 export const WHATS_NEW_HIGHLIGHTS: readonly WhatsNewItem[] = [
 	{
-		title: "Faster chat history on long conversations",
+		title: "Deleting a workspace now cleans up everything",
 		summary:
-			"Opening a conversation now loads its messages a page at a time with a keyset cursor instead of pulling the whole transcript on every request — on every storage backend. Long-running chats stay snappy and the runtime no longer materialises the entire conversation just to show the latest turns. The wire shape is unchanged, so existing clients keep working.",
-	},
-	{
-		title: "Safer web access for agents",
-		summary:
-			"The built-in fetch tool now resolves a URL's hostname and checks every resolved address before connecting, closing a path where a public-looking domain could point an agent at an internal or cloud-metadata address. Private, loopback, and metadata targets are refused — by name, by literal IP, and now by what the name actually resolves to.",
+			"Removing a workspace used to leave its MCP servers, access principals, and policy-audit rows behind. Deletion now cascades to all of them on every storage backend. On Astra it is self-healing: if a delete is interrupted partway, the workspace stays put and the cleanup completes on retry instead of stranding orphaned records — and an optional startup pass can sweep up orphans left by older versions.",
 		link: {
-			label: "Configure an agent's tools",
-			href: "/agents",
+			label: "Manage workspaces",
+			href: "/",
 		},
 	},
 	{
-		title: "Smoother restarts",
+		title: "Secrets stay out of your logs",
 		summary:
-			"During a graceful shutdown, live job-progress streams now close cleanly so the browser reconnects to the next replica (or the restarted process) and picks up where it left off via Last-Event-ID — no more streams hanging until the shutdown timeout. Rolling restarts and deploys are quieter as a result.",
+			"Structured log output now redacts secret- and token-shaped values automatically, so API keys and bootstrap tokens no longer slip into the logs you ship to an aggregator.",
+	},
+	{
+		title: "A tighter setup & rescue surface",
+		summary:
+			"The first-run setup and rescue endpoints now gate every state-changing route behind the setup auth-gate, and the bootstrap-token check is constant-time so it can't be guessed by timing. Bounded readiness probes and chat request timeouts keep the runtime steadier under load and during restarts.",
 	},
 ];

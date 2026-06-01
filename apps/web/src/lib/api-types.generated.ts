@@ -606,6 +606,67 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/api/v1/workspaces/{workspaceId}/jobs/{jobId}/events": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Stream job progress (SSE)
+		 * @description Server-Sent Events stream of a job's progress. Each `data:` frame is a JSON-encoded JobRecord (the same shape as `GET /jobs/{jobId}`), replayed immediately on connect and re-emitted on every update; the stream closes once the job reaches a terminal state. Every frame carries `id: <updatedAt>`, so a dropped client can reconnect with `Last-Event-ID` and resume from the last snapshot it saw instead of replaying from scratch.
+		 */
+		get: {
+			parameters: {
+				query?: never;
+				header?: {
+					/** @description Last event `id` (a JobRecord `updatedAt`) the client received; resumes the stream from the next update rather than replaying from scratch. */
+					"last-event-id"?: string;
+				};
+				path: {
+					workspaceId: string;
+					jobId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description Job-progress event stream */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"text/event-stream": string;
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Job not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/api/v1/workspaces/{workspaceId}/api-keys": {
 		parameters: {
 			query?: never;

@@ -9,6 +9,71 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-05-31
+
+A hardening-and-correctness release on the 0.4.x line. There is **no HTTP
+wire-contract change** and **no data migration** — this release completes the
+control-plane delete cascade, adds a self-healing cross-partition cascade with
+an opt-in orphan reconciler, hardens the rescue/setup surface, and keeps
+secrets out of structured logs.
+
+### Added
+
+- **Self-healing control-plane cascade + opt-in orphan reconciler.** On the
+  Astra backend, deleting a workspace now removes its child rows
+  children-first / parent-last. A partial failure leaves the workspace row in
+  place and returns `500 cascade_incomplete` (a new error code) so the
+  idempotent cascade finishes on retry instead of stranding orphans. A new
+  `reconcileOrphans()` pass — opt-in via `controlPlane.reconcileOrphansOnStart`
+  — sweeps pre-existing orphaned rows at startup.
+
+### Changed
+
+- **Unified row-level access control (RLAC) defaulting** behind a single
+  `resolveRlacDefaults` path: a document's owner defaults are applied
+  independently of `visibleTo`. Authorization behaviour is unchanged
+  (security-reviewed) — this removes a divergent code path, not a rule.
+- **Internal modularization sweep (no behaviour change).** Continued splitting
+  large modules — the multipart ingest parser moved to
+  `routes/api-v1/ingest-file-form.ts`, and the Playground code generation moved
+  into its own tested module.
+- **The OpenAPI document now describes the job-progress SSE endpoint.**
+  `GET .../jobs/{jobId}/events` was served but missing from
+  `/api/v1/openapi.json`; it is now registered (path params, the
+  `Last-Event-ID` resume header, and the `text/event-stream` response), so the
+  generated web API types and any client built from the spec cover the
+  async-progress contract. No behaviour change.
+
+### Fixed
+
+- **Workspace delete now cascades `mcpServers`, `principals`, and
+  `policyAudit`.** These three child collections were previously left behind
+  when a workspace was deleted; they are now removed on every backend (memory,
+  file, SQLite, Astra). Policy-audit rows are **purged** rather than retained —
+  they become unreadable once their workspace is gone, so keeping them would
+  only strand inaccessible rows.
+- **Reliability hardening.** `/readyz` is now bounded by a deadline so a slow
+  dependency can't hang the readiness probe; chat requests carry a request
+  timeout; and the web app guards against a malformed JSON response instead of
+  throwing.
+- **Bounded prompt-history read in agent dispatch.** Assembling a prompt no
+  longer reads unbounded conversation history, so long, tool-heavy
+  conversations stop re-scanning the full transcript on every turn.
+
+### Security
+
+- **Gated the rescue/setup mutation routes.** The setup/rescue surface's
+  mutating routes now sit behind the setup auth-gate, and the bootstrap-token
+  comparison is constant-time (timing-safe), removing a token-guessing side
+  channel.
+- **Secret redaction in structured logs.** The logger now redacts secret- and
+  token-shaped values so credentials don't leak into structured log output.
+- **Hardened the release workflow's supply chain.** Every GitHub Action in
+  `release.yml` — the workflow that publishes the runtime image to GHCR and
+  cuts the GitHub Release — is now pinned to a full commit SHA, and each job
+  declares least-privilege `permissions:` so the build/test jobs no longer
+  inherit `packages: write` / `id-token: write`.
+
 ## [0.4.2] — 2026-05-30
 
 Hardening continues on the 0.4.x line, with one new capability:
