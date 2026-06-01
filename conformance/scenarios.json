@@ -856,5 +856,27 @@
 				}
 			}
 		]
+	},
+	{
+		"slug": "agent-toolid-rejects-unresolved-mcp",
+		"description": "Save-time toolId validation (MCP P1): creating an agent with a namespaced mcp:{serverId}:{tool} id that doesn't resolve to a registered + enabled server in this workspace returns 422 agent_tool_unresolved. Bare built-in names and empty toolIds are unaffected (see agent-crud-basic).",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": {
+					"name": "w",
+					"kind": "mock"
+				}
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/agents",
+				"body": {
+					"name": "bad",
+					"toolIds": ["mcp:00000000-0000-4000-8000-0000000000aa:search"]
+				}
+			}
+		]
 	}
 ]

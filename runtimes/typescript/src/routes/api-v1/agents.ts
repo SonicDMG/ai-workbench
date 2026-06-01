@@ -19,6 +19,10 @@ import {
 	dispatchAgentSendStream,
 	type OnToolInvoke,
 } from "../../chat/agent-dispatch.js";
+import {
+	listCandidateTools,
+	type ToolProviderContext,
+} from "../../chat/tools/registry.js";
 import type { ChatService } from "../../chat/types.js";
 import type { ChatConfig } from "../../config/schema.js";
 import {
@@ -93,6 +97,45 @@ export interface AgentRouteDeps {
 	readonly metrics?: import("../../lib/runtime-metrics.js").RuntimeMetrics;
 }
 
+/**
+ * Tool-id prefixes whose ids MUST resolve to a live candidate at save
+ * time. A bare (unprefixed) name is a built-in and is tolerated even when
+ * absent from the current catalog — built-ins are forward-compatible (a
+ * newer runtime may add one), and the dispatcher's allow-list gate is the
+ * runtime backstop. Namespaced ids, by contrast, point at concrete
+ * workspace state (a registered MCP server, a configured native/Astra
+ * capability); a stale one is silently dropped at dispatch today, so we
+ * reject it up front instead.
+ */
+const RESOLVE_REQUIRED_PREFIXES = ["mcp:", "native:", "astra:"] as const;
+
+/**
+ * Reject (422) an agent's `toolIds` that name a namespaced tool which no
+ * longer resolves in this workspace — a `mcp:{deletedServer}:{tool}`, a
+ * `native:`/`astra:` id without the matching capability. Empty `toolIds`
+ * (grandfathered "all built-ins") and bare built-in names pass untouched.
+ */
+async function assertResolvableToolIds(
+	toolIds: readonly string[] | undefined,
+	ctx: ToolProviderContext,
+): Promise<void> {
+	if (!toolIds || toolIds.length === 0) return;
+	const mustResolve = toolIds.filter((id) =>
+		RESOLVE_REQUIRED_PREFIXES.some((p) => id.startsWith(p)),
+	);
+	if (mustResolve.length === 0) return;
+	const candidates = await listCandidateTools(ctx);
+	const known = new Set(candidates.map((c) => c.id));
+	const unresolved = mustResolve.filter((id) => !known.has(id));
+	if (unresolved.length > 0) {
+		throw new ApiError(
+			"agent_tool_unresolved",
+			`these tool ids don't resolve to a tool available in this workspace: ${unresolved.join(", ")}. A remote-MCP id (mcp:{serverId}:{tool}) needs its server registered + enabled and the tool discoverable; native:/astra: ids need the matching workspace capability. Remove the id or fix the underlying server/service.`,
+			422,
+		);
+	}
+}
+
 export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 	const {
 		store,
@@ -104,6 +147,18 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		metrics,
 	} = deps;
 	const app = makeOpenApi();
+
+	// Build the tool-candidate discovery context for save-time `toolIds`
+	// validation (same shape `available-tools` uses for the picker).
+	const toolProviderCtx = (workspaceId: string): ToolProviderContext => ({
+		workspaceId,
+		store,
+		drivers,
+		embedders,
+		secrets,
+		chatConfig,
+		logger,
+	});
 
 	/* ---------------- Agent CRUD ---------------- */
 
@@ -159,6 +214,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		async (c) => {
 			const { workspaceId } = c.req.valid("param");
 			const body = c.req.valid("json");
+			await assertResolvableToolIds(body.toolIds, toolProviderCtx(workspaceId));
 			const record = await store.createAgent(workspaceId, body);
 			audit(c, {
 				action: "agent.create",
@@ -332,6 +388,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 		async (c) => {
 			const { workspaceId, agentId } = c.req.valid("param");
 			const body = c.req.valid("json");
+			await assertResolvableToolIds(body.toolIds, toolProviderCtx(workspaceId));
 			const record = await store.updateAgent(workspaceId, agentId, body);
 			return c.json(toAgentWire(record), 200);
 		},

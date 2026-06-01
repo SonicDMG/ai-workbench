@@ -94,6 +94,65 @@ async function createAgent(
 	return (await json(res)).agentId as string;
 }
 
+describe("agent toolId validation (save-time, MCP P1)", () => {
+	// A well-formed `mcp:{serverId}:{tool}` id pointing at a server that
+	// isn't registered in this (fresh mock) workspace — must not resolve.
+	const bogusMcpTool = "mcp:00000000-0000-4000-8000-0000000000aa:search";
+
+	test("create rejects an unresolved mcp: toolId with 422", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const res = await app.request(`/api/v1/workspaces/${ws}/agents`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ name: "Bad", toolIds: [bogusMcpTool] }),
+		});
+		expect(res.status).toBe(422);
+		const body = await json(res);
+		expect(body.error.code).toBe("agent_tool_unresolved");
+		expect(body.error.message).toContain(bogusMcpTool);
+	});
+
+	test("create tolerates bare built-in names and empty toolIds", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		// Bare names are built-ins (forward-compat: never rejected); an
+		// empty list grandfathers all built-ins.
+		const ok = await app.request(`/api/v1/workspaces/${ws}/agents`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				name: "Good",
+				toolIds: ["search_kb", "list_kbs"],
+			}),
+		});
+		expect(ok.status, await ok.clone().text()).toBe(201);
+
+		const empty = await app.request(`/api/v1/workspaces/${ws}/agents`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ name: "Default", toolIds: [] }),
+		});
+		expect(empty.status).toBe(201);
+	});
+
+	test("update rejects an unresolved mcp: toolId with 422", async () => {
+		const app = makeApp();
+		const ws = await createWorkspace(app);
+		const agentId = await createAgent(app, ws, { name: "Patchable" });
+		const res = await app.request(
+			`/api/v1/workspaces/${ws}/agents/${agentId}`,
+			{
+				method: "PATCH",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ toolIds: [bogusMcpTool] }),
+			},
+		);
+		expect(res.status).toBe(422);
+		expect((await json(res)).error.code).toBe("agent_tool_unresolved");
+	});
+});
+
 describe("agent routes", () => {
 	test("workspace POST auto-seeds the default Bobby + Maven agents", async () => {
 		const app = makeApp();

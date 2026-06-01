@@ -1,0 +1,52 @@
+{
+	"slug": "agent-toolid-rejects-unresolved-mcp",
+	"description": "Save-time toolId validation (MCP P1): creating an agent with a namespaced mcp:{serverId}:{tool} id that doesn't resolve to a registered + enabled server in this workspace returns 422 agent_tool_unresolved. Bare built-in names and empty toolIds are unaffected (see agent-crud-basic).",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentials": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"rlacEnabled": false,
+					"updatedAt": "{{TS}}",
+					"url": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"name": "bad",
+					"toolIds": ["mcp:{{UUID_2}}:search"]
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/agents"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "agent_tool_unresolved",
+						"message": "these tool ids don't resolve to a tool available in this workspace: mcp:{{UUID_2}}:search. A remote-MCP id (mcp:{serverId}:{tool}) needs its server registered + enabled and the tool {{WB_PREFIX_1}}; native:/astra: ids need the matching workspace capability. Remove the id or fix the underlying server/service.",
+						"requestId": "{{REQID_1}}"
+					}
+				},
+				"status": 422
+			},
+			"step": 2
+		}
+	]
+}
