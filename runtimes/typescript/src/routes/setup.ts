@@ -14,13 +14,14 @@
  * managed values back nor mutate `process.env`. The runtime picks
  * up the new file on the *next* boot via `WORKBENCH_ENV_FILE`.
  */
-import type { Context, MiddlewareHandler } from "hono";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import type { AuthConfig } from "../config/schema.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import { errorEnvelope } from "../lib/errors.js";
 import type { AppEnv } from "../lib/types.js";
 import type { SecretResolver } from "../secrets/provider.js";
+import { setupAuthGate } from "../setup/auth-gate.js";
 import {
 	describeManagedEnv,
 	MANAGED_ENV_KEYS,
@@ -100,71 +101,6 @@ function controlPlaneKind(store: ControlPlaneStore): string {
 	if (ctor.startsWith("File")) return "file";
 	if (ctor.startsWith("Astra")) return "astra";
 	return ctor.toLowerCase();
-}
-
-/**
- * Resolve the bootstrap token (if configured) so the setup gate can
- * compare. Done once per request — keep this in a small cache if
- * profiling shows it's hot, but the wizard is a low-frequency
- * surface.
- */
-async function resolveBootstrapToken(
-	deps: SetupRouteDeps,
-): Promise<string | null> {
-	if (!deps.auth.bootstrapTokenRef) return null;
-	try {
-		const token = await deps.secrets.resolve(deps.auth.bootstrapTokenRef);
-		return token.length > 0 ? token : null;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Inline auth gate for the mutation routes (`/setup/env`,
- * `/setup/restart`):
- *   - Always allow if a valid bootstrap token is presented.
- *   - Otherwise allow whenever `auth.mode === "disabled"` (the
- *     single-user dev posture — no privilege boundary exists, so
- *     `/settings` in the SPA can edit credentials post-setup too,
- *     not just during the first-run wizard window).
- *   - Reject everything else with 401.
- *
- * `/setup-status` is intentionally unauthenticated so the wizard
- * and the settings page can render their first frame.
- */
-function setupAuthGate(deps: SetupRouteDeps): MiddlewareHandler<AppEnv> {
-	return async (c, next) => {
-		const auth = c.req.header("authorization");
-		const bearer = auth?.toLowerCase().startsWith("bearer ")
-			? auth.slice(7).trim()
-			: null;
-		if (bearer) {
-			const expected = await resolveBootstrapToken(deps);
-			if (expected && bearer === expected) {
-				return next();
-			}
-			return c.json(
-				errorEnvelope(
-					c,
-					"unauthorized",
-					"Setup endpoints require the bootstrap token when auth is enabled.",
-				),
-				401,
-			);
-		}
-		if (deps.auth.mode === "disabled") {
-			return next();
-		}
-		return c.json(
-			errorEnvelope(
-				c,
-				"unauthorized",
-				"Setup endpoints require the bootstrap token when auth is enabled.",
-			),
-			401,
-		);
-	};
 }
 
 interface SetupEnvBody {

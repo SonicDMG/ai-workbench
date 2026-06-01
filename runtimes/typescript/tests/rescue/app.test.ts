@@ -20,9 +20,27 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { AuthConfig } from "../../src/config/schema.js";
 import { buildRescueApp, classifyBootError } from "../../src/rescue/app.js";
+import { EnvSecretProvider } from "../../src/secrets/env.js";
+import { SecretResolver } from "../../src/secrets/provider.js";
 
-function makeApp(opts?: { triggerRestart?: () => void }) {
+function makeApp(opts?: {
+	triggerRestart?: () => void;
+	authMode?: "disabled" | "apiKey";
+	bootstrapToken?: string;
+}) {
+	const auth: AuthConfig = {
+		mode: opts?.authMode ?? "disabled",
+		anonymousPolicy: "allow",
+		acknowledgeOpenAccess: false,
+		bootstrapTokenRef: opts?.bootstrapToken
+			? "env:WB_BOOTSTRAP_TOKEN_TEST"
+			: null,
+	};
+	if (opts?.bootstrapToken) {
+		process.env.WB_BOOTSTRAP_TOKEN_TEST = opts.bootstrapToken;
+	}
 	return buildRescueApp({
 		bootError: {
 			code: "control_plane_dns_unresolvable",
@@ -31,6 +49,8 @@ function makeApp(opts?: { triggerRestart?: () => void }) {
 		},
 		triggerRestart: opts?.triggerRestart ?? (() => undefined),
 		ui: null,
+		auth,
+		secrets: new SecretResolver({ env: new EnvSecretProvider() }),
 	});
 }
 
@@ -43,6 +63,7 @@ describe("rescue app", () => {
 	});
 	afterEach(() => {
 		delete process.env.WORKBENCH_DATA_DIR;
+		delete process.env.WB_BOOTSTRAP_TOKEN_TEST;
 		rmSync(dataDir, { recursive: true, force: true });
 	});
 
@@ -75,7 +96,7 @@ describe("rescue app", () => {
 		expect(body.bootError.message).toMatch(/ENOTFOUND/);
 	});
 
-	test("/setup/env writes the managed file with no auth gate (rescue mode is open)", async () => {
+	test("/setup/env writes the managed file when auth.mode is disabled", async () => {
 		const app = makeApp();
 		const res = await app.request("/setup/env", {
 			method: "POST",
@@ -92,6 +113,60 @@ describe("rescue app", () => {
 		expect(contents).toContain('OPENROUTER_API_KEY="hf_corrected_token"');
 	});
 
+	test("/setup/env rejects an unauthenticated write when auth is enabled (401)", async () => {
+		// The whole point of the fix: a control-plane boot failure must
+		// NOT drop the bootstrap-token requirement and leave an open
+		// credential-tampering path in rescue mode.
+		const app = makeApp({ authMode: "apiKey" });
+		const res = await app.request("/setup/env", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				values: { OPENROUTER_API_KEY: "hf_attacker_token" },
+			}),
+		});
+		expect(res.status).toBe(401);
+		// And nothing was written.
+		expect(() => readFileSync(join(dataDir, ".env"), "utf8")).toThrow();
+	});
+
+	test("/setup/env accepts the bootstrap token when auth is enabled", async () => {
+		const token = "bootstrap-token-32-characters-min-ok";
+		const app = makeApp({ authMode: "apiKey", bootstrapToken: token });
+		const res = await app.request("/setup/env", {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				authorization: `Bearer ${token}`,
+			},
+			body: JSON.stringify({
+				values: { OPENROUTER_API_KEY: "hf_corrected_token" },
+			}),
+		});
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean; written: string[] };
+		expect(body.ok).toBe(true);
+		expect(body.written).toEqual(["OPENROUTER_API_KEY"]);
+	});
+
+	test("/setup/env rejects a wrong bootstrap token when auth is enabled (401)", async () => {
+		const app = makeApp({
+			authMode: "apiKey",
+			bootstrapToken: "the-real-bootstrap-token-value-ok",
+		});
+		const res = await app.request("/setup/env", {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				authorization: "Bearer not-the-real-token",
+			},
+			body: JSON.stringify({
+				values: { OPENROUTER_API_KEY: "hf_attacker_token" },
+			}),
+		});
+		expect(res.status).toBe(401);
+	});
+
 	test("/setup/env rejects keys outside the allow-list", async () => {
 		const app = makeApp();
 		const res = await app.request("/setup/env", {
@@ -102,13 +177,32 @@ describe("rescue app", () => {
 		expect(res.status).toBe(400);
 	});
 
-	test("/setup/restart calls the registered hook", async () => {
+	test("/setup/restart calls the registered hook when auth.mode is disabled", async () => {
 		const trigger = vi.fn();
 		const app = makeApp({ triggerRestart: trigger });
 		const res = await app.request("/setup/restart", { method: "POST" });
 		expect(res.status).toBe(202);
 		await new Promise((r) => setImmediate(r));
 		expect(trigger).toHaveBeenCalledOnce();
+	});
+
+	test("/setup/restart is gated by the bootstrap token when auth is enabled", async () => {
+		const trigger = vi.fn();
+		const app = makeApp({ authMode: "apiKey", triggerRestart: trigger });
+		const res = await app.request("/setup/restart", { method: "POST" });
+		expect(res.status).toBe(401);
+		await new Promise((r) => setImmediate(r));
+		expect(trigger).not.toHaveBeenCalled();
+	});
+
+	test("/setup-status stays open even when auth is enabled", async () => {
+		// The status endpoint must render the rescue banner without a
+		// token; only the mutating routes are gated.
+		const app = makeApp({ authMode: "apiKey" });
+		const res = await app.request("/setup-status");
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { bootError: { code: string } };
+		expect(body.bootError.code).toBe("control_plane_dns_unresolvable");
 	});
 
 	test("/api/v1/* returns 503 control_plane_unavailable", async () => {

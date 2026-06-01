@@ -156,6 +156,12 @@ async function main(): Promise<void> {
 			bootError: classified,
 			triggerRestart: () => triggerRespawnAndShutdown(logger),
 			ui,
+			// Same auth posture as the healthy-boot setup routes: with auth
+			// enabled the bootstrap token is required to mutate managed
+			// credentials, so a control-plane boot failure can't open an
+			// unauthenticated config-tampering path.
+			auth: config.auth,
+			secrets,
 		});
 		const rescuePort = config.runtime.port;
 		serve({ fetch: rescueApp.fetch, port: rescuePort }, (info) => {

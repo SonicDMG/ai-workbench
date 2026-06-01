@@ -13,9 +13,13 @@
  *     classified `bootError` field set, so the SPA can render a
  *     prominent banner steering the operator to `/settings`.
  *   - `POST /setup/env`    — same managed-env writer as healthy
- *     boot, so the user can paste corrected credentials.
+ *     boot, so the user can paste corrected credentials. Gated by
+ *     the shared {@link setupAuthGate}: when auth is enabled the
+ *     bootstrap token is required, exactly as on the healthy path,
+ *     so a boot failure can't drop credential-tampering protection.
  *   - `POST /setup/restart` — triggers `triggerRestart()` (graceful
- *     shutdown → container restart policy → retry full boot).
+ *     shutdown → container restart policy → retry full boot). Same
+ *     gate as `/setup/env`.
  *   - `GET  /healthz` + `GET /readyz` — always 503; this runtime is
  *     not serving real traffic.
  *   - SPA static + index.html fallback so `/settings` actually
@@ -25,9 +29,12 @@
  * — no control plane, no data plane.
  */
 import { Hono } from "hono";
+import type { AuthConfig } from "../config/schema.js";
 import { errorEnvelope } from "../lib/errors.js";
 import type { AppEnv } from "../lib/types.js";
 import type { SetupBootError } from "../routes/setup.js";
+import type { SecretResolver } from "../secrets/provider.js";
+import { setupAuthGate } from "../setup/auth-gate.js";
 import {
 	describeManagedEnv,
 	MANAGED_ENV_KEYS,
@@ -40,6 +47,13 @@ export interface RescueAppDeps {
 	readonly bootError: SetupBootError;
 	readonly triggerRestart: () => void;
 	readonly ui: UiAssets | null;
+	/**
+	 * Auth posture for the setup mutation routes. Shared with the
+	 * healthy-boot path via {@link setupAuthGate} so rescue mode can't
+	 * silently drop the bootstrap-token requirement.
+	 */
+	readonly auth: AuthConfig;
+	readonly secrets: SecretResolver;
 }
 
 interface SetupEnvBody {
@@ -133,7 +147,12 @@ export function buildRescueApp(deps: RescueAppDeps): Hono<AppEnv> {
 		});
 	});
 
-	app.post("/setup/env", async (c) => {
+	// Same bootstrap-token gate as the healthy-boot wizard. `/setup-status`
+	// above stays open so the SPA can render its rescue banner; only the
+	// mutating routes require the token when auth is enabled.
+	const gate = setupAuthGate(deps);
+
+	app.post("/setup/env", gate, async (c) => {
 		const raw = await c.req.json().catch(() => null);
 		const parsed = parseSetupEnvBody(raw);
 		if ("error" in parsed) {
@@ -163,7 +182,7 @@ export function buildRescueApp(deps: RescueAppDeps): Hono<AppEnv> {
 		}
 	});
 
-	app.post("/setup/restart", (c) => {
+	app.post("/setup/restart", gate, (c) => {
 		const response = c.json(
 			{
 				ok: true,
