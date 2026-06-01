@@ -1707,6 +1707,14 @@ export const AvailableToolSchema = z
 		id: z.string(),
 		description: z.string(),
 		source: z.enum(["builtin", "native", "astra", "mcp"]),
+		// 0.5.0 (MCP P4): grouping + schema hints for the agent-form picker.
+		// All optional + additive. Populated for `source: "mcp"`:
+		//   - serverId / serverLabel let the UI sub-group tools by server.
+		//   - inputSchema is the tool's JSON-Schema arguments object so the
+		//     form can surface required args.
+		serverId: z.string().optional(),
+		serverLabel: z.string().optional(),
+		inputSchema: z.record(z.string(), z.unknown()).optional(),
 	})
 	.openapi("AvailableTool");
 

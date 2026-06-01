@@ -892,6 +892,11 @@ export const AvailableToolSchema = z.object({
 	id: z.string(),
 	description: z.string(),
 	source: ToolSourceSchema,
+	// 0.5.0 (MCP P4) — populated for `source: "mcp"`. Optional + additive.
+	serverId: z.string().optional(),
+	serverLabel: z.string().optional(),
+	// The tool's JSON-Schema arguments object (for showing required args).
+	inputSchema: z.record(z.string(), z.unknown()).optional(),
 });
 export type AvailableTool = z.infer<typeof AvailableToolSchema>;
 

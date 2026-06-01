@@ -107,6 +107,37 @@ function groupToolsBySource(
 	})).filter((g) => g.tools.length > 0);
 }
 
+/**
+ * Sub-group MCP tools by their owning server (label), preserving
+ * first-appearance order. Lets the picker show "Server A → its tools"
+ * instead of a flat `mcp:{uuid}:{tool}` list.
+ */
+function groupMcpByServer(
+	tools: readonly AvailableTool[],
+): readonly { label: string; tools: readonly AvailableTool[] }[] {
+	const order: string[] = [];
+	const byLabel = new Map<string, AvailableTool[]>();
+	for (const t of tools) {
+		const label = t.serverLabel ?? t.serverId ?? "Unknown server";
+		const bucket = byLabel.get(label);
+		if (bucket) bucket.push(t);
+		else {
+			byLabel.set(label, [t]);
+			order.push(label);
+		}
+	}
+	return order.map((label) => ({ label, tools: byLabel.get(label) ?? [] }));
+}
+
+/** Required argument names from a tool's JSON-Schema `inputSchema`. */
+function requiredArgs(tool: AvailableTool): readonly string[] {
+	const req = (tool.inputSchema as { required?: unknown } | undefined)
+		?.required;
+	return Array.isArray(req)
+		? req.filter((r): r is string => typeof r === "string")
+		: [];
+}
+
 export interface AgentFormProps {
 	readonly mode: "create" | "edit";
 	readonly agent?: AgentRecord | null;
@@ -155,6 +186,19 @@ export function AgentForm({
 	const errors = form.formState.errors;
 	const toolGroups = groupToolsBySource(availableTools);
 	const hasExternalTools = toolGroups.some((g) => g.source !== "builtin");
+	// Saved toolIds that no longer resolve to a catalog entry. Only
+	// namespaced ids (mcp:/native:/astra:) are flagged — bare built-in
+	// names are forward-compatible and never dangling. Surfaces drift from
+	// a since-deleted MCP server or a key minted before save-time
+	// validation (MCP P1). The catalog must be loaded to judge this.
+	const danglingToolIds =
+		availableTools.length > 0
+			? selectedToolIds.filter(
+					(id) =>
+						/^(?:mcp|native|astra):/.test(id) &&
+						!availableTools.some((t) => t.id === id),
+				)
+			: [];
 
 	function toggleKb(kbId: string): void {
 		const current = form.getValues("knowledgeBaseIds");
@@ -171,6 +215,43 @@ export function AgentForm({
 			: [...current, toolId];
 		form.setValue("toolIds", next, { shouldDirty: true });
 	}
+
+	function removeDanglingTools(): void {
+		form.setValue(
+			"toolIds",
+			form.getValues("toolIds").filter((id) => !danglingToolIds.includes(id)),
+			{ shouldDirty: true },
+		);
+	}
+
+	// One selectable tool checkbox row (reused flat + in MCP server
+	// sub-groups). Shows the tool id, description, and required args.
+	const renderToolRow = (tool: AvailableTool) => {
+		const required = requiredArgs(tool);
+		return (
+			<label key={tool.id} className="flex items-start gap-2 text-sm">
+				<input
+					type="checkbox"
+					checked={selectedToolIds.includes(tool.id)}
+					onChange={() => toggleTool(tool.id)}
+					className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[var(--color-brand-500)] focus:ring-[var(--color-brand-500)] dark:border-slate-600 dark:bg-slate-900"
+				/>
+				<span className="min-w-0">
+					<span className="font-mono text-[13px] font-medium">{tool.id}</span>
+					{tool.description ? (
+						<span className="block text-xs text-slate-500 dark:text-slate-400">
+							{tool.description}
+						</span>
+					) : null}
+					{required.length > 0 ? (
+						<span className="block text-[11px] text-slate-400 dark:text-slate-500">
+							requires: {required.join(", ")}
+						</span>
+					) : null}
+				</span>
+			</label>
+		);
+	};
 
 	async function handleSubmit(values: FormInput): Promise<void> {
 		await onSubmit(buildPayload(values));
@@ -328,6 +409,31 @@ export function AgentForm({
 							? "Leave empty to use the default — all built-in workspace tools. Check tools to set an explicit allow-list."
 							: `${selectedToolIds.length} tool${selectedToolIds.length === 1 ? "" : "s"} selected.`}
 					</p>
+					{danglingToolIds.length > 0 ? (
+						<div
+							role="alert"
+							data-testid="dangling-tools-warning"
+							className="flex flex-col items-start gap-1 rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200"
+						>
+							<span>
+								<span className="font-medium">
+									{danglingToolIds.length} selected tool
+									{danglingToolIds.length === 1 ? "" : "s"} no longer available
+								</span>{" "}
+								— the MCP server or capability was removed. Saving is rejected
+								until they're cleared:{" "}
+								<span className="font-mono">{danglingToolIds.join(", ")}</span>
+							</span>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								onClick={removeDanglingTools}
+							>
+								Remove unavailable tools
+							</Button>
+						</div>
+					) : null}
 					<div className="flex flex-col gap-3">
 						{toolGroups.map((group) => (
 							<fieldset
@@ -338,32 +444,20 @@ export function AgentForm({
 								<legend className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
 									{TOOL_SOURCE_LABEL[group.source]}
 								</legend>
-								{group.tools.map((tool) => {
-									const checked = selectedToolIds.includes(tool.id);
-									return (
-										<label
-											key={tool.id}
-											className="flex items-start gap-2 text-sm"
-										>
-											<input
-												type="checkbox"
-												checked={checked}
-												onChange={() => toggleTool(tool.id)}
-												className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[var(--color-brand-500)] focus:ring-[var(--color-brand-500)] dark:border-slate-600 dark:bg-slate-900"
-											/>
-											<span className="min-w-0">
-												<span className="font-mono text-[13px] font-medium">
-													{tool.id}
+								{group.source === "mcp"
+									? groupMcpByServer(group.tools).map((server) => (
+											<div
+												key={server.label}
+												className="flex flex-col gap-1.5 border-l-2 border-slate-200 pl-3 dark:border-slate-700"
+												data-testid="mcp-server-group"
+											>
+												<span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+													{server.label}
 												</span>
-												{tool.description ? (
-													<span className="block text-xs text-slate-500 dark:text-slate-400">
-														{tool.description}
-													</span>
-												) : null}
-											</span>
-										</label>
-									);
-								})}
+												{server.tools.map(renderToolRow)}
+											</div>
+										))
+									: group.tools.map(renderToolRow)}
 							</fieldset>
 						))}
 						{!hasExternalTools ? (

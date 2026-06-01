@@ -44,7 +44,7 @@ import type { AstraQuerySnapshot } from "../retrieval.js";
 import type { ToolDefinition } from "../types.js";
 import { astraTools } from "./providers/astra.js";
 import { nativeTools } from "./providers/native.js";
-import { remoteMcpTools } from "./providers/remote-mcp.js";
+import { parseMcpToolName, remoteMcpTools } from "./providers/remote-mcp.js";
 import {
 	filterVisibleDocuments,
 	listVisibleDocuments,
@@ -894,6 +894,11 @@ export interface ToolCandidate {
 	readonly id: string;
 	readonly description: string;
 	readonly source: ToolSource;
+	/** Owning MCP server id + label, for `source: "mcp"` (UI grouping). */
+	readonly serverId?: string;
+	readonly serverLabel?: string;
+	/** The tool's JSON-Schema arguments object (so the UI can show required args). */
+	readonly inputSchema?: Readonly<Record<string, unknown>>;
 }
 
 /** Built-in tool names, used to classify a candidate's source. */
@@ -937,11 +942,27 @@ export async function listCandidateTools(
 		...(await astraTools(ctx)),
 		...(await remoteMcpTools(ctx)),
 	];
-	return candidates.map((t) => ({
-		id: t.definition.name,
-		description: t.definition.description,
-		source: classifyToolSource(t.definition.name),
-	}));
+	// serverId → label, so each mcp candidate can carry its server's
+	// display name for the picker's per-server sub-grouping.
+	const servers = await ctx.store.listMcpServers(ctx.workspaceId);
+	const labelByServerId = new Map(servers.map((s) => [s.mcpServerId, s.label]));
+	return candidates.map((t) => {
+		const source = classifyToolSource(t.definition.name);
+		const parsed =
+			source === "mcp" ? parseMcpToolName(t.definition.name) : null;
+		return {
+			id: t.definition.name,
+			description: t.definition.description,
+			source,
+			inputSchema: t.definition.parameters,
+			...(parsed
+				? {
+						serverId: parsed.mcpServerId,
+						serverLabel: labelByServerId.get(parsed.mcpServerId),
+					}
+				: {}),
+		};
+	});
 }
 
 /* ------------------------------ helpers ---------------------------- */

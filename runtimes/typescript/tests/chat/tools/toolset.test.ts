@@ -110,6 +110,10 @@ describe("listCandidateTools — agent-form catalog (A6)", () => {
 		// Each entry carries the model-facing description verbatim.
 		const searchKb = catalog.find((t) => t.id === "search_kb");
 		expect(searchKb?.description.length).toBeGreaterThan(0);
+		// P4: every candidate exposes its JSON-Schema arguments object so the
+		// picker can show required args. (serverId/serverLabel are mcp-only.)
+		expect(searchKb?.inputSchema).toMatchObject({ type: "object" });
+		expect(searchKb?.serverId).toBeUndefined();
 		// A bare mock workspace wires no native / astra / mcp tools.
 		expect(catalog.some((t) => t.source !== "builtin")).toBe(false);
 	});

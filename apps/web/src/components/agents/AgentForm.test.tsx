@@ -142,6 +142,86 @@ describe("AgentForm", () => {
 		);
 	});
 
+	it("sub-groups MCP tools by server label and surfaces required args (P4)", () => {
+		render(
+			<AgentForm
+				mode="create"
+				knowledgeBases={[]}
+				llmServices={[]}
+				rerankingServices={[]}
+				availableTools={[
+					{ id: "search_kb", description: "b", source: "builtin" as const },
+					{
+						id: "mcp:srv-1:echo",
+						description: "Echo.",
+						source: "mcp" as const,
+						serverId: "srv-1",
+						serverLabel: "Acme Tools",
+						inputSchema: { type: "object", required: ["message"] },
+					},
+					{
+						id: "mcp:srv-2:ping",
+						description: "Ping.",
+						source: "mcp" as const,
+						serverId: "srv-2",
+						serverLabel: "Ping Server",
+						inputSchema: { type: "object" },
+					},
+				]}
+				onSubmit={vi.fn()}
+			/>,
+		);
+		// The mcp source group exists, sub-grouped per server label.
+		expect(screen.getByTestId("tool-group-mcp")).toBeInTheDocument();
+		expect(screen.getAllByTestId("mcp-server-group")).toHaveLength(2);
+		expect(screen.getByText("Acme Tools")).toBeInTheDocument();
+		expect(screen.getByText("Ping Server")).toBeInTheDocument();
+		// Required args surface from the tool's inputSchema.
+		expect(screen.getByText(/requires: message/)).toBeInTheDocument();
+	});
+
+	it("warns about saved tools that no longer resolve and can clear them (P4)", async () => {
+		const user = userEvent.setup();
+		render(
+			<AgentForm
+				mode="edit"
+				agent={{
+					workspaceId: "00000000-0000-4000-8000-000000000001",
+					agentId: "00000000-0000-4000-8000-000000000ccc",
+					name: "Stale",
+					description: null,
+					systemPrompt: null,
+					userPrompt: null,
+					llmServiceId: null,
+					knowledgeBaseIds: [],
+					// A namespaced id whose server was since removed.
+					toolIds: ["search_kb", "mcp:deleted-srv:gone"],
+					rerankEnabled: false,
+					rerankingServiceId: null,
+					rerankMaxResults: null,
+					createdAt: "2026-04-01T00:00:00Z",
+					updatedAt: "2026-04-01T00:00:00Z",
+				}}
+				knowledgeBases={[]}
+				llmServices={[]}
+				rerankingServices={[]}
+				availableTools={sampleTools}
+				onSubmit={vi.fn()}
+			/>,
+		);
+		const warning = screen.getByTestId("dangling-tools-warning");
+		expect(warning).toHaveTextContent("mcp:deleted-srv:gone");
+		// `search_kb` resolves, so it isn't flagged.
+		expect(warning).not.toHaveTextContent("search_kb");
+		// Clearing removes the dangling id and dismisses the warning.
+		await user.click(
+			screen.getByRole("button", { name: /Remove unavailable tools/ }),
+		);
+		expect(
+			screen.queryByTestId("dangling-tools-warning"),
+		).not.toBeInTheDocument();
+	});
+
 	it("shows an empty-state callout + 'Add tools' link when only built-in tools exist", () => {
 		render(
 			<MemoryRouter>

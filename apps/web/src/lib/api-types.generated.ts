@@ -5437,6 +5437,11 @@ export interface components {
 			description: string;
 			/** @enum {string} */
 			source: "builtin" | "native" | "astra" | "mcp";
+			serverId?: string;
+			serverLabel?: string;
+			inputSchema?: {
+				[key: string]: unknown;
+			};
 		};
 		ChunkingServicePage: {
 			items: components["schemas"]["ChunkingService"][];
