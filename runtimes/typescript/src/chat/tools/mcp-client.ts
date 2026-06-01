@@ -10,11 +10,15 @@
  * ## Security
  *
  * The server URL is validated through the **same SSRF guard** that gates
- * service endpoints ({@link EndpointBaseUrlSchema}): cloud-metadata and
+ * service endpoints ({@link resolvedEndpointSsrfReason}): cloud-metadata and
  * link-local hosts are rejected, and private networks too when the egress
- * policy is locked down (production). All outbound HTTP additionally flows
- * through {@link safeFetch}, which disables redirect-following so a public
- * host can't 30x us onto `169.254.169.254`. The credential is resolved
+ * policy is locked down (production). Beyond the literal-host check, the URL's
+ * hostname is **resolved and every address re-validated**, so a benign-looking
+ * name that resolves to `169.254.169.254` (or a private IP, when locked down)
+ * is refused — DNS-resolution parity with `native:fetch`. All outbound HTTP
+ * additionally flows through {@link safeFetch}, which disables
+ * redirect-following so a public host can't 30x us onto `169.254.169.254`.
+ * The credential is resolved
  * from a {@link SecretRef} via the {@link SecretResolver} and sent as a
  * bearer token — the raw value never leaves this module.
  *
@@ -30,7 +34,10 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { safeFetch } from "../../lib/safe-fetch.js";
-import { EndpointBaseUrlSchema } from "../../openapi/schemas.js";
+import {
+	type HostResolver,
+	resolvedEndpointSsrfReason,
+} from "../../openapi/schemas.js";
 import type { SecretResolver } from "../../secrets/provider.js";
 import { VERSION } from "../../version.js";
 
@@ -56,6 +63,12 @@ export interface ConnectMcpClientOptions {
 	readonly transportFactory?: (url: URL) => Transport | Promise<Transport>;
 	/** Logged client name surfaced to the server. */
 	readonly clientName?: string;
+	/**
+	 * Override DNS resolution for the SSRF pre-flight (tests inject a fake so
+	 * a hostname can "resolve" to a blocked IP without touching real DNS).
+	 * Defaults to the platform resolver.
+	 */
+	readonly hostResolver?: HostResolver;
 }
 
 /**
@@ -92,10 +105,16 @@ export class UnsafeMcpServerUrlError extends Error {
 export async function connectMcpClient(
 	opts: ConnectMcpClientOptions,
 ): Promise<RemoteMcpSession> {
-	// SSRF guard — identical policy to service endpoints. Reuse the schema
-	// so the blocked-host list and the private-network egress toggle stay
-	// in one place.
-	if (!EndpointBaseUrlSchema.safeParse(opts.url).success) {
+	// SSRF guard — identical policy to service endpoints. Reuse the resolver
+	// so the blocked-host list and the private-network egress toggle stay in
+	// one place; this also resolves the hostname and re-checks every address,
+	// closing the "name resolves to an internal IP" hole the literal check
+	// can't see.
+	const ssrfReason = await resolvedEndpointSsrfReason(
+		opts.url,
+		opts.hostResolver,
+	);
+	if (ssrfReason) {
 		throw new UnsafeMcpServerUrlError(opts.url);
 	}
 	const url = new URL(opts.url);

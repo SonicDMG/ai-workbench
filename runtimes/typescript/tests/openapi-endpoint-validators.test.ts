@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import {
 	CreateChunkingServiceInputSchema,
 	CreateEmbeddingServiceInputSchema,
@@ -6,6 +6,9 @@ import {
 	CreateRerankingServiceInputSchema,
 	EndpointBaseUrlSchema,
 	EndpointPathSchema,
+	type HostResolver,
+	resolvedEndpointSsrfReason,
+	setEndpointEgressPolicy,
 } from "../src/openapi/schemas.js";
 
 describe("EndpointBaseUrlSchema", () => {
@@ -167,5 +170,115 @@ describe("Service input schemas reject SSRF-class endpointBaseUrl values", () =>
 			endpointPath: null,
 		});
 		expect(result.success).toBe(true);
+	});
+});
+
+describe("resolvedEndpointSsrfReason — DNS-resolution guard", () => {
+	// Default egress policy allows private networks (dev). Restore it after
+	// any test that locks the policy down so the suite stays order-independent.
+	afterEach(() => setEndpointEgressPolicy({ blockPrivateNetworks: false }));
+
+	const resolvesTo =
+		(...addresses: { address: string; family: number }[]): HostResolver =>
+		async () =>
+			addresses;
+
+	test("allows a host that resolves only to public addresses", async () => {
+		const reason = await resolvedEndpointSsrfReason(
+			"https://tools.example.com/mcp",
+			resolvesTo({ address: "93.184.216.34", family: 4 }),
+		);
+		expect(reason).toBeNull();
+	});
+
+	test("blocks a benign-looking host that resolves to the cloud-metadata IP", async () => {
+		const reason = await resolvedEndpointSsrfReason(
+			"https://innocent.example.com/mcp",
+			resolvesTo({ address: "169.254.169.254", family: 4 }),
+		);
+		expect(reason).toMatch(
+			/resolves to a blocked address \(169\.254\.169\.254\)/,
+		);
+	});
+
+	test("blocks when ANY resolved address is internal (DNS round-robin rebind)", async () => {
+		const reason = await resolvedEndpointSsrfReason(
+			"https://mixed.example.com/mcp",
+			resolvesTo(
+				{ address: "93.184.216.34", family: 4 },
+				{ address: "169.254.169.254", family: 4 },
+			),
+		);
+		expect(reason).toMatch(/blocked address/);
+	});
+
+	test("allows a host resolving to RFC1918 by default (on-prem dev)", async () => {
+		const reason = await resolvedEndpointSsrfReason(
+			"https://internal-mcp.corp/mcp",
+			resolvesTo({ address: "10.0.0.5", family: 4 }),
+		);
+		expect(reason).toBeNull();
+	});
+
+	test("blocks a host resolving to RFC1918 once private networks are locked down", async () => {
+		setEndpointEgressPolicy({ blockPrivateNetworks: true });
+		const reason = await resolvedEndpointSsrfReason(
+			"https://internal-mcp.corp/mcp",
+			resolvesTo({ address: "10.0.0.5", family: 4 }),
+		);
+		expect(reason).toMatch(/resolves to a blocked address \(10\.0\.0\.5\)/);
+	});
+
+	test("blocks an IPv6 unique-local resolution when locked down", async () => {
+		setEndpointEgressPolicy({ blockPrivateNetworks: true });
+		const reason = await resolvedEndpointSsrfReason(
+			"https://internal-v6.corp/mcp",
+			resolvesTo({ address: "fd00::1", family: 6 }),
+		);
+		expect(reason).toMatch(/blocked address/);
+	});
+
+	test("fails closed when the host does not resolve", async () => {
+		const reason = await resolvedEndpointSsrfReason(
+			"https://nxdomain.example.com/mcp",
+			async () => {
+				throw new Error("ENOTFOUND");
+			},
+		);
+		expect(reason).toMatch(/could not be resolved/);
+	});
+
+	test("fails closed when the host resolves to no addresses", async () => {
+		const reason = await resolvedEndpointSsrfReason(
+			"https://empty.example.com/mcp",
+			resolvesTo(),
+		);
+		expect(reason).toMatch(/did not resolve to any address/);
+	});
+
+	test("rejects a literal metadata URL without consulting the resolver", async () => {
+		let called = false;
+		const reason = await resolvedEndpointSsrfReason(
+			"http://169.254.169.254/latest/meta-data/",
+			async () => {
+				called = true;
+				return [];
+			},
+		);
+		expect(reason).toMatch(/not an allowed endpoint/);
+		expect(called).toBe(false);
+	});
+
+	test("skips DNS resolution for a public literal IP (already range-checked)", async () => {
+		let called = false;
+		const reason = await resolvedEndpointSsrfReason(
+			"https://93.184.216.34/mcp",
+			async () => {
+				called = true;
+				return [];
+			},
+		);
+		expect(reason).toBeNull();
+		expect(called).toBe(false);
 	});
 });

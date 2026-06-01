@@ -180,6 +180,35 @@ describe("AgentForm", () => {
 		expect(screen.getByText(/requires: message/)).toBeInTheDocument();
 	});
 
+	it("renders an untrusted MCP tool description as inert text, never parsed HTML (P6)", () => {
+		const xss = '<img src=x onerror="alert(1)"><script>steal()</script>';
+		const { container } = render(
+			<AgentForm
+				mode="create"
+				knowledgeBases={[]}
+				llmServices={[]}
+				rerankingServices={[]}
+				availableTools={[
+					{
+						id: "mcp:srv-1:evil",
+						description: xss,
+						source: "mcp" as const,
+						serverId: "srv-1",
+						serverLabel: "Untrusted Server",
+						inputSchema: { type: "object" },
+					},
+				]}
+				onSubmit={vi.fn()}
+			/>,
+		);
+		// The payload appears verbatim as text — React escaped the angle
+		// brackets, so the description is shown, not interpreted…
+		expect(screen.getByText(xss)).toBeInTheDocument();
+		// …and was NOT parsed into live DOM nodes (no XSS sink).
+		expect(container.querySelector("img")).toBeNull();
+		expect(container.querySelector("script")).toBeNull();
+	});
+
 	it("warns about saved tools that no longer resolve and can clear them (P4)", async () => {
 		const user = userEvent.setup();
 		render(

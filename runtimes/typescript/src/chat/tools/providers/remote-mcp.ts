@@ -192,6 +192,23 @@ function filterByAllowList<T extends { readonly name: string }>(
 }
 
 /**
+ * Caps on the metadata an UNTRUSTED MCP server can inject into the model
+ * prompt. A server advertises each tool's `description` + `inputSchema`, and
+ * both are serialized into the tool manifest the model sees on every turn —
+ * so an oversized or adversarial advertisement is a prompt-bloat /
+ * context-exhaustion / injection vector. We bound them at adaptation time;
+ * the call path itself is never clamped, only the advertised metadata.
+ */
+const MAX_MCP_TOOL_DESCRIPTION_CHARS = 1024;
+const MAX_MCP_TOOL_SCHEMA_CHARS = 16_384;
+
+/** Clamp an advertised tool description to the prompt-injection cap. */
+function clampToolDescription(text: string): string {
+	if (text.length <= MAX_MCP_TOOL_DESCRIPTION_CHARS) return text;
+	return `${text.slice(0, MAX_MCP_TOOL_DESCRIPTION_CHARS - 1)}…`;
+}
+
+/**
  * Wrap one discovered remote tool as an {@link AgentTool}. The
  * model-facing definition carries the namespaced name + the server's
  * advertised JSON Schema; `execute` reconnects, calls the remote tool,
@@ -204,9 +221,10 @@ function adaptRemoteTool(
 	deps: RemoteMcpDeps,
 ): AgentTool {
 	const name = mcpToolName(server.mcpServerId, tool.name);
-	const description =
+	const description = clampToolDescription(
 		tool.description ??
-		`Tool '${tool.name}' from MCP server '${server.label}'.`;
+			`Tool '${tool.name}' from MCP server '${server.label}'.`,
+	);
 	return {
 		definition: {
 			name,
@@ -242,11 +260,27 @@ function adaptRemoteTool(
 /**
  * Coerce a remote tool's input schema into the object-schema shape the
  * agent tool definition expects. Falls back to a permissive empty object
- * schema when the server advertises something non-object.
+ * schema when the server advertises something non-object — or when the
+ * advertised schema exceeds {@link MAX_MCP_TOOL_SCHEMA_CHARS} (an untrusted
+ * server can't bloat the prompt with a giant schema). Oversized schemas are
+ * replaced wholesale, never truncated mid-structure (which would yield
+ * invalid JSON Schema). Fails closed: an unserializable schema is dropped.
  */
 function normalizeParameters(
 	inputSchema: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
-	if (inputSchema.type === "object") return inputSchema;
-	return { type: "object", properties: {}, additionalProperties: true };
+	const permissive = {
+		type: "object",
+		properties: {},
+		additionalProperties: true,
+	};
+	if (inputSchema.type !== "object") return permissive;
+	try {
+		if (JSON.stringify(inputSchema).length > MAX_MCP_TOOL_SCHEMA_CHARS) {
+			return permissive;
+		}
+	} catch {
+		return permissive;
+	}
+	return inputSchema;
 }

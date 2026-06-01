@@ -21,7 +21,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { z } from "zod";
 import { executeWorkspaceTool } from "../../../src/chat/tools/dispatcher.js";
-import { connectMcpClient } from "../../../src/chat/tools/mcp-client.js";
+import {
+	connectMcpClient,
+	type RemoteMcpSession,
+	UnsafeMcpServerUrlError,
+} from "../../../src/chat/tools/mcp-client.js";
 import {
 	clearMcpDiscoveryCache,
 	invalidateMcpServer,
@@ -79,12 +83,21 @@ function makeFakeRemoteServer(): McpServer {
  * linked to a fresh fake server. Tracks every server it spins up so the
  * test can assert they were all closed.
  */
+// Tests drive an in-memory transport, so real DNS is irrelevant to them.
+// Stub the SSRF pre-flight resolver to a public IP so the (intentionally
+// non-resolvable) `*.example.com` fixture hosts pass the guard deterministically
+// — the equivalent of stubbing the transport, for the resolution step.
+const benignHostResolver = async () => [
+	{ address: "93.184.216.34", family: 4 },
+];
+
 function inMemoryConnect(servers: McpServer[]): RemoteMcpDeps["connect"] {
 	return (opts) => {
 		const server = makeFakeRemoteServer();
 		servers.push(server);
 		return connectMcpClient({
 			...opts,
+			hostResolver: benignHostResolver,
 			transportFactory: async () => {
 				const [serverTransport, clientTransport] =
 					InMemoryTransport.createLinkedPair();
@@ -186,6 +199,37 @@ describe("remoteMcpTools — discovery + execution round-trip", () => {
 		expect(result.outcome).toBe("success");
 	});
 
+	test("the dispatcher denies an mcp: call when the key lacks tools:invoke (P3 gate, full loop)", async () => {
+		const { ctx, store, workspaceId } = await makeCtx();
+		const server = await store.createMcpServer(workspaceId, {
+			label: "Fake",
+			url: "https://fake.example.com/mcp",
+		});
+		const toolId = `mcp:${server.mcpServerId}:echo`;
+		const servers: McpServer[] = [];
+		const remoteTools = await remoteMcpToolsWith(ctx, {
+			connect: inMemoryConnect(servers),
+		});
+		const toolset = {
+			tools: remoteTools.filter((t) => t.definition.name === toolId),
+			resolve: (name: string) =>
+				remoteTools.find((t) => t.definition.name === name) ?? null,
+		};
+
+		// toolInvokeAllowed === false → the external tool is refused before any
+		// execute connect runs (the model gets a `denied` outcome, not a result).
+		const result = await executeWorkspaceTool(
+			call(toolId, { message: "world" }),
+			toolset,
+			{ toolInvokeAllowed: false } as AgentToolDeps,
+		);
+		expect(result.outcome).toBe("denied");
+		expect(result.resultText).toMatch(/tools:invoke/);
+		// Discovery connected once; the gate fired BEFORE a second (execute)
+		// connect — so the remote tool was never actually called.
+		expect(servers.length).toBe(1);
+	});
+
 	test("resolveAgentToolset includes a remote tool only when toolIds name it", async () => {
 		const { ctx, store, workspaceId } = await makeCtx();
 		const server = await store.createMcpServer(workspaceId, {
@@ -285,6 +329,100 @@ describe("connectMcpClient — SSRF guard", () => {
 			connectMcpClient({ url: "file:///etc/passwd", secrets }),
 		).rejects.toThrow(/not an allowed endpoint/);
 	});
+
+	test("rejects a benign-looking host that RESOLVES to an internal IP (DNS guard)", async () => {
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		await expect(
+			connectMcpClient({
+				url: "https://innocent.example.com/mcp",
+				secrets,
+				// Literal-host check passes; resolution to the metadata IP is the
+				// hole this guard closes — and it must fire before any dial.
+				hostResolver: async () => [{ address: "169.254.169.254", family: 4 }],
+				transportFactory: () => {
+					throw new Error("must not dial a host that resolves internal");
+				},
+			}),
+		).rejects.toBeInstanceOf(UnsafeMcpServerUrlError);
+	});
+
+	test("a host resolving to a public IP passes the guard and connects", async () => {
+		const secrets = new SecretResolver({ env: new EnvSecretProvider() });
+		const server = makeFakeRemoteServer();
+		const session = await connectMcpClient({
+			url: "https://tools.example.com/mcp",
+			secrets,
+			hostResolver: async () => [{ address: "93.184.216.34", family: 4 }],
+			transportFactory: async () => {
+				const [serverTransport, clientTransport] =
+					InMemoryTransport.createLinkedPair();
+				await server.connect(serverTransport);
+				return clientTransport;
+			},
+		});
+		const tools = await session.listTools();
+		expect(tools.map((t) => t.name).sort()).toEqual(["echo", "ping"]);
+		await session.close();
+		await server.close();
+	});
+});
+
+describe("remoteMcpTools — untrusted-server prompt hardening (P6)", () => {
+	beforeEach(() => clearMcpDiscoveryCache());
+
+	/**
+	 * A `connect` that bypasses any real server and hands back a session
+	 * advertising one tool with an oversized description + schema — the
+	 * adversarial-advertisement shape the caps defend against.
+	 */
+	function oversizedConnect(): RemoteMcpDeps["connect"] {
+		const session: RemoteMcpSession = {
+			async listTools() {
+				return [
+					{
+						name: "huge",
+						description: "X".repeat(5000),
+						inputSchema: {
+							type: "object",
+							properties: {
+								blob: { type: "string", description: "Y".repeat(40_000) },
+							},
+						},
+					},
+				];
+			},
+			async callTool() {
+				return "ok";
+			},
+			async close() {},
+		};
+		return async () => session;
+	}
+
+	test("clamps an oversized advertised description and drops an oversized schema", async () => {
+		const { ctx, store, workspaceId } = await makeCtx();
+		const server = await store.createMcpServer(workspaceId, {
+			label: "Hostile",
+			url: "https://hostile.example.com/mcp",
+		});
+		const tools = await remoteMcpToolsWith(ctx, {
+			connect: oversizedConnect(),
+		});
+		const tool = tools.find(
+			(t) => t.definition.name === `mcp:${server.mcpServerId}:huge`,
+		);
+		expect(tool).toBeDefined();
+		// Description is clamped (≤ cap) with an ellipsis marker.
+		expect(tool?.definition.description.length).toBeLessThanOrEqual(1024);
+		expect(tool?.definition.description.endsWith("…")).toBe(true);
+		// The oversized schema is replaced wholesale with the permissive object,
+		// never the giant advertised one.
+		expect(tool?.definition.parameters).toEqual({
+			type: "object",
+			properties: {},
+			additionalProperties: true,
+		});
+	});
 });
 
 describe("connectMcpClient — credential resolution", () => {
@@ -298,6 +436,7 @@ describe("connectMcpClient — credential resolution", () => {
 				url: "https://fake.example.com/mcp",
 				credentialRef: "env:WB_TEST_MCP_TOKEN",
 				secrets,
+				hostResolver: benignHostResolver,
 				transportFactory: async (url) => {
 					// Confirm the validated URL is threaded through to the factory.
 					expect(url.href).toBe("https://fake.example.com/mcp");

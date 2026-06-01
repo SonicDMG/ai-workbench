@@ -7,6 +7,8 @@
  * once, referenced everywhere.
  */
 
+import { lookup as dnsLookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { z } from "@hono/zod-openapi";
 import { ALL_API_KEY_SCOPES } from "../control-plane/types.js";
 import {
@@ -181,6 +183,83 @@ export const EndpointBaseUrlSchema = z
 		message:
 			"endpointBaseUrl must be an http(s) URL; cloud-metadata and link-local hosts are blocked (private networks may also be blocked depending on runtime.blockPrivateNetworkEndpoints)",
 	});
+
+/* -------- DNS-resolution SSRF guard for endpoint URLs -------- */
+
+/** A resolved address, mirroring `dns.LookupAddress` (`{ address, family }`). */
+export interface ResolvedAddress {
+	readonly address: string;
+	readonly family: number;
+}
+
+/**
+ * Resolve a hostname to its IP addresses. Mirrors `dns.lookup(host, { all:
+ * true })` — the resolver `fetch` itself uses — so what we validate is what
+ * the connection will target. Overridable in tests.
+ */
+export type HostResolver = (
+	hostname: string,
+) => Promise<readonly ResolvedAddress[]>;
+
+const defaultEndpointHostResolver: HostResolver = (hostname) =>
+	dnsLookup(hostname, { all: true });
+
+/**
+ * Full pre-flight host check for an endpoint URL: the synchronous literal
+ * checks of {@link EndpointBaseUrlSchema} PLUS — for DNS names — resolution
+ * and re-validation of every resolved address. Closes the "a public-looking
+ * hostname that resolves to 169.254.169.254 / a private IP slips past the
+ * literal check" SSRF hole that the literal validator alone can't see.
+ *
+ * It re-runs {@link isAllowedEndpointBaseUrl} on a synthetic URL per resolved
+ * IP, so it stays in lockstep with the literal policy AND honors
+ * {@link setEndpointEgressPolicy}: cloud-metadata / link-local addresses are
+ * always refused, while RFC1918 / loopback are refused only when
+ * `blockPrivateNetworks` is on — so an on-prem operator can still register an
+ * MCP server on an internal host in a dev/un-locked-down deployment.
+ *
+ * Fails closed: a host that won't resolve, resolves to nothing, or resolves
+ * to ANY blocked address is refused. Returns a reason string when the URL
+ * must be refused, else `null`.
+ *
+ * Residual: a sub-second DNS rebind between this check and the actual
+ * connection remains possible; `safeFetch`'s `redirect: "error"` bounds it.
+ */
+export async function resolvedEndpointSsrfReason(
+	rawUrl: string,
+	resolveHost: HostResolver = defaultEndpointHostResolver,
+): Promise<string | null> {
+	if (!isAllowedEndpointBaseUrl(rawUrl)) {
+		return "URL is not an allowed endpoint (http(s) only; cloud-metadata, link-local, and — when locked down — private hosts are blocked)";
+	}
+	// isAllowedEndpointBaseUrl accepted it, so this parse succeeds.
+	const host = new URL(rawUrl).hostname.toLowerCase();
+	const literal =
+		host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+	// A literal IP was already range-checked synchronously above.
+	if (isIP(literal) !== 0) return null;
+
+	let addresses: readonly ResolvedAddress[];
+	try {
+		addresses = await resolveHost(host);
+	} catch {
+		return `host '${host}' could not be resolved`;
+	}
+	if (addresses.length === 0) {
+		return `host '${host}' did not resolve to any address`;
+	}
+	for (const { address, family } of addresses) {
+		// Re-run the literal policy against the resolved IP by synthesizing a
+		// URL for it; this reuses the exact metadata / link-local / private
+		// range checks (and the egress toggle) the literal validator applies.
+		const synthetic =
+			family === 6 ? `https://[${address}]/` : `https://${address}/`;
+		if (!isAllowedEndpointBaseUrl(synthetic)) {
+			return `host '${host}' resolves to a blocked address (${address})`;
+		}
+	}
+	return null;
+}
 
 /**
  * Validator for the `endpointPath` suffix appended to
