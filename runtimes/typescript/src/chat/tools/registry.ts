@@ -23,6 +23,7 @@
  */
 
 import { z } from "@hono/zod-openapi";
+import type { ResolvedPrincipal } from "../../auth/types.js";
 import type { ChatConfig } from "../../config/schema.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type { KnowledgeBaseRecord } from "../../control-plane/types.js";
@@ -44,6 +45,12 @@ import type { ToolDefinition } from "../types.js";
 import { astraTools } from "./providers/astra.js";
 import { nativeTools } from "./providers/native.js";
 import { remoteMcpTools } from "./providers/remote-mcp.js";
+import {
+	filterVisibleDocuments,
+	listVisibleDocuments,
+	mergeReadFilter,
+	resolveKbReadPolicy,
+} from "./rlac.js";
 
 /**
  * Side-channel a tool can use to surface artifacts the agent dispatcher
@@ -65,6 +72,15 @@ export interface AgentToolDeps {
 	readonly store: ControlPlaneStore;
 	readonly drivers: VectorStoreDriverRegistry;
 	readonly embedders: EmbedderFactory;
+	/**
+	 * The caller's resolved RLAC principal (or null when unauthenticated /
+	 * no principal). Document- and chunk-reading tools fold this principal's
+	 * policy filter into their reads so an agent can't retrieve rows its
+	 * caller can't see. Null + RLAC-off ⇒ no constraint (legacy behavior).
+	 * Optional so test fixtures and non-RLAC callers can omit it (absent ⇒
+	 * null); the dispatch + MCP paths always set it from the request.
+	 */
+	readonly principal?: ResolvedPrincipal | null;
 	readonly logger?: Pick<Logger, "warn" | "debug">;
 	readonly effects?: ToolEffectsSink;
 }
@@ -167,10 +183,12 @@ const listDocuments: AgentTool = {
 
 		const settled = await Promise.allSettled(
 			kbIds.map((kbId) =>
-				deps.store.listRagDocuments(deps.workspaceId, kbId).then((list) => ({
-					kbId,
-					list,
-				})),
+				listVisibleDocuments({
+					store: deps.store,
+					workspaceId: deps.workspaceId,
+					knowledgeBaseId: kbId,
+					principal: deps.principal,
+				}).then((list) => ({ kbId, list })),
 			),
 		);
 		const docs: {
@@ -245,9 +263,12 @@ const countDocuments: AgentTool = {
 				);
 		const settled = await Promise.allSettled(
 			kbIds.map((kbId) =>
-				deps.store
-					.listRagDocuments(deps.workspaceId, kbId)
-					.then((list) => ({ kbId, count: list.length })),
+				listVisibleDocuments({
+					store: deps.store,
+					workspaceId: deps.workspaceId,
+					knowledgeBaseId: kbId,
+					principal: deps.principal,
+				}).then((list) => ({ kbId, count: list.length })),
 			),
 		);
 		const counts = settled.map((result, idx) => {
@@ -316,9 +337,12 @@ const summarizeKb: AgentTool = {
 
 		const settled = await Promise.allSettled(
 			kbs.map((kb) =>
-				deps.store
-					.listRagDocuments(deps.workspaceId, kb.knowledgeBaseId)
-					.then((docs) => ({ kb, docs })),
+				listVisibleDocuments({
+					store: deps.store,
+					workspaceId: deps.workspaceId,
+					knowledgeBaseId: kb.knowledgeBaseId,
+					principal: deps.principal,
+				}).then((docs) => ({ kb, docs })),
 			),
 		);
 		const summaries = settled.map((result, idx) => {
@@ -427,12 +451,28 @@ const searchKb: AgentTool = {
 		const settled = await Promise.allSettled(
 			kbIds.map(async (kbId): Promise<KbResult> => {
 				const ctx = await resolveKb(deps.store, deps.workspaceId, kbId);
+				// RLAC: fold the caller's policy filter into the search so
+				// only chunks they may see come back. A policy-on KB with no
+				// principal yields no hits for that KB (fail-soft).
+				const policy = await resolveKbReadPolicy({
+					store: deps.store,
+					workspace: ctx.workspace,
+					knowledgeBase: ctx.knowledgeBase,
+					principal: deps.principal,
+					action: "search",
+					resourceId: "*",
+				});
+				if (!policy.allow) return { hits: [], snapshot: null };
 				const driver = deps.drivers.for(ctx.workspace);
 				const raw = await dispatchSearch({
 					ctx,
 					driver,
 					embedders: deps.embedders,
-					body: { text: parsed.data.query, topK: limit },
+					body: {
+						text: parsed.data.query,
+						topK: limit,
+						filter: mergeReadFilter(undefined, policy.filter),
+					},
 				});
 				const hits: Hit[] = raw.map((hit) => {
 					const payload = hit.payload ?? {};
@@ -574,6 +614,22 @@ const listChunks: AgentTool = {
 			deps.workspaceId,
 			parsed.data.knowledgeBaseId,
 		);
+		// RLAC: a caller who can't see the document can't read its chunks.
+		// Treat an invisible (or policy-denied) doc as absent.
+		const policy = await resolveKbReadPolicy({
+			store: deps.store,
+			workspace: ctx.workspace,
+			knowledgeBase: ctx.knowledgeBase,
+			principal: deps.principal,
+			action: "get",
+			resourceId: parsed.data.documentId,
+		});
+		if (
+			!policy.allow ||
+			filterVisibleDocuments([doc], policy.filter).length === 0
+		) {
+			return `Error: document ${parsed.data.documentId} not found in knowledge base ${parsed.data.knowledgeBaseId}.`;
+		}
 		const driver = deps.drivers.for(ctx.workspace);
 		if (typeof driver.listRecords !== "function") {
 			return `Error: driver for workspace kind '${ctx.workspace.kind}' doesn't support listRecords; can't enumerate chunks.`;
@@ -685,6 +741,26 @@ const getDocument: AgentTool = {
 			parsed.data.documentId,
 		);
 		if (!doc) {
+			return `Error: document ${parsed.data.documentId} not found in knowledge base ${parsed.data.knowledgeBaseId}.`;
+		}
+		// RLAC: hide a document the caller can't see (treat as absent).
+		const docCtx = await resolveKb(
+			deps.store,
+			deps.workspaceId,
+			parsed.data.knowledgeBaseId,
+		);
+		const docPolicy = await resolveKbReadPolicy({
+			store: deps.store,
+			workspace: docCtx.workspace,
+			knowledgeBase: docCtx.knowledgeBase,
+			principal: deps.principal,
+			action: "get",
+			resourceId: parsed.data.documentId,
+		});
+		if (
+			!docPolicy.allow ||
+			filterVisibleDocuments([doc], docPolicy.filter).length === 0
+		) {
 			return `Error: document ${parsed.data.documentId} not found in knowledge base ${parsed.data.knowledgeBaseId}.`;
 		}
 		return JSON.stringify({

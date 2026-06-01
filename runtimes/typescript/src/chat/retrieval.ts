@@ -13,6 +13,7 @@
  * a hard error in the user's face.
  */
 
+import type { ResolvedPrincipal } from "../auth/types.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type { VectorStoreDriverRegistry } from "../drivers/registry.js";
 import type { EmbedderFactory } from "../embeddings/factory.js";
@@ -26,6 +27,7 @@ import {
 	buildVectorSearchSnapshot,
 } from "../snapshots/types.js";
 import type { RetrievedChunk } from "./prompt.js";
+import { mergeReadFilter, resolveKbReadPolicy } from "./tools/rlac.js";
 
 // Re-export so existing imports from `chat/retrieval.js` keep working
 // while the SPA and other call sites migrate to `snapshots/types.js`.
@@ -60,6 +62,14 @@ export interface RetrieveContextRequest {
 	readonly query: string;
 	/** Top-K chunks per knowledge base. */
 	readonly retrievalK: number;
+	/**
+	 * The caller's resolved RLAC principal (or null). When the KB's policy
+	 * is enabled, the per-KB search filter is scoped to this principal so
+	 * the agent grounds only on chunks the caller may see. A policy-on KB
+	 * with no principal contributes no chunks (fail-soft). Optional
+	 * (absent ⇒ null); the chat + MCP callers always set it.
+	 */
+	readonly principal?: ResolvedPrincipal | null;
 }
 
 /**
@@ -86,12 +96,30 @@ export async function retrieveContext(
 		knowledgeBaseIds.map(async (kbId) => {
 			try {
 				const ctx = await resolveKb(deps.store, request.workspaceId, kbId);
+				// RLAC: fold the caller's policy filter into the search so
+				// the agent only grounds on chunks the caller may see. A
+				// policy-on KB with no principal contributes nothing.
+				const policy = await resolveKbReadPolicy({
+					store: deps.store,
+					workspace: ctx.workspace,
+					knowledgeBase: ctx.knowledgeBase,
+					principal: request.principal,
+					action: "search",
+					resourceId: "*",
+				});
+				if (!policy.allow) {
+					return { chunks: [] as RetrievedChunk[], snapshot: null };
+				}
 				const driver = deps.drivers.for(ctx.workspace);
 				const hits = await dispatchSearch({
 					ctx,
 					driver,
 					embedders: deps.embedders,
-					body: { text: request.query, topK: request.retrievalK },
+					body: {
+						text: request.query,
+						topK: request.retrievalK,
+						filter: mergeReadFilter(undefined, policy.filter),
+					},
 				});
 				const snapshot =
 					ctx.workspace.kind === "astra" || ctx.workspace.kind === "hcd"

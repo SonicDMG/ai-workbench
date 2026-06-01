@@ -15,6 +15,7 @@
 
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Context } from "hono";
+import { getRequestPrincipal } from "../../auth/principal-resolver.js";
 import type { AuthContext } from "../../auth/types.js";
 import type { ChatService } from "../../chat/types.js";
 import type { ChatConfig, McpConfig } from "../../config/schema.js";
@@ -128,6 +129,7 @@ export function mcpRoutes(deps: McpRouteDeps): OpenAPIHono<AppEnv> {
 				ingestService: deps.ingestService,
 				knowledgeBaseService: deps.knowledgeBaseService,
 				subjectScopes,
+				principal: getRequestPrincipal(c),
 				onToolInvoke: (info) => {
 					audit(c, {
 						action: "mcp.invoke",

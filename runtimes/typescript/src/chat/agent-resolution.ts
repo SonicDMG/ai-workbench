@@ -18,6 +18,7 @@
  *     back to `deps.chatService` (the global runtime chat service).
  */
 
+import type { ResolvedPrincipal } from "../auth/types.js";
 import type { ChatConfig } from "../config/schema.js";
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../control-plane/defaults.js";
 import { ControlPlaneNotFoundError } from "../control-plane/errors.js";
@@ -59,6 +60,14 @@ export interface AgentResolutionContext {
 	readonly workspaceId: string;
 	readonly agent: AgentRecord;
 	readonly conversation: ConversationRecord;
+	/**
+	 * The caller's resolved RLAC principal (or null). Threaded into the
+	 * per-turn {@link AgentToolDeps} so document/chunk-reading tools honor
+	 * the same row-level access policy the REST routes do — an agent can't
+	 * retrieve rows its caller can't see. Optional (absent ⇒ null); the
+	 * dispatch route always sets it from `getRequestPrincipal(c)`.
+	 */
+	readonly principal?: ResolvedPrincipal | null;
 }
 
 export interface ResolvedAgentChat {
@@ -123,6 +132,7 @@ export async function resolveAgentChat(
 		store,
 		drivers: deps.drivers,
 		embedders: deps.embedders,
+		principal: ctx.principal,
 		logger: deps.logger,
 	};
 

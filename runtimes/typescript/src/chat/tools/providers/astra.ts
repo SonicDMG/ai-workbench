@@ -60,6 +60,7 @@ import type {
 	AgentToolDeps,
 	ToolProviderContext,
 } from "../registry.js";
+import { mergeReadFilter, resolveKbReadPolicy } from "../rlac.js";
 
 export const ASTRA_DATA_API_TOOL_ID = "astra:data_api";
 
@@ -240,13 +241,30 @@ async function runVectorSearch(
 	const topK = args.topK ?? DEFAULT_TOPK;
 	const driver = deps.drivers.for(resolution.workspace);
 
+	// RLAC: scope the search to chunks the caller may see.
+	const policy = await resolveKbReadPolicy({
+		store: deps.store,
+		workspace: resolution.workspace,
+		knowledgeBase: resolution.knowledgeBase,
+		principal: deps.principal,
+		action: "search",
+		resourceId: "*",
+	});
+	if (!policy.allow) {
+		return `No matches found in knowledge base ${envelope.kbName}.`;
+	}
+
 	let raw: Awaited<ReturnType<typeof dispatchSearch>>;
 	try {
 		raw = await dispatchSearch({
 			ctx: resolution,
 			driver,
 			embedders: deps.embedders,
-			body: { text: args.query, topK },
+			body: {
+				text: args.query,
+				topK,
+				filter: mergeReadFilter(undefined, policy.filter),
+			},
 		});
 	} catch (err) {
 		deps.logger?.warn?.(
@@ -306,6 +324,22 @@ async function runFind(
 		return `Error: driver for workspace kind '${resolution.workspace.kind}' doesn't support find/listRecords.`;
 	}
 
+	// RLAC: scope the read to rows the caller may see — fold the policy
+	// filter into the KB/document scope filter before listing.
+	const policy = await resolveKbReadPolicy({
+		store: deps.store,
+		workspace: resolution.workspace,
+		knowledgeBase: resolution.knowledgeBase,
+		principal: deps.principal,
+		action: args.documentId ? "get" : "list",
+		resourceId: args.documentId ?? "*",
+	});
+	if (!policy.allow) {
+		return `No rows found in knowledge base ${envelope.kbName}${
+			args.documentId ? ` for document ${args.documentId}` : ""
+		}.`;
+	}
+
 	// Snapshot mirrors the built-in `list_chunks` shape — a `find`
 	// filtered by document, ordered by chunkIndex, paged by limit/skip.
 	deps.effects?.pushAstraQuery?.(
@@ -317,10 +351,12 @@ async function runFind(
 		}),
 	);
 
-	const filter: Record<string, unknown> = {
+	const baseFilter: Record<string, unknown> = {
 		[KB_SCOPE_KEY]: args.knowledgeBaseId,
 	};
-	if (args.documentId) filter[DOCUMENT_SCOPE_KEY] = args.documentId;
+	if (args.documentId) baseFilter[DOCUMENT_SCOPE_KEY] = args.documentId;
+	const filter: Readonly<Record<string, unknown>> =
+		mergeReadFilter(baseFilter, policy.filter) ?? baseFilter;
 
 	let records: Awaited<ReturnType<NonNullable<typeof driver.listRecords>>>;
 	try {

@@ -74,6 +74,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
+import type { ResolvedPrincipal } from "../auth/types.js";
 import type { ChatService } from "../chat/types.js";
 import type { ChatConfig } from "../config/schema.js";
 import { ControlPlaneNotFoundError } from "../control-plane/errors.js";
@@ -233,6 +234,14 @@ export interface McpServerDeps {
 	 * passed the workspace-scope gate, which is the read floor today.
 	 */
 	readonly subjectScopes: readonly string[] | null;
+	/**
+	 * The caller's resolved RLAC principal (or null). Threaded into the
+	 * `run_agent` / `chat_send` grounding retrieval so the MCP chat tools
+	 * honor the workspace's row-level access policy — an external agent
+	 * can't surface documents its key's principal can't see. Optional so
+	 * older fixtures that omit it still load; absent ⇒ null (no principal).
+	 */
+	readonly principal?: ResolvedPrincipal | null;
 	/**
 	 * Optional hook fired around every tool invocation. Used by the
 	 * route layer to emit `mcp.invoke` audit events without coupling
@@ -957,6 +966,7 @@ function registerChatTool(
 					chatId,
 					content,
 					knowledgeBaseIds: chat.knowledgeBaseIds,
+					principal: deps.principal ?? null,
 				},
 			);
 			return {
@@ -1295,6 +1305,7 @@ function registerRunAgentTool(
 					content,
 					knowledgeBaseIds,
 					systemPrompt: agent.systemPrompt,
+					principal: deps.principal ?? null,
 				},
 			);
 

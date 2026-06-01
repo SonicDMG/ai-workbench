@@ -14,6 +14,7 @@
  * cannot drift.
  */
 
+import type { ResolvedPrincipal } from "../auth/types.js";
 import { assemblePrompt, PROMPT_HISTORY_FETCH_LIMIT } from "../chat/prompt.js";
 import { retrieveContext } from "../chat/retrieval.js";
 import type { ChatService } from "../chat/types.js";
@@ -51,6 +52,13 @@ export interface RunAgentTurnArgs {
 	 * the runtime-wide chat config.
 	 */
 	readonly systemPrompt?: string | null;
+	/**
+	 * The caller's resolved RLAC principal (or null). Scopes the grounding
+	 * retrieval to documents the caller may see, so an MCP `run_agent` /
+	 * `chat_send` can't surface rows behind the workspace's access policy.
+	 * Optional (absent ⇒ null); the MCP server sets it from the request.
+	 */
+	readonly principal?: ResolvedPrincipal | null;
 }
 
 export interface RunAgentTurnOutcome {
@@ -97,6 +105,7 @@ export async function runAgentTurn(
 			knowledgeBaseIds: args.knowledgeBaseIds,
 			query: args.content,
 			retrievalK: deps.chatConfig.retrievalK,
+			principal: args.principal,
 		},
 	);
 

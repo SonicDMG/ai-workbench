@@ -13,6 +13,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { ForbiddenError, UnauthorizedError } from "../../auth/errors.js";
+import { getRequestPrincipal } from "../../auth/principal-resolver.js";
 import {
 	dispatchAgentSend,
 	dispatchAgentSendStream,
@@ -766,6 +767,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 						workspaceId,
 						agent: resolved.agent,
 						conversation: resolved.conversation,
+						principal: getRequestPrincipal(c),
 					},
 					{ content: body.content },
 					auditToolInvoke(c, workspaceId),
@@ -875,6 +877,7 @@ export function agentRoutes(deps: AgentRouteDeps): OpenAPIHono<AppEnv> {
 							workspaceId,
 							agent: resolved.agent,
 							conversation: resolved.conversation,
+							principal: getRequestPrincipal(c),
 						},
 						{ content: userContent },
 						{
