@@ -43,6 +43,34 @@ export type Workspace = z.infer<typeof WorkspaceSchema>;
 
 export const WorkspaceListSchema = paginated(WorkspaceSchema);
 
+export const ApiKeyRecordSchema = z
+	.object({
+		workspaceId: z.string().optional(),
+		keyId: z.string(),
+		prefix: z.string(),
+		label: z.string(),
+		// Privilege scopes — coarse tiers and/or 0.5.0 fine grants. Kept as
+		// open strings so a newly-added server scope doesn't break the CLI.
+		scopes: z.array(z.string()),
+		createdAt: z.string().optional(),
+		lastUsedAt: z.string().nullable().optional(),
+		revokedAt: z.string().nullable().optional(),
+		expiresAt: z.string().nullable().optional(),
+	})
+	.passthrough();
+export type ApiKey = z.infer<typeof ApiKeyRecordSchema>;
+
+export const ApiKeyListSchema = paginated(ApiKeyRecordSchema);
+
+/** Mint response: the plaintext token is returned exactly once. */
+export const CreateApiKeyResponseSchema = z
+	.object({
+		plaintext: z.string(),
+		key: ApiKeyRecordSchema,
+	})
+	.passthrough();
+export type CreateApiKeyResponse = z.infer<typeof CreateApiKeyResponseSchema>;
+
 export const KnowledgeBaseSchema = z
 	.object({
 		workspaceId: z.string().optional(),

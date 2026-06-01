@@ -15,6 +15,7 @@ import { docCommand } from "./commands/doc.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { jobCommand } from "./commands/job.js";
 import { kbCommand } from "./commands/kb.js";
+import { keyCommand } from "./commands/key.js";
 import { hintForForbidden, loginCommand } from "./commands/login.js";
 import { logoutCommand } from "./commands/logout.js";
 import { policyCommand } from "./commands/policy.js";
@@ -46,6 +47,7 @@ const main = defineCommand({
 		profile: profileCommand,
 		workspace: workspaceCommand,
 		kb: kbCommand,
+		key: keyCommand,
 		db: dbCommand,
 		doc: docCommand,
 		search: searchCommand,

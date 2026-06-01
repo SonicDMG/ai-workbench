@@ -272,20 +272,29 @@ function describe(err: unknown): string {
  */
 export function hintForForbidden(message: string): string | null {
 	const m = message.toLowerCase();
-	const scopeMatch = m.match(/missing required scope '([a-z]+)'/);
-	if (scopeMatch) {
+	// Scopes are lowercase with an optional `:` facet (0.5.0 fine grants
+	// like `write:ingest` / `manage:keys`), so match the colon too — the
+	// pre-0.5.0 `[a-z]+` pattern silently failed to recognize fine-scope
+	// denials and fell back to the generic hint.
+	const scopeMatch = m.match(/missing required scope '([a-z:]+)'/);
+	if (scopeMatch?.[1]) {
 		const scope = scopeMatch[1];
+		// Map the scope's coarse tier to the role that grants it. Fine scopes
+		// share their tier's role; `tools:invoke` is a write-class capability
+		// (driving agents to call external tools).
+		const tier = scope.split(":")[0] ?? scope;
 		const role =
-			scope === "manage"
+			tier === "manage"
 				? "Admin"
-				: scope === "write"
+				: tier === "write" || tier === "tools"
 					? "Editor (or Admin)"
 					: "Viewer (or higher)";
+		const rolePreset = (role.split(" ")[0] ?? role).toLowerCase();
 		const lines = [
 			`Your key authenticated but lacks the '${scope}' scope, so the runtime refused this action.`,
-			`  • This operation needs the '${scope}' scope — mint a key with the ${role} role in the web UI (Workspace settings → API keys → New key), or ask an admin for one.`,
+			`  • Mint a key that carries it: \`aiw key create <label> --scope ${scope}\` (or \`--role ${rolePreset}\` for the ${role} preset), or via the web UI (Workspace settings → API keys → New key).`,
 		];
-		if (scope === "manage") {
+		if (tier === "manage") {
 			lines.push(
 				"  • 'manage' is the admin tier: minting/revoking keys, RLAC principals + policy, and workspace deletion. Editor keys can mutate content but not perform these admin ops.",
 			);
