@@ -26,7 +26,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { AppEnv } from "../lib/types.js";
 import { ForbiddenError } from "./errors.js";
-import { SCOPE_MANAGE, subjectGrantsScope } from "./roles.js";
+import { subjectGrantsScope } from "./roles.js";
 
 export function assertWorkspaceAccess(
 	c: Context<AppEnv>,
@@ -138,6 +138,15 @@ export function assertScope(c: Context<AppEnv>, scope: string): void {
 }
 
 /**
+ * Canonical name for the per-request privilege-scope check. Thin alias of
+ * {@link assertScope} — the route gates and handler-level checks call
+ * `requireScope` so the fine-grained-scopes surface reads consistently.
+ */
+export function requireScope(c: Context<AppEnv>, scope: string): void {
+	assertScope(c, scope);
+}
+
+/**
  * Workspace-route middleware: reject mutating REST requests when the
  * caller is missing the `write` scope. Mounts after
  * {@link workspaceRouteAuthz} so workspace membership has already
@@ -177,13 +186,46 @@ export function mutatingRouteWriteScope(): MiddlewareHandler<AppEnv> {
 			await next();
 			return;
 		}
-		if (isReadShapedRoute(c.req.path)) {
+		// Read-shaped POSTs (search, mcp, conversations, …) don't mutate KB
+		// content; manage-scoped routes (api-keys / principals / policy /
+		// workspace destroy) are gated by the manage gate below. Skip both
+		// here — in particular so a narrowly-scoped `manage:*` key isn't
+		// blocked by the write floor on an admin route it's allowed to use.
+		if (
+			isReadShapedRoute(c.req.path) ||
+			isManageScopedRoute(c.req.path, method)
+		) {
 			await next();
 			return;
 		}
-		assertScope(c, "write");
+		requireScope(c, writeScopeForRoute(c.req.path));
 		await next();
 	};
+}
+
+/**
+ * Map a write-shaped workspace route to the fine `write:*` scope it
+ * requires. Every route maps to a grant **under the same coarse `write`
+ * tier** it required before 0.5.0, so a legacy `write` key still grants
+ * all of them via containment ({@link ./roles.scopeGrants}). Unmatched
+ * mutating paths fall back to the coarse `write` floor — strictly the most
+ * restrictive default, so a newly-added route can never accidentally
+ * under-gate.
+ */
+export function writeScopeForRoute(path: string): string {
+	// Document/chunk content — checked before `/knowledge-bases` since
+	// these all live under a KB path.
+	if (path.includes("/ingest")) return "write:ingest";
+	if (path.includes("/documents")) return "write:ingest";
+	if (path.includes("/records")) return "write:ingest";
+	// KB structure: knowledge bases and their knowledge-filters.
+	if (path.includes("/knowledge-bases")) return "write:kb";
+	// Execution services + external MCP servers (infra config).
+	if (path.includes("-services")) return "write:services";
+	if (path.includes("/mcp-servers")) return "write:services";
+	// Agents + agent templates.
+	if (path.includes("/agents")) return "write:agents";
+	return "write";
 }
 
 /**
@@ -234,10 +276,25 @@ function isReadShapedRoute(path: string): boolean {
 export function manageRouteScope(): MiddlewareHandler<AppEnv> {
 	return async (c, next) => {
 		if (isManageScopedRoute(c.req.path, c.req.method)) {
-			assertScope(c, SCOPE_MANAGE);
+			requireScope(c, manageScopeForRoute(c.req.path));
 		}
 		await next();
 	};
+}
+
+/**
+ * Map an admin-only workspace route to the fine `manage:*` scope it
+ * requires. Only called for routes {@link isManageScopedRoute} already
+ * matched, and each maps under the coarse `manage` tier — so a legacy
+ * `manage` key still grants all of them via containment.
+ */
+export function manageScopeForRoute(path: string): string {
+	if (path.includes("/api-keys")) return "manage:keys";
+	if (path.includes("/principals")) return "manage:access";
+	if (path.includes("/policy")) return "manage:access";
+	// Workspace destroy — the only manage-scoped route with no
+	// sub-resource segment.
+	return "manage:workspace";
 }
 
 /**
