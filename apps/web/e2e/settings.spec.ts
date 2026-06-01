@@ -1,17 +1,20 @@
 import { expect, test } from "./_fixtures";
 
 // Workspace settings E2E coverage — verifies the admin-only API keys
-// panel renders and that the advanced RLAC surfaces (access-control
-// toggle, principals, policy audit) are absent after the 0.4.1
-// access-control simplification. Workspace creation goes through the
-// API so the spec stays focused on the settings page itself.
+// panel renders alongside the RLAC admin surface restored in 0.5.0 (P4):
+// the "Access control" section with its RLAC enable/disable toggle.
+// Principals and Policy-audit are gated behind an *enabled* policy, so on
+// a fresh workspace (RLAC defaults off) they're intentionally not shown
+// yet — the post-enable surface is covered by the RLAC admin E2E (#324).
+// Workspace creation goes through the API so the spec stays focused on
+// the settings page itself.
 //
 // Project-level config (apps/web/playwright.config.ts) already
 // enforces `fullyParallel: false, workers: 1`, so an explicit
 // `test.describe.configure({ mode: "serial" })` here would conflict
 // with other specs that don't have it.
 
-test("workspace settings: API keys panel renders and advanced RLAC surfaces are gone", async ({
+test("workspace settings: API keys + RLAC access-control surfaces render", async ({
 	page,
 	request,
 }, testInfo) => {
@@ -32,20 +35,20 @@ test("workspace settings: API keys panel renders and advanced RLAC surfaces are 
 		page.getByRole("heading", { level: 1, name: "Settings" }),
 	).toBeVisible();
 
-	// API keys are the workspace's access-control surface — issue a
+	// API keys are a workspace's primary access-control surface — issue a
 	// role-scoped key (viewer / editor / admin) and you're done.
 	await expect(page.getByRole("heading", { name: "API keys" })).toBeVisible();
 
-	// The advanced RLAC prototype UI was removed in 0.4.1: no
-	// access-control toggle, no principals panel, no policy-audit log.
-	// The backend still supports them via the API / aiw CLI; they're
-	// just no longer surfaced in the app.
-	await expect(
-		page.getByRole("checkbox", { name: "Enable access control" }),
-	).toHaveCount(0);
+	// 0.5.0 restored the RLAC admin surface (P4): the "Access control"
+	// section and its RLAC toggle always render for a workspace manager.
 	await expect(
 		page.getByRole("heading", { name: "Access control" }),
-	).toHaveCount(0);
+	).toBeVisible();
+	await expect(page.getByRole("button", { name: "Enable RLAC" })).toBeVisible();
+
+	// Principals + Policy audit only appear once RLAC is enabled; a fresh
+	// workspace defaults it off, so they're not shown yet (the enabled
+	// surface is covered by the RLAC admin E2E, #324).
 	await expect(page.getByRole("heading", { name: "Principals" })).toHaveCount(
 		0,
 	);
