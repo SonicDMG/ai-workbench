@@ -1,0 +1,182 @@
+{
+	"slug": "rlac-principals-lifecycle",
+	"description": "RLAC principal CRUD: create with attributes, list, get, patch role/label, reject a duplicate (409), delete (204), and confirm the list is empty afterward. Pins the principals contract every runtime must honor.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentials": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"rlacEnabled": false,
+					"updatedAt": "{{TS}}",
+					"url": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"attributes": {
+						"dept": "eng"
+					},
+					"label": "Alice",
+					"principalId": "alice"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/principals"
+			},
+			"response": {
+				"body": {
+					"attributes": {
+						"dept": "eng"
+					},
+					"createdAt": "{{TS}}",
+					"label": "Alice",
+					"principalId": "alice",
+					"role": "viewer",
+					"updatedAt": "{{TS}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/principals"
+			},
+			"response": {
+				"body": {
+					"items": [
+						{
+							"attributes": {
+								"dept": "eng"
+							},
+							"createdAt": "{{TS}}",
+							"label": "Alice",
+							"principalId": "alice",
+							"role": "viewer",
+							"updatedAt": "{{TS}}",
+							"workspaceId": "{{UUID_1}}"
+						}
+					],
+					"nextCursor": null
+				},
+				"status": 200
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/principals/alice"
+			},
+			"response": {
+				"body": {
+					"attributes": {
+						"dept": "eng"
+					},
+					"createdAt": "{{TS}}",
+					"label": "Alice",
+					"principalId": "alice",
+					"role": "viewer",
+					"updatedAt": "{{TS}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 4
+		},
+		{
+			"request": {
+				"body": {
+					"label": "Alice L.",
+					"role": "editor"
+				},
+				"method": "PATCH",
+				"path": "/api/v1/workspaces/{{UUID_1}}/principals/alice"
+			},
+			"response": {
+				"body": {
+					"attributes": {
+						"dept": "eng"
+					},
+					"createdAt": "{{TS}}",
+					"label": "Alice L.",
+					"principalId": "alice",
+					"role": "editor",
+					"updatedAt": "{{TS}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 200
+			},
+			"step": 5
+		},
+		{
+			"request": {
+				"body": {
+					"principalId": "alice"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/principals"
+			},
+			"response": {
+				"body": {
+					"error": {
+						"code": "conflict",
+						"docs": "docs/errors.md#conflict",
+						"hint": "The resource already exists or its state changed underneath you; refetch and retry.",
+						"message": "principal 'alice' already exists in workspace '{{UUID_1}}'",
+						"requestId": "{{REQID_1}}"
+					}
+				},
+				"status": 409
+			},
+			"step": 6
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/{{UUID_1}}/principals/alice"
+			},
+			"response": {
+				"body": null,
+				"status": 204
+			},
+			"step": 7
+		},
+		{
+			"request": {
+				"body": null,
+				"method": "GET",
+				"path": "/api/v1/workspaces/{{UUID_1}}/principals"
+			},
+			"response": {
+				"body": {
+					"items": [],
+					"nextCursor": null
+				},
+				"status": 200
+			},
+			"step": 8
+		}
+	]
+}

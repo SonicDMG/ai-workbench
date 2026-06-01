@@ -598,5 +598,83 @@
 				"path": "/api/v1/workspaces/$1.workspaceId/agents/$2.agentId/conversations/$3.conversationId/messages"
 			}
 		]
+	},
+	{
+		"slug": "rlac-principals-lifecycle",
+		"description": "RLAC principal CRUD: create with attributes, list, get, patch role/label, reject a duplicate (409), delete (204), and confirm the list is empty afterward. Pins the principals contract every runtime must honor.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/principals",
+				"body": {
+					"principalId": "alice",
+					"label": "Alice",
+					"attributes": { "dept": "eng" }
+				}
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/principals"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/principals/alice"
+			},
+			{
+				"method": "PATCH",
+				"path": "/api/v1/workspaces/$1.workspaceId/principals/alice",
+				"body": { "label": "Alice L.", "role": "editor" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/principals",
+				"body": { "principalId": "alice" }
+			},
+			{
+				"method": "DELETE",
+				"path": "/api/v1/workspaces/$1.workspaceId/principals/alice"
+			},
+			{
+				"method": "GET",
+				"path": "/api/v1/workspaces/$1.workspaceId/principals"
+			}
+		]
+	},
+	{
+		"slug": "rlac-policy-compile-preview",
+		"description": "RLAC policy compile-preview: the canonical visibility DSL compiles to a Data API filter for a given principal (ok=true), and an unparseable DSL returns ok=false with a parseError — without persisting anything.",
+		"steps": [
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces",
+				"body": { "name": "w", "kind": "mock" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/principals",
+				"body": { "principalId": "alice" }
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/policy/compile-preview",
+				"body": {
+					"dsl": "current_principal_id() = ANY(visible_to) OR '*' = ANY(visible_to)",
+					"principalId": "alice"
+				}
+			},
+			{
+				"method": "POST",
+				"path": "/api/v1/workspaces/$1.workspaceId/policy/compile-preview",
+				"body": {
+					"dsl": "this is not a valid predicate ((",
+					"principalId": "alice"
+				}
+			}
+		]
 	}
 ]

@@ -1,0 +1,104 @@
+{
+	"slug": "rlac-policy-compile-preview",
+	"description": "RLAC policy compile-preview: the canonical visibility DSL compiles to a Data API filter for a given principal (ok=true), and an unparseable DSL returns ok=false with a parseError — without persisting anything.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentials": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"rlacEnabled": false,
+					"updatedAt": "{{TS}}",
+					"url": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"principalId": "alice"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/principals"
+			},
+			"response": {
+				"body": {
+					"attributes": {},
+					"createdAt": "{{TS}}",
+					"label": null,
+					"principalId": "alice",
+					"role": "viewer",
+					"updatedAt": "{{TS}}",
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		},
+		{
+			"request": {
+				"body": {
+					"dsl": "current_principal_id() = ANY(visible_to) OR '*' = ANY(visible_to)",
+					"principalId": "alice"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/policy/compile-preview"
+			},
+			"response": {
+				"body": {
+					"compiledFilter": {
+						"$or": [
+							{
+								"visible_to": "alice"
+							},
+							{
+								"visible_to": "*"
+							}
+						]
+					},
+					"issues": [],
+					"ok": true,
+					"parseError": null,
+					"principalId": "alice"
+				},
+				"status": 200
+			},
+			"step": 3
+		},
+		{
+			"request": {
+				"body": {
+					"dsl": "this is not a valid predicate ((",
+					"principalId": "alice"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/policy/compile-preview"
+			},
+			"response": {
+				"body": {
+					"compiledFilter": null,
+					"issues": [],
+					"ok": false,
+					"parseError": "policy parse error at col 6: expected comparison, IN, ANY, or @>, got 'is'",
+					"principalId": "alice"
+				},
+				"status": 200
+			},
+			"step": 4
+		}
+	]
+}

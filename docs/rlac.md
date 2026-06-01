@@ -8,17 +8,27 @@ semantics only); the audit-log shape and the principal CRUD surface
 are stable across minor releases. New primitives (rich predicates,
 RLAC on other resource kinds) layer on top without breaking either.
 
+**0.5.0** extends enforcement from the REST read routes to **agent
+retrieval** and the **chunk-listing** route, stamps a `visible_to` key
+on every chunk at ingest (so the policy filter pushes down into the
+vector query), re-tags existing chunks when RLAC is enabled, and ships
+the admin UI (access-control toggle, Principals, Policy audit).
+
 ## What it does
 
 When RLAC is enabled on a workspace:
 
-- Every KB read goes through a row-filter built from each document's
-  `visible_to` list.
-- The KB explorer header and the ingest dialog grow a **View-as**
-  picker so operators can preview the effective view for any principal.
-- The workspace settings page exposes **Principals** management
-  (people + groups) and a **Policy audit** panel showing every
+- Every knowledge-base read is filtered by each document's `visible_to`
+  list — the REST document + search routes, the chunk-listing route,
+  **and agent retrieval**: the built-in `search_kb` / document tools,
+  the `astra:data_api` tool, and the MCP `run_agent` / `chat_send` RAG
+  path. An agent cannot surface a document its caller can't see.
+- The workspace settings page exposes an **Access control** toggle,
+  **Principals** management, and a **Policy audit** panel showing every
   decision the policy engine made.
+- _(Planned)_ a **View-as** picker (preview the effective view for any
+  principal) and a per-document visibility picker on the ingest / edit
+  dialogs.
 
 When RLAC is disabled (the default), the workspace behaves exactly
 like every prior release: any member sees every document, no row
@@ -205,8 +215,10 @@ The following are intentionally out of scope for the GA surface;
 they're tracked as additive follow-ups (see
 [Roadmap signals](#roadmap-signals)):
 
-- Only applies to Documents. Agents, conversations, and other
-  resources are not row-filtered.
+- Documents are the only access-controlled resource *kind*. As of
+  0.5.0 a document's visibility is enforced everywhere it's read —
+  including agent retrieval — but conversations and agents themselves
+  are not row-filtered (RLAC on those resource kinds is a follow-up).
 - The visibility list is the only policy primitive shipping. Rich
   predicates (group hierarchies, deny lists, time-bounded visibility)
   are post-0.2.

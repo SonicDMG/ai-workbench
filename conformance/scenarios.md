@@ -233,3 +233,30 @@ the tool-call / tool-result scaffolding rows are persisted but
 filtered from the message list.
 
 Fixture: `fixtures/chat-sse-tool-call.json`.
+
+---
+
+## Scenario 18 — `rlac-principals-lifecycle`
+
+RLAC principal CRUD. Create a principal with attributes, list, `GET` it,
+`PATCH` its role + label, reject a duplicate `principalId` with `409
+conflict`, `DELETE` it (`204`), and confirm the list is empty afterward.
+Pins the principals-registry contract — request/response shapes, the
+`viewer` role default, and the duplicate / `204` status codes — that
+every runtime must reproduce.
+
+Fixture: `fixtures/rlac-principals-lifecycle.json`.
+
+---
+
+## Scenario 19 — `rlac-policy-compile-preview`
+
+RLAC policy compile-preview. The canonical visibility DSL
+(`current_principal_id() = ANY(visible_to) OR '*' = ANY(visible_to)`)
+compiles, for principal `alice`, to the Data API filter
+`{ "$or": [{ "visible_to": "alice" }, { "visible_to": "*" }] }` with
+`ok: true` — pinning the policy compiler's output shape across runtimes.
+An unparseable DSL returns `ok: false` with a `parseError` and a null
+`compiledFilter`. Neither call persists anything.
+
+Fixture: `fixtures/rlac-policy-compile-preview.json`.
