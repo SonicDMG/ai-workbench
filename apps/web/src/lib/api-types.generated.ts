@@ -4952,7 +4952,21 @@ export interface components {
 			expiresAt: string | null;
 		};
 		/** @enum {string} */
-		ApiKeyScope: "read" | "write" | "manage";
+		ApiKeyScope:
+			| "read"
+			| "read:content"
+			| "read:chat"
+			| "read:audit"
+			| "write"
+			| "write:ingest"
+			| "write:kb"
+			| "write:services"
+			| "write:agents"
+			| "manage"
+			| "manage:keys"
+			| "manage:access"
+			| "manage:workspace"
+			| "tools:invoke";
 		CreatedApiKeyResponse: {
 			/** @example wb_live_abc123xyz789_… */
 			plaintext: string;

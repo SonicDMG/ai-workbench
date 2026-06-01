@@ -137,18 +137,51 @@ export interface ApiKeyRecord {
  * back-compat to `["read", "write"]` (an `editor`-equivalent key), so
  * behavior doesn't change for already-minted keys.
  */
-export type ApiKeyScope = "read" | "write" | "manage";
+/**
+ * Every privilege scope an API key can carry, in canonical order
+ * (coarse tier first, then its `:`-suffixed fine grants).
+ *
+ * The three coarse tiers — `read` / `write` / `manage` — stay first-class
+ * supersets. The fine grants (0.5.0) let a key be scoped more narrowly
+ * (e.g. `write:ingest` without `write:agents`). A held coarse tier grants
+ * every fine grant beneath it via {@link ../auth/roles.scopeGrants}
+ * (containment), so legacy keys minted with `["read","write"]` keep
+ * working with **no data migration** — they're interpreted as supersets
+ * at check time.
+ */
+export const ALL_API_KEY_SCOPES = [
+	"read",
+	"read:content",
+	"read:chat",
+	"read:audit",
+	"write",
+	"write:ingest",
+	"write:kb",
+	"write:services",
+	"write:agents",
+	"manage",
+	"manage:keys",
+	"manage:access",
+	"manage:workspace",
+	"tools:invoke",
+] as const;
+
+export type ApiKeyScope = (typeof ALL_API_KEY_SCOPES)[number];
 
 /**
  * Default for newly-minted keys when the caller omits `scopes`. Keeps
  * the legacy "key grants everything the workspace allows" behavior
- * for callers that don't opt into the picker.
+ * for callers that don't opt into the picker. Unchanged by the 0.5.0
+ * fine-grained scopes — the default mint stays the two coarse tiers.
  */
 export const DEFAULT_API_KEY_SCOPES: readonly ApiKeyScope[] = ["read", "write"];
 
 /** Type guard for runtime parsing of arbitrary input shapes. */
 export function isApiKeyScope(value: unknown): value is ApiKeyScope {
-	return value === "read" || value === "write" || value === "manage";
+	return (
+		typeof value === "string" &&
+		(ALL_API_KEY_SCOPES as readonly string[]).includes(value)
+	);
 }
 
 /**
@@ -165,8 +198,9 @@ export function normalizeApiKeyScopes(
 	const seen = new Set<ApiKeyScope>();
 	for (const v of input) if (isApiKeyScope(v)) seen.add(v);
 	if (seen.size === 0) return DEFAULT_API_KEY_SCOPES;
-	// Deterministic order for stable comparisons + wire shape.
-	return (["read", "write", "manage"] as const).filter((s) => seen.has(s));
+	// Deterministic order (coarse tier then fine grants) for stable
+	// comparisons + wire shape.
+	return ALL_API_KEY_SCOPES.filter((s) => seen.has(s));
 }
 
 /**

@@ -92,21 +92,50 @@ describe("schema/openapi drift detection", () => {
 	});
 
 	test("ApiKeyScopeSchema enum matches the generated OpenAPI type", () => {
-		// `ApiKeyScope` gained `manage` in 0.4.0 (the admin tier). Same
-		// guard as the workspace-kind drift check: the exhaustiveness
-		// record below stops compiling if the backend adds/removes a
-		// scope, forcing the hand-written Zod enum to be updated in
-		// lockstep with a `gen:types` refresh.
+		// `ApiKeyScope` widened in 0.5.0 from the three coarse tiers to the
+		// full fine-grained taxonomy (coarse + per-facet + `tools:invoke`).
+		// Same guard as the workspace-kind drift check: the exhaustiveness
+		// record below stops compiling if the backend adds/removes a scope,
+		// forcing the hand-written Zod enum to be updated in lockstep with a
+		// `gen:types` refresh.
 		type RuntimeScope = components["schemas"]["ApiKeyScope"];
 		const exhaust: Record<RuntimeScope, true> = {
 			read: true,
+			"read:content": true,
+			"read:chat": true,
+			"read:audit": true,
 			write: true,
+			"write:ingest": true,
+			"write:kb": true,
+			"write:services": true,
+			"write:agents": true,
 			manage: true,
+			"manage:keys": true,
+			"manage:access": true,
+			"manage:workspace": true,
+			"tools:invoke": true,
 		};
 		void exhaust;
 
 		const enumValues = ApiKeyScopeSchema.options;
-		expect([...enumValues].sort()).toEqual(["manage", "read", "write"].sort());
+		expect([...enumValues].sort()).toEqual(
+			[
+				"read",
+				"read:content",
+				"read:chat",
+				"read:audit",
+				"write",
+				"write:ingest",
+				"write:kb",
+				"write:services",
+				"write:agents",
+				"manage",
+				"manage:keys",
+				"manage:access",
+				"manage:workspace",
+				"tools:invoke",
+			].sort(),
+		);
 	});
 
 	test("ToolSourceSchema enum matches the generated OpenAPI type", () => {

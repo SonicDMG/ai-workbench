@@ -117,9 +117,29 @@ export const TestConnectionResultSchema = z.object({
 export type TestConnectionResult = z.infer<typeof TestConnectionResultSchema>;
 
 // Kept in sync with the generated OpenAPI `ApiKeyScope` enum via the
-// drift check in `schemas.test.ts`. `manage` (0.4.0) is the admin tier
-// — keys minted with it can hit API-key / principal / RLAC routes.
-export const ApiKeyScopeSchema = z.enum(["read", "write", "manage"]);
+// drift check in `schemas.test.ts`. 0.5.0 widened this from the three
+// coarse tiers to the full fine-grained taxonomy: coarse `read`/`write`/
+// `manage` stay first-class supersets (granted fine scopes via backend
+// containment), plus per-facet `read:*` / `write:*` / `manage:*` grants
+// and the standalone `tools:invoke`. The schema must accept fine scopes so
+// existing fine-scoped key records parse; the create-key UI still offers
+// the coarse presets today (a fine-scope picker is a later phase).
+export const ApiKeyScopeSchema = z.enum([
+	"read",
+	"read:content",
+	"read:chat",
+	"read:audit",
+	"write",
+	"write:ingest",
+	"write:kb",
+	"write:services",
+	"write:agents",
+	"manage",
+	"manage:keys",
+	"manage:access",
+	"manage:workspace",
+	"tools:invoke",
+]);
 export type ApiKeyScope = z.infer<typeof ApiKeyScopeSchema>;
 
 export const ApiKeyRecordSchema = z.object({

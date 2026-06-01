@@ -57,3 +57,26 @@ export function roleForScopes(scopes: readonly string[]): Role | null {
 	}
 	return null;
 }
+
+/**
+ * Hierarchical scope containment (0.5.0 fine-grained scopes).
+ *
+ * A held scope grants a required scope when they're equal, or when the
+ * held scope is a coarse *tier* of the required fine grant — matched on
+ * the `:` boundary so `write` grants `write:ingest` but NOT a sibling
+ * like `writeX`. This is what lets the coarse tiers stay first-class
+ * supersets and keeps legacy `["read","write"]` keys working unchanged:
+ * a route can require a fine scope and the held coarse scope contains it.
+ */
+export function scopeGrants(held: string, required: string): boolean {
+	return held === required || required.startsWith(`${held}:`);
+}
+
+/** True when any scope in `held` grants `required`. The per-request check
+ * behind {@link ./authz.ts:assertScope}. */
+export function subjectGrantsScope(
+	held: readonly string[],
+	required: string,
+): boolean {
+	return held.some((h) => scopeGrants(h, required));
+}

@@ -26,7 +26,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { AppEnv } from "../lib/types.js";
 import { ForbiddenError } from "./errors.js";
-import { SCOPE_MANAGE } from "./roles.js";
+import { SCOPE_MANAGE, subjectGrantsScope } from "./roles.js";
 
 export function assertWorkspaceAccess(
 	c: Context<AppEnv>,
@@ -128,7 +128,10 @@ export function assertScope(c: Context<AppEnv>, scope: string): void {
 	if (!auth || auth.anonymous) return;
 	const scopes = auth.subject?.scopes;
 	if (scopes === null || scopes === undefined) return;
-	if (scopes.includes(scope)) return;
+	// Hierarchical containment, not exact match: a held coarse tier
+	// (`write`) grants a required fine scope (`write:ingest`), so legacy
+	// keys keep working as the route surface refines to finer scopes.
+	if (subjectGrantsScope(scopes, scope)) return;
 	throw new ForbiddenError(
 		`authenticated subject is missing required scope '${scope}'`,
 	);

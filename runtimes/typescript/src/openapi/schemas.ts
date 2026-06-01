@@ -8,6 +8,7 @@
  */
 
 import { z } from "@hono/zod-openapi";
+import { ALL_API_KEY_SCOPES } from "../control-plane/types.js";
 import {
 	MAX_AGENT_DESCRIPTION_CHARS,
 	MAX_AGENT_NAME_CHARS,
@@ -703,13 +704,15 @@ export const ApiKeyIdParamSchema = z
 /* ---------------- API key ---------------- */
 
 /**
- * Privilege tiers an API key can carry (`read` / `write` / `manage`),
- * aligned with the RBAC roles in `auth/roles.ts`. `manage` is the
- * admin tier added in 0.4.0 (API keys, RLAC, workspace destroy).
- * Mirrors `ApiKeyScope` in `control-plane/types.ts`.
+ * Privilege scopes an API key can carry — the three coarse tiers
+ * (`read` / `write` / `manage`) plus the 0.5.0 `:`-suffixed fine grants
+ * (e.g. `write:ingest`). A held coarse tier is a superset of its fine
+ * grants (containment, see `auth/roles.scopeGrants`), so widening this
+ * enum is additive: existing clients sending the coarse tiers still
+ * validate. Mirrors `ApiKeyScope` in `control-plane/types.ts`.
  */
 export const ApiKeyScopeSchema = z
-	.enum(["read", "write", "manage"])
+	.enum(ALL_API_KEY_SCOPES)
 	.openapi("ApiKeyScope");
 
 export const ApiKeyRecordSchema = z
