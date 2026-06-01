@@ -271,3 +271,80 @@ describe("api client request contract", () => {
 		expect(parsed).not.toHaveProperty("policyDsl");
 	});
 });
+
+describe("api client request — non-JSON proxy responses", () => {
+	const originalFetch = globalThis.fetch;
+	const WORKSPACE_ID = "00000000-0000-4000-8000-000000000001";
+
+	beforeEach(() => {
+		globalThis.fetch = vi.fn() as typeof fetch;
+		setAuthToken(null);
+	});
+
+	afterEach(() => {
+		setAuthToken(null);
+		globalThis.fetch = originalFetch;
+	});
+
+	function textResponse(body: string, status: number): Response {
+		return new Response(body, {
+			status,
+			headers: { "content-type": "text/html" },
+		});
+	}
+
+	it("surfaces a clean ApiError (not a SyntaxError) for a non-JSON 502 from a proxy", async () => {
+		// A load balancer that fails the upstream returns its own HTML
+		// error page, not our JSON envelope. Parsing it unguarded would
+		// throw a raw SyntaxError that bypasses every ApiError handler.
+		fetchMock().mockResolvedValue(
+			textResponse("<html><body><h1>502 Bad Gateway</h1></body></html>", 502),
+		);
+
+		const err = await api.getWorkspace(WORKSPACE_ID).catch((e: unknown) => e);
+
+		expect(err).toBeInstanceOf(ApiError);
+		expect(err).not.toBeInstanceOf(SyntaxError);
+		expect(err).toMatchObject({
+			status: 502,
+			code: "unknown_error",
+		});
+		// The message carries the real HTTP status so the UI can show it.
+		expect((err as ApiError).message).toContain("502");
+	});
+
+	it("surfaces a clean ApiError for an empty-body 504 gateway timeout", async () => {
+		fetchMock().mockResolvedValue(
+			new Response("", { status: 504, statusText: "Gateway Timeout" }),
+		);
+
+		const err = await api.getWorkspace(WORKSPACE_ID).catch((e: unknown) => e);
+
+		expect(err).toBeInstanceOf(ApiError);
+		expect(err).toMatchObject({ status: 504, code: "unknown_error" });
+	});
+
+	it("still parses a well-formed JSON error envelope behind the guard", async () => {
+		// The guard must not regress the happy path: a real JSON envelope
+		// from the runtime still yields its typed code/message.
+		fetchMock().mockResolvedValue(
+			jsonResponse(
+				{
+					error: {
+						code: "workspace_not_found",
+						message: "no such ws",
+						requestId: "rid-9",
+					},
+				},
+				404,
+			),
+		);
+
+		await expect(api.getWorkspace(WORKSPACE_ID)).rejects.toMatchObject({
+			status: 404,
+			code: "workspace_not_found",
+			message: "no such ws",
+			requestId: "rid-9",
+		});
+	});
+});

@@ -9,7 +9,12 @@ import type { McpConfig } from "../config/schema.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import { listErrorCodes } from "../lib/error-codes.js";
 import { errorEnvelope } from "../lib/errors.js";
-import { probeChatProvider, probeControlPlane } from "../lib/health-probes.js";
+import {
+	DeadlineExceededError,
+	probeChatProvider,
+	probeControlPlane,
+	withDeadline,
+} from "../lib/health-probes.js";
 import { makeOpenApi } from "../lib/openapi.js";
 import { resolvePublicBaseUrl } from "../lib/public-url.js";
 import type { RecentErrorBuffer } from "../lib/recent-errors.js";
@@ -34,6 +39,15 @@ import { BUILD_TIME, COMMIT, VERSION } from "../version.js";
  * with a readiness probe will route traffic away without us having
  * to slam the port closed mid-request.
  */
+/**
+ * Wall-clock bound for the `/readyz` control-plane round-trip. A hung
+ * Astra (TCP connect that never completes, a Data-API call that stalls)
+ * must make readiness report 503 fast so a load balancer routes traffic
+ * away, rather than letting the probe hang for the connection's full
+ * socket timeout. Sized a hair under a typical 5s LB probe timeout.
+ */
+const READYZ_TIMEOUT_MS = 4_000;
+
 export interface ReadinessSignal {
 	draining: boolean;
 	/**
@@ -143,7 +157,28 @@ export function operationalRoutes(
 					503,
 				);
 			}
-			const workspaces = await store.listWorkspaces();
+			// Bound the control-plane round-trip on a hard wall clock so a
+			// hung backend fails readiness fast instead of holding the
+			// request open. `withDeadline` rejects the instant the timer
+			// fires regardless of whether the driver honors an abort.
+			let workspaces: Awaited<ReturnType<typeof store.listWorkspaces>>;
+			try {
+				workspaces = await withDeadline(
+					store.listWorkspaces(),
+					READYZ_TIMEOUT_MS,
+				);
+			} catch (err) {
+				const detail =
+					err instanceof DeadlineExceededError
+						? `control plane did not respond within ${READYZ_TIMEOUT_MS}ms`
+						: `control plane is unreachable: ${
+								err instanceof Error ? err.message : String(err)
+							}`;
+				return c.json(
+					errorEnvelope(c, "control_plane_unavailable", detail),
+					503,
+				);
+			}
 			const ingest = ingestSemaphore?.stats();
 			return c.json(
 				{

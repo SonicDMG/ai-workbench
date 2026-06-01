@@ -10,8 +10,59 @@ const initialLevel = envLevel ?? "info";
 
 const isDev = process.env.NODE_ENV !== "production";
 
+/**
+ * Defense-in-depth redaction allowlist. A stray
+ * `logger.info({ headers })` or `logger.error({ err, config })` must
+ * never leak a credential, so every path that could plausibly carry one
+ * is scrubbed to `[Redacted]` before serialization.
+ *
+ * The list pairs a small set of common header locations (Authorization
+ * lives under different parents depending on whether a raw request, a
+ * Fetch init, or a Headers-like object got logged) with the field names
+ * the runtime uses for secrets (`tokenRef`, `credentialRef`, `apiKey`,
+ * `password`, …). Wildcards (`*.field`) catch the field one level deep
+ * regardless of parent key, which covers the typical
+ * `logger.x({ something: { token } })` shape without enumerating every
+ * parent. Matching is case-sensitive, so each casing variant we actually
+ * emit (`authorization` lowercase on Fetch headers, `Authorization`
+ * capitalized on raw Node requests) is listed explicitly.
+ */
+const REDACT_PATHS = [
+	// Authorization headers, across the parents we actually log.
+	"authorization",
+	"Authorization",
+	"headers.authorization",
+	"headers.Authorization",
+	"req.headers.authorization",
+	"req.headers.Authorization",
+	"request.headers.authorization",
+	"request.headers.Authorization",
+	"*.authorization",
+	"*.Authorization",
+	// Secret-bearing fields, at top level and one level deep under any
+	// parent. Covers token / secret / credential / password / apiKey
+	// and the runtime's `*Ref` indirection names.
+	"token",
+	"tokenRef",
+	"secret",
+	"credential",
+	"credentialRef",
+	"credentials",
+	"password",
+	"apiKey",
+	"*.token",
+	"*.tokenRef",
+	"*.secret",
+	"*.credential",
+	"*.credentialRef",
+	"*.credentials",
+	"*.password",
+	"*.apiKey",
+];
+
 export const logger = pino({
 	level: initialLevel,
+	redact: { paths: REDACT_PATHS, censor: "[Redacted]" },
 	...(isDev
 		? {
 				transport: {

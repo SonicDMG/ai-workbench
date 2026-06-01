@@ -556,6 +556,27 @@ const ChatSchema = z.object({
 	model: z.string().min(1).default("openai/gpt-4o-mini"),
 	maxOutputTokens: z.number().int().positive().max(8_192).default(1_024),
 	/**
+	 * Hard per-request wall-clock for a single non-streaming completion
+	 * (`complete()`), in milliseconds. A hung or pathologically slow
+	 * provider aborts at this bound and surfaces as a `finishReason:
+	 * "error"` outcome instead of holding the request open indefinitely.
+	 * Omitted/`null` keeps the prior behavior of no client-side timeout,
+	 * deferring to the transport's own socket timeout. Streaming
+	 * (`completeStream`) is intentionally not bounded here — it already
+	 * honors the caller's `AbortSignal` and yields tokens incrementally.
+	 *
+	 * Optional (rather than `.default(null)`) so existing hand-built
+	 * `ChatConfig` literals stay valid — same back-compat rationale as
+	 * the `tools` block below.
+	 */
+	requestTimeoutMs: z
+		.number()
+		.int()
+		.positive()
+		.max(600_000)
+		.nullable()
+		.optional(),
+	/**
 	 * Top-K KB chunks to retrieve **per knowledge base** when assembling
 	 * the prompt. Multi-KB chats fan out and then merge by score; the
 	 * cap on total context lives in the chat service.

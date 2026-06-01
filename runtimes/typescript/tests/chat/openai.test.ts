@@ -5,7 +5,7 @@
  * streaming reader, and the error mapping.
  */
 
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { OpenAIChatService } from "../../src/chat/openai.js";
 import type {
 	ChatCompletionRequest,
@@ -418,5 +418,132 @@ describe("OpenAIChatService — OpenAI-compatible provider wiring", () => {
 		});
 		expect(out.finishReason).toBe("error");
 		expect(out.errorMessage).toContain("ollama returned HTTP 500");
+	});
+});
+
+describe("OpenAIChatService.complete — per-request timeout", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/**
+	 * Fetch fake that resolves only when the request is NOT aborted,
+	 * after `latencyMs` of (fake) wall-clock. If the caller aborts first,
+	 * it rejects with an `AbortError` exactly like the platform `fetch`.
+	 */
+	function slowFetch(latencyMs: number): typeof fetch {
+		return ((_input: unknown, init?: { signal?: AbortSignal }) =>
+			new Promise<Response>((resolve, reject) => {
+				const signal = init?.signal;
+				const t = setTimeout(() => {
+					resolve(
+						new Response(
+							JSON.stringify({
+								choices: [
+									{
+										index: 0,
+										message: { role: "assistant", content: "late reply" },
+										finish_reason: "stop",
+									},
+								],
+								usage: { total_tokens: 3 },
+							}),
+							{ status: 200 },
+						),
+					);
+				}, latencyMs);
+				signal?.addEventListener("abort", () => {
+					clearTimeout(t);
+					reject(
+						Object.assign(new Error("The operation was aborted."), {
+							name: "AbortError",
+						}),
+					);
+				});
+			})) as unknown as typeof fetch;
+	}
+
+	test("aborts and returns a finishReason='error' completion when the provider stalls past requestTimeoutMs", async () => {
+		const service = new OpenAIChatService({
+			apiKey: "sk-fake",
+			modelId: "gpt-4o-mini",
+			maxOutputTokens: 64,
+			providerId: "openai",
+			requestTimeoutMs: 1_000,
+			fetchImpl: slowFetch(5_000),
+		});
+
+		const outPromise = service.complete({
+			messages: [{ role: "user", content: "hi" }],
+		});
+		// Cross the 1s timeout but stay well under the 5s "reply".
+		await vi.advanceTimersByTimeAsync(1_001);
+		const out = await outPromise;
+
+		expect(out.finishReason).toBe("error");
+		expect(out.errorMessage).toBe("openai request timed out after 1000ms");
+		expect(out.content).toBe("");
+		expect(out.toolCalls).toEqual([]);
+	});
+
+	test("returns the completion normally when the provider responds before the timeout", async () => {
+		const service = new OpenAIChatService({
+			apiKey: "sk-fake",
+			modelId: "gpt-4o-mini",
+			maxOutputTokens: 64,
+			providerId: "openai",
+			requestTimeoutMs: 5_000,
+			fetchImpl: slowFetch(1_000),
+		});
+
+		const outPromise = service.complete({
+			messages: [{ role: "user", content: "hi" }],
+		});
+		await vi.advanceTimersByTimeAsync(1_001);
+		const out = await outPromise;
+
+		expect(out.finishReason).toBe("stop");
+		expect(out.content).toBe("late reply");
+		expect(out.tokenCount).toBe(3);
+		expect(out.errorMessage).toBeNull();
+	});
+
+	test("does not arm a timeout when requestTimeoutMs is unset (no abort signal sent)", async () => {
+		let sawSignal = true;
+		const fetchImpl = ((_input: unknown, init?: { signal?: AbortSignal }) => {
+			sawSignal = init?.signal !== undefined;
+			return Promise.resolve(
+				new Response(
+					JSON.stringify({
+						choices: [
+							{
+								index: 0,
+								message: { role: "assistant", content: "ok" },
+								finish_reason: "stop",
+							},
+						],
+					}),
+					{ status: 200 },
+				),
+			);
+		}) as unknown as typeof fetch;
+
+		const service = new OpenAIChatService({
+			apiKey: "sk-fake",
+			modelId: "gpt-4o-mini",
+			maxOutputTokens: 64,
+			fetchImpl,
+		});
+		const out = await service.complete({
+			messages: [{ role: "user", content: "hi" }],
+		});
+
+		expect(out.finishReason).toBe("stop");
+		expect(out.content).toBe("ok");
+		expect(sawSignal).toBe(false);
 	});
 });

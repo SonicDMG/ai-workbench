@@ -99,6 +99,7 @@ export async function resolveAgentChat(
 		fallbackMaxOutputTokens: chatConfig?.maxOutputTokens,
 		fallbackTokenRef: chatConfig?.tokenRef,
 		allowDataCollection: chatConfig?.allowDataCollection,
+		requestTimeoutMs: chatConfig?.requestTimeoutMs,
 	});
 
 	// System-prompt resolution: agent override > runtime config override
@@ -162,6 +163,13 @@ interface ChatServiceResolutionOptions {
 	readonly fallbackTokenRef: string | undefined;
 	/** OpenRouter ZDR routing toggle from the runtime chat config. */
 	readonly allowDataCollection: boolean | undefined;
+	/**
+	 * Hard per-request completion timeout (ms) from the runtime chat
+	 * config, applied to every per-agent adapter so a hung provider on a
+	 * per-agent llm service aborts on the same wall clock as the global
+	 * one. `undefined`/`null` leaves the call unbounded.
+	 */
+	readonly requestTimeoutMs: number | null | undefined;
 }
 
 async function resolveChatService(
@@ -235,5 +243,6 @@ async function resolveChatService(
 		providerId: resolved.profile.id,
 		defaultHeaders: resolved.defaultHeaders,
 		extraBody: resolved.extraBody,
+		requestTimeoutMs: opts.requestTimeoutMs,
 	});
 }

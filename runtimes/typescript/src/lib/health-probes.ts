@@ -27,6 +27,40 @@ export interface ProbeResult {
 
 const DEFAULT_TIMEOUT_MS = 3_000;
 
+/** Raised by {@link withDeadline} when the wrapped promise outlives its bound. */
+export class DeadlineExceededError extends Error {
+	constructor(timeoutMs: number) {
+		super(`operation exceeded ${timeoutMs}ms deadline`);
+		this.name = "DeadlineExceededError";
+	}
+}
+
+/**
+ * Hard wall-clock bound via `Promise.race`. Unlike {@link timed} (which
+ * passes an `AbortSignal` the callee is free to ignore), this rejects
+ * with {@link DeadlineExceededError} the instant the timer fires —
+ * giving callers like `/readyz` a guaranteed fail-fast even when the
+ * underlying driver never observes the abort.
+ *
+ * The losing work is not cancelled (the original promise keeps running
+ * to completion in the background); only the *wait* is bounded. The
+ * timer is always cleared so a fast-resolving call doesn't keep the
+ * event loop alive.
+ */
+export function withDeadline<T>(
+	work: Promise<T>,
+	timeoutMs: number,
+): Promise<T> {
+	let timer: ReturnType<typeof setTimeout>;
+	const deadline = new Promise<never>((_, reject) => {
+		timer = setTimeout(
+			() => reject(new DeadlineExceededError(timeoutMs)),
+			timeoutMs,
+		);
+	});
+	return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
 async function timed<T>(
 	timeoutMs: number,
 	body: (signal: AbortSignal) => Promise<T>,

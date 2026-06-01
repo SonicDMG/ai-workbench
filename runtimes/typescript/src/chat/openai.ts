@@ -53,6 +53,14 @@ export interface OpenAIChatServiceOptions {
 	 * OpenRouter's `{ provider: { data_collection: "deny" } }` ZDR hint.
 	 */
 	readonly extraBody?: Readonly<Record<string, unknown>>;
+	/**
+	 * Hard per-request wall-clock for {@link OpenAIChatService.complete}
+	 * (milliseconds). When set, each non-streaming completion aborts at
+	 * this bound and is mapped to a `finishReason: "error"` outcome
+	 * instead of hanging on a stalled provider. `undefined`/`null` keeps
+	 * the prior unbounded behavior (transport socket timeout only).
+	 */
+	readonly requestTimeoutMs?: number | null | undefined;
 	/** Optional fetch override — tests inject a fake transport here. */
 	readonly fetchImpl?: typeof fetch;
 }
@@ -114,6 +122,7 @@ export class OpenAIChatService implements ChatService {
 	private readonly baseUrl: string;
 	private readonly defaultHeaders: Readonly<Record<string, string>>;
 	private readonly extraBody: Readonly<Record<string, unknown>>;
+	private readonly requestTimeoutMs: number | null;
 	private readonly fetchImpl: typeof fetch;
 
 	constructor(opts: OpenAIChatServiceOptions) {
@@ -124,6 +133,7 @@ export class OpenAIChatService implements ChatService {
 		this.baseUrl = opts.baseUrl ?? DEFAULT_BASE_URL;
 		this.defaultHeaders = opts.defaultHeaders ?? {};
 		this.extraBody = opts.extraBody ?? {};
+		this.requestTimeoutMs = opts.requestTimeoutMs ?? null;
 		this.fetchImpl = opts.fetchImpl ?? safeFetch;
 	}
 
@@ -146,6 +156,17 @@ export class OpenAIChatService implements ChatService {
 	}
 
 	async complete(request: ChatCompletionRequest): Promise<ChatCompletion> {
+		// Optional hard wall-clock: abort the fetch when `requestTimeoutMs`
+		// elapses so a hung provider can't hold the request open. The
+		// abort surfaces as a thrown `AbortError`, which the catch below
+		// maps to a `finishReason: "error"` outcome like any other
+		// transport failure. The timer is always cleared in `finally`.
+		const controller =
+			this.requestTimeoutMs != null ? new AbortController() : null;
+		const timer =
+			controller != null && this.requestTimeoutMs != null
+				? setTimeout(() => controller.abort(), this.requestTimeoutMs)
+				: null;
 		try {
 			const res = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
 				method: "POST",
@@ -157,6 +178,7 @@ export class OpenAIChatService implements ChatService {
 					...toolFields(request.tools),
 					...this.extraBody,
 				}),
+				...(controller ? { signal: controller.signal } : {}),
 			});
 			if (!res.ok) {
 				const body = await res.text().catch(() => "");
@@ -190,9 +212,18 @@ export class OpenAIChatService implements ChatService {
 				toolCalls,
 			};
 		} catch (err) {
+			// Distinguish our own timeout-driven abort from an arbitrary
+			// transport error so the persisted message is actionable.
+			if (controller?.signal.aborted) {
+				return errorCompletion(
+					`${this.providerId} request timed out after ${this.requestTimeoutMs}ms`,
+				);
+			}
 			return errorCompletion(
 				`${this.providerId} request failed: ${safeErrorMessage(err)}`,
 			);
+		} finally {
+			if (timer) clearTimeout(timer);
 		}
 	}
 

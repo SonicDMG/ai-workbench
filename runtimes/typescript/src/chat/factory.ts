@@ -93,5 +93,6 @@ export async function buildChatService(
 		providerId: resolved.profile.id,
 		defaultHeaders: resolved.defaultHeaders,
 		extraBody: resolved.extraBody,
+		requestTimeoutMs: deps.config.requestTimeoutMs,
 	});
 }

@@ -201,7 +201,15 @@ async function request<T>(
 	if (res.status === 204) return undefined as T;
 
 	const text = await res.text();
-	const body: unknown = text.length > 0 ? JSON.parse(text) : null;
+	// A reverse proxy / load balancer that fails the upstream returns its
+	// own HTML/plain-text error page (e.g. a 502 "Bad Gateway"), not our
+	// JSON envelope. Parsing that unguarded throws a raw `SyntaxError`
+	// that bypasses every `ApiError` handler downstream. Guard it: a
+	// non-JSON body becomes `null` here and falls through to the
+	// `!res.ok` branch below, which surfaces a clean `ApiError` carrying
+	// the real status. A non-JSON 2xx (a misconfigured route) likewise
+	// fails cleanly at the schema-parse step rather than mid-function.
+	const body: unknown = text.length > 0 ? safeJsonParse(text) : null;
 
 	if (res.status === 401 && !token) {
 		if (opts.retryAfterRefresh !== false && (await trySilentRefresh())) {
@@ -230,6 +238,21 @@ async function request<T>(
 
 	if (responseSchema === null) return undefined as T;
 	return responseSchema.parse(body);
+}
+
+/**
+ * Parse a response body as JSON, returning `null` instead of throwing
+ * when the payload isn't valid JSON. Used by {@link request} so a
+ * non-JSON proxy error page (502 "Bad Gateway", an HTML 504, etc.)
+ * degrades to a clean {@link ApiError} carrying the HTTP status rather
+ * than a raw `SyntaxError` escaping past every caller's catch.
+ */
+function safeJsonParse(text: string): unknown {
+	try {
+		return JSON.parse(text);
+	} catch {
+		return null;
+	}
 }
 
 interface PaginatedResponse<T> {

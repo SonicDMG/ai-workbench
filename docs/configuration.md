@@ -431,6 +431,7 @@ chat:
   maxOutputTokens: 1024
   retrievalK: 6
   systemPrompt: null
+  requestTimeoutMs: null
 ```
 
 | Field | Type | Default | Notes |
@@ -443,6 +444,7 @@ chat:
 | `maxOutputTokens` | int (1–8192) | `1024` | Per-turn cap on the assistant's reply length. |
 | `retrievalK` | int (1–64) | `6` | Top-K KB chunks **per knowledge base**. The total injected into the prompt is `retrievalK * ceil(sqrt(numKbs))` so multi-KB conversations don't blow up the prompt. |
 | `systemPrompt` | string \| null | `null` | Default system prompt when neither the agent nor the agent's LLM service supplies one. `null` falls back to the runtime's persona-agnostic `DEFAULT_AGENT_SYSTEM_PROMPT`. |
+| `requestTimeoutMs` | int (1–600000) \| null | `null` | Hard per-request wall-clock for a single non-streaming completion. A hung or pathologically slow provider aborts at this bound and surfaces as an error turn instead of holding the request open. `null` defers to the transport's socket timeout. Streaming replies are not bounded by this (they already honor client aborts). |
 
 **Per-agent override.** When an agent has `llmServiceId` set, the
 agent's bound LLM service overrides this block — the runtime
