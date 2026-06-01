@@ -177,6 +177,11 @@ const REGISTRY = new Map<string, ErrorCodeDescriptor>([
 		"The agent template is not registered; pick one from `GET /api/v1/agent-templates`.",
 	),
 	entry(
+		"agent_tool_unresolved",
+		422,
+		"One or more requested `toolIds` name a namespaced tool (mcp:/native:/astra:) that doesn't resolve in this workspace — register/enable the underlying MCP server or capability, or remove the id.",
+	),
+	entry(
 		"conversation_not_found",
 		404,
 		"The conversation does not exist for this agent; conversations are scoped per-agent.",

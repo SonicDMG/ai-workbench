@@ -292,19 +292,25 @@ describe("agent routes", () => {
 		expect((await json(before)).toolIds).toEqual([]);
 
 		// PATCH a non-empty allow-list — sorted + deduped on the wire.
+		// Built-in names only: save-time validation (MCP P1) rejects
+		// *namespaced* ids (mcp:/native:/astra:) that don't resolve, and
+		// this mock app wires no native fetch / MCP servers — so the
+		// round-trip/dedup assertion uses always-resolvable built-ins.
+		// (Namespaced-id rejection is covered by the "agent toolId
+		// validation" suite; native:fetch resolution by the catalog test.)
 		const patch = await app.request(`/api/v1/workspaces/${ws}/agents/${aid}`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
-				toolIds: ["search_kb", "native:fetch", "search_kb"],
+				toolIds: ["search_kb", "list_kbs", "search_kb"],
 			}),
 		});
 		expect(patch.status, await patch.clone().text()).toBe(200);
-		expect((await json(patch)).toolIds).toEqual(["native:fetch", "search_kb"]);
+		expect((await json(patch)).toolIds).toEqual(["list_kbs", "search_kb"]);
 
 		// The patched set survives a fresh GET.
 		const after = await app.request(`/api/v1/workspaces/${ws}/agents/${aid}`);
-		expect((await json(after)).toolIds).toEqual(["native:fetch", "search_kb"]);
+		expect((await json(after)).toolIds).toEqual(["list_kbs", "search_kb"]);
 
 		// Clearing back to [] re-grandfathers built-ins.
 		const cleared = await app.request(

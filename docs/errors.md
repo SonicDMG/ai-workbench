@@ -28,6 +28,7 @@ destination for the envelope's `docs` field.
 |---|---|---|
 | [`agent_not_found`](#agent-not-found) | 404 | The agent does not exist in this workspace; create one before sending messages. |
 | [`agent_template_not_found`](#agent-template-not-found) | 404 | The agent template is not registered; pick one from `GET /api/v1/agent-templates`. |
+| [`agent_tool_unresolved`](#agent-tool-unresolved) | 422 | One or more requested `toolIds` name a namespaced tool (mcp:/native:/astra:) that doesn't resolve in this workspace — register/enable the underlying MCP server or capability, or remove the id. |
 | [`api_key_not_found`](#api-key-not-found) | 404 | The API key does not exist or was revoked. |
 | [`cascade_incomplete`](#cascade-incomplete) | 500 | A workspace delete partially failed across Astra partitions; the workspace was left intact — retry the delete to complete the idempotent cascade. |
 | [`chat_disabled`](#chat-disabled) | 503 | No chat provider is configured; uncomment the `chat` block in workbench.yaml or bind an LLM service to the agent. |
@@ -108,6 +109,11 @@ destination for the envelope's `docs` field.
 
 - **Default status**: `404`
 - **Hint**: The agent template is not registered; pick one from `GET /api/v1/agent-templates`.
+
+## agent_tool_unresolved
+
+- **Default status**: `422`
+- **Hint**: One or more requested `toolIds` name a namespaced tool (mcp:/native:/astra:) that doesn't resolve in this workspace — register/enable the underlying MCP server or capability, or remove the id.
 
 ## api_key_not_found
 

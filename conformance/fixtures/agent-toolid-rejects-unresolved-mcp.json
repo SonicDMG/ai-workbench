@@ -40,7 +40,9 @@
 				"body": {
 					"error": {
 						"code": "agent_tool_unresolved",
-						"message": "these tool ids don't resolve to a tool available in this workspace: mcp:{{UUID_2}}:search. A remote-MCP id (mcp:{serverId}:{tool}) needs its server registered + enabled and the tool {{WB_PREFIX_1}}; native:/astra: ids need the matching workspace capability. Remove the id or fix the underlying server/service.",
+						"docs": "docs/errors.md#agent-tool-unresolved",
+						"hint": "One or more requested `toolIds` name a namespaced tool (mcp:/native:/astra:) that doesn't resolve in this workspace — register/enable the underlying MCP server or capability, or remove the id.",
+						"message": "these tool ids don't resolve to a tool available in this workspace: mcp:{{UUID_2}}:search. A remote-MCP id (mcp:{serverId}:{tool}) needs its server registered + enabled and the tool exposed; native:/astra: ids need the matching workspace capability. Remove the id or fix the underlying server/service.",
 						"requestId": "{{REQID_1}}"
 					}
 				},

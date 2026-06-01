@@ -130,7 +130,7 @@ async function assertResolvableToolIds(
 	if (unresolved.length > 0) {
 		throw new ApiError(
 			"agent_tool_unresolved",
-			`these tool ids don't resolve to a tool available in this workspace: ${unresolved.join(", ")}. A remote-MCP id (mcp:{serverId}:{tool}) needs its server registered + enabled and the tool discoverable; native:/astra: ids need the matching workspace capability. Remove the id or fix the underlying server/service.`,
+			`these tool ids don't resolve to a tool available in this workspace: ${unresolved.join(", ")}. A remote-MCP id (mcp:{serverId}:{tool}) needs its server registered + enabled and the tool exposed; native:/astra: ids need the matching workspace capability. Remove the id or fix the underlying server/service.`,
 			422,
 		);
 	}
