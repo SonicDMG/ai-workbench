@@ -9,6 +9,103 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-01
+
+**"Enterprise Access Control."** 0.5.0 turns AI Workbench's access-control story
+from *prototype + coarse roles* into *enforced, fine-grained, and audited* — so
+it is safe to run multi-team retrieval workloads where "who can see what" holds
+at the data plane. Three must-have features land together: row-level access
+control (RLAC) enforced on **every** read path, fine-grained API-key scopes, and
+access-controlled agent MCP tool-calling.
+
+There is **no breaking wire-contract change** and **no required data migration**
+— fine-grained scopes are additive (coarse keys keep working), and RLAC chunk
+visibility backfills automatically. See **Migration** below before enabling RLAC
+on an existing deployment.
+
+### Added
+
+- **Row-level access control is now enforced on every read path — including
+  agent chat retrieval.** RLAC policies were previously enforced on the REST
+  document routes only; an agent's RAG retrieval bypassed them entirely. Now
+  `search_kb`, `list_chunks`, `get_document`, document listing, and the Astra
+  `data_api` tool all compose the compiled policy filter, so a principal's agent
+  can only retrieve what that principal can see. Chunks are stamped with their
+  document's `visible_to` **at ingest**, so the data plane matches the control
+  plane — the central bug that made RLAC-on search return nothing.
+- **RLAC admin UI.** A new Access Control card (RLAC on/off), Principals panel
+  (CRUD), and Policy Audit panel in workspace settings — the admin surface
+  `docs/rlac.md` described but that did not previously exist.
+- **Fine-grained API-key scopes.** Keys can be minted with narrow scopes
+  (`read:content`, `read:chat`, `read:audit`, `write:ingest`, `write:kb`,
+  `write:services`, `write:agents`, `manage:keys`, `manage:access`,
+  `manage:workspace`, `tools:invoke`) alongside the coarse `read` / `write` /
+  `manage` tiers. A "Custom (advanced)" scope picker in the create-key dialog,
+  tier-colored scope chips, and a new `aiw key create|list|revoke` CLI command
+  (with `--role` presets and repeatable `--scope`) expose them.
+- **Agent external MCP tool-calling, access-controlled.** Agents can call tools
+  on registered external MCP servers under a `tools:invoke` grant, enforced
+  per-call — a call without the scope is denied and audited, never executed.
+  Save-time `toolId` validation rejects an agent that references an unresolvable
+  `mcp:` / `native:` / `astra:` tool (`422 agent_tool_unresolved`). The agent
+  form groups tools by server, shows required arguments, and warns about saved
+  tools that no longer resolve. Per-server tool discovery is memoized with a
+  short TTL to keep agent turns and form loads fast.
+- **Tool-invocation and scope-denial audit detail.** `tool.invoke` audit rows
+  carry `source` and `mcpServerId`; a scope-denied API request records the
+  `requiredScope`.
+- **New cross-runtime conformance scenarios** pinning the RLAC principal/policy
+  contract, fine-scope mint/normalization, the external MCP-server registry
+  lifecycle (incl. SecretRef enforcement), and the available-tools catalog
+  shape.
+
+### Changed
+
+- **Scope checks use hierarchical containment instead of exact-string match.**
+  A held scope `X` grants a required scope `Y` when `Y === X` or `Y` is nested
+  under `X` (so a coarse `write` key grants `write:ingest`). This is what lets
+  the coarse tiers stay supersets of the new fine scopes with **no data
+  migration** — every existing key keeps exactly the access it had. The MCP
+  JSON-RPC façade adopts the same containment check, replacing its own
+  exact-match copy of the gate.
+- **A single shared in-memory Data API filter interpreter** now backs the mock
+  driver, the document-list path, and the mock-Astra conformance server, so
+  `$or` / `$and` visibility filters evaluate identically across them — closing a
+  silent mock-vs-production semantic drift.
+- **Docs rewritten to match shipped reality:** `docs/rlac.md`, `docs/auth.md`
+  (scope taxonomy + containment table + migration notes), `docs/audit.md` (new
+  fields), and the stale client-side-MCP line in `docs/roadmap.md`.
+
+### Security
+
+- **DNS-resolution SSRF parity for external MCP server URLs.** Beyond the
+  literal-host check, an MCP server's hostname is resolved and every resolved
+  address re-validated against the same egress policy, so a benign-looking name
+  that resolves to `169.254.169.254` — or, when private egress is locked down,
+  an internal IP — is refused before any connection is opened. On-prem
+  deployments that allow private egress can still register internal MCP servers.
+- **Untrusted MCP servers can no longer bloat the model prompt.** An advertised
+  tool description is length-capped and an oversized advertised input schema is
+  dropped to a permissive object, bounding the metadata an external server
+  injects into the tool manifest each turn. Tool descriptions render as inert
+  text, never HTML.
+
+### Migration
+
+- **Enabling RLAC on an existing workspace:** new ingests are tagged with their
+  visibility automatically, and existing chunks are re-tagged from each
+  document's `visibleTo` when you flip RLAC on (and via the backfill script).
+  Until a workspace is backfilled, an RLAC-on search reflects only re-tagged
+  chunks — flip on, let the backfill run, then verify.
+- **Fine-grained scopes are additive — no action required.** Existing coarse
+  `read` / `write` / `manage` keys keep working unchanged; the default for a new
+  key is still `["read", "write"]`. Mint narrower keys only where you want them.
+- **Two deliberate behavior changes to note:** reading the **policy-audit log**
+  now requires `manage:access` (a coarse `manage` key still grants it), and an
+  agent calling an **external MCP tool** now requires `tools:invoke` (a coarse
+  `write` key grants it, so existing write-capable keys are unaffected). Chat
+  message sends remain ungated for read-shaped keys.
+
 ## [0.4.3] — 2026-05-31
 
 A hardening-and-correctness release on the 0.4.x line. There is **no HTTP

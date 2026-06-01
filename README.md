@@ -13,10 +13,10 @@ organize knowledge bases, configure agents that chat and call tools,
 issue scoped API keys, and try Astra Data API commands — all from one
 browser app, with a matching HTTP API and CLI.
 
-> **AI Workbench 0.4 is a public beta.** APIs, schemas, and UI surfaces
+> **AI Workbench 0.5 is a public beta.** APIs, schemas, and UI surfaces
 > may still change between minor versions until 1.0. See
 > [`CHANGELOG.md`](./CHANGELOG.md) for what's in this release,
-> [`docs/whats-new-0.4.3.md`](./docs/whats-new-0.4.3.md) for the
+> [`docs/whats-new-0.5.0.md`](./docs/whats-new-0.5.0.md) for the
 > latest highlights, and
 > [`docs/whats-new-0.4.0.md`](./docs/whats-new-0.4.0.md) for the
 > narrative tour.

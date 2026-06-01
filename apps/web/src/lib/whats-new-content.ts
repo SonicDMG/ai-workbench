@@ -31,22 +31,22 @@ export const WHATS_NEW_VERSION = APP_VERSION;
  */
 export const WHATS_NEW_HIGHLIGHTS: readonly WhatsNewItem[] = [
 	{
-		title: "Deleting a workspace now cleans up everything",
+		title: "Access control that holds — even in agent chat",
 		summary:
-			"Removing a workspace used to leave its MCP servers, access principals, and policy-audit rows behind. Deletion now cascades to all of them on every storage backend. On Astra it is self-healing: if a delete is interrupted partway, the workspace stays put and the cleanup completes on retry instead of stranding orphaned records — and an optional startup pass can sweep up orphans left by older versions.",
+			"Row-level access control now applies on every read path, including an agent's retrieval. Turn it on for a workspace, define principals, and ingest documents with a visibility — and a principal's agent can only retrieve what that principal is allowed to see. A new Access Control card, Principals panel, and Policy Audit panel live in workspace settings.",
 		link: {
-			label: "Manage workspaces",
+			label: "Open a workspace",
 			href: "/",
 		},
 	},
 	{
-		title: "Secrets stay out of your logs",
+		title: "Narrowly-scoped API keys",
 		summary:
-			"Structured log output now redacts secret- and token-shaped values automatically, so API keys and bootstrap tokens no longer slip into the logs you ship to an aggregator.",
+			'Mint keys that can do exactly one thing — ingest-only, knowledge-base admin, audit-read, tool-invoke, and more — with the new "Custom (advanced)" scope picker. Existing read / write / manage keys keep working unchanged: the coarse tiers are supersets of the fine scopes, so there\'s no migration. The new `aiw key` CLI command mints and revokes them from a terminal.',
 	},
 	{
-		title: "A tighter setup & rescue surface",
+		title: "Agents can call external MCP tools — under a scope",
 		summary:
-			"The first-run setup and rescue endpoints now gate every state-changing route behind the setup auth-gate, and the bootstrap-token check is constant-time so it can't be guessed by timing. Bounded readiness probes and chat request timeouts keep the runtime steadier under load and during restarts.",
+			"Register an external MCP server and an agent can call its tools, but only when the calling key carries the new `tools:invoke` scope. Every call is audited, and a call without the scope is refused rather than executed. The agent form groups tools by server, shows their required arguments, and warns about saved tools that no longer resolve.",
 	},
 ];
