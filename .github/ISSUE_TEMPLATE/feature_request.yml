@@ -1,0 +1,92 @@
+name: Feature request
+description: Suggest a capability, workflow, or improvement for AI Workbench.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an improvement. Please describe the user problem first so maintainers can evaluate the request alongside the roadmap and contribution rules.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What user need, workflow gap, or limitation should this address?
+      placeholder: As an operator, I need...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you want to see.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds or other designs have you considered?
+    validations:
+      required: false
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      multiple: true
+      options:
+        - Web UI
+        - TypeScript runtime/API
+        - CLI
+        - Docker image or compose setup
+        - Documentation
+        - Python runtime scaffold
+        - Java runtime scaffold
+        - CI/release tooling
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: contract-impact
+    attributes:
+      label: Contract impact
+      description: Select anything this request would need to change.
+      multiple: true
+      options:
+        - No contract change expected
+        - HTTP API route or schema
+        - workbench.yaml schema
+        - Conformance scenario or fixture
+        - Runtime model in Python or Java
+        - Public CLI behavior
+        - User-facing docs
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How should maintainers know this is done?
+      placeholder: |
+        - Users can...
+        - Errors are documented...
+        - Tests cover...
+    validations:
+      required: false
+  - type: textarea
+    id: extra-context
+    attributes:
+      label: Additional context
+      description: Add links, mockups, screenshots, or related issues.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
+        - label: I explained the user impact instead of only describing an implementation.
+          required: true

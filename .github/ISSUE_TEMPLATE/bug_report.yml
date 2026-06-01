@@ -1,0 +1,98 @@
+name: Bug report
+description: Report something in AI Workbench that is not working as expected.
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve AI Workbench. Before filing, search existing issues and make sure this is not a security vulnerability. Security issues must be reported privately through the repository security policy.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the bug and the user-visible impact.
+      placeholder: The runtime returned 500 when...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest reliable reproduction you can.
+      placeholder: |
+        1. Start AI Workbench with...
+        2. Open...
+        3. Run...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include errors, stack traces, screenshots, or logs when useful. Redact secrets before posting.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      multiple: true
+      options:
+        - Web UI
+        - TypeScript runtime/API
+        - CLI
+        - Docker image or compose setup
+        - Documentation
+        - Python runtime scaffold
+        - Java runtime scaffold
+        - CI/release tooling
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Include the release version, Docker tag, or commit SHA.
+      placeholder: v0.4.2, latest, or d951f76
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Tell us how you run AI Workbench.
+      placeholder: |
+        - Install path: Docker Compose / source checkout / npm package
+        - OS:
+        - Node.js:
+        - Browser:
+        - Control plane: local file / memory / Astra
+    validations:
+      required: false
+  - type: textarea
+    id: extra-context
+    attributes:
+      label: Additional context
+      description: Link related issues, PRs, docs, or reproduction repositories.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
+        - label: I removed or redacted secrets, credentials, tokens, and private data.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
