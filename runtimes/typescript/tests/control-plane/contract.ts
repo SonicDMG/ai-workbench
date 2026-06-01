@@ -1467,6 +1467,550 @@ export function runContract(name: string, factory: ContractFactory): void {
 		});
 
 		/* ============================================================== */
+		/* Principals (RLAC sub-workspace identities, RBAC roles)         */
+		/* ============================================================== */
+
+		test("createPrincipal mints a record with viewer-role defaults", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				expect(await store.listPrincipals(ws.uid)).toEqual([]);
+
+				const created = await store.createPrincipal(ws.uid, {
+					principalId: "alice@example.com",
+				});
+				expect(created.workspaceId).toBe(ws.uid);
+				expect(created.principalId).toBe("alice@example.com");
+				// Defaults: viewer role, null label, empty attributes, fresh
+				// timestamps that start equal.
+				expect(created.role).toBe("viewer");
+				expect(created.label).toBeNull();
+				expect(created.attributes).toEqual({});
+				expect(created.createdAt).toBe(created.updatedAt);
+
+				const got = await store.getPrincipal(ws.uid, "alice@example.com");
+				expect(got).toEqual(created);
+
+				const list = await store.listPrincipals(ws.uid);
+				expect(list.map((p) => p.principalId)).toEqual(["alice@example.com"]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("createPrincipal echoes explicit role, label, and attributes", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const created = await store.createPrincipal(ws.uid, {
+					principalId: "ops-bot",
+					label: "Operations bot",
+					role: "admin",
+					attributes: { team: "platform", tier: "gold" },
+				});
+				expect(created.role).toBe("admin");
+				expect(created.label).toBe("Operations bot");
+				expect(created.attributes).toEqual({ team: "platform", tier: "gold" });
+
+				// Attributes round-trip through the backend untouched.
+				const reread = await store.getPrincipal(ws.uid, "ops-bot");
+				expect(reread?.attributes).toEqual({ team: "platform", tier: "gold" });
+				expect(reread?.role).toBe("admin");
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("getPrincipal returns null for an unknown principalId", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				expect(await store.getPrincipal(ws.uid, "nobody")).toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("createPrincipal rejects a duplicate principalId in the same workspace", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await store.createPrincipal(ws.uid, { principalId: "dup@example.com" });
+				await expect(
+					store.createPrincipal(ws.uid, { principalId: "dup@example.com" }),
+				).rejects.toBeInstanceOf(ControlPlaneConflictError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("listPrincipals returns rows sorted by principalId", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				// Insert out of lexicographic order — the contract sorts on read.
+				await store.createPrincipal(ws.uid, { principalId: "charlie" });
+				await store.createPrincipal(ws.uid, { principalId: "alice" });
+				await store.createPrincipal(ws.uid, { principalId: "bob" });
+				const list = await store.listPrincipals(ws.uid);
+				expect(list.map((p) => p.principalId)).toEqual([
+					"alice",
+					"bob",
+					"charlie",
+				]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("updatePrincipal patches label, role, and attributes independently and bumps updatedAt", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const created = await store.createPrincipal(ws.uid, {
+					principalId: "carol",
+					label: "old",
+					role: "viewer",
+					attributes: { region: "us" },
+				});
+				// Clock advance — ISO strings have ms resolution.
+				await new Promise((r) => setTimeout(r, 5));
+
+				// Patch only the role; label + attributes untouched.
+				const promoted = await store.updatePrincipal(ws.uid, "carol", {
+					role: "editor",
+				});
+				expect(promoted.role).toBe("editor");
+				expect(promoted.label).toBe("old");
+				expect(promoted.attributes).toEqual({ region: "us" });
+				expect(new Date(promoted.updatedAt).getTime()).toBeGreaterThan(
+					new Date(created.updatedAt).getTime(),
+				);
+
+				// Replace attributes wholesale; an explicit null clears the label.
+				const relabeled = await store.updatePrincipal(ws.uid, "carol", {
+					label: null,
+					attributes: { region: "eu", tier: "silver" },
+				});
+				expect(relabeled.label).toBeNull();
+				expect(relabeled.attributes).toEqual({ region: "eu", tier: "silver" });
+				// Role from the prior patch survives an attributes-only-ish patch.
+				expect(relabeled.role).toBe("editor");
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("updatePrincipal throws not-found on an unknown principalId", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await expect(
+					store.updatePrincipal(ws.uid, "ghost", { role: "admin" }),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("deletePrincipal reports deleted and is a no-op on a missing id", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await store.createPrincipal(ws.uid, { principalId: "doomed" });
+				const first = await store.deletePrincipal(ws.uid, "doomed");
+				expect(first.deleted).toBe(true);
+				expect(await store.getPrincipal(ws.uid, "doomed")).toBeNull();
+
+				// Second delete finds nothing — reported but not an error.
+				const second = await store.deletePrincipal(ws.uid, "doomed");
+				expect(second.deleted).toBe(false);
+				expect(await store.listPrincipals(ws.uid)).toEqual([]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("principals are isolated per workspace", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const a = await store.createWorkspace({ name: "a", kind: "mock" });
+				const b = await store.createWorkspace({ name: "b", kind: "mock" });
+				await store.createPrincipal(a.uid, {
+					principalId: "shared-handle",
+					role: "admin",
+				});
+				// Same principalId in a different workspace is a distinct row,
+				// not a conflict — partitioning is by workspace.
+				const bRow = await store.createPrincipal(b.uid, {
+					principalId: "shared-handle",
+					role: "viewer",
+				});
+				expect(bRow.role).toBe("viewer");
+
+				expect((await store.listPrincipals(a.uid)).map((p) => p.role)).toEqual([
+					"admin",
+				]);
+				expect((await store.listPrincipals(b.uid)).map((p) => p.role)).toEqual([
+					"viewer",
+				]);
+				// A principal from one workspace is invisible to the other's get.
+				await store.deletePrincipal(a.uid, "shared-handle");
+				expect(await store.getPrincipal(b.uid, "shared-handle")).not.toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("principal operations on an unknown workspace throw not-found", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ghost = "00000000-0000-0000-0000-000000000000";
+				await expect(store.listPrincipals(ghost)).rejects.toBeInstanceOf(
+					ControlPlaneNotFoundError,
+				);
+				await expect(store.getPrincipal(ghost, "x")).rejects.toBeInstanceOf(
+					ControlPlaneNotFoundError,
+				);
+				await expect(
+					store.createPrincipal(ghost, { principalId: "x" }),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+				await expect(
+					store.updatePrincipal(ghost, "x", { role: "admin" }),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+				await expect(store.deletePrincipal(ghost, "x")).rejects.toBeInstanceOf(
+					ControlPlaneNotFoundError,
+				);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		/* ============================================================== */
+		/* Policy audit (append-only RLAC decision log)                   */
+		/* ============================================================== */
+
+		test("recordPolicyDecision stamps ids + timestamps; listPolicyAudit returns newest-first", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				expect(await store.listPolicyAudit(ws.uid)).toEqual([]);
+
+				const first = await store.recordPolicyDecision(ws.uid, {
+					principalId: "alice",
+					knowledgeBaseId: "kb-1",
+					resourceId: "doc-1",
+					action: "search",
+					decision: "allow",
+					reason: "policy matched",
+				});
+				expect(first.workspaceId).toBe(ws.uid);
+				expect(first.decisionId).toMatch(
+					/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+				);
+				// auditDay is the YYYY-MM-DD prefix of the ISO `ts`.
+				expect(first.auditDay).toBe(first.ts.slice(0, 10));
+				// Omitted compiledFilterJson defaults to null.
+				expect(first.compiledFilterJson).toBeNull();
+
+				// Clock advance so the second record sorts strictly newer.
+				await new Promise((r) => setTimeout(r, 5));
+				const second = await store.recordPolicyDecision(ws.uid, {
+					principalId: "bob",
+					knowledgeBaseId: "kb-2",
+					resourceId: "doc-2",
+					action: "get",
+					decision: "deny",
+					reason: "no rule",
+					compiledFilterJson: '{"status":"published"}',
+				});
+				expect(second.compiledFilterJson).toBe('{"status":"published"}');
+
+				const list = await store.listPolicyAudit(ws.uid);
+				// Newest-first to mirror the Astra cluster ordering.
+				expect(list.map((r) => r.decisionId)).toEqual([
+					second.decisionId,
+					first.decisionId,
+				]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("listPolicyAudit filters by principalId and knowledgeBaseId", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await store.recordPolicyDecision(ws.uid, {
+					principalId: "alice",
+					knowledgeBaseId: "kb-1",
+					resourceId: "r1",
+					action: "search",
+					decision: "allow",
+					reason: "a",
+				});
+				await store.recordPolicyDecision(ws.uid, {
+					principalId: "bob",
+					knowledgeBaseId: "kb-1",
+					resourceId: "r2",
+					action: "search",
+					decision: "filter",
+					reason: "b",
+				});
+				await store.recordPolicyDecision(ws.uid, {
+					principalId: "alice",
+					knowledgeBaseId: "kb-2",
+					resourceId: "r3",
+					action: "get",
+					decision: "deny",
+					reason: "c",
+				});
+
+				const byPrincipal = await store.listPolicyAudit(ws.uid, {
+					principalId: "alice",
+				});
+				expect(byPrincipal.every((r) => r.principalId === "alice")).toBe(true);
+				expect(byPrincipal.map((r) => r.resourceId).sort()).toEqual([
+					"r1",
+					"r3",
+				]);
+
+				const byKb = await store.listPolicyAudit(ws.uid, {
+					knowledgeBaseId: "kb-1",
+				});
+				expect(byKb.every((r) => r.knowledgeBaseId === "kb-1")).toBe(true);
+				expect(byKb.map((r) => r.resourceId).sort()).toEqual(["r1", "r2"]);
+
+				// Both filters compose (AND).
+				const both = await store.listPolicyAudit(ws.uid, {
+					principalId: "alice",
+					knowledgeBaseId: "kb-1",
+				});
+				expect(both.map((r) => r.resourceId)).toEqual(["r1"]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("listPolicyAudit honors the limit and an explicit auditDay filter", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				for (let i = 0; i < 5; i++) {
+					await store.recordPolicyDecision(ws.uid, {
+						principalId: "p",
+						knowledgeBaseId: "kb",
+						resourceId: `r${i}`,
+						action: "list",
+						decision: "allow",
+						reason: `n${i}`,
+					});
+					await new Promise((r) => setTimeout(r, 2));
+				}
+				const limited = await store.listPolicyAudit(ws.uid, { limit: 2 });
+				expect(limited).toHaveLength(2);
+
+				// Today's partition holds every record we just wrote; an unrelated
+				// day returns nothing.
+				const today = new Date().toISOString().slice(0, 10);
+				const todayRows = await store.listPolicyAudit(ws.uid, {
+					auditDay: today,
+				});
+				expect(todayRows).toHaveLength(5);
+				const emptyDay = await store.listPolicyAudit(ws.uid, {
+					auditDay: "1999-01-01",
+				});
+				expect(emptyDay).toEqual([]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("policy-audit operations on an unknown workspace throw not-found", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ghost = "00000000-0000-0000-0000-000000000000";
+				await expect(store.listPolicyAudit(ghost)).rejects.toBeInstanceOf(
+					ControlPlaneNotFoundError,
+				);
+				await expect(
+					store.recordPolicyDecision(ghost, {
+						principalId: "p",
+						knowledgeBaseId: "kb",
+						resourceId: "r",
+						action: "get",
+						decision: "allow",
+						reason: "x",
+					}),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		/* ============================================================== */
+		/* LLM / chunking / reranking service CRUD (file/astra coverage)  */
+		/* ============================================================== */
+
+		test("LLM service CRUD round-trip mints an id and applies defaults", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				expect(await store.listLlmServices(ws.uid)).toEqual([]);
+
+				const created = await store.createLlmService(ws.uid, {
+					name: "gpt",
+					provider: "openai",
+					modelName: "gpt-4o",
+				});
+				expect(created.llmServiceId).toMatch(
+					/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+				);
+				expect(created.workspaceId).toBe(ws.uid);
+				// status defaults to "active"; description defaults to null.
+				expect(created.status).toBe("active");
+				expect(created.description).toBeNull();
+				expect(created.createdAt).toBe(created.updatedAt);
+
+				const got = await store.getLlmService(ws.uid, created.llmServiceId);
+				expect(got).toEqual(created);
+
+				await new Promise((r) => setTimeout(r, 5));
+				const updated = await store.updateLlmService(
+					ws.uid,
+					created.llmServiceId,
+					{ description: "primary chat model", status: "experimental" },
+				);
+				expect(updated.description).toBe("primary chat model");
+				expect(updated.status).toBe("experimental");
+				expect(updated.modelName).toBe("gpt-4o"); // untouched
+				expect(new Date(updated.updatedAt).getTime()).toBeGreaterThan(
+					new Date(created.updatedAt).getTime(),
+				);
+
+				const { deleted } = await store.deleteLlmService(
+					ws.uid,
+					created.llmServiceId,
+				);
+				expect(deleted).toBe(true);
+				expect(
+					await store.getLlmService(ws.uid, created.llmServiceId),
+				).toBeNull();
+				expect(await store.listLlmServices(ws.uid)).toEqual([]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("LLM service update / delete report on unknown id", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				await expect(
+					store.updateLlmService(
+						ws.uid,
+						"00000000-0000-0000-0000-0000000000ff",
+						{ status: "deprecated" },
+					),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+				const { deleted } = await store.deleteLlmService(
+					ws.uid,
+					"00000000-0000-0000-0000-0000000000ff",
+				);
+				expect(deleted).toBe(false);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("chunking service CRUD round-trip mints an id and applies defaults", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const created = await store.createChunkingService(ws.uid, {
+					name: "docling",
+					engine: "docling",
+				});
+				expect(created.chunkingServiceId).toMatch(
+					/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+				);
+				expect(created.status).toBe("active");
+				expect(created.engine).toBe("docling");
+
+				const got = await store.getChunkingService(
+					ws.uid,
+					created.chunkingServiceId,
+				);
+				expect(got).toEqual(created);
+
+				await new Promise((r) => setTimeout(r, 5));
+				const updated = await store.updateChunkingService(
+					ws.uid,
+					created.chunkingServiceId,
+					{ maxChunkSize: 512, status: "deprecated" },
+				);
+				expect(updated.maxChunkSize).toBe(512);
+				expect(updated.status).toBe("deprecated");
+				expect(updated.engine).toBe("docling"); // untouched
+
+				const { deleted } = await store.deleteChunkingService(
+					ws.uid,
+					created.chunkingServiceId,
+				);
+				expect(deleted).toBe(true);
+				expect(
+					await store.getChunkingService(ws.uid, created.chunkingServiceId),
+				).toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		test("reranking service CRUD round-trip mints an id and applies defaults", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const created = await store.createRerankingService(ws.uid, {
+					name: "cohere",
+					provider: "cohere",
+					modelName: "rerank-english-v3.0",
+				});
+				expect(created.rerankingServiceId).toMatch(
+					/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+				);
+				expect(created.status).toBe("active");
+				expect(created.modelName).toBe("rerank-english-v3.0");
+
+				const got = await store.getRerankingService(
+					ws.uid,
+					created.rerankingServiceId,
+				);
+				expect(got).toEqual(created);
+
+				await new Promise((r) => setTimeout(r, 5));
+				const updated = await store.updateRerankingService(
+					ws.uid,
+					created.rerankingServiceId,
+					{ modelName: "rerank-multilingual-v3.0", status: "experimental" },
+				);
+				expect(updated.modelName).toBe("rerank-multilingual-v3.0");
+				expect(updated.status).toBe("experimental");
+				expect(updated.provider).toBe("cohere"); // untouched
+
+				const { deleted } = await store.deleteRerankingService(
+					ws.uid,
+					created.rerankingServiceId,
+				);
+				expect(deleted).toBe(true);
+				expect(
+					await store.getRerankingService(ws.uid, created.rerankingServiceId),
+				).toBeNull();
+			} finally {
+				await cleanup?.();
+			}
+		});
+
+		/* ============================================================== */
 		/* MCP servers (external tool providers, 0.4.0 A2)                */
 		/* ============================================================== */
 
