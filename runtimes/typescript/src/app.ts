@@ -719,6 +719,9 @@ function auditApiAuthDenied(
 			c.req.param("workspaceId") ?? apiWorkspaceIdFromPath(c.req.path),
 		details: {
 			...(err instanceof UnauthorizedError ? { scheme: err.scheme } : {}),
+			...(err instanceof ForbiddenError && err.requiredScope
+				? { requiredScope: err.requiredScope }
+				: {}),
 			reason: err.message,
 		},
 	});

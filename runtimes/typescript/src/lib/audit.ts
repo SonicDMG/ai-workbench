@@ -95,6 +95,13 @@ export interface AuditDetails {
 	readonly scheme?: string;
 	/** Free-form reason for `failure` / `denied` outcomes. */
 	readonly reason?: string;
+	/**
+	 * The privilege scope a caller was missing on a scope-gated
+	 * `auth.api_denied`. Structured (vs. the free-form `reason`) so
+	 * compliance can aggregate denials by scope. Absent on non-scope
+	 * denials (workspace-membership checks / 401s).
+	 */
+	readonly requiredScope?: string;
 	/** Caller-supplied label (workspace name, kb name, key label). */
 	readonly label?: string;
 	/**

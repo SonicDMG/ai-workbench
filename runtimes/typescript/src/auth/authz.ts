@@ -134,6 +134,7 @@ export function assertScope(c: Context<AppEnv>, scope: string): void {
 	if (subjectGrantsScope(scopes, scope)) return;
 	throw new ForbiddenError(
 		`authenticated subject is missing required scope '${scope}'`,
+		scope,
 	);
 }
 

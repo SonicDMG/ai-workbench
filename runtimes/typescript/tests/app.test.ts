@@ -1534,6 +1534,57 @@ describe("workspace-scoped authorization (cross-workspace)", () => {
 		}
 	});
 
+	test("scope denials carry the required scope as a structured audit field", async () => {
+		const { app, store } = makeApp({ mode: "apiKey" });
+		const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+		// Anonymous can mint in this harness; issue a read-only key.
+		const created = await json(
+			await app.request(`/api/v1/workspaces/${ws.uid}/api-keys`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ label: "ro", scopes: ["read"] }),
+			}),
+		);
+		const token = created.plaintext as string;
+		const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+		try {
+			// A read-only key on a `write:kb` route → 403 scope denial. The
+			// audit row must name the scope that was missing, not just a
+			// free-form reason, so compliance can aggregate by scope.
+			const res = await app.request(
+				`/api/v1/workspaces/${ws.uid}/knowledge-bases`,
+				{
+					method: "POST",
+					headers: {
+						"content-type": "application/json",
+						authorization: `Bearer ${token}`,
+					},
+					body: JSON.stringify({
+						name: "kb",
+						embeddingServiceId: "00000000-0000-4000-8000-000000000100",
+						chunkingServiceId: "00000000-0000-4000-8000-000000000101",
+					}),
+				},
+			);
+			expect(res.status).toBe(403);
+
+			expect(auditEvents(infoSpy)).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						action: "auth.api_denied",
+						outcome: "denied",
+						workspaceId: ws.uid,
+						details: expect.objectContaining({
+							requiredScope: "write:kb",
+						}),
+					}),
+				]),
+			);
+		} finally {
+			infoSpy.mockRestore();
+		}
+	});
+
 	test("a key scoped to A cannot list B's api-keys", async () => {
 		const { app, b, token } = await seedTwoWithKey();
 		const res = await app.request(`/api/v1/workspaces/${b.uid}/api-keys`, {

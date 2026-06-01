@@ -21,7 +21,17 @@ export class ForbiddenError extends Error {
 	readonly code = "forbidden";
 	readonly status = 403;
 
-	constructor(message: string) {
+	/**
+	 * The privilege scope the caller was missing, when this denial came
+	 * from a scope gate (`assertScope` / `requireScope`). Surfaced as a
+	 * structured `requiredScope` field on the `auth.api_denied` audit row
+	 * so compliance can aggregate denials by scope. Undefined for non-scope
+	 * denials (workspace-membership / platform-access checks).
+	 */
+	constructor(
+		message: string,
+		readonly requiredScope?: string,
+	) {
 		super(message);
 		this.name = "ForbiddenError";
 	}
