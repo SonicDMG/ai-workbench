@@ -109,6 +109,28 @@ export class FakeCollection implements AstraCollectionLike {
 		return { deletedCount: this.docs.delete(id) ? 1 : 0 };
 	}
 
+	async updateMany(
+		filter: Record<string, unknown>,
+		update: Record<string, unknown>,
+	): Promise<{ modifiedCount: number }> {
+		const set = (update.$set ?? {}) as Record<string, unknown>;
+		const unset = (update.$unset ?? {}) as Record<string, unknown>;
+		let modifiedCount = 0;
+		for (const [id, doc] of this.docs) {
+			const { _id: _i, $vector: _v, ...payload } = doc;
+			const matches = Object.entries(filter).every(
+				([k, v]) => (payload as Record<string, unknown>)[k] === v,
+			);
+			if (!matches) continue;
+			const next: Record<string, unknown> = { ...doc };
+			for (const [k, val] of Object.entries(set)) next[k] = val;
+			for (const k of Object.keys(unset)) delete next[k];
+			this.docs.set(id, next);
+			modifiedCount += 1;
+		}
+		return { modifiedCount };
+	}
+
 	find(
 		filter: Record<string, unknown>,
 		opts?: {

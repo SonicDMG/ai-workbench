@@ -231,6 +231,22 @@ export interface VectorStoreDriver {
 		ctx: VectorStoreDriverContext,
 		filter: Readonly<Record<string, unknown>>,
 	): Promise<{ deleted: number }>;
+
+	/**
+	 * Re-stamp the RLAC `visible_to` payload key on every record matching
+	 * `filter` (typically one document's chunks, scoped by
+	 * `knowledgeBaseId` + `documentId`). Used by the document PATCH route
+	 * when a document's visibility changes, so its chunks stay in sync
+	 * with the control-plane row and the pushed-down policy filter keeps
+	 * matching. `visibleTo: null` clears the key — matching the ingest
+	 * path, which omits it for RLAC-off documents. Optional: drivers that
+	 * can't bulk-update payloads omit it and the route skips re-tagging.
+	 */
+	setRecordsVisibility?(
+		ctx: VectorStoreDriverContext,
+		filter: Readonly<Record<string, unknown>>,
+		visibleTo: readonly string[] | null,
+	): Promise<{ updated: number }>;
 }
 
 export interface ListRecordsRequest {

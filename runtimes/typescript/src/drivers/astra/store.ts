@@ -22,6 +22,7 @@ import type {
 	VectorStoreRecord,
 	WorkspaceRecord,
 } from "../../control-plane/types.js";
+import { VISIBLE_TO_KEY } from "../../ingest/payload-keys.js";
 import { RetryingAstraFetcher } from "../../lib/astra-retrying-fetcher.js";
 import type { SecretResolver } from "../../secrets/provider.js";
 import {
@@ -266,6 +267,15 @@ export interface AstraCollectionLike {
 	deleteMany?(
 		filter: Record<string, unknown>,
 	): Promise<{ deletedCount: number }>;
+	/** Bulk payload update by filter. Used by RLAC re-tagging when a
+	 * document's visibility changes. Optional in the structural type —
+	 * clients/fakes without it cause the driver to skip re-tagging
+	 * (the control-plane row, enforced on the document paths, stays
+	 * authoritative until the next ingest). */
+	updateMany?(
+		filter: Record<string, unknown>,
+		update: Record<string, unknown>,
+	): Promise<{ modifiedCount: number }>;
 	find(
 		filter: Record<string, unknown>,
 		opts?: {
@@ -527,6 +537,29 @@ export class AstraVectorStoreDriver implements VectorStoreDriver {
 			if (r.deletedCount > 0) deleted += 1;
 		}
 		return { deleted };
+	}
+
+	async setRecordsVisibility(
+		ctx: VectorStoreDriverContext,
+		filter: Readonly<Record<string, unknown>>,
+		visibleTo: readonly string[] | null,
+	): Promise<{ updated: number }> {
+		const coll = (await this.getDb(ctx.workspace)).collection(
+			collectionName(ctx.descriptor),
+		);
+		// Re-tag the matching chunks' visibility in one bulk update.
+		// Older astra-db-ts versions (and fakes) without `updateMany` skip
+		// silently — the control-plane row, enforced on the document
+		// paths, stays authoritative until the document is re-ingested.
+		if (typeof coll.updateMany !== "function") {
+			return { updated: 0 };
+		}
+		const update =
+			visibleTo != null
+				? { $set: { [VISIBLE_TO_KEY]: [...visibleTo] } }
+				: { $unset: { [VISIBLE_TO_KEY]: "" } };
+		const res = await coll.updateMany({ ...filter }, update);
+		return { updated: res.modifiedCount };
 	}
 
 	async deleteRecord(

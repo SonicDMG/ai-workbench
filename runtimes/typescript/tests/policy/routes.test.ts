@@ -520,4 +520,173 @@ describe("RLAC routes — KB documents enforced by policy", () => {
 		);
 		expect(denies.length).toBeGreaterThan(0);
 	});
+
+	// RLAC-enabled KB created through the HTTP route so the mock vector
+	// collection is actually provisioned — required for ingest (unlike the
+	// metadata-only `setupPolicyEnabledKb`, which seeds rows directly).
+	async function setupIngestableRlacKb(): Promise<{
+		app: ReturnType<typeof createApp>;
+		workspaceId: string;
+		knowledgeBaseId: string;
+	}> {
+		const { app, store } = makeTestApp();
+		const ws = await store.createWorkspace({
+			name: "rlac-ingest",
+			kind: "mock",
+			url: null,
+			credentials: {},
+			keyspace: null,
+		});
+		await app.request(`/api/v1/workspaces/${ws.uid}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ rlacEnabled: true }),
+		});
+		const chunking = await store.createChunkingService(ws.uid, {
+			name: "chunker",
+			engine: "langchain_ts",
+		});
+		const embedding = await store.createEmbeddingService(ws.uid, {
+			name: "embedder",
+			provider: "mock",
+			modelName: "mock",
+			embeddingDimension: 4,
+		});
+		const kbRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/knowledge-bases`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "docs",
+					chunkingServiceId: chunking.chunkingServiceId,
+					embeddingServiceId: embedding.embeddingServiceId,
+				}),
+			},
+		);
+		const kb = (await kbRes.json()) as { knowledgeBaseId: string };
+		await app.request(
+			`/api/v1/workspaces/${ws.uid}/knowledge-bases/${kb.knowledgeBaseId}`,
+			{
+				method: "PATCH",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					policyDsl:
+						"current_principal_id() = ANY(visible_to) OR '*' = ANY(visible_to)",
+					policyEnabled: true,
+				}),
+			},
+		);
+		for (const principalId of ["alice", "bob"]) {
+			await app.request(`/api/v1/workspaces/${ws.uid}/principals`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ principalId }),
+			});
+		}
+		return { app, workspaceId: ws.uid, knowledgeBaseId: kb.knowledgeBaseId };
+	}
+
+	test("chunk listing is enforced: only a principal who can see the doc reads its chunks", async () => {
+		const { app, workspaceId, knowledgeBaseId } = await setupIngestableRlacKb();
+		// Ingest as alice → the doc defaults to visible_to=["alice"] and its
+		// chunks are stamped to match.
+		const ingest = await app.request(
+			`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/ingest`,
+			{
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					"x-view-as-principal": "alice",
+				},
+				body: JSON.stringify({
+					text: "alpha bravo charlie delta echo foxtrot",
+				}),
+			},
+		);
+		expect(ingest.status, await ingest.clone().text()).toBe(201);
+		const documentId = (
+			(await ingest.json()) as { document: { documentId: string } }
+		).document.documentId;
+		const chunksUrl = `/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/chunks`;
+
+		// alice (the owner) can read the chunks.
+		const asAlice = await app.request(chunksUrl, {
+			headers: { "x-view-as-principal": "alice" },
+		});
+		expect(asAlice.status).toBe(200);
+		expect(((await asAlice.json()) as unknown[]).length).toBeGreaterThan(0);
+
+		// bob cannot — 404, matching the document-get path (the row
+		// "doesn't exist" to him).
+		const asBob = await app.request(chunksUrl, {
+			headers: { "x-view-as-principal": "bob" },
+		});
+		expect(asBob.status).toBe(404);
+
+		// No principal at all + policy enabled → 401.
+		const anon = await app.request(chunksUrl);
+		expect(anon.status).toBe(401);
+		expect(
+			((await anon.json()) as { error: { code: string } }).error.code,
+		).toBe("policy_principal_required");
+	});
+
+	test("PATCH visibleTo re-tags the document's chunks in the data plane", async () => {
+		const { app, workspaceId, knowledgeBaseId } = await setupIngestableRlacKb();
+		// Ingest as alice → chunks visible to alice only.
+		const ingest = await app.request(
+			`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/ingest`,
+			{
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					"x-view-as-principal": "alice",
+				},
+				body: JSON.stringify({ text: "alpha bravo charlie delta echo" }),
+			},
+		);
+		expect(ingest.status).toBe(201);
+		const documentId = (
+			(await ingest.json()) as { document: { documentId: string } }
+		).document.documentId;
+		const chunksUrl = `/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/chunks`;
+
+		// Initially bob can't read the chunks.
+		expect(
+			(
+				await app.request(chunksUrl, {
+					headers: { "x-view-as-principal": "bob" },
+				})
+			).status,
+		).toBe(404);
+
+		// alice broadens visibility to include bob.
+		const patch = await app.request(
+			`/api/v1/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/documents/${documentId}`,
+			{
+				method: "PATCH",
+				headers: {
+					"content-type": "application/json",
+					"x-view-as-principal": "alice",
+				},
+				body: JSON.stringify({ visibleTo: ["alice", "bob"] }),
+			},
+		);
+		expect(patch.status, await patch.clone().text()).toBe(200);
+
+		// The chunks were re-tagged: bob can now read them, and the chunk
+		// payloads carry the broadened set.
+		const asBob = await app.request(chunksUrl, {
+			headers: { "x-view-as-principal": "bob" },
+		});
+		expect(asBob.status).toBe(200);
+		const chunks = (await asBob.json()) as Array<{
+			payload: { visible_to?: string[] };
+		}>;
+		expect(chunks.length).toBeGreaterThan(0);
+		for (const ch of chunks) {
+			expect(new Set(ch.payload.visible_to)).toEqual(new Set(["alice", "bob"]));
+		}
+	});
 });

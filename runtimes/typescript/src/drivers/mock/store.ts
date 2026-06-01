@@ -15,6 +15,7 @@
  */
 
 import type { WorkspaceRecord } from "../../control-plane/types.js";
+import { VISIBLE_TO_KEY } from "../../ingest/payload-keys.js";
 import { matchesDataApiFilter } from "../../lib/data-api-filter.js";
 import {
 	type AdoptableCollection,
@@ -220,6 +221,24 @@ export class MockVectorStoreDriver implements VectorStoreDriver {
 			texts?.delete(id);
 		}
 		return { deleted: ids.length };
+	}
+
+	async setRecordsVisibility(
+		ctx: VectorStoreDriverContext,
+		filter: Readonly<Record<string, unknown>>,
+		visibleTo: readonly string[] | null,
+	): Promise<{ updated: number }> {
+		const store = this.requireStore(ctx);
+		let updated = 0;
+		for (const rec of store.values()) {
+			if (!matchesDataApiFilter(rec.payload, filter)) continue;
+			const payload: Record<string, unknown> = { ...(rec.payload ?? {}) };
+			if (visibleTo != null) payload[VISIBLE_TO_KEY] = [...visibleTo];
+			else delete payload[VISIBLE_TO_KEY];
+			store.set(rec.id, { ...rec, payload });
+			updated += 1;
+		}
+		return { updated };
 	}
 
 	async search(

@@ -592,6 +592,28 @@ export function kbDocumentRoutes(
 			if (!doc) throw new ControlPlaneNotFoundError("document", documentId);
 
 			const resolved = await resolveKb(store, workspaceId, knowledgeBaseId);
+			// RLAC: a caller who can't see the parent document can't read
+			// its chunks either. 404 to match the document-get path (the
+			// row "doesn't exist" to them); emits an audit record either way.
+			try {
+				const decision = await buildPolicyContext({
+					workspace: workspaceId,
+					workspaceRlacEnabled: resolved.workspace.rlacEnabled,
+					knowledgeBase: resolved.knowledgeBase,
+					principal: getRequestPrincipal(c),
+					action: "get",
+					resourceId: documentId,
+					audit: store,
+				});
+				if (applyVisibleToFilter([doc], decision.filter).length === 0) {
+					throw new ControlPlaneNotFoundError("document", documentId);
+				}
+			} catch (err) {
+				if (err instanceof PolicyDeniedError) {
+					throw new ApiError("policy_principal_required", err.reason, 401);
+				}
+				throw err;
+			}
 			const driver = drivers.for(resolved.workspace);
 			if (typeof driver.listRecords !== "function") {
 				throw new ApiError(
@@ -769,6 +791,24 @@ export function kbDocumentRoutes(
 				documentId,
 				body,
 			);
+			// RLAC: when the caller changed `visibleTo`, re-stamp the
+			// document's chunks so the data plane stays in sync with the
+			// row (the pushed-down policy filter matches on chunk
+			// `visible_to`). Skipped when the driver can't bulk-update.
+			if (body.visibleTo !== undefined) {
+				const resolved = await resolveKb(store, workspaceId, knowledgeBaseId);
+				const driver = drivers.for(resolved.workspace);
+				if (typeof driver.setRecordsVisibility === "function") {
+					await driver.setRecordsVisibility(
+						{ workspace: resolved.workspace, descriptor: resolved.descriptor },
+						{
+							[KB_SCOPE_KEY]: knowledgeBaseId,
+							[DOCUMENT_SCOPE_KEY]: documentId,
+						},
+						record.visibleTo,
+					);
+				}
+			}
 			return c.json(record, 200);
 		},
 	);

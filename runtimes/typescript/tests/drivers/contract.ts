@@ -183,6 +183,57 @@ export function runDriverContract(name: string, factory: DriverFactory): void {
 			}
 		});
 
+		test("setRecordsVisibility re-stamps and clears visible_to by filter", async () => {
+			const { driver, cleanup } = await factory();
+			try {
+				if (
+					typeof driver.setRecordsVisibility !== "function" ||
+					typeof driver.listRecords !== "function"
+				) {
+					return;
+				}
+				await driver.createCollection(CTX);
+				await driver.upsert(CTX, [
+					{
+						id: "a",
+						vector: [1, 0, 0, 0],
+						payload: { documentId: "d1", visible_to: ["alice"] },
+					},
+					{
+						id: "b",
+						vector: [0, 1, 0, 0],
+						payload: { documentId: "d2", visible_to: ["alice"] },
+					},
+				]);
+				// Broaden d1's chunk; the filter must leave d2 untouched.
+				const set = await driver.setRecordsVisibility(
+					CTX,
+					{ documentId: "d1" },
+					["alice", "bob"],
+				);
+				expect(set.updated).toBe(1);
+				// Clear d2's chunk (null → key removed, matching the ingest of
+				// an RLAC-off document).
+				const cleared = await driver.setRecordsVisibility(
+					CTX,
+					{ documentId: "d2" },
+					null,
+				);
+				expect(cleared.updated).toBe(1);
+
+				const records = await driver.listRecords(CTX, { filter: {} });
+				const a = records.find((r) => r.id === "a");
+				const b = records.find((r) => r.id === "b");
+				// `visible_to` is a set — compare membership, not order.
+				expect(new Set(a?.payload.visible_to as string[])).toEqual(
+					new Set(["alice", "bob"]),
+				);
+				expect(b?.payload).not.toHaveProperty("visible_to");
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("dropCollection removes state", async () => {
 			const { driver, cleanup } = await factory();
 			try {
