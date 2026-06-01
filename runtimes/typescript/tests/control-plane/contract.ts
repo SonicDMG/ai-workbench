@@ -1728,6 +1728,24 @@ export function runContract(name: string, factory: ContractFactory): void {
 					role: "user",
 					content: "hi",
 				});
+				// Workspace-owned RLAC + MCP rows (the cascade-completeness
+				// fix): a principal, an MCP server, and a policy-audit decision.
+				await store.createPrincipal(ws.uid, {
+					principalId: "alice@example.com",
+					label: "Alice",
+				});
+				await store.createMcpServer(ws.uid, {
+					label: "tools",
+					url: "https://tools.example.com/mcp",
+				});
+				await store.recordPolicyDecision(ws.uid, {
+					principalId: "alice@example.com",
+					knowledgeBaseId: kb.knowledgeBaseId,
+					resourceId: "doc-1",
+					action: "search",
+					decision: "allow",
+					reason: "cascade-seed",
+				});
 
 				await store.deleteWorkspace(ws.uid);
 
@@ -1746,6 +1764,21 @@ export function runContract(name: string, factory: ContractFactory): void {
 						step,
 					);
 				}
+
+				// The workspace-gated `list*` rejections above only prove the
+				// parent is gone; a stranded child row stays invisible behind a
+				// list that 404s on the missing workspace. Re-create the
+				// workspace under the SAME uid and assert the seeded
+				// workspace-owned rows do NOT resurface — which holds only if the
+				// cascade physically purged them, not merely orphaned them.
+				await store.createWorkspace({
+					uid: ws.uid,
+					name: "cascade-w",
+					kind: "mock",
+				});
+				expect(await store.listMcpServers(ws.uid)).toEqual([]);
+				expect(await store.listPrincipals(ws.uid)).toEqual([]);
+				expect(await store.listPolicyAudit(ws.uid)).toEqual([]);
 			} finally {
 				await cleanup?.();
 			}
@@ -1892,6 +1925,21 @@ async function assertWorkspaceStepCleared(
 			return;
 		case "llmServices":
 			await expect(store.listLlmServices(workspaceId)).rejects.toBeInstanceOf(
+				ControlPlaneNotFoundError,
+			);
+			return;
+		case "mcpServers":
+			await expect(store.listMcpServers(workspaceId)).rejects.toBeInstanceOf(
+				ControlPlaneNotFoundError,
+			);
+			return;
+		case "principals":
+			await expect(store.listPrincipals(workspaceId)).rejects.toBeInstanceOf(
+				ControlPlaneNotFoundError,
+			);
+			return;
+		case "policyAudit":
+			await expect(store.listPolicyAudit(workspaceId)).rejects.toBeInstanceOf(
 				ControlPlaneNotFoundError,
 			);
 			return;

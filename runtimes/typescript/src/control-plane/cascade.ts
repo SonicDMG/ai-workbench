@@ -3,8 +3,8 @@
  * dependent resources a {@link ControlPlaneStore} must remove when its
  * parent is deleted, and in which order.
  *
- * Every backend (memory, file, astra) iterates these constants
- * verbatim. The contract test at
+ * Every backend (memory, file, astra; sqlite reuses the file slices)
+ * iterates these constants verbatim. The contract test at
  * [`tests/control-plane/cascade-contract.test.ts`](../../tests/control-plane/cascade-contract.test.ts)
  * builds one of every dependent type, deletes the parent, and asserts
  * every dependent named here is gone — keeping the three backends from
@@ -16,7 +16,20 @@
  * For workspaces, the workspace row itself is removed last.
  */
 
-/** Workspace-owned dependents removed by `deleteWorkspace`, in order. */
+/**
+ * Workspace-owned dependents removed by `deleteWorkspace`, in order.
+ *
+ * The trailing three (`mcpServers`, `principals`, `policyAudit`) are
+ * leaf partitions with no dependents of their own, so their position is
+ * free — they only need to precede the workspace-row removal (which is
+ * always last). `policyAudit` is **purged, not retained**: even though
+ * audit logs sometimes outlive the audited resource, this one is gated —
+ * `listPolicyAudit` / `recordPolicyDecision` both `assertWorkspace`
+ * first, so once the workspace row is gone the audit rows are
+ * permanently unreadable through the store API. Retaining them would
+ * strand inaccessible rows, not preserve a usable trail; the audit panel
+ * is a demo affordance, not a compliance store (see the slice docs).
+ */
 export const WORKSPACE_CASCADE_STEPS = [
 	"apiKeys",
 	"knowledgeFilters",
@@ -29,6 +42,9 @@ export const WORKSPACE_CASCADE_STEPS = [
 	"embeddingServices",
 	"rerankingServices",
 	"llmServices",
+	"mcpServers",
+	"principals",
+	"policyAudit",
 ] as const;
 
 export type WorkspaceCascadeStep = (typeof WORKSPACE_CASCADE_STEPS)[number];

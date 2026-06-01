@@ -167,11 +167,15 @@ export async function deleteWorkspaceDependents(
 	state: AstraStoreState,
 	uid: string,
 ): Promise<PromiseSettledResult<unknown>[]> {
-	const [kbs, agents, conversations, keyRows] = await Promise.all([
+	const [kbs, agents, conversations, keyRows, auditRows] = await Promise.all([
 		state.tables.knowledgeBases.find({ workspace_id: uid }).toArray(),
 		state.tables.agents.find({ workspace_id: uid }).toArray(),
 		state.tables.conversations.find({ workspace_id: uid }).toArray(),
 		state.tables.apiKeys.find({ workspace: uid }).toArray(),
+		// policyAudit is partitioned by (workspace_id, audit_day); enumerate
+		// the live rows up front so the fan-out below knows which day
+		// partitions exist (audit_day is an open set, not a closed enum).
+		state.tables.policyAudit.find({ workspace_id: uid }).toArray(),
 	]);
 	const deletes: Promise<unknown>[] = [
 		// Prefix-lookup index rows keyed by their own prefix. Folded into
@@ -188,6 +192,9 @@ export async function deleteWorkspaceDependents(
 		state.tables.rerankingServices.deleteMany({ workspace_id: uid }),
 		state.tables.llmServices.deleteMany({ workspace_id: uid }),
 		state.tables.agents.deleteMany({ workspace_id: uid }),
+		// RLAC principals + MCP servers — single-column workspace_id partitions.
+		state.tables.principals.deleteMany({ workspace_id: uid }),
+		state.tables.mcpServers.deleteMany({ workspace_id: uid }),
 	];
 	// (workspace_id, knowledge_base_id) partitions.
 	for (const kb of kbs) {
@@ -228,6 +235,19 @@ export async function deleteWorkspaceDependents(
 			state.tables.messages.deleteMany({
 				workspace_id: uid,
 				conversation_id: conv.conversation_id,
+			}),
+		);
+	}
+	// (workspace_id, audit_day) partitions — fan out one full-PK deleteMany
+	// per distinct day actually present. Unlike ragDocumentsByStatus (a
+	// closed status enum) audit_day is open-ended, so we enumerate from the
+	// rows read above rather than iterating a fixed set. policyAudit is
+	// purged, not retained — see `WORKSPACE_CASCADE_STEPS`.
+	for (const day of new Set(auditRows.map((r) => r.audit_day))) {
+		deletes.push(
+			state.tables.policyAudit.deleteMany({
+				workspace_id: uid,
+				audit_day: day,
 			}),
 		);
 	}

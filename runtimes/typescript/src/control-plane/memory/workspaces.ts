@@ -117,6 +117,13 @@ export function makeWorkspaceMethods(state: MemoryStoreState): WorkspaceRepo {
 			for (const key of Array.from(state.messages.keys())) {
 				if (key.startsWith(`${uid}:`)) state.messages.delete(key);
 			}
+			// RLAC + MCP cascade: principals, audit log, and MCP servers are
+			// all top-level workspace-keyed partitions (no sub-partition to
+			// walk), so a single delete clears each. policyAudit is purged
+			// rather than retained — see `WORKSPACE_CASCADE_STEPS`.
+			state.mcpServers.delete(uid);
+			state.principals.delete(uid);
+			state.policyAudit.delete(uid);
 			return { deleted };
 		},
 	};

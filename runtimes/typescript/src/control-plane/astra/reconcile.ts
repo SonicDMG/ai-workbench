@@ -34,12 +34,6 @@ import { deleteWorkspaceDependents } from "./workspaces.js";
  * surviving key rows; a stale lookup pointing at a deleted key row is
  * benign (auth re-reads the key row and finds nothing).
  *
- * Known gap: cascade completeness for `mcpServers` / `principals` /
- * `policyAudit` (workspace-scoped tables that pre-date this work and are
- * absent from `WORKSPACE_CASCADE_STEPS` across *every* backend) is
- * tracked as a separate cross-backend fix — this sweep deliberately
- * covers the same set the live cascade does, no more, no less.
- *
  * Cost: each `find({})` is a full-table scan (O(all rows across all
  * workspaces)), which is why the startup trigger is opt-in and
  * operator-gated — see `controlPlane.reconcileOrphansOnStart`.
@@ -47,18 +41,33 @@ import { deleteWorkspaceDependents } from "./workspaces.js";
 async function findOrphanWorkspaceIds(
 	state: AstraStoreState,
 ): Promise<string[]> {
-	const [live, kbs, agents, keys, chunking, embedding, reranking, llm, rag] =
-		await Promise.all([
-			state.tables.workspaces.find({}).toArray(),
-			state.tables.knowledgeBases.find({}).toArray(),
-			state.tables.agents.find({}).toArray(),
-			state.tables.apiKeys.find({}).toArray(),
-			state.tables.chunkingServices.find({}).toArray(),
-			state.tables.embeddingServices.find({}).toArray(),
-			state.tables.rerankingServices.find({}).toArray(),
-			state.tables.llmServices.find({}).toArray(),
-			state.tables.ragDocuments.find({}).toArray(),
-		]);
+	const [
+		live,
+		kbs,
+		agents,
+		keys,
+		chunking,
+		embedding,
+		reranking,
+		llm,
+		rag,
+		principals,
+		mcpServers,
+		policyAudit,
+	] = await Promise.all([
+		state.tables.workspaces.find({}).toArray(),
+		state.tables.knowledgeBases.find({}).toArray(),
+		state.tables.agents.find({}).toArray(),
+		state.tables.apiKeys.find({}).toArray(),
+		state.tables.chunkingServices.find({}).toArray(),
+		state.tables.embeddingServices.find({}).toArray(),
+		state.tables.rerankingServices.find({}).toArray(),
+		state.tables.llmServices.find({}).toArray(),
+		state.tables.ragDocuments.find({}).toArray(),
+		state.tables.principals.find({}).toArray(),
+		state.tables.mcpServers.find({}).toArray(),
+		state.tables.policyAudit.find({}).toArray(),
+	]);
 	const liveIds = new Set(live.map((w) => w.uid));
 	const seen = new Set<string>();
 	for (const r of kbs) seen.add(r.workspace_id);
@@ -69,6 +78,9 @@ async function findOrphanWorkspaceIds(
 	for (const r of reranking) seen.add(r.workspace_id);
 	for (const r of llm) seen.add(r.workspace_id);
 	for (const r of rag) seen.add(r.workspace_id);
+	for (const r of principals) seen.add(r.workspace_id);
+	for (const r of mcpServers) seen.add(r.workspace_id);
+	for (const r of policyAudit) seen.add(r.workspace_id);
 	return [...seen].filter((id) => !liveIds.has(id));
 }
 

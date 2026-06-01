@@ -161,6 +161,21 @@ export function makeWorkspaceMethods(state: FileStoreState): WorkspaceRepo {
 				result: null,
 			}));
 
+			// RLAC + MCP cascade: workspace-scoped leaf tables. policyAudit is
+			// purged rather than retained — see `WORKSPACE_CASCADE_STEPS`.
+			await state.mutate("mcp-servers", (rows) => ({
+				rows: rows.filter((s) => s.workspaceId !== uid),
+				result: null,
+			}));
+			await state.mutate("principals", (rows) => ({
+				rows: rows.filter((p) => p.workspaceId !== uid),
+				result: null,
+			}));
+			await state.mutate("policy-audit", (rows) => ({
+				rows: rows.filter((a) => a.workspaceId !== uid),
+				result: null,
+			}));
+
 			return workspaceDeleted;
 		},
 	};
