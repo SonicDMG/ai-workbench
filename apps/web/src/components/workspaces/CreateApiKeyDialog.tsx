@@ -335,11 +335,11 @@ export function CreateApiKeyDialog({
 								</label>
 							</div>
 							{role === "custom" ? (
-								<div
-									className="flex flex-col gap-3 rounded-md border border-slate-200 p-3 dark:border-slate-700"
-									role="group"
-									aria-label="Custom scopes"
-								>
+								// Plain layout container — the per-tier <fieldset>/<legend>
+								// below carry the semantic grouping, so no role/aria-label
+								// is needed here (and a bare div with either trips biome's
+								// a11y rules).
+								<div className="flex flex-col gap-3 rounded-md border border-slate-200 p-3 dark:border-slate-700">
 									{SCOPE_GROUPS.map((group) => (
 										<fieldset
 											key={group.tier}
