@@ -66,10 +66,28 @@ call returns `policy_principal_required`:
   flipped RLAC on to **start** authoring policy, not to lock
   yourself out of the data you already have. Tighten by editing
   `visibleTo` per-document afterwards.
+- **Chunk re-tag.** RLAC pushes the visibility filter down into the
+  vector query, which matches on a `visible_to` key stamped on each
+  chunk at ingest. So flip-on also re-stamps every existing chunk
+  from its document's (now-settled) `visibleTo` — otherwise chunks
+  ingested before they carried visibility would be invisible to every
+  principal and an RLAC-on search/agent retrieval would return
+  nothing. This runs synchronously in the flip request and is
+  idempotent.
 
 Documents with an explicit `visibleTo` (including the empty array,
 which is a deliberate "no audience" choice) are left untouched. The
 bootstrap is idempotent — re-flipping is a no-op.
+
+> **Upgrading from a pre-0.5.0 runtime with RLAC already enabled.**
+> The chunk re-tag runs on the `false → true` transition, so a
+> workspace that already had `rlacEnabled: true` before upgrading
+> won't have re-tagged chunks. Until its chunks are re-tagged, RLAC-on
+> search and agent retrieval return empty for that workspace. Re-tag
+> by toggling `rlacEnabled` off then on once after upgrading (the
+> flip-on path re-stamps every chunk). A non-blocking
+> `rlacChunkSchemaVersion` marker that defers this for very large
+> workspaces and removes the manual step is tracked as a follow-up.
 
 From the CLI:
 

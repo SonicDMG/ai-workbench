@@ -690,3 +690,109 @@ describe("RLAC routes — KB documents enforced by policy", () => {
 		}
 	});
 });
+
+describe("RLAC routes — flip-on chunk backfill (#293)", () => {
+	test("flipping RLAC on re-tags existing chunks from each doc's visibility", async () => {
+		const { app, store } = makeTestApp();
+		// Workspace starts with RLAC OFF.
+		const ws = await store.createWorkspace({
+			name: "backfill",
+			kind: "mock",
+			url: null,
+			credentials: {},
+			keyspace: null,
+		});
+		const chunking = await store.createChunkingService(ws.uid, {
+			name: "chunker",
+			engine: "langchain_ts",
+		});
+		const embedding = await store.createEmbeddingService(ws.uid, {
+			name: "embedder",
+			provider: "mock",
+			modelName: "mock",
+			embeddingDimension: 4,
+		});
+		// KB via the route so the mock collection is provisioned; enable
+		// its policy so post-flip enforcement produces the visible_to filter.
+		const kbRes = await app.request(
+			`/api/v1/workspaces/${ws.uid}/knowledge-bases`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "docs",
+					chunkingServiceId: chunking.chunkingServiceId,
+					embeddingServiceId: embedding.embeddingServiceId,
+				}),
+			},
+		);
+		expect(kbRes.status).toBe(201);
+		const kbId = ((await kbRes.json()) as { knowledgeBaseId: string })
+			.knowledgeBaseId;
+		await app.request(`/api/v1/workspaces/${ws.uid}/knowledge-bases/${kbId}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				policyDsl:
+					"current_principal_id() = ANY(visible_to) OR '*' = ANY(visible_to)",
+				policyEnabled: true,
+			}),
+		});
+
+		// Ingest while RLAC is OFF → chunks carry NO visible_to.
+		const ingest = await app.request(
+			`/api/v1/workspaces/${ws.uid}/knowledge-bases/${kbId}/ingest`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ text: "alpha bravo charlie delta echo" }),
+			},
+		);
+		expect(ingest.status, await ingest.clone().text()).toBe(201);
+		const documentId = (
+			(await ingest.json()) as { document: { documentId: string } }
+		).document.documentId;
+		const chunksUrl = `/api/v1/workspaces/${ws.uid}/knowledge-bases/${kbId}/documents/${documentId}/chunks`;
+
+		// Baseline: RLAC off, so chunks have no `visible_to` key.
+		const before = (await (await app.request(chunksUrl)).json()) as Array<{
+			payload: { visible_to?: string[] };
+		}>;
+		expect(before.length).toBeGreaterThan(0);
+		for (const ch of before)
+			expect(ch.payload).not.toHaveProperty("visible_to");
+
+		// Simulate a pre-0.5.0 upgrade state: the doc has explicit
+		// visibility but its chunks were never tagged. Set it on the store
+		// directly so the PATCH-route re-tag doesn't fire.
+		await store.updateRagDocument(ws.uid, kbId, documentId, {
+			visibleTo: ["alice"],
+		});
+		await app.request(`/api/v1/workspaces/${ws.uid}/principals`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ principalId: "alice" }),
+		});
+
+		// Flip RLAC on → the chunk backfill re-tags the document's chunks.
+		const flip = await app.request(`/api/v1/workspaces/${ws.uid}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ rlacEnabled: true }),
+		});
+		expect(flip.status).toBe(200);
+
+		// alice can now read the chunks and they carry the re-tagged set.
+		const afterRes = await app.request(chunksUrl, {
+			headers: { "x-view-as-principal": "alice" },
+		});
+		expect(afterRes.status, await afterRes.clone().text()).toBe(200);
+		const after = (await afterRes.json()) as Array<{
+			payload: { visible_to?: string[] };
+		}>;
+		expect(after.length).toBeGreaterThan(0);
+		for (const ch of after) {
+			expect(new Set(ch.payload.visible_to)).toEqual(new Set(["alice"]));
+		}
+	});
+});

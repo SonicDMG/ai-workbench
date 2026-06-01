@@ -26,6 +26,7 @@ import type {
 	WorkspaceRecord,
 } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
+import { DOCUMENT_SCOPE_KEY, KB_SCOPE_KEY } from "../../ingest/payload-keys.js";
 import { audit } from "../../lib/audit.js";
 import { logger } from "../../lib/logger.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
@@ -214,9 +215,26 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 			if (isFlipOn) {
 				try {
 					const summary = await bootstrapRlacFlipOn(store, workspaceId);
-					if (summary.principalCreated || summary.documentsBackfilled > 0) {
+					// Re-tag existing chunks from each doc's (now-settled)
+					// visibility so the pushed-down policy filter matches —
+					// chunks ingested before they carried `visible_to` would
+					// otherwise be invisible to every principal.
+					const chunksRetagged = await backfillChunkVisibility(
+						store,
+						drivers,
+						workspaceId,
+					);
+					if (
+						summary.principalCreated ||
+						summary.documentsBackfilled > 0 ||
+						chunksRetagged > 0
+					) {
 						logger.info(
-							{ workspaceId, ...summary },
+							{
+								workspaceId,
+								...summary,
+								documentsChunkRetagged: chunksRetagged,
+							},
 							"RLAC flip-on bootstrap applied",
 						);
 					}
@@ -348,6 +366,46 @@ async function dropWorkspaceCollections(args: {
 	for (const descriptor of descriptors) {
 		await driver.dropCollection({ workspace, descriptor });
 	}
+}
+
+/**
+ * RLAC flip-on chunk backfill. After {@link bootstrapRlacFlipOn} settles
+ * each document's `visibleTo`, re-stamp that visibility onto the
+ * document's existing chunks so the pushed-down policy filter matches —
+ * otherwise chunks ingested before they carried `visible_to` are
+ * invisible to every principal and an RLAC-on search returns nothing.
+ *
+ * Best-effort and idempotent (re-tagging an already-correct doc is a
+ * no-op). Drivers without `setRecordsVisibility` are skipped. Returns the
+ * number of documents whose chunks were re-tagged. Runs synchronously in
+ * the flip request; a future `rlacChunkSchemaVersion` marker can defer
+ * this for very large workspaces (see #293).
+ */
+async function backfillChunkVisibility(
+	store: ControlPlaneStore,
+	drivers: VectorStoreDriverRegistry,
+	workspaceId: string,
+): Promise<number> {
+	let documents = 0;
+	const kbs = await store.listKnowledgeBases(workspaceId);
+	for (const kb of kbs) {
+		const resolved = await resolveKb(store, workspaceId, kb.knowledgeBaseId);
+		const driver = drivers.for(resolved.workspace);
+		if (typeof driver.setRecordsVisibility !== "function") continue;
+		const docs = await store.listRagDocuments(workspaceId, kb.knowledgeBaseId);
+		for (const doc of docs) {
+			await driver.setRecordsVisibility(
+				{ workspace: resolved.workspace, descriptor: resolved.descriptor },
+				{
+					[KB_SCOPE_KEY]: kb.knowledgeBaseId,
+					[DOCUMENT_SCOPE_KEY]: doc.documentId,
+				},
+				doc.visibleTo,
+			);
+			documents += 1;
+		}
+	}
+	return documents;
 }
 
 // `toWireWorkspace` lives in `serdes/workspace.ts`.
