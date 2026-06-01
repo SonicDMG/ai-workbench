@@ -12,8 +12,9 @@
  *   - aborts cleanly when the iteration cap is hit
  */
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { dispatchAgentSend } from "../../src/chat/agent-dispatch.js";
+import { PROMPT_HISTORY_FETCH_LIMIT } from "../../src/chat/prompt.js";
 import type {
 	ChatCompletion,
 	ChatCompletionRequest,
@@ -362,5 +363,56 @@ describe("dispatchAgentSend tool-call loop", () => {
 		// `mock`-kind workspace, so no astra_queries (only astra/hcd
 		// produce snapshots — unit-tested in tool-effects.test.ts).
 		expect(out.assistant.metadata.astra_queries).toBeUndefined();
+	});
+
+	test("assembles the prompt from a BOUNDED recent-history read, not the full partition", async () => {
+		const chat = scripted([
+			{
+				content: "ack",
+				finishReason: "stop",
+				tokenCount: 1,
+				errorMessage: null,
+				toolCalls: [],
+			},
+		]);
+		const f = await fixture(chat);
+
+		// Pre-seed more prior turns than the prompt's history budget so the
+		// distinction between "bounded recent read" and "full-partition read"
+		// is observable.
+		for (let i = 0; i < 40; i++) {
+			await f.store.appendChatMessage(f.workspaceId, f.conversationId, {
+				role: i % 2 === 0 ? "user" : "agent",
+				content: `prior-${i}`,
+				messageTs: `2026-05-30T00:0${Math.floor(i / 10)}:0${i % 10}.000Z`,
+			});
+		}
+
+		// Spy on the two read seams: the dispatcher must use the bounded
+		// `listRecentChatMessages` for prompt assembly and must NOT fall back
+		// to the unbounded `listChatMessages`.
+		const recentSpy = vi.spyOn(f.store, "listRecentChatMessages");
+		const fullSpy = vi.spyOn(f.store, "listChatMessages");
+
+		await dispatchAgentSend(f.deps, f.ctx, { content: "newest turn" });
+
+		expect(recentSpy).toHaveBeenCalledWith(
+			f.workspaceId,
+			f.conversationId,
+			PROMPT_HISTORY_FETCH_LIMIT,
+		);
+		expect(fullSpy).not.toHaveBeenCalled();
+
+		// The assembled prompt carries the recent tail + the new user turn,
+		// and the most-recent prior turn ("prior-39") is present — i.e. the
+		// window really is the recent end, not the oldest rows.
+		const promptMessages = chat.calls[0]?.messages ?? [];
+		const userContents = promptMessages
+			.filter((m) => m.role === "user")
+			.map((m) => ("content" in m ? m.content : ""));
+		expect(userContents.at(-1)).toBe("newest turn");
+		expect(userContents).toContain("prior-38");
+		// Oldest rows fall outside the assembler's turn budget.
+		expect(userContents).not.toContain("prior-0");
 	});
 });

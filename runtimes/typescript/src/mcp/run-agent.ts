@@ -14,7 +14,7 @@
  * cannot drift.
  */
 
-import { assemblePrompt } from "../chat/prompt.js";
+import { assemblePrompt, PROMPT_HISTORY_FETCH_LIMIT } from "../chat/prompt.js";
 import { retrieveContext } from "../chat/retrieval.js";
 import type { ChatService } from "../chat/types.js";
 import type { ChatConfig } from "../config/schema.js";
@@ -100,9 +100,13 @@ export async function runAgentTurn(
 		},
 	);
 
-	const history = await deps.store.listChatMessages(
+	// Bounded recent-history window for prompt assembly (see
+	// `PROMPT_HISTORY_FETCH_LIMIT`) — avoids a full-partition scan per
+	// turn; `assemblePrompt` only keeps the recent tail regardless.
+	const history = await deps.store.listRecentChatMessages(
 		args.workspaceId,
 		args.chatId,
+		PROMPT_HISTORY_FETCH_LIMIT,
 	);
 	const systemPrompt =
 		args.systemPrompt ??

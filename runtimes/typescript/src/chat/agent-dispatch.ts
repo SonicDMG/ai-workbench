@@ -34,7 +34,7 @@ import {
 	resolveAgentChat,
 } from "../chat/agent-resolution.js";
 import type { RetrievedChunk } from "../chat/prompt.js";
-import { assemblePrompt } from "../chat/prompt.js";
+import { assemblePrompt, PROMPT_HISTORY_FETCH_LIMIT } from "../chat/prompt.js";
 import type { AstraQuerySnapshot } from "../chat/retrieval.js";
 import type { OnToolInvoke } from "../chat/tools/dispatcher.js";
 import {
@@ -178,9 +178,14 @@ export async function dispatchAgentSend(
 		{ role: "user", content: body.content },
 	);
 
-	const history = await deps.store.listChatMessages(
+	// Bounded recent-history window for prompt assembly — a long
+	// conversation would otherwise full-scan its whole partition every
+	// turn. `assemblePrompt` keeps only the recent tail anyway, so the
+	// over-fetched window leaves the assembled prompt unchanged.
+	const history = await deps.store.listRecentChatMessages(
 		workspaceId,
 		conversationId,
+		PROMPT_HISTORY_FETCH_LIMIT,
 	);
 	const priorHistory = history.filter(
 		(m) => m.messageId !== userRecord.messageId,
@@ -328,9 +333,14 @@ export async function dispatchAgentSendStream(
 		{ role: "user", content: body.content },
 	);
 
-	const history = await deps.store.listChatMessages(
+	// Bounded recent-history window for prompt assembly — a long
+	// conversation would otherwise full-scan its whole partition every
+	// turn. `assemblePrompt` keeps only the recent tail anyway, so the
+	// over-fetched window leaves the assembled prompt unchanged.
+	const history = await deps.store.listRecentChatMessages(
 		workspaceId,
 		conversationId,
+		PROMPT_HISTORY_FETCH_LIMIT,
 	);
 	const priorHistory = history.filter(
 		(m) => m.messageId !== userRecord.messageId,

@@ -48,6 +48,21 @@ export interface AssemblePromptInput {
 const DEFAULT_HISTORY_LIMIT = 16;
 
 /**
+ * How many of a conversation's most-recent messages the dispatch layer
+ * fetches to feed {@link assemblePrompt}, via
+ * `store.listRecentChatMessages`. This is the RAW row budget (every
+ * role, including tool-call scaffolding and tool-result rows), set well
+ * above {@link DEFAULT_HISTORY_LIMIT} because `assemblePrompt` drops
+ * tool/error/empty rows BEFORE trimming to the turn limit — so the raw
+ * window must over-fetch to leave the post-filter tail unchanged from an
+ * unbounded read. 200 (the route-layer `MAX_PAGE_LIMIT`) is generous
+ * enough that the assembled prompt is identical to the old full-partition
+ * read for any realistic conversation, while still bounding the per-turn
+ * read instead of scanning the whole (unbounded) partition.
+ */
+export const PROMPT_HISTORY_FETCH_LIMIT = 200;
+
+/**
  * Build the model-facing turn list:
  *
  *   1. A `system` turn with the persona prompt + the retrieved

@@ -20,6 +20,7 @@ import {
 	MESSAGE_PAGE_DIRECTION,
 	mergeMetadata as mergeMessageMetadata,
 	messageKeysetKey,
+	recentMessagesTail,
 } from "../shared/records.js";
 import type {
 	AppendChatMessageInput,
@@ -42,6 +43,24 @@ export function makeChatMessageMethods(
 				.find({ workspace_id: workspaceId, conversation_id: chatId })
 				.toArray();
 			return rows.map(messageFromRow).sort(byMessageTsAsc);
+		},
+
+		async listRecentChatMessages(
+			workspaceId: string,
+			chatId: string,
+			limit: number,
+		): Promise<readonly MessageRecord[]> {
+			await assertChat(state, workspaceId, chatId);
+			// Single-partition `find`; the tail-slice runs locally through the
+			// shared `recentMessagesTail` so the result is identical to every
+			// other backend (and to the fake bundle, which doesn't honor
+			// cluster keys). The `.toArray()` still materializes the whole
+			// partition — pushing `message_ts DESC` + cursor `.limit(n)` into
+			// the engine is the cross-backend follow-up tracked in #275.
+			const rows = await state.tables.messages
+				.find({ workspace_id: workspaceId, conversation_id: chatId })
+				.toArray();
+			return recentMessagesTail(rows.map(messageFromRow), limit);
 		},
 
 		async listChatMessagesPage(

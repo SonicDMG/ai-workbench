@@ -96,6 +96,22 @@ export function byMessageTsAsc(a: MessageRecord, b: MessageRecord): number {
 }
 
 /**
+ * Sort `rows` oldest-first ({@link byMessageTsAsc}) and return at most the
+ * last `limit` of them — i.e. the most-recent window, still in
+ * chronological order. Shared by every backend's `listRecentChatMessages`
+ * so the tail is computed identically. `limit <= 0` yields an empty array;
+ * `limit >= rows.length` yields the whole (sorted) set.
+ */
+export function recentMessagesTail(
+	rows: readonly MessageRecord[],
+	limit: number,
+): readonly MessageRecord[] {
+	if (limit <= 0) return [];
+	const sorted = [...rows].sort(byMessageTsAsc);
+	return sorted.length > limit ? sorted.slice(sorted.length - limit) : sorted;
+}
+
+/**
  * Keyset sort position for a conversation: `created_at` primary,
  * `conversation_id` tiebreak. Paired with {@link CONVERSATION_PAGE_DIRECTION}
  * (descending) it reproduces {@link byConversationCreatedAtDesc}.

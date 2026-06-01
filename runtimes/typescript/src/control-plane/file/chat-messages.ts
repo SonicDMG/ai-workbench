@@ -16,6 +16,7 @@ import {
 	MESSAGE_PAGE_DIRECTION,
 	mergeMetadata as mergeMessageMetadata,
 	messageKeysetKey,
+	recentMessagesTail,
 } from "../shared/records.js";
 import type {
 	AppendChatMessageInput,
@@ -38,6 +39,25 @@ export function makeChatMessageMethods(state: FileStoreState): ChatMessageRepo {
 					(m) => m.workspaceId === workspaceId && m.conversationId === chatId,
 				)
 				.sort(byMessageTsAsc);
+		},
+
+		async listRecentChatMessages(
+			workspaceId: string,
+			chatId: string,
+			limit: number,
+		): Promise<readonly MessageRecord[]> {
+			await assertChat(state, workspaceId, chatId);
+			// The whole-table read mirrors `listChatMessages` for this backend
+			// (sqlite reuses these file methods); the partition tail-slice
+			// happens in `recentMessagesTail`. Pushing the limit down to the
+			// engine is the follow-up tracked in #275.
+			const all = await state.readAll("messages");
+			return recentMessagesTail(
+				all.filter(
+					(m) => m.workspaceId === workspaceId && m.conversationId === chatId,
+				),
+				limit,
+			);
 		},
 
 		async listChatMessagesPage(

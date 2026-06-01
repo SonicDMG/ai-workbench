@@ -60,6 +60,30 @@ export interface ChatMessageRepo {
 	): Promise<readonly MessageRecord[]>;
 
 	/**
+	 * Most-recent slice of a conversation's message history, returned
+	 * oldest-first (same ordering as {@link listChatMessages}) but capped
+	 * to the last `limit` rows. Bounds the read on the LLM prompt-assembly
+	 * path — a long conversation otherwise full-scans its whole partition
+	 * on every user turn even though prompt assembly only keeps the recent
+	 * tail. `limit <= 0` returns an empty array.
+	 *
+	 * The window includes ALL roles (tool turns + tool-call scaffolding);
+	 * callers (e.g. `assemblePrompt`) apply their own role filtering and a
+	 * tighter turn budget on top, so the window is intentionally a coarse,
+	 * over-fetched bound rather than the exact prompt history.
+	 *
+	 * NOTE: the memory/file/sqlite/astra backends currently materialize the
+	 * partition and tail-slice in memory; pushing `ORDER BY message_ts DESC
+	 * LIMIT n` down into the engine (and the astra cursor `.limit()`) is the
+	 * queued cross-backend follow-up tracked in #275.
+	 */
+	listRecentChatMessages(
+		workspaceId: string,
+		conversationId: string,
+		limit: number,
+	): Promise<readonly MessageRecord[]>;
+
+	/**
 	 * One keyset page of a conversation's message history, oldest-first
 	 * (`message_ts ASC`, `message_id` tiebreak). The page contains ALL
 	 * roles — tool turns and tool-call scaffolding included; the route

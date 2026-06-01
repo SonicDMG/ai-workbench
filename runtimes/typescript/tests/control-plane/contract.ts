@@ -938,6 +938,55 @@ export function runContract(name: string, factory: ContractFactory): void {
 			}
 		});
 
+		test("listRecentChatMessages returns the most-recent tail, oldest-first", async () => {
+			const { store, cleanup } = await factory();
+			try {
+				const ws = await store.createWorkspace({ name: "w", kind: "mock" });
+				const agent = await store.createAgent(ws.uid, { name: "Helper" });
+				const conv = await store.createConversation(ws.uid, agent.agentId, {
+					title: "t",
+				});
+				const ids: string[] = [];
+				for (let i = 0; i < 8; i++) {
+					const m = await store.appendChatMessage(ws.uid, conv.conversationId, {
+						role: i % 2 === 0 ? "user" : "agent",
+						content: `m${i}`,
+						messageTs: `2026-05-30T00:00:0${i}.000Z`,
+					});
+					ids.push(m.messageId);
+				}
+
+				// Window smaller than the history → the last 3 ids, still in
+				// chronological (oldest-first) order.
+				const recent = await store.listRecentChatMessages(
+					ws.uid,
+					conv.conversationId,
+					3,
+				);
+				expect(recent.map((m) => m.messageId)).toEqual(ids.slice(-3));
+				expect(recent.map((m) => m.content)).toEqual(["m5", "m6", "m7"]);
+
+				// Window >= history → every message, same order as the
+				// unbounded `listChatMessages` read.
+				const all = await store.listChatMessages(ws.uid, conv.conversationId);
+				const recentAll = await store.listRecentChatMessages(
+					ws.uid,
+					conv.conversationId,
+					100,
+				);
+				expect(recentAll.map((m) => m.messageId)).toEqual(
+					all.map((m) => m.messageId),
+				);
+
+				// Non-positive limit → empty window (never the whole partition).
+				expect(
+					await store.listRecentChatMessages(ws.uid, conv.conversationId, 0),
+				).toEqual([]);
+			} finally {
+				await cleanup?.();
+			}
+		});
+
 		test("updateChatMessage merges metadata key-by-key", async () => {
 			const { store, cleanup } = await factory();
 			try {
@@ -1164,6 +1213,13 @@ export function runContract(name: string, factory: ContractFactory): void {
 					store.listChatMessages(
 						ws.uid,
 						"00000000-0000-0000-0000-0000000000ff",
+					),
+				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
+				await expect(
+					store.listRecentChatMessages(
+						ws.uid,
+						"00000000-0000-0000-0000-0000000000ff",
+						50,
 					),
 				).rejects.toBeInstanceOf(ControlPlaneNotFoundError);
 				await expect(

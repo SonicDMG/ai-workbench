@@ -23,6 +23,7 @@ import {
 	MESSAGE_PAGE_DIRECTION,
 	mergeMetadata,
 	messageKeysetKey,
+	recentMessagesTail,
 } from "../shared/records.js";
 import type {
 	AppendChatMessageInput,
@@ -46,6 +47,17 @@ export function makeChatMessageMethods(
 			// Oldest-first matches the underlying `message_ts ASC` cluster
 			// key. UI flips for display.
 			return Array.from(byMsg.values()).sort(byMessageTsAsc);
+		},
+
+		async listRecentChatMessages(
+			workspaceId: string,
+			chatId: string,
+			limit: number,
+		): Promise<readonly MessageRecord[]> {
+			await assertChat(state, workspaceId, chatId);
+			const byMsg = state.messages.get(`${workspaceId}:${chatId}`);
+			if (!byMsg) return [];
+			return recentMessagesTail(Array.from(byMsg.values()), limit);
 		},
 
 		async listChatMessagesPage(
