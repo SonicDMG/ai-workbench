@@ -108,28 +108,58 @@ silently escalate by minting a fresh tenant outside its scope and
 operating against it. Anonymous callers and unscoped subjects
 (operator tokens) pass through.
 
-### Privilege scopes (read / write / manage)
+### Privilege scopes (coarse tiers + fine grants)
 
 Workspace API keys carry a second axis besides workspace membership:
-a privilege-scope list. Three tiers, aligned with the RBAC roles in
-`auth/roles.ts` (`viewer` / `editor` / `admin`):
+a privilege-scope list. 0.5.0 refines the three coarse tiers into a
+**fine-grained taxonomy** while keeping the coarse tiers as first-class
+**supersets**, so existing keys are unaffected.
+
+**Coarse tiers** (aligned with the RBAC roles in `auth/roles.ts` —
+`viewer` / `editor` / `admin`):
 
 - **`read`** — list / fetch / search workspace content.
 - **`write`** — mutate workspace content (KBs, documents, agents,
   services, ingest).
-- **`manage`** (0.4.0) — admin-only operations: API keys, RLAC
-  principals + policy, and workspace destroy.
+- **`manage`** — admin-only operations: API keys, RLAC principals +
+  policy, and workspace destroy.
 
-Keys minted before 0.4.0 back-compat to `["read", "write"]` (an
-`editor`-equivalent key); OIDC and bootstrap subjects carry
-`scopes: null`, which implicitly grants every scope.
+**Fine grants** (0.5.0) let an operator mint a narrowly-scoped key:
 
-Two layers enforce it:
+| Coarse tier | Fine grants | Each fine grant covers |
+|---|---|---|
+| `read` | `read:content` · `read:chat` · `read:audit` | KB search + document/chunk reads · conversation history · policy-audit log |
+| `write` | `write:ingest` · `write:kb` · `write:services` · `write:agents` | ingest + document/record CRUD · KB + knowledge-filter CRUD · execution services + MCP servers · agent CRUD |
+| `manage` | `manage:keys` · `manage:access` · `manage:workspace` | mint / revoke API keys · RLAC principals + policy · workspace destroy |
+| _(standalone)_ | `tools:invoke` | drive an agent to call external (remote-MCP) tools |
 
-1. **MCP tool gate** — write tools (`ingest_text`, `delete_document`)
-   call `assertScope(c, "write")` inside the tool handler and return
-   `isError: true` with `outcome: "denied"` for a read-only caller.
-   See [MCP per-tool scopes](mcp.md#per-tool-scopes).
+**Containment is the whole design.** A held scope grants a required
+scope when they're equal, *or* when the held scope is a coarse tier of
+the required fine grant — matched on the `:` boundary, so `write` grants
+`write:ingest` but not a sibling like `writeX` (`subjectGrantsScope` in
+`auth/roles.ts`; `assertScope` / `requireScope` in `auth/authz.ts` apply
+it). Consequences:
+
+- A legacy `["read", "write"]` key still satisfies every `write:*`
+  route — **no key minted before 0.5.0 loses access.**
+- A narrow `["read", "write:ingest"]` key can ingest but cannot create a
+  KB (`write:kb`), administer access (`manage:access`), or mint keys
+  (`manage:keys`).
+- A fine grant never widens upward: `write:ingest` grants neither coarse
+  `write` nor a sibling `write:kb`.
+
+Keys minted before scopes existed back-compat to `["read", "write"]`;
+OIDC and bootstrap subjects carry `scopes: null`, which implicitly grants
+every scope.
+
+Enforcement resolves a *fine* scope per route and applies it through the
+same containment check, so coarse keys keep working:
+
+1. **MCP tool gate** — each write tool requires its fine scope
+   (`ingest_text` / `delete_document` → `write:ingest`;
+   `create_knowledge_base` / `delete_knowledge_base` → `write:kb`) and
+   returns `isError: true` with `outcome: "denied"` for a caller that
+   lacks it. See [MCP per-tool scopes](mcp.md#per-tool-scopes).
 2. **REST mutation gate** — `mutatingRouteWriteScope()` is mounted on
    every `/api/v1/workspaces/{w}/*` route, right after
    `workspaceRouteAuthz`. The middleware:
@@ -142,31 +172,59 @@ Two layers enforce it:
      `/conversations` (chat session state, mirroring the ungated
      `chat_send` MCP tool — conversations and their messages aren't
      KB content).
-   - Calls `assertScope(c, "write")` for every other write-shaped
-     request (POST/PATCH/PUT/DELETE). A read-only key on any KB CRUD,
-     document register / patch / delete, ingest, agent CRUD, or
-     service CRUD gets `403 forbidden` with `message:
-     "authenticated subject is missing required scope 'write'"`.
-3. **REST admin gate** — `manageRouteScope()` is mounted right after
-   the write gate and requires the `manage` scope on admin-only
-   surfaces: `…/api-keys`, `…/principals`, `…/policy` (the entire CRUD
-   surface, including `GET` — listing credentials or principals is
-   itself a privileged read), and `DELETE /workspaces/{w}`. An
-   `editor` (`["read", "write"]`) key gets `403 forbidden` on these;
-   only an `admin` (`["read", "write", "manage"]`) key — or an
-   unscoped OIDC / bootstrap subject — passes. (The `rlacEnabled`
-   toggle on `PATCH /workspaces/{w}` is also admin, but it shares a
-   route with the write-level rename, so it's gated in the handler.)
+   - Maps every other write-shaped request (POST/PATCH/PUT/DELETE) to
+     its fine scope via `writeScopeForRoute(path)` — ingest / documents
+     / records → `write:ingest`; knowledge-bases + filters → `write:kb`;
+     execution services + MCP servers → `write:services`; agents →
+     `write:agents`; any unmatched mutating path falls back to coarse
+     `write` (the strictly-most-restrictive floor, so a new route can't
+     under-gate) — and skips the manage-scoped routes (gated below) so a
+     narrow `manage:*` key isn't blocked by the write floor. A key
+     lacking the resolved scope gets `403 forbidden` with `message:
+     "authenticated subject is missing required scope 'write:ingest'"`
+     (or whichever fine scope applied).
+3. **REST admin gate** — `manageRouteScope()` maps admin surfaces to
+   their fine scope via `manageScopeForRoute(path)`: `…/api-keys` →
+   `manage:keys`; `…/principals` and `…/policy` (the entire CRUD
+   surface incl. the policy-audit log — listing credentials or
+   principals is itself a privileged read) → `manage:access`;
+   `DELETE /workspaces/{w}` → `manage:workspace`. A legacy
+   `["read", "write", "manage"]` key passes all of them by containment;
+   an `editor` (`["read", "write"]`) key still gets `403 forbidden`.
+   (The `rlacEnabled` toggle on `PATCH /workspaces/{w}` requires
+   `manage:access` in the handler — it shares a route with the
+   write-level rename.)
+
+A 403 from a scope gate also carries a structured `requiredScope` field
+on its `auth.api_denied` audit row (e.g. `write:ingest`), so compliance
+can aggregate denials by scope — see [audit.md](audit.md).
 
 Anonymous callers (when `anonymousPolicy: allow`) and `scopes: null`
-subjects bypass both gates — `anonymousPolicy` is the only knob that
+subjects bypass every gate — `anonymousPolicy` is the only knob that
 decides whether anonymous reaches the route at all, and unscoped
 subjects are the operator-key escape hatch.
 
-The gate is mount-based rather than per-route, so a freshly added
-mutating route inherits the check automatically. New "POST-as-read"
-endpoints (a future smoke-test or probe surface) add a path suffix to
-the allowlist instead of editing every call site.
+The gates are mount-based rather than per-route, so a freshly added
+mutating route inherits a check automatically — and because
+`writeScopeForRoute` defaults unmatched mutating paths to coarse
+`write`, that inherited gate is never weaker than before; refine it to a
+fine scope once the route's facet is clear. New "POST-as-read" endpoints
+add a path suffix to the allowlist instead of editing every call site.
+
+> **Migration (0.5.0).** Fine scopes are **fully additive** — unlike the
+> 0.4.0 `manage` split below, no existing key loses any capability. Every
+> route maps under the same coarse tier it required in 0.4.x, so a legacy
+> `read` / `write` / `manage` key grants the new fine scopes by
+> containment. What's *new* is the ability to mint **narrower** keys (an
+> ingest-only `["read", "write:ingest"]` key, say — via the create-key
+> dialog's "Custom (advanced)" picker or `aiw key create --scope
+> write:ingest`) and to drive agents' external-tool calls under a
+> dedicated `tools:invoke` grant. Deliberate notes: **chat send stays
+> ungated** (the `…/conversations` routes remain in the read-shaped
+> allowlist, so a read-only key can still chat); `write:agents` is
+> reserved for **agent CRUD**, not chat. The policy-audit log stays
+> admin-gated (`manage:access`); `read:audit` is defined in the taxonomy
+> but not yet bound to a route.
 
 > **Migration (0.4.0).** Splitting `manage` out of `write` is a
 > deliberate behavior change: an existing `["read", "write"]` key that
