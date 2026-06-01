@@ -260,3 +260,30 @@ An unparseable DSL returns `ok: false` with a `parseError` and a null
 `compiledFilter`. Neither call persists anything.
 
 Fixture: `fixtures/rlac-policy-compile-preview.json`.
+
+---
+
+## Scenario 20 — `api-key-fine-scopes-roundtrip`
+
+Fine-grained API-key scopes (0.5.0). A key minted with a mix of coarse
+and fine scopes (`tools:invoke`, `read`, `write:ingest`, supplied
+unordered) echoes the normalized set — canonical `ALL_API_KEY_SCOPES`
+order, `["read", "write:ingest", "tools:invoke"]` — on the create
+response and again on the list. Pins the fine-scope mint/round-trip
+contract across runtimes; enforcement (a scoped key reaching only its
+own routes) is covered by the runtime unit/integration suites, since the
+conformance harness has no per-step auth-header seam yet (see #326).
+
+Fixture: `fixtures/api-key-fine-scopes-roundtrip.json`.
+
+---
+
+## Scenario 21 — `api-key-scope-normalization`
+
+Scope normalization on mint. An unordered set with a duplicate
+(`["manage:access", "read", "write:kb", "read"]`) is canonicalized to
+`ALL_API_KEY_SCOPES` order with duplicates removed
+(`["read", "write:kb", "manage:access"]`), so equivalent scope sets
+persist identically across runtimes.
+
+Fixture: `fixtures/api-key-scope-normalization.json`.

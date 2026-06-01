@@ -1,0 +1,59 @@
+{
+	"slug": "api-key-scope-normalization",
+	"description": "Scope normalization on mint: an unordered set with a duplicate is canonicalized to ALL_API_KEY_SCOPES order with duplicates removed, so equivalent scope sets persist identically across runtimes.",
+	"captures": [
+		{
+			"request": {
+				"body": {
+					"kind": "mock",
+					"name": "w"
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces"
+			},
+			"response": {
+				"body": {
+					"createdAt": "{{TS}}",
+					"credentials": {},
+					"keyspace": null,
+					"kind": "mock",
+					"name": "w",
+					"rlacEnabled": false,
+					"updatedAt": "{{TS}}",
+					"url": null,
+					"workspaceId": "{{UUID_1}}"
+				},
+				"status": 201
+			},
+			"step": 1
+		},
+		{
+			"request": {
+				"body": {
+					"label": "mixed",
+					"scopes": ["manage:access", "read", "write:kb", "read"]
+				},
+				"method": "POST",
+				"path": "/api/v1/workspaces/{{UUID_1}}/api-keys"
+			},
+			"response": {
+				"body": {
+					"key": {
+						"createdAt": "{{TS}}",
+						"expiresAt": null,
+						"keyId": "{{UUID_2}}",
+						"label": "mixed",
+						"lastUsedAt": null,
+						"prefix": "{{WB_PREFIX_1}}",
+						"revokedAt": null,
+						"scopes": ["read", "write:kb", "manage:access"],
+						"workspaceId": "{{UUID_1}}"
+					},
+					"plaintext": "{{WB_TOKEN_1}}"
+				},
+				"status": 201
+			},
+			"step": 2
+		}
+	]
+}

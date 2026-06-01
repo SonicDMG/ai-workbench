@@ -4951,7 +4951,10 @@ export interface components {
 			/** Format: date-time */
 			expiresAt: string | null;
 		};
-		/** @enum {string} */
+		/**
+		 * @description API-key privilege scope. Coarse tiers are supersets of their `:`-suffixed fine grants via containment: `read` grants `read:content`/`read:chat`/`read:audit`; `write` grants `write:ingest`/`write:kb`/`write:services`/`write:agents`; `manage` grants `manage:keys`/`manage:access`/`manage:workspace`. `tools:invoke` (agent external-tool calls) stands alone. Holding a coarse tier is equivalent to holding all its fine grants, so keys minted with the coarse tiers keep working as routes refine to fine scopes.
+		 * @enum {string}
+		 */
 		ApiKeyScope:
 			| "read"
 			| "read:content"
