@@ -115,6 +115,41 @@ describe("CreateApiKeyDialog", () => {
 		);
 	});
 
+	it("mints a custom fine-scoped key from the advanced picker", async () => {
+		mutateAsync.mockResolvedValue({
+			plaintext: "wb_test_fake_key",
+			key: { label: "ingest-bot" },
+		});
+		const user = userEvent.setup();
+		render(
+			<CreateApiKeyDialog
+				workspace="00000000-0000-4000-8000-000000000001"
+				open
+				onOpenChange={() => {}}
+			/>,
+		);
+
+		await user.type(screen.getByLabelText("Label"), "ingest-bot");
+		await user.click(screen.getByRole("radio", { name: /Custom/ }));
+
+		// Custom mode with nothing ticked → submit stays disabled.
+		const submit = screen.getByRole("button", { name: "Create key" });
+		expect(submit).toBeDisabled();
+
+		await user.click(screen.getByRole("checkbox", { name: /read:content/ }));
+		await user.click(screen.getByRole("checkbox", { name: /write:ingest/ }));
+		expect(submit).toBeEnabled();
+
+		await user.click(submit);
+		await waitFor(() =>
+			expect(mutateAsync).toHaveBeenCalledWith({
+				label: "ingest-bot",
+				// Sent in tick order — exactly the fine scopes chosen, no preset.
+				scopes: ["read:content", "write:ingest"],
+			}),
+		);
+	});
+
 	it("keeps submit disabled until a nonblank label is entered", async () => {
 		const user = userEvent.setup();
 		render(

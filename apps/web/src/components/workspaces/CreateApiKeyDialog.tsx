@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCreateApiKey } from "@/hooks/useApiKeys";
 import { formatApiError } from "@/lib/api";
+import type { ApiKeyScope } from "@/lib/schemas";
 
 /**
  * Role-based key presets (0.4.0 RBAC). A key is minted by picking a
@@ -75,6 +76,59 @@ const ROLE_PRESETS = [
 	},
 ] as const;
 
+/** The role-picker choices: the three presets plus the advanced custom mode. */
+type KeyRoleChoice = (typeof ROLE_PRESETS)[number]["id"] | "custom";
+
+/**
+ * Fine-grained scope catalog for the "Custom (advanced)" picker (0.5.0).
+ * Grouped by coarse tier; mirrors `ALL_API_KEY_SCOPES` in
+ * `runtimes/typescript/src/control-plane/types.ts` (order included) so the
+ * UI offers exactly what the server accepts. A held coarse tier is a
+ * superset of its fine grants on the server (containment), so checking
+ * `write` is equivalent to checking every `write:*` — but operators can
+ * pick a single facet (e.g. `write:ingest`) to narrow a key.
+ */
+const SCOPE_GROUPS = [
+	{
+		tier: "read",
+		label: "Read",
+		scopes: [
+			{ id: "read", desc: "All read access (coarse tier)." },
+			{ id: "read:content", desc: "KB search + document / chunk reads." },
+			{ id: "read:chat", desc: "Conversation + message history." },
+			{ id: "read:audit", desc: "Policy-audit log." },
+		],
+	},
+	{
+		tier: "write",
+		label: "Write",
+		scopes: [
+			{ id: "write", desc: "All write access (coarse tier)." },
+			{ id: "write:ingest", desc: "Ingest + document / record CRUD." },
+			{ id: "write:kb", desc: "Knowledge-base + knowledge-filter CRUD." },
+			{ id: "write:services", desc: "Execution services + MCP servers." },
+			{ id: "write:agents", desc: "Agent CRUD." },
+		],
+	},
+	{
+		tier: "manage",
+		label: "Manage",
+		scopes: [
+			{ id: "manage", desc: "All admin access (coarse tier)." },
+			{ id: "manage:keys", desc: "Mint / revoke API keys." },
+			{ id: "manage:access", desc: "RLAC principals + policy." },
+			{ id: "manage:workspace", desc: "Delete the workspace." },
+		],
+	},
+	{
+		tier: "tools",
+		label: "Tools",
+		scopes: [
+			{ id: "tools:invoke", desc: "Let agents call external MCP tools." },
+		],
+	},
+] as const;
+
 type HelpFragment = string | { readonly code: string };
 
 function renderHelpFragments(fragments: readonly HelpFragment[]): ReactNode {
@@ -116,29 +170,43 @@ export function CreateApiKeyDialog({
 	// Default to Editor (read + write) — the same effective access keys
 	// carried before the role picker existed, so the common "mint a key
 	// for first-party tooling" path is unchanged by default.
-	const [role, setRole] =
-		useState<(typeof ROLE_PRESETS)[number]["id"]>("editor");
+	const [role, setRole] = useState<KeyRoleChoice>("editor");
+	// Only consulted when `role === "custom"`. A flat set of fine/coarse
+	// scope ids the operator ticked in the advanced tree.
+	const [customScopes, setCustomScopes] = useState<readonly ApiKeyScope[]>([]);
 	const [plaintext, setPlaintext] = useState<string | null>(null);
 
 	function reset() {
 		setLabel("");
 		setRole("editor");
+		setCustomScopes([]);
 		setPlaintext(null);
 		create.reset();
 	}
 
+	function toggleScope(id: ApiKeyScope) {
+		setCustomScopes((prev) =>
+			prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
+		);
+	}
+
+	// The scope set the chosen role/custom selection sends. Custom uses the
+	// ticked tree; a preset expands to its fixed scopes (Editor default if a
+	// preset is ever removed in a refactor).
+	const selectedScopes =
+		role === "custom"
+			? customScopes
+			: (ROLE_PRESETS.find((p) => p.id === role)?.scopes ?? ["read", "write"]);
+
 	async function submit() {
 		const trimmed = label.trim();
 		if (!trimmed) return;
-		const chosen = ROLE_PRESETS.find((p) => p.id === role);
-		// Should always resolve — the role id is constrained — but fall
-		// back to the Editor (read + write) default rather than refusing
-		// to submit if a future preset is removed in a refactor.
-		const scopes = chosen?.scopes ?? ["read", "write"];
+		// Custom mode must carry at least one scope (server enforces min(1)).
+		if (selectedScopes.length === 0) return;
 		try {
 			const res = await create.mutateAsync({
 				label: trimmed,
-				scopes: [...scopes],
+				scopes: [...selectedScopes],
 			});
 			setPlaintext(res.plaintext);
 			toast.success(`API key '${res.key.label}' created`);
@@ -235,7 +303,81 @@ export function CreateApiKeyDialog({
 										</div>
 									</label>
 								))}
+								<label
+									className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 transition-colors ${
+										role === "custom"
+											? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] dark:bg-[var(--color-brand-950)]/30"
+											: "border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+									}`}
+								>
+									<input
+										type="radio"
+										name="key-role"
+										value="custom"
+										checked={role === "custom"}
+										onChange={() => setRole("custom")}
+										className="mt-1"
+									/>
+									<div className="flex min-w-0 flex-col gap-0.5">
+										<span className="flex flex-wrap items-center gap-2">
+											<span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+												Custom (advanced)
+											</span>
+											<code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+												choose scopes
+											</code>
+										</span>
+										<span className="text-xs text-slate-500 dark:text-slate-400">
+											Pick exact privilege scopes. Coarse tiers are supersets of
+											their fine grants — pick a single facet to narrow a key.
+										</span>
+									</div>
+								</label>
 							</div>
+							{role === "custom" ? (
+								<div
+									className="flex flex-col gap-3 rounded-md border border-slate-200 p-3 dark:border-slate-700"
+									role="group"
+									aria-label="Custom scopes"
+								>
+									{SCOPE_GROUPS.map((group) => (
+										<fieldset
+											key={group.tier}
+											className="flex flex-col gap-1.5"
+										>
+											<legend className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+												{group.label}
+											</legend>
+											{group.scopes.map((s) => (
+												<label
+													key={s.id}
+													className="flex cursor-pointer items-start gap-2"
+												>
+													<input
+														type="checkbox"
+														checked={customScopes.includes(s.id)}
+														onChange={() => toggleScope(s.id)}
+														className="mt-1"
+													/>
+													<span className="flex min-w-0 flex-col">
+														<code className="font-mono text-[11px] text-slate-700 dark:text-slate-200">
+															{s.id}
+														</code>
+														<span className="text-xs text-slate-500 dark:text-slate-400">
+															{s.desc}
+														</span>
+													</span>
+												</label>
+											))}
+										</fieldset>
+									))}
+									{customScopes.length === 0 ? (
+										<p className="text-xs text-amber-600 dark:text-amber-400">
+											Select at least one scope to mint a custom key.
+										</p>
+									) : null}
+								</div>
+							) : null}
 						</div>
 						<DialogFooter>
 							<Button
@@ -248,7 +390,11 @@ export function CreateApiKeyDialog({
 							<Button
 								variant="brand"
 								onClick={submit}
-								disabled={label.trim().length === 0 || create.isPending}
+								disabled={
+									label.trim().length === 0 ||
+									create.isPending ||
+									selectedScopes.length === 0
+								}
 							>
 								{create.isPending ? "Creating…" : "Create key"}
 							</Button>

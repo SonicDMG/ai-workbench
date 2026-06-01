@@ -100,6 +100,19 @@ describe("ApiKeysPanel", () => {
 		expect(screen.queryByText("manage")).not.toBeInTheDocument();
 	});
 
+	it("renders fine-grained scopes as per-scope chips, not a role label", () => {
+		rows = [key({ scopes: ["read:content", "write:ingest"] })];
+		render(<ApiKeysPanel workspace="00000000-0000-4000-8000-000000000001" />);
+		// A fine-scoped set isn't a whole coarse tier, so it falls through to
+		// chips — each literal scope is shown verbatim.
+		expect(screen.getByText("read:content")).toBeInTheDocument();
+		expect(screen.getByText("write:ingest")).toBeInTheDocument();
+		// ...and it does NOT collapse to a role badge.
+		expect(screen.queryByText("Editor")).not.toBeInTheDocument();
+		expect(screen.queryByText("Viewer")).not.toBeInTheDocument();
+		expect(screen.queryByText("Admin")).not.toBeInTheDocument();
+	});
+
 	it("revokes an active key from the confirmation dialog", async () => {
 		revokeMutateAsync.mockResolvedValue(undefined);
 		const user = userEvent.setup();

@@ -221,6 +221,24 @@ export function ApiKeysPanel({ workspace }: { workspace: string }) {
  *     literal scope. Defensive; renders unexpected scopes verbatim
  *     without us having to revisit this.
  */
+/**
+ * Tone for a single scope chip, by tier (0.5.0 fine scopes). Manage-tier
+ * grants read loudest (red); write-tier + `tools:invoke` (external-tool
+ * invocation is a side-effecting capability) are amber; read-tier is the
+ * subdued green. Matches the coarse-tier colors so a fine `write:ingest`
+ * chip reads the same risk weight as a coarse `write` badge.
+ */
+function scopeTone(scope: string): "red" | "amber" | "green" {
+	if (scope === "manage" || scope.startsWith("manage:")) return "red";
+	if (
+		scope === "write" ||
+		scope.startsWith("write:") ||
+		scope === "tools:invoke"
+	)
+		return "amber";
+	return "green";
+}
+
 function ScopeBadges({ scopes }: { scopes: readonly string[] }) {
 	if (scopes.length === 0) {
 		// Defensive — should not happen given the route's min(1) gate,
@@ -247,12 +265,7 @@ function ScopeBadges({ scopes }: { scopes: readonly string[] }) {
 	return (
 		<span className="flex flex-wrap gap-1">
 			{scopes.map((scope) => (
-				<Badge
-					key={scope}
-					tone={
-						scope === "manage" ? "red" : scope === "write" ? "amber" : "green"
-					}
-				>
+				<Badge key={scope} tone={scopeTone(scope)}>
 					{scope}
 				</Badge>
 			))}

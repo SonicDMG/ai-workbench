@@ -63,11 +63,17 @@ export function useRole(): RoleView {
 	const role = subject.role;
 	const scopes = subject.scopes;
 
-	// Positive admin: role says admin, OR a concrete scope list carries
-	// `manage`, OR the caller is unscoped (`scopes: null` → all scopes,
-	// the OIDC-without-mapping / bootstrap case).
+	// Positive admin: role says admin, OR the caller is unscoped
+	// (`scopes: null` → all scopes, the OIDC-without-mapping / bootstrap
+	// case), OR a concrete scope list carries a manage-tier grant. 0.5.0
+	// fine scopes mean that's the coarse `manage` OR any `manage:*` facet
+	// (e.g. a `manage:keys` key can mint keys), so this matches by
+	// containment rather than the bare coarse string — keeping the cosmetic
+	// gate in step with the server's `subjectGrantsScope` check.
 	const canManage =
-		role === "admin" || scopes === null || scopes.includes("manage");
+		role === "admin" ||
+		scopes === null ||
+		scopes.some((s) => s === "manage" || s.startsWith("manage:"));
 
 	return {
 		role,
