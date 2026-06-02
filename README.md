@@ -1,6 +1,6 @@
 # AI Workbench
 
-[![Status: Beta · v0.4.3](https://img.shields.io/badge/status-Beta%20%C2%B7%20v0.4.3-f59e0b)](./CHANGELOG.md)
+[![Status: Beta · v0.5.1](https://img.shields.io/badge/status-Beta%20%C2%B7%20v0.5.1-9d688f)](./CHANGELOG.md)
 [![CI](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/ci.yml?branch=main&label=CI)](https://github.com/datastax/ai-workbench/actions/workflows/ci.yml)
 [![Runtimes](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/runtimes.yml?branch=main&label=Runtimes)](https://github.com/datastax/ai-workbench/actions/workflows/runtimes.yml)
 [![Secret scan](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/secret-scan.yml?branch=main&label=Secret%20scan)](https://github.com/datastax/ai-workbench/actions/workflows/secret-scan.yml)
