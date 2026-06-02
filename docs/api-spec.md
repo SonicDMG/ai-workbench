@@ -257,8 +257,6 @@ precedent as `/healthz` / `/readyz`. Families:
 - Rate-limit rejections by key type
 - `workbench_chat_requests_total{provider,outcome}` — chat completions
   per provider, terminal outcome
-- `workbench_chat_stream_tokens_total{direction}` — streamed token
-  count, `direction` is `in` / `out`
 - `workbench_ingest_documents_total{outcome}` — documents fully
   processed by terminal outcome
 - `workbench_search_requests_total{mode,outcome}` and

@@ -110,7 +110,6 @@ describe("health routes", () => {
 		const res = await app.request("/metrics");
 		const body = await res.text();
 		expect(body).toContain("workbench_chat_requests_total");
-		expect(body).toContain("workbench_chat_stream_tokens_total");
 		expect(body).toContain("workbench_ingest_documents_total");
 		expect(body).toContain("workbench_search_requests_total");
 		expect(body).toContain("workbench_search_duration_seconds");

@@ -38,12 +38,6 @@ export interface RuntimeMetrics {
 	 */
 	readonly chatRequests: Counter;
 	/**
-	 * `workbench_chat_stream_tokens_total{direction}` —
-	 *   direction ∈ { in, out }. `in` is request prompt tokens reported
-	 *   by the provider (when available); `out` is emitted tokens.
-	 */
-	readonly chatStreamTokens: Counter;
-	/**
 	 * `workbench_ingest_documents_total{outcome}` —
 	 *   outcome ∈ { ok, failed, skipped }. KB id is intentionally NOT a
 	 *   label — workspaces with thousands of KBs would blow up the
@@ -102,12 +96,6 @@ export function buildRuntimeMetrics(): RuntimeMetrics {
 			"Chat completion requests, labeled by provider and outcome.",
 		),
 	);
-	const chatStreamTokens = registry.register(
-		new Counter(
-			"workbench_chat_stream_tokens_total",
-			"Tokens emitted by chat completions, by direction (in / out).",
-		),
-	);
 	const ingestDocuments = registry.register(
 		new Counter(
 			"workbench_ingest_documents_total",
@@ -135,7 +123,6 @@ export function buildRuntimeMetrics(): RuntimeMetrics {
 		ingestActive,
 		ingestQueued,
 		chatRequests,
-		chatStreamTokens,
 		ingestDocuments,
 		searchRequests,
 		searchDuration,

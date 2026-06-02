@@ -98,18 +98,6 @@
 			]
 		},
 		{
-			"type": "timeseries",
-			"title": "Stream tokens / sec (out)",
-			"datasource": { "type": "prometheus", "uid": "$datasource" },
-			"gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
-			"targets": [
-				{
-					"expr": "sum by (direction) (rate(workbench_chat_stream_tokens_total[5m]))",
-					"legendFormat": "{{direction}}"
-				}
-			]
-		},
-		{
 			"type": "row",
 			"title": "Ingest",
 			"gridPos": { "x": 0, "y": 22, "w": 24, "h": 1 },

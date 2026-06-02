@@ -82,7 +82,6 @@ runtime beyond a trusted loopback or private admin network.
   | Metric | Labels |
   |---|---|
   | `workbench_chat_requests_total` | `provider`, `outcome` (stop / length / tool_calls / error / stream_ok) |
-  | `workbench_chat_stream_tokens_total` | `direction` (in / out) |
   | `workbench_ingest_documents_total` | `outcome` (ok / failed) |
   | `workbench_search_requests_total` | `mode` (vector / hybrid / *_rerank), `outcome` (ok / error) |
   | `workbench_search_duration_seconds` | `mode` |
