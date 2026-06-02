@@ -64,9 +64,13 @@ call returns `policy_principal_required`:
   `attributes: { admin: "true" }`. The default policy DSL grants
   universal read access to any principal carrying that attribute, so
   the workspace operator sees every document immediately without
-  having to add themselves to each doc's `visible_to`. The View-as
-  picker auto-selects the first principal alphabetically, so the
-  next render sends `x-view-as-principal: admin` on every API call.
+  having to add themselves to each doc's `visible_to`. In the web
+  app's auth-disabled posture the API client sends
+  `x-view-as-principal: admin` by default on every workspace-scoped
+  call, so you see every document immediately; a discreet "view as"
+  control on the knowledge-base explorer lets you preview the KB as
+  any other principal. (When a bearer token is present the runtime
+  derives the principal from the token and this header is ignored.)
   Promote or demote any principal later by toggling the attribute
   via the Principals panel or
   `aiw principal update <id> --attribute admin=true`.

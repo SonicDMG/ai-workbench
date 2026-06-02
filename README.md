@@ -16,9 +16,9 @@ browser app, with a matching HTTP API and CLI.
 > **AI Workbench 0.5 is a public beta.** APIs, schemas, and UI surfaces
 > may still change between minor versions until 1.0. See
 > [`CHANGELOG.md`](./CHANGELOG.md) for what's in this release,
-> [`docs/whats-new-0.5.0.md`](./docs/whats-new-0.5.0.md) for the
+> [`docs/whats-new-0.5.1.md`](./docs/whats-new-0.5.1.md) for the
 > latest highlights, and
-> [`docs/whats-new-0.4.0.md`](./docs/whats-new-0.4.0.md) for the
+> [`docs/whats-new-0.5.0.md`](./docs/whats-new-0.5.0.md) for the
 > narrative tour.
 
 ![AI Workbench workspace overview](docs/assets/workbench-workspace.png)

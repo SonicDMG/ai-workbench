@@ -25,6 +25,7 @@ import { DocumentTable } from "@/components/workspaces/DocumentTable";
 import { EditDocumentDialog } from "@/components/workspaces/EditDocumentDialog";
 import { FileTypeBadge } from "@/components/workspaces/FileTypeBadge";
 import { IngestQueueDialog } from "@/components/workspaces/IngestQueueDialog";
+import { ViewAsControl } from "@/components/workspaces/ViewAsControl";
 import { useDeleteDocument, useDocuments } from "@/hooks/useDocuments";
 import { useKnowledgeBase } from "@/hooks/useKnowledgeBases";
 import { useWorkspace } from "@/hooks/useWorkspaces";
@@ -166,6 +167,10 @@ export function KnowledgeBaseExplorerPage() {
 						</div>
 					</div>
 					<div className="flex items-center gap-2">
+						<ViewAsControl
+							workspaceId={workspaceId}
+							rlacEnabled={Boolean(ws.data?.rlacEnabled)}
+						/>
 						<Button
 							variant="secondary"
 							size="sm"

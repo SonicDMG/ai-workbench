@@ -31,22 +31,12 @@ export const WHATS_NEW_VERSION = APP_VERSION;
  */
 export const WHATS_NEW_HIGHLIGHTS: readonly WhatsNewItem[] = [
 	{
-		title: "Access control that holds — even in agent chat",
+		title: "Row-level access control no longer locks you out of the web app",
 		summary:
-			"Row-level access control now applies on every read path, including an agent's retrieval. Turn it on for a workspace, define principals, and ingest documents with a visibility — and a principal's agent can only retrieve what that principal is allowed to see. A new Access Control card, Principals panel, and Policy Audit panel live in workspace settings.",
+			"Enabling RLAC on a workspace used to make its knowledge bases unreadable from the browser — opening one errored immediately with a missing-principal error, even though a default admin principal had already been created. Fixed: the app now identifies you as that admin principal automatically, so an RLAC-enabled workspace is usable right away. A new discreet 'view as' control on the knowledge-base explorer lets you preview a knowledge base as any principal — to see exactly what they can.",
 		link: {
 			label: "Open a workspace",
 			href: "/",
 		},
-	},
-	{
-		title: "Narrowly-scoped API keys",
-		summary:
-			'Mint keys that can do exactly one thing — ingest-only, knowledge-base admin, audit-read, tool-invoke, and more — with the new "Custom (advanced)" scope picker. Existing read / write / manage keys keep working unchanged: the coarse tiers are supersets of the fine scopes, so there\'s no migration. The new `aiw key` CLI command mints and revokes them from a terminal.',
-	},
-	{
-		title: "Agents can call external MCP tools — under a scope",
-		summary:
-			"Register an external MCP server and an agent can call its tools, but only when the calling key carries the new `tools:invoke` scope. Every call is audited, and a call without the scope is refused rather than executed. The agent form groups tools by server, shows their required arguments, and warns about saved tools that no longer resolve.",
 	},
 ];

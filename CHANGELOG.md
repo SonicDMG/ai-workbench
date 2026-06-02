@@ -9,6 +9,47 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-06-01
+
+**RLAC "view as" in the web app.** A fix-and-polish release on the 0.5.0
+Enterprise Access Control line. There is **no wire-contract change** and **no
+data migration** — it closes a UX dead-end where enabling RLAC made knowledge
+bases unreadable from the web app under the default auth-disabled posture, and
+adds a discreet control for previewing a knowledge base as any principal.
+
+### Fixed
+
+- **Enabling RLAC no longer dead-ends knowledge-base reads in the web app.**
+  With `auth.mode: disabled` (the default / quickstart posture), the SPA carried
+  no token and no principal, so every document read against an RLAC-enabled
+  knowledge base returned `401 policy_principal_required` the instant the KB was
+  opened — even though flip-on bootstrap had already created the default `admin`
+  principal. The runtime's disabled-mode principal resolver and the flip-on
+  design both assumed the web app would send an `x-view-as-principal` header, but
+  the picker that sets it was never ported into `apps/web`. The web API client
+  now sends that header on workspace-scoped requests, defaulting to the `admin`
+  principal (universal read) when no auth token is present, so an RLAC-enabled
+  workspace is immediately usable again. An explicit "view as" selection always
+  wins; when a bearer token is present the header is omitted and the runtime
+  derives the principal from the token exactly as before.
+
+### Added
+
+- **A discreet "view as principal" control on the knowledge-base explorer.**
+  When RLAC is enabled and the app runs without an auth token, a small icon in
+  the explorer's action row lets you browse the knowledge base as any principal
+  to preview exactly what they can see. It defaults to `admin` (sees all) and
+  turns into an accent chip naming the principal while you're impersonating
+  someone else; switching refetches the document list under that identity. The
+  control is hidden in token-authenticated deployments, where the principal is
+  derived from the token and the header is ignored.
+
+### Documentation
+
+- `docs/rlac.md` now documents the shipped web-app view-as behavior (the default
+  `admin` header plus the explorer control) instead of the prototype picker it
+  previously described.
+
 ## [0.5.0] — 2026-06-01
 
 **"Enterprise Access Control."** 0.5.0 turns AI Workbench's access-control story
@@ -1252,7 +1293,9 @@ These were scoped for 0.1.0 but deferred to keep the release focused:
   flow.
 - Discoverability tooltips + "What's new in 0.1.0" modal in the web UI.
 
-[Unreleased]: https://github.com/datastax/ai-workbench/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/datastax/ai-workbench/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/datastax/ai-workbench/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/datastax/ai-workbench/compare/v0.4.3...v0.5.0
 [0.3.0]: https://github.com/datastax/ai-workbench/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/datastax/ai-workbench/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/datastax/ai-workbench/compare/v0.1.0...v0.2.0

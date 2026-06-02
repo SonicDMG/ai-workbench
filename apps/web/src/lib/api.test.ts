@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, api, formatApiError } from "./api";
 import { setAuthToken } from "./authToken";
+import { setViewAs } from "./viewAs";
 
 const WORKSPACE = {
 	workspaceId: "00000000-0000-4000-8000-000000000001",
@@ -346,5 +347,46 @@ describe("api client request — non-JSON proxy responses", () => {
 			message: "no such ws",
 			requestId: "rid-9",
 		});
+	});
+});
+
+describe("api client request — RLAC view-as header", () => {
+	const originalFetch = globalThis.fetch;
+	const WORKSPACE_ID = "00000000-0000-4000-8000-000000000001";
+
+	function headersOfLastCall(): Record<string, string> {
+		const init = fetchMock().mock.calls[0]?.[1] as RequestInit;
+		return (init.headers ?? {}) as Record<string, string>;
+	}
+
+	beforeEach(() => {
+		globalThis.fetch = vi.fn() as typeof fetch;
+		setAuthToken(null);
+		window.localStorage.clear();
+		fetchMock().mockResolvedValue(jsonResponse(WORKSPACE));
+	});
+
+	afterEach(() => {
+		setAuthToken(null);
+		window.localStorage.clear();
+		globalThis.fetch = originalFetch;
+	});
+
+	it("defaults to `admin` on a workspace-scoped call when there is no token", async () => {
+		await api.getWorkspace(WORKSPACE_ID);
+		expect(headersOfLastCall()["x-view-as-principal"]).toBe("admin");
+	});
+
+	it("omits the header when a bearer token is present and no principal is chosen", async () => {
+		setAuthToken("wb_live_test_token");
+		await api.getWorkspace(WORKSPACE_ID);
+		expect(headersOfLastCall()).not.toHaveProperty("x-view-as-principal");
+	});
+
+	it("sends an explicit view-as selection even when a token is present", async () => {
+		setViewAs(WORKSPACE_ID, "alice");
+		setAuthToken("wb_live_test_token");
+		await api.getWorkspace(WORKSPACE_ID);
+		expect(headersOfLastCall()["x-view-as-principal"]).toBe("alice");
 	});
 });

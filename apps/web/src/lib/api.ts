@@ -116,6 +116,7 @@ import {
 	WorkspaceRecordSchema,
 } from "./schemas";
 import { fetchAuthConfig, loginHref, refreshSession } from "./session";
+import { viewAsHeaderValue } from "./viewAs";
 
 const BASE = "/api/v1";
 const CLIENT_PAGE_LIMIT = 200;
@@ -194,12 +195,24 @@ async function request<T>(
 		? { accept: "application/json" }
 		: { "content-type": "application/json", accept: "application/json" };
 
+	// RLAC: tell the runtime which principal this request acts as. In the
+	// auth-disabled posture the backend has no token to derive a principal
+	// from, so without this header every read against an RLAC-enabled KB
+	// fails with `policy_principal_required`. Defaults to `admin` (sees
+	// all) when there's no token; an explicit "view as" selection wins.
+	// See ./viewAs and runtimes/typescript/src/auth/principal-resolver.ts.
+	const viewAs = viewAsHeaderValue(path, Boolean(token));
+	const viewAsHeader: Record<string, string> = viewAs
+		? { "x-view-as-principal": viewAs }
+		: {};
+
 	const res = await fetch(`${BASE}${path}`, {
 		...init,
 		credentials: "include",
 		headers: {
 			...defaultHeaders,
 			...authHeader,
+			...viewAsHeader,
 			...(init.headers ?? {}),
 		},
 	});
