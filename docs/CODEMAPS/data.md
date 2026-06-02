@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-16 | Token estimate: ~800 -->
+<!-- Hand-maintained · last updated: 2026-06-02 | Token estimate: ~850 -->
 
 # Data Codemap
 
@@ -26,19 +26,19 @@ All tables prefixed `wb_`.
 | `wb_api_key_by_workspace` | API keys (workspace partition) |
 | `wb_api_key_lookup` | Lookup table for key → workspace |
 | `wb_config_knowledge_bases_by_workspace` | KBs |
-| `wb_config_knowledge_filters_by_kb` | Saved KB filters |
+| `wb_config_knowledge_filters_by_knowledge_base` | Saved KB filters |
 | `wb_config_chunking_service_by_workspace` | Chunker configs |
 | `wb_config_embedding_service_by_workspace` | Embedder configs |
 | `wb_config_reranking_service_by_workspace` | Reranker configs |
 | `wb_config_llm_service_by_workspace` | LLM service configs |
-| `wb_config_mcp_tools_by_workspace` | MCP tool registry |
+| `wb_config_mcp_servers_by_workspace` | Registered remote MCP servers |
 
 ### Document plane
 
 | Table | Holds |
 |---|---|
 | `wb_rag_documents_by_knowledge_base` | Documents (primary index) |
-| `wb_rag_documents_by_status` | Documents by ingest status |
+| `wb_rag_documents_by_knowledge_base_and_status` | Documents by ingest status |
 | `wb_rag_documents_by_content_hash` | Dedup by SHA-256 |
 
 ### Agentic plane
@@ -49,7 +49,7 @@ All tables prefixed `wb_`.
 | `wb_agentic_conversations_by_agent` | Conversations |
 | `wb_agentic_messages_by_conversation` | Chat messages |
 
-### RLAC plane (prototype)
+### RLAC plane
 
 | Table | Holds |
 |---|---|
@@ -78,7 +78,8 @@ ChunkingService  → ChunkingServiceRepo  → wb_config_chunking_service_by_work
 EmbeddingService → EmbeddingServiceRepo → wb_config_embedding_service_by_workspace
 RerankingService → RerankingServiceRepo → wb_config_reranking_service_by_workspace
 LlmService       → LlmServiceRepo       → wb_config_llm_service_by_workspace
-KnowledgeFilter  → KnowledgeFilterRepo  → wb_config_knowledge_filters_by_kb
+KnowledgeFilter  → KnowledgeFilterRepo  → wb_config_knowledge_filters_by_knowledge_base
+McpServer        → McpServerRepo        → wb_config_mcp_servers_by_workspace
 ```
 
 ## Wire format
@@ -106,6 +107,6 @@ No down-migrations.
 
 ## See also
 
-- [../audit.md](../audit.md) — audit event reference (16 actions)
+- [../audit.md](../audit.md) — audit event reference (23 actions)
 - [../architecture.md](../architecture.md) — long-form storage discussion
 - [../adr/0002-per-aggregate-repos.md](../adr/) — why repos are split

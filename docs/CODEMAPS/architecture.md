@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-16 | Token estimate: ~700 -->
+<!-- Hand-maintained · last updated: 2026-06-02 | Token estimate: ~750 -->
 
 # Architecture Codemap
 
@@ -10,13 +10,14 @@
 ```
 ai-workbench/
 ├── apps/web/                # Vite + React 19 UI (built into runtime)
+├── packages/aiw-cli/        # `aiw` command-line client
 ├── runtimes/
 │   ├── typescript/          # Production runtime (Hono + Node 22)
 │   ├── python/              # Preview scaffold (FastAPI, 501s)
 │   └── java/                # Preview scaffold (Spring Boot, 501s)
 ├── conformance/             # Cross-runtime contract tests + fixtures
 ├── docs/                    # ADRs, architecture, API spec, integrations
-└── scripts/                 # Build/lint guards (secret-scan, error-helper)
+└── scripts/                 # Build/lint guards (secret-scan, api-error-helper)
 ```
 
 ## System diagram
@@ -55,24 +56,28 @@ ai-workbench/
 | Repos (`src/control-plane/repos/`) | Per-aggregate CRUD | No — per-runtime |
 | Store (`src/control-plane/store.ts`) | Storage backend abstraction | No — per-runtime |
 | Astra client (`src/astra-client/`) | Table defs, row adapters | No — per-runtime |
+| Auth (`src/auth/`) | Principal resolution, API-key scopes (read/write/manage), OIDC/CSRF | No — per-runtime |
 | Policy engine (`src/policy/`) | RLAC parser/compiler/enforcer | No — per-runtime |
 | Conformance (`conformance/`) | Contract fixtures + scenarios | **Yes — source of truth** |
 
 ## Data flow (request lifecycle)
 
 ```
-HTTP request → Hono middleware chain:
-  1. requestId          (src/lib/request-id.ts)
-  2. requestLogger      (src/lib/request-logger.ts)
-  3. rateLimit          (src/lib/rate-limit.ts)
-  4. authResolver       (src/auth/principal-resolver.ts)
-  5. workspaceRouteAuthz (src/auth/middleware.ts)
-  6. RLAC enforcer      (src/policy/enforcer.ts) — when enabled
-  7. Route handler      (src/routes/api-v1/<aggregate>.ts)
-       → Service        (src/services/<feature>-service.ts)
-       → Repo           (src/control-plane/repos/<aggregate>.ts)
-       → Store backend  (memory | file | astra)
-  8. app.onError        (src/lib/errors.ts) — envelope + secret masking
+HTTP request → Hono middleware chain (workspace-scoped routes):
+  1. requestId           (src/lib/request-id.ts)
+  2. requestLogger       (src/lib/request-logger.ts)
+  3. rateLimit           (src/lib/rate-limit.ts)
+  4. authMiddleware      (src/auth/middleware.ts) — apiKey | OIDC session
+  5. principalResolver   (src/auth/principal-resolver.ts) — RLAC principal
+  6. workspaceRouteAuthz (src/auth/authz.ts)
+  7. write/manage scope gates (src/auth/authz.ts) — scope check on mutations + admin
+  8. Route handler       (src/routes/api-v1/<aggregate>.ts)
+       → Service         (src/services/<feature>-service.ts)
+       → Repo            (src/control-plane/repos/<aggregate>.ts)
+       → Store backend   (memory | file | astra)
+  9. app.onError         (src/lib/errors.ts) — envelope + secret masking
+
+RLAC policy filters are compiled into the KB query path by src/policy/enforcer.ts.
 ```
 
 ## Key architectural decisions
@@ -81,6 +86,7 @@ HTTP request → Hono middleware chain:
 - **Immutable records:** every `update*` returns a new object; never in-place mutation.
 - **Per-aggregate repos** (ADR-0002): store interface split so handlers declare narrow deps.
 - **Service layer** (ADR-0001): cross-aggregate ops live in `services/`, routes stay thin.
+- **Scoped auth** (0.5.0): every workspace route resolves a subject (API key or OIDC session) and enforces `read`/`write`/`manage` scopes; admin surfaces (api-keys, principals, policy, workspace destroy) require `manage`.
 - **Secrets by reference:** `env:FOO` / `file:/path` resolved at runtime by pluggable providers.
 - **Cross-replica jobs:** durable job store with heartbeat leasing + orphan sweeper (`src/jobs/`).
 

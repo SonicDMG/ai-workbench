@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-16 | Token estimate: ~700 -->
+<!-- Hand-maintained · last updated: 2026-06-02 | Token estimate: ~750 -->
 
 # Dependencies Codemap
 
@@ -39,7 +39,7 @@
 | `@langchain/core` | Chunker / embedder / reranker abstractions |
 | `@langchain/openai` | OpenAI-compatible client for chat + embeddings across OpenRouter, OpenAI, and Ollama (baseURL override) |
 | `@langchain/cohere` | Cohere reranker |
-| `@modelcontextprotocol/sdk` | MCP server facade |
+| `@modelcontextprotocol/sdk` | MCP server facade + remote-MCP client |
 
 ### Document extraction
 | Package | Why |
@@ -76,12 +76,10 @@
 
 ## Version overrides (security mitigations)
 
-Pinned in root `package.json`:
-- `uuid ^14`
-- `picomatch ^4.0.4`
-- `brace-expansion >=2.0.3`
-- `ip-address ^10.1.1`
-- `fast-uri ^3.1.2`
+Pinned per-package (the root `package.json` has no `overrides` block):
+
+- **`runtimes/typescript/package.json`:** `uuid ^14.0.0`, `picomatch ^4.0.4`, `brace-expansion >=2.0.3`, `ip-address ^10.1.1`, `fast-uri ^3.1.2`, `fast-xml-builder ^1.1.7`, `protobufjs ^8.0.2`, `langsmith ^0.6.0`
+- **`apps/web/package.json`:** `picomatch ^4.0.4`, `brace-expansion ^2.0.3`, `ip-address ^10.1.1`
 
 ## Engines
 
@@ -91,9 +89,11 @@ Pinned in root `package.json`:
 ## CI dependencies (`.github/workflows/`)
 
 - `ci.yml` — lint, typecheck, test, build, schema-drift, E2E smoke
+- `codeql.yml` — CodeQL security scanning
 - `runtimes.yml` — per-runtime conformance
 - `secret-scan.yml` — `scripts/secret-scan.mjs`
 - `smoke-astra.yml` — gated on Astra creds (skipped by default)
+- `release.yml` — release/publish automation
 - `deploy-site.yml` — docs site deploy
 
 ## See also

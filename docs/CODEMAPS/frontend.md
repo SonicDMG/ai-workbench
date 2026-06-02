@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-16 | Token estimate: ~700 -->
+<!-- Hand-maintained · last updated: 2026-06-02 | Token estimate: ~750 -->
 
 # Frontend Codemap
 
@@ -9,15 +9,17 @@
 ## Page tree (`src/pages/`)
 
 ```
-/                            → WorkspacesPage              (workspace list)
-/workspaces/:ws              → WorkspaceDetailPage         (KBs + activity)
-/workspaces/:ws/settings     → WorkspaceSettingsPage       (services + auth)
-/workspaces/:ws/kb/:kb       → KnowledgeBaseExplorerPage   (documents, filters)
-/workspaces/:ws/playground   → PlaygroundPage              (search retrieval)
-/workspaces/:ws/agents       → AgentsPage                  (Bobby/Maven/Quill/Sage)
-/workspaces/:ws/agents/:id   → ChatPage                    (RAG chat UI)
-/workspaces/:ws/connect      → ConnectPage                 (API key + snippets)
-/onboarding                  → OnboardingPage              (first-run wizard)
+/                                     → WorkspacesPage            (workspace list)
+/onboarding                           → OnboardingPage            (first-run wizard)
+/status                               → StatusPage                (operator runtime health)
+/settings                             → SettingsPage              (runtime settings)
+/workspaces/:ws                       → WorkspaceDetailPage       (KBs + activity)
+/workspaces/:ws/settings              → WorkspaceSettingsPage     (services + auth)
+/workspaces/:ws/knowledge-bases/:kb   → KnowledgeBaseExplorerPage (documents, filters)
+/workspaces/:ws/playground            → PlaygroundPage            (search retrieval)
+/workspaces/:ws/agents                → AgentsPage                (Bobby/Maven/Quill/Sage)
+/workspaces/:ws/chat                  → ChatPage                  (RAG chat UI)
+/workspaces/:ws/connect               → ConnectPage               (API key + snippets)
 ```
 
 Companion `*.test.tsx` files alongside each page (component-level smoke tests).
@@ -33,6 +35,7 @@ Companion `*.test.tsx` files alongside each page (component-level smoke tests).
 | `chat/` | Message bubbles, tool-call panels, retrieval citations |
 | `common/` | Buttons, inputs, dialogs, status pills |
 | `layout/` | Shell, nav rail, page header |
+| `onboarding/` | First-run wizard steps |
 | `playground/` | Query input, mode switcher, result list |
 | `ui/` | Radix-UI primitives + Tailwind variants |
 | `workspaces/` | KB list, document table, **EditDocumentDialog**, **VisibilityPicker**, **ViewAsPicker**, **PolicyAuditPanel** (RLAC) |
@@ -53,8 +56,12 @@ Companion `*.test.tsx` files alongside each page (component-level smoke tests).
 | `useAuthToken`, `useSession` | OIDC session + token refresh |
 | `useFeatures` | Feature flags (RLAC gate) |
 | `useRlac` | `useRlacEnabled`, `usePrincipals` (gated by feature flag) |
+| `useRole` | Current subject's role + scopes (gates admin UI) |
+| `useMcpServers` | `/workspaces/:ws/mcp-servers` (remote MCP registry) |
 | `useConnectSnippets`, `useConnectTraffic`, `useConnectVerify` | Connect page |
 | `useAstraCliInfo`, `useAstraCliInventory` | Astra CLI integration |
+| `useHealthDetails` | `/status` runtime health |
+| `useSetupStatus` | First-run setup status (onboarding) |
 | `useTheme` | Dark/light/system |
 
 ## API client

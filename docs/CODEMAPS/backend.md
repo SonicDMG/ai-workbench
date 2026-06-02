@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-16 | Token estimate: ~900 -->
+<!-- Hand-maintained · last updated: 2026-06-02 | Token estimate: ~1000 -->
 
 # Backend Codemap
 
@@ -7,12 +7,14 @@
 
 ## Routes (`src/routes/api-v1/`)
 
-All mount at `/api/v1`. 20 route modules + 2 dispatch helpers.
+All mount at `/api/v1`. 21 route modules + 2 dispatch helpers, plus shared
+utilities (`helpers.ts`, `ingest-file-form.ts`, `rlac-defaults.ts`) and a
+`serdes/` converter directory — 26 `.ts` files total.
 
 | Module | Surface |
 |---|---|
 | `workspaces.ts` | `GET/POST/PATCH/DELETE /workspaces[/:id]` |
-| `api-keys.ts` | `*/workspaces/:ws/api-keys[/:id]` |
+| `api-keys.ts` | `*/workspaces/:ws/api-keys[/:id]` (scope: `manage`) |
 | `knowledge-bases.ts` | `*/workspaces/:ws/knowledge-bases[/:id]` |
 | `kb-descriptor.ts` | KB metadata + service bindings |
 | `kb-documents.ts` | `*/knowledge-bases/:kb/documents[/:id]` (ingest, list, edit, delete) |
@@ -22,27 +24,41 @@ All mount at `/api/v1`. 20 route modules + 2 dispatch helpers.
 | `embedding-services.ts` | CRUD for embedder service configs |
 | `reranking-services.ts` | CRUD for reranker service configs |
 | `llm-services.ts` | CRUD for LLM service configs |
+| `llm-models.ts` | `GET /llm-models` — live chat-model catalog (model picker) |
 | `agents.ts` | Agents (Bobby/Maven/Quill/Sage personas) + chat |
+| `available-tools.ts` | `GET /workspaces/:ws/available-tools` — selectable agent-tool catalog (read-only) |
+| `mcp-servers.ts` | `*/workspaces/:ws/mcp-servers[/:id]` — remote MCP server registry CRUD |
 | `playground.ts` | Retrieval playground (vector/text/hybrid) |
 | `connect.ts` | Snippets + traffic mirror for client setup |
 | `jobs.ts` | Job status + SSE stream |
-| `mcp.ts` | Model Context Protocol facade |
-| `policy.ts` | RLAC policy CRUD (prototype) |
-| `principals.ts` | RLAC principal CRUD (prototype) |
+| `mcp.ts` | Model Context Protocol JSON-RPC facade |
+| `policy.ts` | RLAC policy CRUD (scope: `manage`) |
+| `principals.ts` | RLAC principal CRUD (scope: `manage`) |
 | `helpers.ts` | Shared route utilities |
+| `ingest-file-form.ts` | Multipart parsing for KB file ingest (shared helper) |
+| `rlac-defaults.ts` | RLAC `visibleTo`/owner defaulting shared by document write paths |
 | `search-dispatch.ts` | Search request → driver routing |
 | `upsert-dispatch.ts` | Upsert request → driver routing |
 | `serdes/` | Request/response shape converters |
 
 ## Middleware chain (app.ts)
 
+Workspace-scoped requests (`/api/v1/workspaces/*`) pass through:
+
 ```
-requestId → requestLogger → cors → rateLimit
-         → authResolver (apiKey | session)
-         → workspaceRouteAuthz (per workspace-scoped route)
-         → RLAC enforcer (when feature flag on)
-         → handler → app.onError
+requestId → requestTracing → requestLogger → requestMetrics
+         → securityHeaders → rateLimit → bodyLimit
+         → csrfOriginCheck (cookie sessions only)
+         → authMiddleware (apiKey | OIDC session)
+         → principalResolver (RLAC sub-workspace principal)
+         → workspaceRouteAuthz
+         → mutatingRouteWriteScope (write scope on mutations)
+         → manageRouteScope (manage scope on admin routes)
+         → handler → app.onError (envelope + secret masking)
 ```
+
+RLAC policy filters are injected in the KB query path (`policy/enforcer.ts`),
+not as a global middleware.
 
 ## Services (`src/services/`)
 
@@ -76,7 +92,7 @@ HTTP /agents/:id/chat
 | `validator.ts` | Static checks (referenced fields, principal scopes) |
 | `compiler.ts` | AST → Astra query filter |
 | `evaluator.ts` | AST eval against in-memory context |
-| `enforcer.ts` | Middleware that injects policy into query path |
+| `enforcer.ts` | Compiles policy into the KB query-path filter (called by data-plane handlers) |
 | `index.ts` | Public entry |
 
 ## Control plane (`src/control-plane/`)
@@ -93,6 +109,7 @@ Per-aggregate repos under `repos/`:
 | `chat-messages.ts` | Chat messages |
 | `api-keys.ts` | API keys |
 | `principals.ts` | Principals (RLAC) |
+| `mcp-servers.ts` | MCP servers (remote MCP registry) |
 | `policy-audit.ts` | Policy audit log |
 | `chunking-services.ts`, `embedding-services.ts`, `reranking-services.ts`, `llm-services.ts`, `knowledge-filters.ts` | Service endpoint configs |
 | `_service-endpoint.ts` | Shared base for the four service-endpoint repos |
