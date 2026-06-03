@@ -1,6 +1,6 @@
 {
 	"name": "ai-workbench",
-	"version": "0.5.1",
+	"version": "0.5.2",
 	"description": "AI Workbench monorepo — polyglot green-box runtimes (TypeScript default) plus shared conformance harness and aiw-cli.",
 	"private": true,
 	"license": "MIT",

@@ -31,12 +31,12 @@ export const WHATS_NEW_VERSION = APP_VERSION;
  */
 export const WHATS_NEW_HIGHLIGHTS: readonly WhatsNewItem[] = [
 	{
-		title: "Row-level access control no longer locks you out of the web app",
+		title: "0.5.2 is a maintenance release — no UI changes",
 		summary:
-			"Enabling RLAC on a workspace used to make its knowledge bases unreadable from the browser — opening one errored immediately with a missing-principal error, even though a default admin principal had already been created. Fixed: the app now identifies you as that admin principal automatically, so an RLAC-enabled workspace is usable right away. A new discreet 'view as' control on the knowledge-base explorer lets you preview a knowledge base as any principal — to see exactly what they can.",
+			"A housekeeping pass on the 0.5 Enterprise Access Control line, with no wire-contract change and no data migration, so nothing in the app's behavior changes. The one externally visible change is on the metrics endpoint: the always-zero workbench_chat_stream_tokens_total counter — registered but never incremented — has been removed, so drop it from any Grafana panel or alert that referenced it. The contributor codemaps were also brought back in line with the shipped code.",
 		link: {
-			label: "Open a workspace",
-			href: "/",
+			label: "Read the 0.5.2 notes",
+			href: "https://datastax.github.io/ai-workbench/whats-new-0.5.2",
 		},
 	},
 ];

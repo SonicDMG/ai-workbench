@@ -9,6 +9,39 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-06-03
+
+**Maintenance release.** A housekeeping pass on the 0.5 **Enterprise Access
+Control** line with **no wire-contract change** and **no data migration**. It
+drops a metric that never carried a signal and reconciles the contributor
+codemaps with the shipped 0.5.x code; the runtime, HTTP API, and web app are
+otherwise unchanged.
+
+### Removed
+
+- **The `workbench_chat_stream_tokens_total` metric.** This counter was
+  registered on the `/metrics` endpoint but never incremented anywhere, so it
+  always exported `0` — a flat-zero "Stream tokens / sec" Grafana panel and a
+  doc claim with nothing behind it. Populating it faithfully would need a
+  prompt-vs-completion token split the chat abstraction does not surface
+  (`ChatCompletion` / `ChatStreamEvent` carry only a total `tokenCount`, and the
+  OpenAI-compatible provider narrows the API `usage` object to `total_tokens`),
+  so the dead counter is removed rather than left misleading. It is gone from
+  the runtime metrics registry, the bundled Grafana dashboard
+  (`docs/observability/grafana-workbench.json`), `docs/production.md`, and
+  `docs/api-spec.md`. If you scrape it, drop the panel or alert — no replacement
+  metric is emitted.
+
+### Documentation
+
+- **Contributor codemaps reconciled with the shipped code.** `docs/CODEMAPS/*`
+  had drifted from the 0.5.x source: a route undercount is fixed, misleading
+  "Generated:" headers are relabeled, several stale routes and table names are
+  corrected, the `packages/aiw-cli` package and the Auth service boundary are
+  added, the scoped-auth (0.5.0) decision is recorded, and the RLAC
+  "(prototype)" labels are dropped now that it ships enforced. These are
+  contributor-facing docs only — no user-facing behavior changes.
+
 ## [0.5.1] — 2026-06-01
 
 **RLAC "view as" in the web app.** A fix-and-polish release on the 0.5.0
