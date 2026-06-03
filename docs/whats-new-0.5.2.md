@@ -48,6 +48,6 @@ reconciles them:
 These are documentation changes for contributors only; they do not affect the
 runtime, the API, or the web app.
 
-See [`CHANGELOG.md`](./CHANGELOG.md) for the full 0.5.2 entry, and
+See [`CHANGELOG.md`](../CHANGELOG.md) for the full 0.5.2 entry, and
 [`docs/whats-new-0.5.0.md`](./whats-new-0.5.0.md) for the narrative tour of the
 Enterprise Access Control release this line builds on.
