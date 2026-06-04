@@ -9,6 +9,46 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+## [0.5.3] — 2026-06-04
+
+**Security tooling + dependency maintenance.** No HTTP wire-contract change and
+no data migration — the runtime, API, and web app behave exactly as they did in
+0.5.2. This release adds a trust gate for MCP tool definitions and keeps PDF
+ingestion working across a major `pdfjs-dist` upgrade.
+
+### Added
+
+- **MCP tool-surface trust gate (`toolprint`).** AI Workbench both hosts an MCP
+  server (`/api/v1/workspaces/{id}/mcp`) and lets agents call external MCP
+  servers as tools, and an agent reads each tool's description + input schema to
+  decide what to do — so a server that silently rewrites a tool definition (a
+  "rug-pull") can redirect an agent. The MCP tool surface of our own server and
+  of the external servers we trust (`.toolprint/mcp.json`) is now hashed and
+  pinned into a committed [`toolprint.lock`](./toolprint.lock); every change is
+  diffed against that pin, and drift — a changed description or schema, an
+  injected instruction, a leaked secret — fails CI
+  (`.github/workflows/toolprint.yml`). Run it locally with `npm run security:mcp`
+  (`-- --pin` to re-pin after an intended change). The scanner only lists tools;
+  it never executes one. See [`docs/mcp-trust.md`](./docs/mcp-trust.md) and the
+  new "MCP tool-surface trust" section in [`SECURITY.md`](./SECURITY.md).
+
+### Fixed
+
+- **PDF ingestion under `pdfjs-dist` 6.** The `pdfjs-dist` 5 → 6 upgrade removed
+  `PDFDocumentProxy.destroy()`; the native PDF extractor called it during
+  teardown, which threw *after* a successful parse and turned every
+  `POST /ingest/file` PDF upload into a `500`. The extractor now tears down via
+  the loading task (`loadingTask.destroy()`), which works on both 5 and 6; text
+  extraction itself was unaffected.
+
+### Changed
+
+- **`pdfjs-dist` upgraded 5.7.284 → 6.0.227**, alongside grouped Dependabot
+  updates to the TypeScript-runtime, web, and GitHub-Actions dependency sets. The
+  `toolprint` CLI pinned by the trust gate tracks 0.1.1, which classifies a
+  rug-pull as `high` (so the default `--fail-on high` gates on drift) and adds
+  `--header`/`--bearer` for authenticated remote targets.
+
 ## [0.5.2] — 2026-06-03
 
 **Maintenance release.** A housekeeping pass on the 0.5 **Enterprise Access

@@ -24,8 +24,13 @@
  * Re-pin (and commit `toolprint.lock`) whenever you intentionally change
  * either surface. See `docs/mcp-trust.md`.
  *
- * toolprint has no flag for HTTP auth headers yet, which is why target 1
- * runs with auth disabled; tracked upstream.
+ * The own-server scan runs against the hermetic open-auth instance
+ * because the pinned tool *surface* (names / descriptions / schemas) is
+ * identical with or without auth — auth gates access, not definitions —
+ * and it keeps the boot dependency-free. toolprint 0.1.1 added
+ * `--header` / `--bearer` (and `TOOLPRINT_BEARER`), so an authenticated
+ * *remote* target can be scanned by passing a token; a throwaway
+ * localhost instance doesn't need it.
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -36,7 +41,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Pinned so a surprise upstream release can't silently change scan
 // semantics; bump deliberately alongside a re-pin.
-const TOOLPRINT = "toolprint@0.1.0";
+const TOOLPRINT = "toolprint@0.1.1";
 
 const PORT = 8099;
 const WORKSPACE_UID = "11111111-1111-4111-8111-111111111111";
@@ -55,11 +60,9 @@ const pin = process.argv.includes("--pin");
 const verb = pin ? "pin" : "scan";
 const READY_TIMEOUT_MS = 45_000;
 
-// toolprint classifies a rug-pull (a pinned definition changing) as
-// MEDIUM, so its default `--fail-on high` would exit 0 on the very thing
-// we care most about. Gate at medium so a drifted tool description fails
-// the check. (Tracked upstream — arguably a rug-pull should be HIGH.)
-const FAIL_ON = "medium";
+// As of toolprint 0.1.1 (jestatsio/toolprint#13) a rug-pull — a pinned
+// definition changing — is classified `high`, so the default
+// `--fail-on high` already fails the scan on drift. No override needed.
 
 /** Poll until the runtime accepts TCP connections (any HTTP reply = up). */
 async function waitForServer() {
@@ -90,8 +93,6 @@ function toolprint(targetArgs, label) {
 			...targetArgs,
 			"--lockfile",
 			LOCKFILE,
-			"--fail-on",
-			FAIL_ON,
 			"--timeout",
 			"30000",
 			"--no-telemetry",

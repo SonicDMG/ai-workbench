@@ -53,12 +53,15 @@ secrets, LLM, or network backend required.
    The `toolprint.lock` diff is part of code review, so a reviewer sees
    exactly which tool definitions changed.
 
-## Notes / limitations
+## Notes
 
-- **Gate severity.** toolprint classifies a rug-pull as `medium`, so the
-  scan runs `--fail-on medium` (its default `high` would let a rug-pull
-  pass). See `scripts/toolprint-mcp.mjs`.
-- **Auth.** toolprint can't yet send an `Authorization` header to an HTTP
-  target, so the own-server scan runs with auth disabled in the hermetic
-  config. This does not affect the deployed runtime's auth posture; it's
-  only how the scanner reaches a throwaway local instance.
+- **Gate severity.** As of toolprint 0.1.1 a rug-pull is classified
+  `high`, so the scan relies on the default `--fail-on high` — a drifted
+  tool definition fails the check with no override needed.
+- **Auth.** The own-server scan runs against the hermetic open-auth
+  instance because the pinned tool *surface* (names/descriptions/schemas)
+  is identical with or without auth — auth gates access, not definitions.
+  toolprint 0.1.1 added `--header`/`--bearer` (and `TOOLPRINT_BEARER`), so
+  an authenticated *remote* target can be scanned by passing a token; a
+  throwaway localhost instance doesn't need it. This does not affect the
+  deployed runtime's auth posture.

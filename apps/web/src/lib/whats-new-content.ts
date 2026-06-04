@@ -31,12 +31,12 @@ export const WHATS_NEW_VERSION = APP_VERSION;
  */
 export const WHATS_NEW_HIGHLIGHTS: readonly WhatsNewItem[] = [
 	{
-		title: "0.5.2 is a maintenance release — no UI changes",
+		title: "0.5.3 hardens MCP tooling — no UI changes",
 		summary:
-			"A housekeeping pass on the 0.5 Enterprise Access Control line, with no wire-contract change and no data migration, so nothing in the app's behavior changes. The one externally visible change is on the metrics endpoint: the always-zero workbench_chat_stream_tokens_total counter — registered but never incremented — has been removed, so drop it from any Grafana panel or alert that referenced it. The contributor codemaps were also brought back in line with the shipped code.",
+			'A security-tooling and dependency-maintenance release on the 0.5 Enterprise Access Control line, with no wire-contract change and no data migration, so nothing in the app\'s behavior changes. AI Workbench now pins the MCP tool definitions it exposes — and those of the external MCP servers it trusts — into a committed lockfile and fails CI if any of them drift (a silent tool "rug-pull"). PDF ingestion also keeps working unchanged across a major pdfjs-dist upgrade.',
 		link: {
-			label: "Read the 0.5.2 notes",
-			href: "https://datastax.github.io/ai-workbench/whats-new-0.5.2",
+			label: "Read the 0.5.3 notes",
+			href: "https://datastax.github.io/ai-workbench/whats-new-0.5.3",
 		},
 	},
 ];
