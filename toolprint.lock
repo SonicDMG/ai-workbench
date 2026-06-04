@@ -1,0 +1,77 @@
+{
+  "lockfileVersion": 1,
+  "toolprintVersion": "0.1.0",
+  "generatedAt": "2026-06-04T21:26:38.099Z",
+  "servers": {
+    "context7": {
+      "transport": "stdio",
+      "source": "npx -y @upstash/context7-mcp",
+      "tools": {
+        "query-docs": {
+          "hash": "sha256:4067e94fb4da489b1b1cb7c4b24a8b09f999587826a7bc117845c161306b350a",
+          "description": "Retrieves and queries up-to-date documentation and code examples from Context7 for any programming library or framework.\n\nYou must call 'Resolve Context7 Library ID' tool first to obtain the exact Context7-compatible library ID required to use this tool, UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.\n\nDo not call this tool more than 3 times per question."
+        },
+        "resolve-library-id": {
+          "hash": "sha256:190b4d03cc7c88be23d3fb50a0ca19217f99277918a2afd20fd3a62378b16f8e",
+          "description": "Resolves a package/product name to a Context7-compatible library ID and returns matching libraries.\n\nYou MUST call this function before 'Query Documentation' tool to obtain a valid Context7-compatible library ID UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.\n\nEach result includes:\n- Library ID: Context7-compatible identifier (format: /org/project)\n- Name: Library or package name\n- Description: Short summary\n- Code Snippets: Number of available code examples\n- Source Reputation: Authority indicator (High, Medium, Low, or Unknown)\n- Benchmark Score: Quality indicator (100 is the highest score)\n- Versions: List of versions if available. Use one of those versions if the user provides a version in their query. The format of the version is /org/project/version.\n\nFor best results, select libraries based on name match, source reputation, snippet coverage, benchmark score, and relevance to your use case.\n\nSelection Process:\n1. Analyze the query to understand what library/package the user is looking for\n2. Return the most relevant match based on:\n- Name similarity to the query (exact matches prioritized)\n- Description relevance to the query's intent\n- Documentation coverage (prioritize libraries with higher Code Snippet counts)\n- Source reputation (consider libraries with High or Medium reputation more authoritative)\n- Benchmark Score: Quality indicator (100 is the highest score)\n\nResponse Format:\n- Return the selected library ID in a clearly marked section\n- Provide a brief explanation for why this library was chosen\n- If multiple good matches exist, acknowledge this but proceed with the most relevant one\n- If no good matches exist, clearly state this and suggest query refinements\n\nFor ambiguous queries, request clarification before proceeding with a best-guess match.\n\nIMPORTANT: Do not call this tool more than 3 times per question. If you cannot find what you need after 3 calls, use the best result you have."
+        }
+      },
+      "prompts": {},
+      "resources": {},
+      "resourceTemplates": {}
+    },
+    "http://localhost:8099/api/v1/workspaces/11111111-1111-4111-8111-111111111111/mcp": {
+      "transport": "http",
+      "source": "http://localhost:8099/api/v1/workspaces/11111111-1111-4111-8111-111111111111/mcp",
+      "tools": {
+        "create_knowledge_base": {
+          "hash": "sha256:a9035f4d8ca39e0594520d2b36bf881dc343822df2626c5fba5df4c3ebee92b7",
+          "description": "Provision a new knowledge base in this workspace, bound to existing chunking + embedding services. Owned KBs (default) auto-provision a vector collection named after `name`; pass `attach: true` plus `vectorCollection` to bind to a pre-existing data-plane collection instead. Returns `outcome: \"created\"` plus the new `knowledgeBaseId` on success, or `isError: true` with a recognizable code on `kb_name_taken` / `collection_name_taken` / validation failures. **Requires the `write` scope on the calling key.**"
+        },
+        "delete_document": {
+          "hash": "sha256:6839e4e82cf61d890c719752a4e3bc9be939213b284b437a21d4df75e6c8a116",
+          "description": "Remove a document and cascade its chunks from the KB's vector collection. Idempotent — re-deleting a missing document returns `outcome: \"not_found\"` rather than erroring, so an agent can run speculative deletes without branching. Wraps the same cascade helper the REST `DELETE /documents/{id}` route uses, so behavior is identical across the two front doors. **Requires the `write` scope on the calling key.**"
+        },
+        "delete_knowledge_base": {
+          "hash": "sha256:7a3b69d523bdcd39de6792d283a514c4c4017b4c76482edd8682efdee468cf86",
+          "description": "Remove a knowledge base from this workspace. For owned KBs, the underlying vector collection is dropped first; attached KBs are detached without touching the collection (consistent with the REST DELETE semantics). Idempotent — re-deleting a missing KB returns `outcome: \"not_found\"` rather than erroring. **Requires the `write` scope on the calling key.**"
+        },
+        "get_agent": {
+          "hash": "sha256:036e7bf3125ea9f6f586903fa2a8da60ab7a19d168f1a2357176d0d4c1f193d2",
+          "description": "Return the full configuration of one agent — system prompt, user prompt, tool ids, KBs, and reranking overrides. Use this when an MCP client needs to render or audit an agent's setup before invoking it via `chat_send`."
+        },
+        "ingest_text": {
+          "hash": "sha256:7d1745c6a1bfa47804a9a8b8b8bc4d28323a863b9e4a499a4825f7072166c9de",
+          "description": "Append a new document to a knowledge base by passing raw text. Runs the same dedup + chunk + embed + upsert pipeline as the REST `POST /ingest` route. Use this to let an agent record material it has just gathered (notes, transcripts, summaries) without leaving the MCP session. Returns the resulting documentId + chunk count, or signals duplicate / name_conflict when the pipeline short-circuits. **Requires the `write` scope on the calling key.**"
+        },
+        "list_agents": {
+          "hash": "sha256:4b2bfac67ab6ef63763351586df164169dd8b98b7b92fda04cb3a9bb9caff20f",
+          "description": "Enumerate the workspace's agents. Returns each agent's id, name, description, KBs the agent grounds on, and bound LLM service id (or null when the runtime-level chat config is used). Pair with `list_chats` to discover ongoing conversations for an agent and `list_chat_messages` to replay one."
+        },
+        "list_chat_messages": {
+          "hash": "sha256:05f3f7597500e79bc43bdecd2681229c4c61dbe80335bffc407e2d499bd0ec59",
+          "description": "Oldest-first message history for one conversation. Returns role, content, timestamp, and (for assistant turns) RAG provenance metadata."
+        },
+        "list_chats": {
+          "hash": "sha256:7c88062ddfafe0fbd3f5076a3cb274a974c7e78cd775a1d51da4b3acde63fde9",
+          "description": "List the conversations belonging to an agent in the workspace. Use the agentId returned by `list_agents` (or the value returned when the agent was created). Useful when an external client wants to read or audit prior conversations before adding to them."
+        },
+        "list_documents": {
+          "hash": "sha256:13e52ece0af32101c3e94c79ca3ef938a045660d8ad1d61eeac9099194068e30",
+          "description": "Paginated document metadata for a single knowledge base. Use this to discover which sources an agent can ground on. Returns id, source filename, status, content hash, and chunk count."
+        },
+        "list_knowledge_bases": {
+          "hash": "sha256:ac0a0fe6bbdc93d0305a7d2590a3c65baeb58f17f6b5d02c7fa3618c9b3af82e",
+          "description": "List the workspace's knowledge bases. Returns a JSON array of KB summaries (id, name, status, language, document counts implied by listing /documents per KB)."
+        },
+        "search_kb": {
+          "hash": "sha256:2e7dfa8b085811ac830b4961ef47583847fb1bff70444b80c35b981e1fbc1ba1",
+          "description": "Run vector / hybrid / rerank search against a single knowledge base. Returns top-K hits with chunk id, score, document id, and chunk text. Use the same KB id from `list_knowledge_bases`. Provide `text` (most common) or a precomputed `vector`. Hybrid + rerank flags are optional and follow the descriptor's defaults when omitted."
+        }
+      },
+      "prompts": {},
+      "resources": {},
+      "resourceTemplates": {}
+    }
+  }
+}

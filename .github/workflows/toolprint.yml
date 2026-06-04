@@ -1,0 +1,45 @@
+name: MCP trust
+
+# "package-lock.json for MCP trust": pins the MCP tool surface (tool/
+# prompt/resource definitions) into a committed toolprint.lock and fails
+# when any of them drift — a silent tool "rug-pull" is the classic
+# prompt-injection vector. Covers two targets (see scripts/toolprint-mcp.mjs):
+#   1. our own MCP server (src/mcp/server.ts)
+#   2. trusted external servers we depend on (.toolprint/mcp.json)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly: catch an upstream rug-pull in a trusted external server even
+    # when no PR to this repo touches the MCP surface.
+    - cron: '23 10 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-trust-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: toolprint scan (pinned MCP tool surface)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # Needed to boot the runtime hermetically so toolprint can list our
+      # own MCP server's tools. The scan itself never executes any tool.
+      - name: Install TS runtime deps
+        run: npm --prefix runtimes/typescript ci --no-audit --no-fund
+
+      - name: Scan MCP tool surface against toolprint.lock
+        run: npm run security:mcp

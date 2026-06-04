@@ -17,6 +17,7 @@
 		"format": "biome format --write .",
 		"format:check": "biome format .",
 		"security:secrets": "node scripts/secret-scan.mjs",
+		"security:mcp": "node scripts/toolprint-mcp.mjs",
 		"knip": "npm --prefix runtimes/typescript run knip",
 		"dev": "npm --prefix runtimes/typescript run dev",
 		"dev:web": "npm --prefix apps/web run dev",

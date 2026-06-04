@@ -1,0 +1,32 @@
+# Hermetic in-memory config for the toolprint MCP-trust scan
+# (.github/workflows/toolprint.yml + `npm run security:mcp`).
+#
+# Boots with the default auth posture (mode: disabled, anonymousPolicy:
+# allow) and a memory control plane seeded with one mock workspace, so
+# `toolprint scan` can list the MCP tool surface at
+#   /api/v1/workspaces/<uid>/mcp
+# without Astra, secrets, an LLM, or auth. toolprint only ever calls
+# tools/list — it never executes a tool — so the empty mock workspace
+# is enough to pin every tool's name + description + input schema.
+#
+# The seed `uid` is FIXED so the scan URL is stable across runs and CI.
+# If you intentionally change the MCP tool surface (src/mcp/server.ts),
+# re-pin the lockfile — see docs/mcp-trust.md.
+version: 1
+
+runtime:
+  port: 8099
+  logLevel: warn
+
+controlPlane:
+  driver: memory
+
+# Default ON, but pinned explicitly here: the scan depends on the route
+# being mounted.
+mcp:
+  enabled: true
+
+seedWorkspaces:
+  - uid: 11111111-1111-4111-8111-111111111111
+    name: toolprint-scan
+    kind: mock

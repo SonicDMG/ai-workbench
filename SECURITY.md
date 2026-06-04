@@ -106,6 +106,18 @@ See
 [`runtimes/typescript/src/root.ts`](./runtimes/typescript/src/root.ts)
 for the production-mode default.
 
+## MCP tool-surface trust
+
+Agents read each MCP tool's description and input schema to decide how
+to act, so a server that silently changes a tool definition (a
+"rug-pull") can redirect an agent — the classic tool-poisoning vector.
+The MCP tool surface of both our own server and the external servers we
+trust is pinned into a committed [`toolprint.lock`](./toolprint.lock) and
+diffed on every change; drift fails CI
+([`.github/workflows/toolprint.yml`](./.github/workflows/toolprint.yml)).
+The scanner only lists tools, never executes them. See
+[`docs/mcp-trust.md`](./docs/mcp-trust.md).
+
 ## Browser security headers
 
 The TypeScript runtime applies a single hardening middleware to every
