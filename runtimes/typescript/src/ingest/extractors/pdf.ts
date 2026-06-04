@@ -34,11 +34,18 @@ interface PdfPage {
 interface PdfDocument {
 	readonly numPages: number;
 	getPage(n: number): Promise<PdfPage>;
-	destroy(): Promise<void>;
 }
 
 interface GetDocumentTask {
 	readonly promise: Promise<PdfDocument>;
+	/**
+	 * Teardown for the document and its worker. pdf.js v6 removed
+	 * `PDFDocumentProxy.destroy()` (the doc only exposes `cleanup()`
+	 * now), so teardown lives on the loading task. The loading task has
+	 * carried `destroy()` since v5, so calling it here is both forward-
+	 * and backward-compatible.
+	 */
+	destroy(): Promise<void>;
 }
 
 interface PdfJsModule {
@@ -73,19 +80,20 @@ export async function extractPdf(
 	input: ExtractInput,
 ): Promise<ExtractedDocument> {
 	const pdfjs = await loadPdfJs();
-	let doc: PdfDocument | null = null;
+	let task: GetDocumentTask | null = null;
 	try {
 		// Copy into a fresh Uint8Array because pdf.js takes ownership of
 		// the buffer (zeroes it during parse) and the multipart layer
 		// may reuse the underlying ArrayBuffer for other form fields.
 		const data = new Uint8Array(input.bytes);
-		doc = await pdfjs.getDocument({
+		task = pdfjs.getDocument({
 			data,
 			isEvalSupported: false,
 			useSystemFonts: false,
 			disableFontFace: true,
 			verbosity: 0,
-		}).promise;
+		});
+		const doc = await task.promise;
 
 		const pageTexts: string[] = [];
 		for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
@@ -130,8 +138,8 @@ export async function extractPdf(
 			{ cause: err },
 		);
 	} finally {
-		if (doc) {
-			await doc.destroy().catch(() => {
+		if (task) {
+			await task.destroy().catch(() => {
 				/* destroy is idempotent; swallow secondary errors */
 			});
 		}
