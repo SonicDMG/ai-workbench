@@ -39,3 +39,10 @@ docker-compose.override.yml
 # get accidentally added and so repo-wide tools (biome, etc.) skip
 # the nested config they contain.
 .claude/worktrees/
+
+# Feature documentation (local development only, not tracked)
+docs/*/requirements.md
+docs/*/design.md
+docs/*/validation.md
+docs/*/todo.md
+docs/*/implementation.md
