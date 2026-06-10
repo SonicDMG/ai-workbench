@@ -2,10 +2,10 @@ import { expect, test } from "./_fixtures";
 
 // Coverage for the ingest queue dialog (apps/web/src/components/
 // workspaces/IngestQueueDialog.tsx). The dialog has a non-trivial
-// state machine — sequential drain through async-ingest jobs, with
-// a re-entry guard preventing double-fires — and was a regression
-// hotspot historically. This spec drives the happy path through
-// the real runtime + memory control plane.
+// state machine — a bounded-parallel drain through async-ingest
+// jobs, with a re-entry guard preventing double-fires — and was a
+// regression hotspot historically. This spec drives the happy path
+// through the real runtime + memory control plane.
 //
 // Strategy:
 //   1. API: workspace + chunking + embedding services + KB.

@@ -543,6 +543,96 @@ describe("IngestQueueDialog", () => {
 		expect(screen.queryByText(/Replace "c\.md"/)).not.toBeInTheDocument();
 	});
 
+	it("kicks the next file while earlier jobs are still running (parallel drain, #360)", async () => {
+		// Three files; every job stays in `running` forever. The old
+		// single-active design would kick file 1 and then stall until
+		// its job succeeded — files 2 and 3 would never submit. The
+		// bounded-parallel drain must submit all three (default limit
+		// is 4) even though none of the jobs have completed.
+		vi.mocked(api.kbIngestFileAsync)
+			.mockResolvedValueOnce(ingestResponse("job-1"))
+			.mockResolvedValueOnce(ingestResponse("job-2"))
+			.mockResolvedValueOnce(ingestResponse("job-3"));
+		vi.mocked(api.getJob).mockImplementation(async (_ws, jobId) =>
+			jobRecord(jobId, "running"),
+		);
+
+		const user = userEvent.setup();
+		render(
+			<IngestQueueDialog
+				workspace="ws-1"
+				knowledgeBase={KB}
+				open
+				onOpenChange={() => {}}
+			/>,
+			{ wrapper },
+		);
+
+		const fileInput = document.querySelector(
+			'input[type="file"]:not([webkitdirectory])',
+		) as HTMLInputElement;
+		await user.upload(fileInput, [
+			makeFile("a.md", "alpha"),
+			makeFile("b.md", "beta"),
+			makeFile("c.md", "gamma"),
+		]);
+		await user.click(screen.getByRole("button", { name: /Start ingest/ }));
+
+		await waitFor(
+			() => expect(api.kbIngestFileAsync).toHaveBeenCalledTimes(3),
+			{ timeout: 5_000 },
+		);
+	});
+
+	it("respects a parallel limit of 1: the second file waits for the first job to finish", async () => {
+		// Drop the picker to 1 (legacy sequential behavior). With job-1
+		// parked in `running`, file 2 must NOT submit; once job-1
+		// succeeds, file 2 submits.
+		let job1Done = false;
+		vi.mocked(api.kbIngestFileAsync)
+			.mockResolvedValueOnce(ingestResponse("job-1"))
+			.mockResolvedValueOnce(ingestResponse("job-2"));
+		vi.mocked(api.getJob).mockImplementation(async (_ws, jobId) =>
+			jobId === "job-1" && !job1Done
+				? jobRecord(jobId, "running")
+				: jobRecord(jobId, "succeeded"),
+		);
+
+		const user = userEvent.setup();
+		render(
+			<IngestQueueDialog
+				workspace="ws-1"
+				knowledgeBase={KB}
+				open
+				onOpenChange={() => {}}
+			/>,
+			{ wrapper },
+		);
+
+		const fileInput = document.querySelector(
+			'input[type="file"]:not([webkitdirectory])',
+		) as HTMLInputElement;
+		await user.upload(fileInput, [
+			makeFile("a.md", "alpha"),
+			makeFile("b.md", "beta"),
+		]);
+
+		await user.selectOptions(screen.getByLabelText(/Parallel ingests/), "1");
+		await user.click(screen.getByRole("button", { name: /Start ingest/ }));
+
+		await waitFor(() => expect(api.kbIngestFileAsync).toHaveBeenCalledTimes(1));
+		// Give the drain a beat: file 2 must still be parked behind the
+		// limit while job-1 runs.
+		await new Promise((r) => setTimeout(r, 700));
+		expect(api.kbIngestFileAsync).toHaveBeenCalledTimes(1);
+
+		job1Done = true;
+		await waitFor(
+			() => expect(api.kbIngestFileAsync).toHaveBeenCalledTimes(2),
+			{ timeout: 5_000 },
+		);
+	});
+
 	it("captures a non-Error mutation rejection as 'Unknown error' on the failed row, not as a crash", async () => {
 		vi.mocked(api.kbIngestFileAsync)
 			.mockRejectedValueOnce("string-not-an-error" as unknown as Error)

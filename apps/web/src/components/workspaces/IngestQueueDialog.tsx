@@ -53,13 +53,16 @@ interface PendingConflict {
  * Multi-file / folder ingest queue.
  *
  * Drag-drop one or more files (or pick a folder via the directory
- * picker) and watch them ingest one at a time. Each row shows live
- * progress for the active file plus terminal status for everything
- * before it. Sequential ingest (rather than parallel) keeps the
- * runtime's embedding-provider rate limits predictable and the
- * progress UI legible — operators ingesting "all our docs at once"
- * don't tend to need parallelism, and a misbehaving file shouldn't
- * tank the others.
+ * picker) and watch them ingest with bounded parallelism. Each row
+ * shows live progress for every in-flight file plus terminal status
+ * for the rest. Submissions (the multipart upload + dedup/conflict
+ * probe) stay serialized so name-conflict prompts surface one at a
+ * time, but ingest *jobs* overlap up to the parallelism limit — the
+ * backend already bounds concurrent jobs with a per-replica semaphore
+ * (`runtime.maxConcurrentIngestJobs`, default 4), so the default here
+ * matches it and large batches stop paying one-job-at-a-time
+ * wall-clock (#360). A misbehaving file still can't tank the others:
+ * each row fails independently.
  *
  * Plain text plus PDF / DOCX / XLSX, 25 MB per file. Anything else
  * gets rejected inline rather than silently dropped from the queue so
@@ -72,6 +75,17 @@ interface PendingConflict {
 
 const MAX_BYTES = 25 * 1024 * 1024;
 const AUTO_CLOSE_AFTER_COMPLETION_MS = 1200;
+
+/**
+ * How many ingest jobs may run at once. The default mirrors the
+ * runtime's `maxConcurrentIngestJobs` semaphore (4) so the client
+ * fills the server's capacity without queueing beyond it; the picker
+ * lets operators drop to 1 (the legacy sequential behavior, gentle on
+ * embedding-provider rate limits) or push to 8 for backends that can
+ * take it.
+ */
+const PARALLEL_INGEST_CHOICES = [1, 2, 4, 8] as const;
+const DEFAULT_PARALLEL_INGESTS = 4;
 
 interface QueueCounts {
 	readonly queued: number;
@@ -105,8 +119,10 @@ export function IngestQueueDialog({
 	onOpenChange: (v: boolean) => void;
 }) {
 	const [items, setItems] = useState<QueueItem[]>([]);
-	const [activeId, setActiveId] = useState<string | null>(null);
 	const [draining, setDraining] = useState(false);
+	const [parallelLimit, setParallelLimit] = useState<number>(
+		DEFAULT_PARALLEL_INGESTS,
+	);
 	// Name-conflict prompt state. When `pendingConflict` is non-null,
 	// the drain effect halts so the user can decide overwrite vs skip
 	// in the modal. `applyToAll` carries the standing answer if the
@@ -120,24 +136,19 @@ export function IngestQueueDialog({
 
 	const qc = useQueryClient();
 	const ingest = useAsyncIngestFile(workspace, knowledgeBase.knowledgeBaseId);
-	// Drives only the *active* row's poller. Each row shows a live
-	// snapshot from this hook while it's the head of the queue. We
-	// derive the jobId from items+activeId synchronously each render
-	// rather than holding it on its own state — keeps the queue and
-	// the poller in lockstep without a redundant setState.
-	const activeJobId = items.find((i) => i.id === activeId)?.jobId ?? null;
-	const poll = useJobPoller(workspace, activeJobId ?? undefined);
 
 	// Re-entry guard for the drain effect. `useMutation`'s return
 	// object changes ref every time `isPending` flips; if `ingest`
 	// were in the effect deps the drain effect would re-fire mid-
-	// `await ingest.mutateAsync(...)` (between mutation start and
-	// setActiveId) and double-kick the same file. The user-visible
+	// `await ingest.mutateAsync(...)` (before the row's status flips
+	// to `running`) and double-kick the same file. The user-visible
 	// symptom: eight duplicate Document rows for one upload, plus
 	// React #185 ("Maximum update depth exceeded") once the
-	// ricochet pile-up gets dense enough. The ref is set when an
-	// async ingest is in flight and cleared when it terminates;
-	// the effect bails fast while it's set.
+	// ricochet pile-up gets dense enough. The ref is set while a
+	// submission is in flight and cleared when its response lands;
+	// the effect bails fast while it's set. It also serializes the
+	// multipart probes themselves — parallelism applies to the jobs
+	// they start, never to two unresolved conflict probes at once.
 	const kickInFlight = useRef(false);
 	// Stable handle to `ingest.mutateAsync`. Tracking this through a
 	// ref lets us drop `ingest` from the drain effect's deps (its
@@ -157,7 +168,6 @@ export function IngestQueueDialog({
 	const close = useCallback((): void => {
 		clearAutoCloseTimer();
 		setItems([]);
-		setActiveId(null);
 		setDraining(false);
 		setBatchStarted(false);
 		setPendingConflict(null);
@@ -245,18 +255,22 @@ export function IngestQueueDialog({
 		[],
 	);
 
-	// Drive the queue: when no item is active and there are pending
-	// items, take the next one and kick its ingest. When the active
-	// item terminates, advance.
+	// Drive the queue: while fewer jobs run than the parallelism limit
+	// and queued items remain, take the next one and kick its ingest.
+	// Each kick that lands in `running` re-fires the effect (items
+	// changed), which kicks the next file until the limit is reached;
+	// terminal jobs free a slot the same way.
 	//
 	// `ingest` is intentionally **not** in the deps. `useMutation`'s
 	// return object changes ref every time `isPending` flips, which
-	// would re-fire this effect mid-`await mutateAsync(...)` —
-	// before we've reached `setActiveId(next.id)` — and cause the
-	// effect to kick a second mutation for the same file. We
-	// belt-and-suspenders that with the `kickInFlight` ref so even
-	// if `items` churn during the await window re-fires the
-	// effect, we won't re-enter the dispatch block.
+	// would re-fire this effect mid-`await mutateAsync(...)` — before
+	// the row's status flips to `running` — and cause the effect to
+	// kick a second mutation for the same file. We belt-and-suspenders
+	// that with the `kickInFlight` ref so even if `items` churn during
+	// the await window re-fires the effect, we won't re-enter the
+	// dispatch block. That same ref keeps submissions one-at-a-time —
+	// only the *jobs* overlap — so a name-conflict prompt can never
+	// race a second probe.
 	//
 	// `mutateAsync` itself is a stable function across renders per
 	// TanStack Query's contract, so closing over the latest
@@ -310,7 +324,6 @@ export function IngestQueueDialog({
 				jobId: res.job.jobId,
 				snapshots: res.astraQueries,
 			});
-			setActiveId(itemId);
 			return "running";
 		},
 		[updateItem],
@@ -318,16 +331,24 @@ export function IngestQueueDialog({
 
 	useEffect(() => {
 		if (!draining) return;
-		if (activeId !== null) return;
 		if (kickInFlight.current) return;
-		// Halt the drain while the user is being prompted on a
-		// name conflict. The prompt's handlers re-enter the loop by
-		// either marking the row terminal (Skip) or kicking a retry
-		// ingest with `overwriteOnNameConflict: true` (Overwrite).
+		// Halt new kicks while the user is being prompted on a name
+		// conflict — already-running jobs keep streaming progress via
+		// their per-row pollers. The prompt's handlers re-enter the
+		// loop by either marking the row terminal (Skip) or kicking a
+		// retry ingest with `overwriteOnNameConflict: true` (Overwrite).
 		if (pendingConflict !== null) return;
+		// Bounded parallel drain: keep kicking queued files until the
+		// running set reaches the parallelism limit. Submissions stay
+		// one-at-a-time (kickInFlight) so conflict prompts can't race,
+		// but the jobs they start overlap (#360).
+		const running = items.filter((i) => i.status === "running").length;
+		if (running >= parallelLimit) return;
 		const next = items.find((i) => i.status === "queued");
 		if (!next) {
-			setDraining(false);
+			// Nothing left to kick — but the batch isn't done until the
+			// in-flight jobs reach a terminal state too.
+			if (running === 0) setDraining(false);
 			return;
 		}
 		kickInFlight.current = true;
@@ -376,8 +397,8 @@ export function IngestQueueDialog({
 		})();
 	}, [
 		draining,
-		activeId,
 		items,
+		parallelLimit,
 		updateItem,
 		pendingConflict,
 		applyToAll,
@@ -438,66 +459,61 @@ export function IngestQueueDialog({
 		[pendingConflict, items, submitIngest, applyIngestResponse, updateItem],
 	);
 
-	// Wire the active poller's snapshot back into the queue row so the
-	// table reflects live progress.
+	// Merge a job-poll snapshot into its queue row. Called by the
+	// per-row {@link RunningJobBridge} pollers — one per running row,
+	// so every in-flight ingest streams live progress, not just a
+	// single "active" head-of-queue.
 	//
-	// Deps are deliberately limited to `[activeId, poll.data]`. We
-	// **don't** depend on `activeItem` here (the object reference
-	// churns every time `setItems` returns a new array), and we
-	// **don't** depend on `updateItem` (its identity is stable from
-	// `useCallback([])` but including it loses nothing). The body
-	// mutates `items` via `setItems` — and is idempotent: when the
-	// poll snapshot already matches the row, the updater returns the
-	// same array reference so React doesn't re-render. Without the
-	// idempotency, an active job in `running` state with non-changing
-	// `processed`/`total` would loop: setItems → new item ref →
-	// effect re-fires → setItems → loop, until React bails with
-	// "Maximum update depth exceeded".
-	useEffect(() => {
-		if (!activeId || !poll.data) return;
-		const job: JobRecord = poll.data;
-		setItems((cur) => {
-			const idx = cur.findIndex((i) => i.id === activeId);
-			if (idx < 0) return cur;
-			const prev = cur[idx] as QueueItem;
-			const chunks =
-				job.result && typeof job.result.chunks === "number"
-					? job.result.chunks
-					: null;
-			const nextStatus: QueueItem["status"] =
-				job.status === "succeeded"
-					? "succeeded"
-					: job.status === "failed"
-						? "failed"
-						: prev.status;
-			const nextErr =
-				job.status === "failed" ? job.errorMessage : prev.errorMessage;
-			const nextChunks = job.status === "succeeded" ? chunks : prev.chunkCount;
-			if (
-				prev.processed === job.processed &&
-				prev.total === job.total &&
-				prev.status === nextStatus &&
-				prev.errorMessage === nextErr &&
-				prev.chunkCount === nextChunks
-			) {
-				return cur;
-			}
-			const next: QueueItem = {
-				...prev,
-				processed: job.processed,
-				total: job.total,
-				status: nextStatus,
-				errorMessage: nextErr,
-				chunkCount: nextChunks,
-			};
-			const arr = [...cur];
-			arr[idx] = next;
-			return arr;
-		});
-		if (job.status === "succeeded" || job.status === "failed") {
-			setActiveId(null);
-		}
-	}, [activeId, poll.data]);
+	// The updater is idempotent: when the poll snapshot already
+	// matches the row, it returns the same array reference so React
+	// doesn't re-render. Without the idempotency, a job in `running`
+	// state with non-changing `processed`/`total` would loop:
+	// setItems → new item ref → effect re-fires → setItems → loop,
+	// until React bails with "Maximum update depth exceeded".
+	const handleJobSnapshot = useCallback(
+		(itemId: string, job: JobRecord): void => {
+			setItems((cur) => {
+				const idx = cur.findIndex((i) => i.id === itemId);
+				if (idx < 0) return cur;
+				const prev = cur[idx] as QueueItem;
+				const chunks =
+					job.result && typeof job.result.chunks === "number"
+						? job.result.chunks
+						: null;
+				const nextStatus: QueueItem["status"] =
+					job.status === "succeeded"
+						? "succeeded"
+						: job.status === "failed"
+							? "failed"
+							: prev.status;
+				const nextErr =
+					job.status === "failed" ? job.errorMessage : prev.errorMessage;
+				const nextChunks =
+					job.status === "succeeded" ? chunks : prev.chunkCount;
+				if (
+					prev.processed === job.processed &&
+					prev.total === job.total &&
+					prev.status === nextStatus &&
+					prev.errorMessage === nextErr &&
+					prev.chunkCount === nextChunks
+				) {
+					return cur;
+				}
+				const next: QueueItem = {
+					...prev,
+					processed: job.processed,
+					total: job.total,
+					status: nextStatus,
+					errorMessage: nextErr,
+					chunkCount: nextChunks,
+				};
+				const arr = [...cur];
+				arr[idx] = next;
+				return arr;
+			});
+		},
+		[],
+	);
 
 	function startDrain(): void {
 		completionAnnouncedRef.current = false;
@@ -525,7 +541,7 @@ export function IngestQueueDialog({
 		if (!open) return;
 		if (!batchStarted) return;
 		if (!allDone) return;
-		if (activeId !== null) return;
+		if (counts.running > 0) return;
 		if (pendingConflict !== null) return;
 		if (kickInFlight.current) return;
 		if (completionAnnouncedRef.current) return;
@@ -555,7 +571,6 @@ export function IngestQueueDialog({
 		open,
 		batchStarted,
 		allDone,
-		activeId,
 		pendingConflict,
 		qc,
 		workspace,
@@ -573,8 +588,9 @@ export function IngestQueueDialog({
 						<DialogTitle>Ingest into "{knowledgeBase.name}"</DialogTitle>
 						<DialogDescription>
 							Drop one or more files, or a folder. Each file becomes a separate
-							document; ingests run sequentially through the KB's bound chunking
-							+ embedding services.
+							document; up to {parallelLimit} ingest
+							{parallelLimit === 1 ? " runs" : "s run"} in parallel through the
+							KB's bound chunking + embedding services.
 						</DialogDescription>
 					</DialogHeader>
 
@@ -595,19 +611,37 @@ export function IngestQueueDialog({
 											}${counts.failed > 0 ? `, ${counts.failed} failed` : ""}`
 										: ""}
 								</span>
-								{!draining && counts.queued > 0 ? (
-									<button
-										type="button"
-										className="text-xs text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-										onClick={() =>
-											setItems((cur) =>
-												cur.filter((i) => i.status === "running"),
-											)
-										}
-									>
-										Clear queue
-									</button>
-								) : null}
+								<span className="flex items-center gap-3">
+									<label className="flex items-center gap-1.5">
+										Parallel ingests
+										<select
+											aria-label="Parallel ingests"
+											value={parallelLimit}
+											disabled={draining}
+											onChange={(e) => setParallelLimit(Number(e.target.value))}
+											className="rounded border border-slate-200 bg-transparent px-1 py-0.5 text-xs dark:border-slate-700"
+										>
+											{PARALLEL_INGEST_CHOICES.map((n) => (
+												<option key={n} value={n}>
+													{n}
+												</option>
+											))}
+										</select>
+									</label>
+									{!draining && counts.queued > 0 ? (
+										<button
+											type="button"
+											className="text-xs text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+											onClick={() =>
+												setItems((cur) =>
+													cur.filter((i) => i.status === "running"),
+												)
+											}
+										>
+											Clear queue
+										</button>
+									) : null}
+								</span>
 							</div>
 							<div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700">
 								<ul className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -663,6 +697,44 @@ export function IngestQueueDialog({
 				existing={pendingConflict?.existing ?? null}
 				onChoose={resolveConflict}
 			/>
+			{items
+				.filter((i) => i.status === "running" && i.jobId !== null)
+				.map((i) => (
+					<RunningJobBridge
+						key={i.id}
+						workspace={workspace}
+						jobId={i.jobId as string}
+						itemId={i.id}
+						onJob={handleJobSnapshot}
+					/>
+				))}
 		</>
 	);
+}
+
+/**
+ * Headless per-row job poller. One instance renders for every queue
+ * row in `running` state, so progress for ALL in-flight ingests
+ * streams back into the table. (The previous design held a single
+ * `activeId` and polled only its job, which is what serialized the
+ * whole queue — see #360.) Each bridge unmounts when its row reaches
+ * a terminal state; {@link useJobPoller} also stops refetching on its
+ * own once the job is terminal.
+ */
+function RunningJobBridge({
+	workspace,
+	jobId,
+	itemId,
+	onJob,
+}: {
+	workspace: string;
+	jobId: string;
+	itemId: string;
+	onJob: (itemId: string, job: JobRecord) => void;
+}) {
+	const poll = useJobPoller(workspace, jobId);
+	useEffect(() => {
+		if (poll.data) onJob(itemId, poll.data);
+	}, [poll.data, itemId, onJob]);
+	return null;
 }
