@@ -85,7 +85,7 @@ export type ChatModelProbe = (
 ) => Promise<ChatModelProbeOutcome>;
 
 /**
- * Live probe: a single `max_tokens: 1` chat completion against the
+ * Live probe: a single `max_completion_tokens: 1` chat completion against the
  * configured OpenAI-compatible provider.
  *
  * {@link OpenAIChatService.complete} already folds every transport / API

@@ -190,7 +190,7 @@ export class OpenAIChatService implements ChatService {
 				headers: { "content-type": "application/json", ...this.headers() },
 				body: JSON.stringify({
 					model: this.modelId,
-					max_tokens: this.maxOutputTokens,
+					max_completion_tokens: this.maxOutputTokens,
 					messages: toOpenAIMessages(request.messages),
 					...toolFields(request.tools),
 					...this.extraBody,
@@ -261,7 +261,7 @@ export class OpenAIChatService implements ChatService {
 				headers: { "content-type": "application/json", ...this.headers() },
 				body: JSON.stringify({
 					model: this.modelId,
-					max_tokens: this.maxOutputTokens,
+					max_completion_tokens: this.maxOutputTokens,
 					messages: toOpenAIMessages(request.messages),
 					stream: true,
 					stream_options: { include_usage: true },
