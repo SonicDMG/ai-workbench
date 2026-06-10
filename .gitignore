@@ -4,6 +4,8 @@ coverage/
 *.log
 .env
 .env.*
+# Bob AI assistant state directory
+.bob/
 # `pkill -USR2` writes nginx-style backup files; pin explicitly
 # so a misconfigured `!.env.foo` allowlist below can't override it.
 .env.save
