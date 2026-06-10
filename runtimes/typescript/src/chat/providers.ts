@@ -26,6 +26,34 @@ export const CHAT_PROVIDER_IDS = ["openrouter", "openai", "ollama"] as const;
 /** Default base URL for a local Ollama server's OpenAI-compatible API. */
 export const OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434/v1";
 
+/**
+ * Effective default base URL for Ollama: the `OLLAMA_BASE_URL` env
+ * override when set, otherwise {@link OLLAMA_DEFAULT_BASE_URL}.
+ *
+ * Inside Docker, `localhost` resolves to the container itself — never
+ * the Ollama server on the host — so every Ollama call died with an
+ * opaque `fetch failed` (#361). Operators point this at the host
+ * instead (e.g. `http://host.docker.internal:11434/v1`; the bundled
+ * compose file sets exactly that). A bare origin like
+ * `http://host:11434` gets `/v1` appended so the common "forgot the
+ * path" case works as written; any explicit path is left alone. Read
+ * at call time, not module load, so the wizard-managed env file and
+ * tests can change it without import-order surprises.
+ */
+export function ollamaBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+	const raw = env.OLLAMA_BASE_URL?.trim();
+	if (!raw) return OLLAMA_DEFAULT_BASE_URL;
+	const trimmed = raw.replace(/\/+$/, "");
+	try {
+		const url = new URL(trimmed);
+		if (url.pathname === "" || url.pathname === "/") return `${trimmed}/v1`;
+	} catch {
+		// Not parseable as a URL — pass it through untouched; the
+		// transport error from fetch is more actionable than a guess.
+	}
+	return trimmed;
+}
+
 /** OpenRouter's OpenAI-compatible base URL. */
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
@@ -116,7 +144,11 @@ export function resolveChatProvider(
 ): ResolvedChatProvider | null {
 	const profile = chatProviderProfile(input.provider);
 	if (!profile) return null;
-	const baseUrl = input.baseUrl?.trim() || profile.defaultBaseUrl;
+	// Ollama's fallback is env-aware (`OLLAMA_BASE_URL`) so a Docker
+	// deployment can point at the host without editing every service.
+	const fallback =
+		profile.id === "ollama" ? ollamaBaseUrl() : profile.defaultBaseUrl;
+	const baseUrl = input.baseUrl?.trim() || fallback;
 
 	if (profile.id === "openrouter") {
 		// ZDR-only by default: tell OpenRouter to route exclusively to

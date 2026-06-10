@@ -122,6 +122,35 @@ One key reaches OpenRouter's 300+ models. For fully offline use,
 point the `chat:` block at the `ollama` provider instead — Ollama
 runs locally and needs no key.
 
+### Ollama on the host
+
+Inside the container, `localhost` is the container itself — so an
+Ollama server on your machine is **not** at `localhost:11434` from the
+runtime's point of view. The bundled compose file handles this:
+
+- it maps `host.docker.internal` to the host gateway (`extra_hosts:
+  host-gateway`, works on Docker Desktop and Linux Engine), and
+- it defaults `OLLAMA_BASE_URL` to
+  `http://host.docker.internal:11434/v1`.
+
+So `docker compose up` + Ollama running on the host with defaults just
+works. If Ollama listens somewhere else, set the env (shell or `.env`):
+
+```bash
+OLLAMA_BASE_URL=http://gpu-box.lan:11434/v1
+```
+
+A bare origin (`http://gpu-box.lan:11434`) is fine — the runtime
+appends the `/v1` OpenAI-compatible path when no path is given.
+Per-service overrides win over the env: the LLM-service form's
+**Endpoint base URL** field (and the API's `endpointBaseUrl`) pin a
+specific service to a specific server.
+
+> Linux note: Ollama binds to `127.0.0.1` by default, which is not
+> reachable from the container even via the gateway. Start it with
+> `OLLAMA_HOST=0.0.0.0 ollama serve` (or systemd override) so it
+> listens on the gateway interface too.
+
 Then either uncomment the `chat:` block in the bundled
 `workbench.docker.yaml` (via the override pattern) or bind-mount a
 custom yaml with `chat:` enabled. Without `chat:` and no agent-level

@@ -145,6 +145,23 @@ export class OpenAIChatService implements ChatService {
 		};
 	}
 
+	/**
+	 * Transport-level failure message. `fetch failed` alone sent users
+	 * hunting (#361): it never said *where* the request went, which is
+	 * the whole story when the runtime is in Docker and the base URL
+	 * still points at localhost. Name the endpoint — and when it IS
+	 * localhost, spell out the container-vs-host trap — so the fix is
+	 * self-evident.
+	 */
+	private transportError(err: unknown): string {
+		const localhostHint = /\/\/(localhost|127\.0\.0\.1|\[::1\])([:/]|$)/.test(
+			this.baseUrl,
+		)
+			? " — if the workbench runs in Docker, localhost is the container itself, not the host; point the service's endpointBaseUrl (or OLLAMA_BASE_URL) at the host, e.g. http://host.docker.internal:11434/v1"
+			: "";
+		return `${this.providerId} request failed: ${safeErrorMessage(err)} (endpoint: ${this.baseUrl}${localhostHint})`;
+	}
+
 	async ping(options?: { readonly signal?: AbortSignal }): Promise<void> {
 		const res = await this.fetchImpl(`${this.baseUrl}/models`, {
 			headers: this.headers(),
@@ -219,9 +236,7 @@ export class OpenAIChatService implements ChatService {
 					`${this.providerId} request timed out after ${this.requestTimeoutMs}ms`,
 				);
 			}
-			return errorCompletion(
-				`${this.providerId} request failed: ${safeErrorMessage(err)}`,
-			);
+			return errorCompletion(this.transportError(err));
 		} finally {
 			if (timer) clearTimeout(timer);
 		}
@@ -330,7 +345,7 @@ export class OpenAIChatService implements ChatService {
 		} catch (err) {
 			yield {
 				type: "error",
-				errorMessage: `${this.providerId} request failed: ${safeErrorMessage(err)}`,
+				errorMessage: this.transportError(err),
 				tokenCount,
 			};
 		}

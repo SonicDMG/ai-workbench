@@ -11,6 +11,7 @@ import {
 	isChatProviderId,
 	OLLAMA_DEFAULT_BASE_URL,
 	OPENROUTER_BASE_URL,
+	ollamaBaseUrl,
 	resolveChatProvider,
 } from "../../src/chat/providers.js";
 
@@ -69,5 +70,52 @@ describe("resolveChatProvider", () => {
 
 	test("unknown provider resolves to null", () => {
 		expect(resolveChatProvider({ provider: "huggingface" })).toBeNull();
+	});
+
+	test("OLLAMA_BASE_URL env steers the ollama fallback (#361)", () => {
+		process.env.OLLAMA_BASE_URL = "http://host.docker.internal:11434/v1";
+		try {
+			const r = resolveChatProvider({ provider: "ollama" });
+			expect(r?.baseUrl).toBe("http://host.docker.internal:11434/v1");
+			// Per-service endpointBaseUrl still wins over the env default.
+			const explicit = resolveChatProvider({
+				provider: "ollama",
+				baseUrl: "http://gpu-box.lan:11434/v1",
+			});
+			expect(explicit?.baseUrl).toBe("http://gpu-box.lan:11434/v1");
+			// Other providers are untouched by the Ollama env override.
+			expect(resolveChatProvider({ provider: "openrouter" })?.baseUrl).toBe(
+				OPENROUTER_BASE_URL,
+			);
+		} finally {
+			delete process.env.OLLAMA_BASE_URL;
+		}
+	});
+});
+
+describe("ollamaBaseUrl", () => {
+	test("falls back to localhost when the env is unset", () => {
+		expect(ollamaBaseUrl({})).toBe(OLLAMA_DEFAULT_BASE_URL);
+		expect(ollamaBaseUrl({ OLLAMA_BASE_URL: "   " })).toBe(
+			OLLAMA_DEFAULT_BASE_URL,
+		);
+	});
+
+	test("appends /v1 to a bare origin and strips trailing slashes", () => {
+		expect(ollamaBaseUrl({ OLLAMA_BASE_URL: "http://h.lan:11434" })).toBe(
+			"http://h.lan:11434/v1",
+		);
+		expect(ollamaBaseUrl({ OLLAMA_BASE_URL: "http://h.lan:11434/" })).toBe(
+			"http://h.lan:11434/v1",
+		);
+	});
+
+	test("leaves an explicit path alone", () => {
+		expect(
+			ollamaBaseUrl({ OLLAMA_BASE_URL: "http://h.lan:8080/ollama/v1" }),
+		).toBe("http://h.lan:8080/ollama/v1");
+		expect(ollamaBaseUrl({ OLLAMA_BASE_URL: "http://h.lan:11434/v1/" })).toBe(
+			"http://h.lan:11434/v1",
+		);
 	});
 });

@@ -18,7 +18,7 @@
  */
 
 import { safeFetch } from "../lib/safe-fetch.js";
-import { OLLAMA_DEFAULT_BASE_URL, OPENROUTER_BASE_URL } from "./providers.js";
+import { OPENROUTER_BASE_URL, ollamaBaseUrl } from "./providers.js";
 
 export interface ChatModelInfo {
 	readonly id: string;
@@ -168,7 +168,7 @@ export async function listChatModels(
 	}
 
 	if (provider === "ollama") {
-		const base = opts.baseUrl?.trim() || OLLAMA_DEFAULT_BASE_URL;
+		const base = opts.baseUrl?.trim() || ollamaBaseUrl();
 		try {
 			const res = await fetchImpl(`${base}/models`, {
 				headers: { accept: "application/json" },

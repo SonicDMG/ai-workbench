@@ -20,10 +20,7 @@
 import { CohereEmbeddings } from "@langchain/cohere";
 import type { Embeddings } from "@langchain/core/embeddings";
 import { OpenAIEmbeddings } from "@langchain/openai";
-import {
-	OLLAMA_DEFAULT_BASE_URL,
-	OPENROUTER_BASE_URL,
-} from "../chat/providers.js";
+import { OPENROUTER_BASE_URL, ollamaBaseUrl } from "../chat/providers.js";
 import type { EmbeddingConfig } from "../control-plane/types.js";
 import { safeFetch } from "../lib/safe-fetch.js";
 import { type Embedder, EmbedderUnavailableError } from "./types.js";
@@ -97,7 +94,7 @@ function buildEmbeddings(deps: LangchainEmbedderDeps): Embeddings {
 				model,
 				configuration: {
 					fetch: safeFetch,
-					baseURL: endpoint ?? OLLAMA_DEFAULT_BASE_URL,
+					baseURL: endpoint ?? ollamaBaseUrl(),
 				},
 			});
 		case "cohere":

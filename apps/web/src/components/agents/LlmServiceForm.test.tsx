@@ -61,7 +61,47 @@ describe("LlmServiceForm", () => {
 			provider: "openrouter",
 			modelName: "openai/gpt-4o-mini",
 			credentialRef: null,
+			endpointBaseUrl: null,
 			maxOutputTokens: 1024,
+		});
+	});
+
+	it("submits a custom endpoint base URL when one is typed (#361)", async () => {
+		const onSubmit = vi.fn().mockResolvedValue(undefined);
+		const user = userEvent.setup();
+		render(<LlmServiceForm mode="create" onSubmit={onSubmit} />);
+
+		await user.type(screen.getByLabelText(/^Name/), "docker-ollama");
+
+		// The model picker is provider-scoped, so switch to Ollama first.
+		await user.click(screen.getByRole("combobox", { name: /^Provider/ }));
+		await user.click(
+			await screen.findByRole("option", { name: /Ollama — local\/offline/ }),
+		);
+
+		await user.click(screen.getByRole("combobox", { name: /^Model/ }));
+		await user.click(
+			await screen.findByRole("option", { name: /Llama 3.1 \(local Ollama\)/ }),
+		);
+
+		await user.type(
+			screen.getByLabelText(/Endpoint base URL/),
+			"http://host.docker.internal:11434/v1",
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: /Create LLM service/ }),
+		);
+
+		await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+		expect(onSubmit).toHaveBeenCalledWith({
+			name: "docker-ollama",
+			description: null,
+			provider: "ollama",
+			modelName: "llama3.1",
+			credentialRef: null,
+			endpointBaseUrl: "http://host.docker.internal:11434/v1",
+			maxOutputTokens: 2048,
 		});
 	});
 
@@ -96,6 +136,7 @@ describe("LlmServiceForm", () => {
 			provider: "openrouter",
 			modelName: "my-org/my-fine-tune:v1",
 			credentialRef: null,
+			endpointBaseUrl: null,
 			maxOutputTokens: null,
 		});
 	});
@@ -247,6 +288,7 @@ describe("LlmServiceForm", () => {
 			provider: "openrouter",
 			modelName: "qwen/qwen-2.5-72b-instruct",
 			credentialRef: null,
+			endpointBaseUrl: null,
 			// Live catalog entries carry no curated default cap.
 			maxOutputTokens: null,
 		});

@@ -156,17 +156,23 @@ const OPENROUTER_SMALL: CreateEmbeddingServiceInput = {
  * installs. 768-dim and fixed (it ignores the `dimensions` param), so
  * the declared dimension must match the model's native size. No
  * credential: the local server is unauthenticated.
+ *
+ * `endpointBaseUrl` is intentionally null so the runtime's env-aware
+ * default applies at call time (`OLLAMA_BASE_URL`, falling back to
+ * `http://localhost:11434/v1`). Baking localhost into the record made
+ * the seed unreachable from Docker, where localhost is the container
+ * (#361).
  */
 const OLLAMA_NOMIC_EMBED: CreateEmbeddingServiceInput = {
 	name: "ollama-nomic-embed-text",
 	description:
-		"Local/offline. Ollama `nomic-embed-text` (768-dim, cosine) via a local Ollama server's OpenAI-compatible API. No API key; runs fully offline once the model is pulled.",
+		"Local/offline. Ollama `nomic-embed-text` (768-dim, cosine) via an Ollama server's OpenAI-compatible API. No API key; runs fully offline once the model is pulled. Endpoint defaults to OLLAMA_BASE_URL or http://localhost:11434/v1.",
 	status: "active",
 	provider: "ollama",
 	modelName: "nomic-embed-text",
 	embeddingDimension: 768,
 	distanceMetric: "cosine",
-	endpointBaseUrl: "http://localhost:11434/v1",
+	endpointBaseUrl: null,
 	authType: "none",
 	credentialRef: null,
 	maxBatchSize: 64,

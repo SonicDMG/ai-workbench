@@ -104,6 +104,11 @@ const FormSchema = z.object({
 	provider: z.string().min(1, "Provider is required"),
 	modelName: z.string().min(1, "Model is required"),
 	credentialRef: z.string(),
+	endpointBaseUrl: z
+		.string()
+		.refine((v) => v.trim() === "" || /^https?:\/\//.test(v.trim()), {
+			message: "Must be an http(s) URL",
+		}),
 	maxOutputTokens: z.string(),
 });
 type FormInput = z.infer<typeof FormSchema>;
@@ -115,6 +120,7 @@ function toFormDefaults(svc: LlmServiceRecord | null): FormInput {
 		provider: svc?.provider ?? "openrouter",
 		modelName: svc?.modelName ?? "",
 		credentialRef: svc?.credentialRef ?? "",
+		endpointBaseUrl: svc?.endpointBaseUrl ?? "",
 		maxOutputTokens: svc?.maxOutputTokens?.toString() ?? "",
 	};
 }
@@ -132,9 +138,24 @@ function buildPayload(values: FormInput): CreateLlmServiceInput {
 		provider: values.provider,
 		modelName: values.modelName.trim(),
 		credentialRef: values.credentialRef.trim() || null,
+		endpointBaseUrl: values.endpointBaseUrl.trim() || null,
 		maxOutputTokens: parseOptionalInt(values.maxOutputTokens),
 	};
 }
+
+/**
+ * What the runtime will actually call when `endpointBaseUrl` is left
+ * blank — surfaced in the form so "where is this connecting?" never
+ * needs a source dive (#361). Mirrors `chat/providers.ts`; the Ollama
+ * default can additionally be moved via the runtime's
+ * `OLLAMA_BASE_URL` env (the bundled docker-compose points it at
+ * `host.docker.internal`).
+ */
+const PROVIDER_DEFAULT_ENDPOINTS: Readonly<Record<string, string>> = {
+	openrouter: "https://openrouter.ai/api/v1",
+	openai: "https://api.openai.com/v1",
+	ollama: "http://localhost:11434/v1",
+};
 
 export interface LlmServiceFormProps {
 	readonly mode: "create" | "edit";
@@ -375,6 +396,36 @@ export function LlmServiceForm({
 					Format: <code>env:VAR_NAME</code> or <code>file:/path</code>. Plain
 					token strings are rejected by the runtime.
 				</p>
+			</div>
+
+			<div className="flex flex-col gap-1.5">
+				<FieldLabel
+					htmlFor="llm-endpoint-base-url"
+					help="Optional. Overrides the provider's default endpoint. Useful when the workbench runs in Docker and the provider on the host — localhost inside the container is the container itself, so point at the host instead (e.g. http://host.docker.internal:11434/v1 for Ollama)."
+				>
+					Endpoint base URL (optional)
+				</FieldLabel>
+				<Input
+					id="llm-endpoint-base-url"
+					placeholder={
+						PROVIDER_DEFAULT_ENDPOINTS[provider] ?? "https://host/v1"
+					}
+					aria-invalid={errors.endpointBaseUrl ? true : undefined}
+					{...form.register("endpointBaseUrl")}
+				/>
+				{errors.endpointBaseUrl ? (
+					<p className="text-xs text-red-600 dark:text-red-400">
+						{errors.endpointBaseUrl.message}
+					</p>
+				) : (
+					<p className="text-xs text-slate-500 dark:text-slate-400">
+						Blank uses the provider default:{" "}
+						<code>{PROVIDER_DEFAULT_ENDPOINTS[provider] ?? "n/a"}</code>
+						{provider === "ollama"
+							? " (or the runtime's OLLAMA_BASE_URL — the bundled Docker compose sets http://host.docker.internal:11434/v1)"
+							: null}
+					</p>
+				)}
 			</div>
 
 			<div className="flex flex-col gap-1.5">
