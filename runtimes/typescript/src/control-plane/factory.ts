@@ -23,11 +23,15 @@ import type {
 } from "../config/schema.js";
 import type { SecretResolver } from "../secrets/provider.js";
 import { AstraControlPlaneStore } from "./astra/store.js";
-import { DEFAULT_SERVICES } from "./default-services.js";
+import {
+	DEFAULT_SERVICES,
+	MOCK_WORKSPACE_SEED_SERVICES,
+} from "./default-services.js";
 import { FileControlPlaneStore } from "./file/store.js";
 import { MemoryControlPlaneStore } from "./memory/store.js";
 import { SqliteControlPlaneStore } from "./sqlite/store.js";
 import type { ControlPlaneStore } from "./store.js";
+import type { WorkspaceKind } from "./types.js";
 
 export interface BuildStoreOptions {
 	readonly controlPlane: ControlPlaneConfig;
@@ -95,19 +99,24 @@ async function seedMemoryStore(
 			credentials: seed.credentials ?? {},
 			keyspace: seed.keyspace ?? null,
 		});
-		await seedDefaultServices(store, ws.uid);
+		await seedDefaultServices(store, ws.uid, ws.kind);
 	}
 }
 
 /**
  * Populate a workspace with the canonical built-in chunking and
- * embedding services. Idempotent in spirit — duplicate-name collisions
- * surface as the underlying store's own error and are caught here so a
- * second seed pass on a workspace that already has them is a no-op.
+ * embedding services. Mock workspaces additionally get the
+ * credential-free mock embedder — the only provider their vector
+ * driver accepts for text upsert — so a seeded mock workspace can
+ * ingest without any provider auth (#363). Idempotent in spirit —
+ * duplicate-name collisions surface as the underlying store's own
+ * error and are caught here so a second seed pass on a workspace that
+ * already has them is a no-op.
  */
 async function seedDefaultServices(
 	store: MemoryControlPlaneStore,
 	workspaceId: string,
+	kind: WorkspaceKind,
 ): Promise<void> {
 	for (const chunk of DEFAULT_SERVICES.chunking) {
 		try {
@@ -116,7 +125,14 @@ async function seedDefaultServices(
 			// Already present — leave operator's edits alone.
 		}
 	}
-	for (const emb of DEFAULT_SERVICES.embedding) {
+	const embedding =
+		kind === "mock"
+			? [
+					...MOCK_WORKSPACE_SEED_SERVICES.embedding,
+					...DEFAULT_SERVICES.embedding,
+				]
+			: DEFAULT_SERVICES.embedding;
+	for (const emb of embedding) {
 		try {
 			await store.createEmbeddingService(workspaceId, emb);
 		} catch {

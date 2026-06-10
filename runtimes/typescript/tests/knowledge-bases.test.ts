@@ -11,7 +11,10 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.js";
 import { AuthResolver } from "../src/auth/resolver.js";
-import { DEFAULT_WORKSPACE_SEED_SERVICES } from "../src/control-plane/default-services.js";
+import {
+	DEFAULT_WORKSPACE_SEED_SERVICES,
+	MOCK_WORKSPACE_SEED_SERVICES,
+} from "../src/control-plane/default-services.js";
 import { MemoryControlPlaneStore } from "../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../src/drivers/registry.js";
@@ -74,7 +77,7 @@ async function createService(
 }
 
 describe("execution service routes", () => {
-	test("workspace POST auto-seeds DEFAULT_WORKSPACE_SEED_SERVICES", async () => {
+	test("mock workspace POST auto-seeds MOCK_WORKSPACE_SEED_SERVICES", async () => {
 		const app = makeApp();
 		const ws = await createWorkspace(app);
 
@@ -89,7 +92,7 @@ describe("execution service routes", () => {
 		}>;
 		const chunkNames = chunkers.map((c) => c.name).sort();
 		expect(chunkNames).toEqual(
-			DEFAULT_WORKSPACE_SEED_SERVICES.chunking.map((c) => c.name).sort(),
+			MOCK_WORKSPACE_SEED_SERVICES.chunking.map((c) => c.name).sort(),
 		);
 		// Sanity: one recursive-character chunker, one line chunker.
 		const strategies = chunkers.map((c) => c.strategy).sort();
@@ -106,10 +109,42 @@ describe("execution service routes", () => {
 			embeddingDimension: number;
 		}>;
 		expect(embedders).toHaveLength(
+			MOCK_WORKSPACE_SEED_SERVICES.embedding.length,
+		);
+		// Mock workspaces seed the credential-free mock embedder — the
+		// only provider the mock driver accepts for text upsert (#363).
+		// Seeding NVIDIA here produced KBs that could never ingest.
+		const mock = embedders.find((e) => e.provider === "mock");
+		expect(mock).toBeDefined();
+		expect(mock?.name).toBe("mock-embedder");
+		expect(mock?.embeddingDimension).toBe(1024);
+	});
+
+	test("astra workspace POST auto-seeds DEFAULT_WORKSPACE_SEED_SERVICES", async () => {
+		const app = makeApp();
+		const res = await app.request("/api/v1/workspaces", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ name: "astra-ws", kind: "astra" }),
+		});
+		expect(res.status).toBe(201);
+		const ws = (await json(res)).workspaceId as string;
+
+		const embRes = await app.request(
+			`/api/v1/workspaces/${ws}/embedding-services`,
+		);
+		expect(embRes.status).toBe(200);
+		const embedders = (await json(embRes)).items as Array<{
+			name: string;
+			provider: string;
+			modelName: string;
+			embeddingDimension: number;
+		}>;
+		expect(embedders).toHaveLength(
 			DEFAULT_WORKSPACE_SEED_SERVICES.embedding.length,
 		);
-		// 0.2.1 dropped the OpenAI default; the workspace seed is now
-		// just NVIDIA `nv-embedqa-e5-v5` (Astra-bundled $vectorize).
+		// Real backends keep the NVIDIA `nv-embedqa-e5-v5` seed
+		// (Astra-bundled $vectorize).
 		const nvidia = embedders.find((e) => e.provider === "nvidia");
 		expect(nvidia).toBeDefined();
 		expect(nvidia?.modelName).toBe("nvidia/nv-embedqa-e5-v5");

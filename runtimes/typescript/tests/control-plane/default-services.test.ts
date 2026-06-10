@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { DEFAULT_SERVICES } from "../../src/control-plane/default-services.js";
+import {
+	DEFAULT_SERVICES,
+	MOCK_WORKSPACE_SEED_SERVICES,
+} from "../../src/control-plane/default-services.js";
 import { buildControlPlane } from "../../src/control-plane/factory.js";
 import { SecretResolver } from "../../src/secrets/provider.js";
 
@@ -50,8 +53,13 @@ describe("memory control plane seeding", () => {
 		expect(chunking.map((c) => c.name).sort()).toEqual(
 			DEFAULT_SERVICES.chunking.map((c) => c.name).sort(),
 		);
+		// Mock-kind seed workspaces get the credential-free mock embedder
+		// in addition to the full catalog — the mock driver only accepts
+		// text upsert from `provider: "mock"` (#363).
 		expect(embedding.map((e) => e.name).sort()).toEqual(
-			DEFAULT_SERVICES.embedding.map((e) => e.name).sort(),
+			[...MOCK_WORKSPACE_SEED_SERVICES.embedding, ...DEFAULT_SERVICES.embedding]
+				.map((e) => e.name)
+				.sort(),
 		);
 	});
 

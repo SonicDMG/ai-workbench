@@ -32,6 +32,7 @@ import type {
 	CreateEmbeddingServiceInput,
 	CreateLlmServiceInput,
 } from "./store.js";
+import type { WorkspaceKind } from "./types.js";
 
 export interface DefaultServices {
 	readonly chunking: readonly CreateChunkingServiceInput[];
@@ -262,6 +263,33 @@ const NVIDIA_NV_EMBEDQA_E5_V5: CreateEmbeddingServiceInput = {
 	supportedContent: ["text"],
 };
 
+/**
+ * Deterministic in-process mock embedder — the embedding seed for
+ * `kind: "mock"` workspaces. The mock vector driver only accepts text
+ * upsert when `embedding.provider == "mock"`, and the embedder factory
+ * builds this provider without resolving any credential, so a mock
+ * workspace can create a KB and ingest documents with zero provider
+ * auth — exactly what mock workspaces are for (demos, CI, offline
+ * evaluation). 1024-dim mirrors the NVIDIA preset so a KB definition
+ * keeps the same vector shape across workspace kinds.
+ */
+const MOCK_EMBEDDER: CreateEmbeddingServiceInput = {
+	name: "mock-embedder",
+	description:
+		"Deterministic in-process mock embedder (1024-dim, cosine). No credentials, no network calls — pairs with mock workspaces so knowledge-base creation and ingest work out of the box. Not real retrieval; for demos and testing only.",
+	status: "active",
+	provider: "mock",
+	modelName: "mock-embedder",
+	embeddingDimension: 1024,
+	distanceMetric: "cosine",
+	authType: "none",
+	credentialRef: null,
+	maxBatchSize: 1000,
+	maxInputTokens: 8192,
+	supportedLanguages: ["en", "multi"],
+	supportedContent: ["text"],
+};
+
 export const DEFAULT_SERVICES: DefaultServices = {
 	chunking: [
 		RECURSIVE_CHAR_DEFAULT,
@@ -298,6 +326,31 @@ export const DEFAULT_WORKSPACE_SEED_SERVICES: DefaultServices = {
 	chunking: [RECURSIVE_CHAR_DEFAULT, LINE_ROWS_ONE],
 	embedding: [NVIDIA_NV_EMBEDQA_E5_V5],
 };
+
+/**
+ * Seed set for `kind: "mock"` workspaces: the same chunkers, but the
+ * credential-free mock embedder instead of NVIDIA. The mock vector
+ * driver rejects text upsert for any provider other than `mock`, and
+ * a mock workspace has no Astra-managed KMS behind it, so seeding
+ * NVIDIA there produced knowledge bases that could never ingest —
+ * the form forced a choice of embedder, then ingest failed with
+ * `embedding_unavailable` (#363).
+ */
+export const MOCK_WORKSPACE_SEED_SERVICES: DefaultServices = {
+	chunking: [RECURSIVE_CHAR_DEFAULT, LINE_ROWS_ONE],
+	embedding: [MOCK_EMBEDDER],
+};
+
+/**
+ * Per-kind seed selection for freshly created workspaces. Mock
+ * workspaces get the in-process mock embedder (no credentials to
+ * resolve); every real backend keeps the NVIDIA Astra-bundled preset.
+ */
+export function workspaceSeedServices(kind: WorkspaceKind): DefaultServices {
+	return kind === "mock"
+		? MOCK_WORKSPACE_SEED_SERVICES
+		: DEFAULT_WORKSPACE_SEED_SERVICES;
+}
 
 /**
  * OpenRouter `openai/gpt-4o-mini` — the default chat LLM auto-seeded

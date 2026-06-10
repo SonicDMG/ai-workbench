@@ -15,13 +15,14 @@ import {
 } from "../../auth/authz.js";
 import {
 	DEFAULT_WORKSPACE_SEED_LLM_SERVICES,
-	DEFAULT_WORKSPACE_SEED_SERVICES,
+	workspaceSeedServices,
 } from "../../control-plane/default-services.js";
 import { DEFAULT_WORKSPACE_AGENTS } from "../../control-plane/defaults.js";
 import { ControlPlaneNotFoundError } from "../../control-plane/errors.js";
 import type { ControlPlaneStore } from "../../control-plane/store.js";
 import type {
 	VectorStoreRecord,
+	WorkspaceKind,
 	WorkspaceRecord,
 } from "../../control-plane/types.js";
 import type { VectorStoreDriverRegistry } from "../../drivers/registry.js";
@@ -120,7 +121,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps): OpenAPIHono<AppEnv> {
 				...body,
 				uid: body.workspaceId,
 			});
-			await seedDefaultServices(store, record.uid);
+			await seedDefaultServices(store, record.uid, record.kind);
 			const seededLlmServiceId = await seedDefaultLlmServices(
 				store,
 				record.uid,
@@ -501,11 +502,13 @@ async function seedDefaultLlmServices(
 
 /**
  * Seed each freshly created workspace with the
- * {@link DEFAULT_WORKSPACE_SEED_SERVICES} starter chunking + embedding
- * services so the user can ingest content immediately without first
- * POST-ing a service config. Today this is one NVIDIA embedder
- * (`nv-embedqa-e5-v5`, Astra-bundled $vectorize-eligible), one
- * recursive-character chunker, and one line-based chunker. Add OpenAI
+ * {@link workspaceSeedServices} starter chunking + embedding services
+ * for its kind so the user can ingest content immediately without
+ * first POST-ing a service config. Real backends get one NVIDIA
+ * embedder (`nv-embedqa-e5-v5`, Astra-bundled $vectorize-eligible);
+ * mock workspaces get the credential-free in-process mock embedder —
+ * the only provider their driver accepts (#363). Both kinds get one
+ * recursive-character chunker and one line-based chunker. Add OpenAI
  * / Cohere embedders via the regular service-CRUD routes when needed.
  *
  * Failures are logged but do not abort the workspace creation: a
@@ -516,9 +519,11 @@ async function seedDefaultLlmServices(
 async function seedDefaultServices(
 	store: ControlPlaneStore,
 	workspaceId: string,
+	kind: WorkspaceKind,
 ): Promise<void> {
+	const seeds = workspaceSeedServices(kind);
 	let chunkingFailures = 0;
-	for (const spec of DEFAULT_WORKSPACE_SEED_SERVICES.chunking) {
+	for (const spec of seeds.chunking) {
 		try {
 			await store.createChunkingService(workspaceId, spec);
 		} catch (err) {
@@ -529,21 +534,18 @@ async function seedDefaultServices(
 			);
 		}
 	}
-	if (
-		chunkingFailures > 0 &&
-		chunkingFailures === DEFAULT_WORKSPACE_SEED_SERVICES.chunking.length
-	) {
+	if (chunkingFailures > 0 && chunkingFailures === seeds.chunking.length) {
 		logger.error(
 			{
 				audit: true,
 				workspaceId,
-				expected: DEFAULT_WORKSPACE_SEED_SERVICES.chunking.length,
+				expected: seeds.chunking.length,
 			},
 			"all default chunking services failed to seed — knowledge bases in this workspace will need a chunker created manually",
 		);
 	}
 	let embeddingFailures = 0;
-	for (const spec of DEFAULT_WORKSPACE_SEED_SERVICES.embedding) {
+	for (const spec of seeds.embedding) {
 		try {
 			await store.createEmbeddingService(workspaceId, spec);
 		} catch (err) {
@@ -554,15 +556,12 @@ async function seedDefaultServices(
 			);
 		}
 	}
-	if (
-		embeddingFailures > 0 &&
-		embeddingFailures === DEFAULT_WORKSPACE_SEED_SERVICES.embedding.length
-	) {
+	if (embeddingFailures > 0 && embeddingFailures === seeds.embedding.length) {
 		logger.error(
 			{
 				audit: true,
 				workspaceId,
-				expected: DEFAULT_WORKSPACE_SEED_SERVICES.embedding.length,
+				expected: seeds.embedding.length,
 			},
 			"all default embedding services failed to seed — knowledge bases in this workspace will need an embedder created manually",
 		);
