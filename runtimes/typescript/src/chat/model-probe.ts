@@ -85,8 +85,10 @@ export type ChatModelProbe = (
 ) => Promise<ChatModelProbeOutcome>;
 
 /**
- * Live probe: a single `max_tokens: 1` chat completion against the
- * configured OpenAI-compatible provider.
+ * Live probe: a single one-output-token chat completion against the
+ * configured OpenAI-compatible provider ({@link OpenAIChatService}
+ * names the cap field per provider: `max_completion_tokens`, or
+ * `max_tokens` for Ollama).
  *
  * {@link OpenAIChatService.complete} already folds every transport / API
  * failure into `finishReason: "error"` with a string `errorMessage`, so

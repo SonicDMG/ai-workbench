@@ -146,6 +146,21 @@ export class OpenAIChatService implements ChatService {
 	}
 
 	/**
+	 * The output-token cap, named per provider. OpenAI deprecated
+	 * `max_tokens` for `max_completion_tokens` (reasoning models reject
+	 * the old name) and OpenRouter accepts the new one, but Ollama's
+	 * OpenAI-compat layer only honors `max_tokens` and silently drops
+	 * unknown fields (ollama/ollama#7125) — the new name would turn the
+	 * cap into a no-op. Sending both is no escape hatch: OpenAI rejects
+	 * requests that set both.
+	 */
+	private maxOutputTokensField(): Record<string, number> {
+		return this.providerId === "ollama"
+			? { max_tokens: this.maxOutputTokens }
+			: { max_completion_tokens: this.maxOutputTokens };
+	}
+
+	/**
 	 * Transport-level failure message. `fetch failed` alone sent users
 	 * hunting (#361): it never said *where* the request went, which is
 	 * the whole story when the runtime is in Docker and the base URL
@@ -190,7 +205,7 @@ export class OpenAIChatService implements ChatService {
 				headers: { "content-type": "application/json", ...this.headers() },
 				body: JSON.stringify({
 					model: this.modelId,
-					max_tokens: this.maxOutputTokens,
+					...this.maxOutputTokensField(),
 					messages: toOpenAIMessages(request.messages),
 					...toolFields(request.tools),
 					...this.extraBody,
@@ -261,7 +276,7 @@ export class OpenAIChatService implements ChatService {
 				headers: { "content-type": "application/json", ...this.headers() },
 				body: JSON.stringify({
 					model: this.modelId,
-					max_tokens: this.maxOutputTokens,
+					...this.maxOutputTokensField(),
 					messages: toOpenAIMessages(request.messages),
 					stream: true,
 					stream_options: { include_usage: true },

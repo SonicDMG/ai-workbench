@@ -123,6 +123,29 @@ describe("OpenAIChatService.complete", () => {
 		expect(captured[0]?.body.tool_choice).toBeUndefined();
 	});
 
+	test("caps output via max_completion_tokens, never the deprecated max_tokens", async () => {
+		const { captured, fetchImpl } = captureFetch(
+			() =>
+				new Response(
+					JSON.stringify({
+						choices: [
+							{
+								index: 0,
+								message: { role: "assistant", content: "hi" },
+								finish_reason: "stop",
+							},
+						],
+					}),
+					{ status: 200 },
+				),
+		);
+		await svc({ fetchImpl }).complete({
+			messages: [{ role: "user", content: "ping" }],
+		});
+		expect(captured[0]?.body.max_completion_tokens).toBe(256);
+		expect(captured[0]?.body).not.toHaveProperty("max_tokens");
+	});
+
 	test("normalizes tool turns and assistant-with-tool_calls turns into the OpenAI shape", async () => {
 		const { captured, fetchImpl } = captureFetch(
 			() =>
@@ -358,6 +381,51 @@ describe("OpenAIChatService.completeStream", () => {
 			],
 		});
 	});
+
+	test("streaming requests cap output via max_completion_tokens, never the deprecated max_tokens", async () => {
+		const { captured, fetchImpl } = captureFetch(() =>
+			sseResponse([
+				JSON.stringify({
+					choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+				}),
+			]),
+		);
+		const events: ChatStreamEvent[] = [];
+		for await (const ev of svc({ fetchImpl }).completeStream({
+			messages: [{ role: "user", content: "ping" }],
+		})) {
+			events.push(ev);
+		}
+		expect(captured[0]?.body.max_completion_tokens).toBe(256);
+		expect(captured[0]?.body).not.toHaveProperty("max_tokens");
+		expect(captured[0]?.body.stream).toBe(true);
+	});
+
+	test("Ollama streaming requests cap output via max_tokens, not max_completion_tokens", async () => {
+		const { captured, fetchImpl } = captureFetch(() =>
+			sseResponse([
+				JSON.stringify({
+					choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+				}),
+			]),
+		);
+		const service = new OpenAIChatService({
+			apiKey: "x",
+			modelId: "llama3.1",
+			maxOutputTokens: 64,
+			baseUrl: "http://localhost:11434/v1",
+			providerId: "ollama",
+			fetchImpl,
+		});
+		const events: ChatStreamEvent[] = [];
+		for await (const ev of service.completeStream({
+			messages: [{ role: "user", content: "ping" }],
+		})) {
+			events.push(ev);
+		}
+		expect(captured[0]?.body.max_tokens).toBe(64);
+		expect(captured[0]?.body).not.toHaveProperty("max_completion_tokens");
+	});
 });
 
 describe("OpenAIChatService — OpenAI-compatible provider wiring", () => {
@@ -399,6 +467,35 @@ describe("OpenAIChatService — OpenAI-compatible provider wiring", () => {
 		expect(captured[0]?.headers.authorization).toBe("Bearer sk-or-fake");
 		expect(captured[0]?.headers["X-Title"]).toBe("AI Workbench");
 		expect(captured[0]?.body.provider).toEqual({ data_collection: "deny" });
+	});
+
+	test("Ollama config caps output via max_tokens — its OpenAI-compat layer silently ignores max_completion_tokens", async () => {
+		const { captured, fetchImpl } = captureFetch(
+			() =>
+				new Response(
+					JSON.stringify({
+						choices: [
+							{
+								index: 0,
+								message: { role: "assistant", content: "hi" },
+								finish_reason: "stop",
+							},
+						],
+					}),
+					{ status: 200 },
+				),
+		);
+		const service = new OpenAIChatService({
+			apiKey: "x",
+			modelId: "llama3.1",
+			maxOutputTokens: 64,
+			baseUrl: "http://localhost:11434/v1",
+			providerId: "ollama",
+			fetchImpl,
+		});
+		await service.complete({ messages: [{ role: "user", content: "hi" }] });
+		expect(captured[0]?.body.max_tokens).toBe(64);
+		expect(captured[0]?.body).not.toHaveProperty("max_completion_tokens");
 	});
 
 	test("error messages carry the providerId, not a hardcoded 'OpenAI'", async () => {
