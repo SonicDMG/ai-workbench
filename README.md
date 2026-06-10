@@ -1,6 +1,6 @@
 # AI Workbench
 
-[![Status: Beta · v0.5.3](https://img.shields.io/badge/status-Beta%20%C2%B7%20v0.5.3-9d688f)](./CHANGELOG.md)
+[![Status: Beta · v0.5.4](https://img.shields.io/badge/status-Beta%20%C2%B7%20v0.5.4-9d688f)](./CHANGELOG.md)
 [![CI](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/ci.yml?branch=main&label=CI)](https://github.com/datastax/ai-workbench/actions/workflows/ci.yml)
 [![Runtimes](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/runtimes.yml?branch=main&label=Runtimes)](https://github.com/datastax/ai-workbench/actions/workflows/runtimes.yml)
 [![Secret scan](https://img.shields.io/github/actions/workflow/status/datastax/ai-workbench/secret-scan.yml?branch=main&label=Secret%20scan)](https://github.com/datastax/ai-workbench/actions/workflows/secret-scan.yml)
@@ -16,7 +16,7 @@ browser app, with a matching HTTP API and CLI.
 > **AI Workbench 0.5 is a public beta.** APIs, schemas, and UI surfaces
 > may still change between minor versions until 1.0. See
 > [`CHANGELOG.md`](./CHANGELOG.md) for what's in this release,
-> [`docs/whats-new-0.5.3.md`](./docs/whats-new-0.5.3.md) for the
+> [`docs/whats-new-0.5.4.md`](./docs/whats-new-0.5.4.md) for the
 > latest highlights, and
 > [`docs/whats-new-0.5.0.md`](./docs/whats-new-0.5.0.md) for the
 > narrative tour.

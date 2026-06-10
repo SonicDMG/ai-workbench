@@ -105,6 +105,7 @@ export default defineConfig({
 			{
 				text: "Project",
 				items: [
+					{ text: "What's new in 0.5.4", link: "/whats-new-0.5.4" },
 					{ text: "What's new in 0.5.3", link: "/whats-new-0.5.3" },
 					{ text: "What's new in 0.5.2", link: "/whats-new-0.5.2" },
 					{ text: "What's new in 0.5.1", link: "/whats-new-0.5.1" },

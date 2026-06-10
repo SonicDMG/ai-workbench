@@ -31,12 +31,21 @@ export const WHATS_NEW_VERSION = APP_VERSION;
  */
 export const WHATS_NEW_HIGHLIGHTS: readonly WhatsNewItem[] = [
 	{
-		title: "0.5.3 hardens MCP tooling — no UI changes",
+		title: "Bulk delete + parallel ingest in the Knowledge Base Explorer",
 		summary:
-			'A security-tooling and dependency-maintenance release on the 0.5 Enterprise Access Control line, with no wire-contract change and no data migration, so nothing in the app\'s behavior changes. AI Workbench now pins the MCP tool definitions it exposes — and those of the external MCP servers it trusts — into a committed lockfile and fails CI if any of them drift (a silent tool "rug-pull"). PDF ingestion also keeps working unchanged across a major pdfjs-dist upgrade.',
+			'The document table now has checkbox multi-select (select-all follows your filter) with a "Delete selected" action and one confirmation for the whole batch — each document still passes the same row-level access check and audit as a single delete. The ingest queue also runs up to 4 files in parallel (configurable 1–8 in the queue header), with live progress on every running row.',
 		link: {
-			label: "Read the 0.5.3 notes",
-			href: "https://datastax.github.io/ai-workbench/whats-new-0.5.3",
+			label: "Read the 0.5.4 notes",
+			href: "https://datastax.github.io/ai-workbench/whats-new-0.5.4",
+		},
+	},
+	{
+		title: "The Docker quickstart works on the first run",
+		summary:
+			"Three beta-reported fixes: the data volume is created writable for the non-root container user (no more EACCES on the first workspace), Ollama on the host is reachable from the container (OLLAMA_BASE_URL default, host-gateway mapping, and a new Endpoint base URL field on LLM services), and mock workspaces seed a credential-free embedder so the zero-credential demo ingests out of the box.",
+		link: {
+			label: "Ollama-on-host setup",
+			href: "https://datastax.github.io/ai-workbench/docker",
 		},
 	},
 ];

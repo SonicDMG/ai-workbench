@@ -9,6 +9,69 @@ release — they will be called out under **Changed** below.
 
 ## [Unreleased]
 
+## [0.5.4] — 2026-06-10
+
+**Beta-feedback release.** Every change in 0.5.4 responds to first-wave beta
+feedback (thanks, David Jones-Gilardi): bulk document deletion and parallel
+ingest in the Knowledge Base Explorer, and three fixes that make the Docker
+quickstart work on the first run. One **additive** wire-contract change (the
+new bulk-delete endpoint); **no breaking change** and **no data migration**.
+
+### Added
+
+- **Bulk select + delete documents in the Knowledge Base Explorer.** Deleting
+  documents was strictly one at a time — one trash click, one dialog, one round
+  trip each. The document table now has an opt-in checkbox column with a
+  select-all header scoped to the *visible/filtered* rows (a filter narrows the
+  blast radius, never widens it), a "Delete selected (N)" action bar, and a
+  single confirmation for the whole batch. Server-side, the new
+  `POST /api/v1/workspaces/{ws}/knowledge-bases/{kb}/documents/bulk-delete`
+  endpoint accepts `{ documentIds: string[] }` (1–100 ids per call; larger
+  selections are paged client-side). Each id runs the **same RLAC mutation
+  gate**, the **same chunk cascade**, and writes the **same audit record** as
+  the single DELETE — bulk is not a side door around row-level policy. Per-id
+  failures (`not_found` / `policy_denied` / `delete_failed`) are reported in a
+  `failed` array without aborting the rest of the batch, and partial failures
+  surface in the web app as a warning toast.
+
+- **Bounded parallel drain in the ingest queue.** The ingest queue dialog
+  drained one file at a time even though the runtime already bounds concurrent
+  ingest jobs server-side (`runtime.maxConcurrentIngestJobs`, default 4), so
+  large batches paid one-job-at-a-time wall-clock. The queue now keeps up to N
+  jobs in flight (a "Parallel ingests" picker offers 1/2/4/8, defaulting to 4
+  to mirror the server semaphore; `1` restores the old sequential behavior for
+  rate-limited embedding providers), and every running row streams its own
+  live progress. Uploads and duplicate/name-conflict prompts stay serialized,
+  and a failing file still fails independently without tanking the batch.
+
+### Fixed
+
+- **Docker first run: workspace creation no longer fails with `EACCES`.** The
+  image runs as the non-root `node` user but never created the
+  `/var/lib/workbench` mount point, so Docker initialized the `workbench-data`
+  named volume root-owned and every control-plane write — including the setup
+  wizard's managed `.env` — failed on day one. The Dockerfile now pre-creates
+  the directory owned by `node`, so the volume inherits writable ownership.
+
+- **Ollama is reachable from the Docker quickstart.** The Ollama base URL was
+  hardcoded to `http://localhost:11434/v1` — inside the container, `localhost`
+  is the container itself, never the host where Ollama runs. The runtime now
+  resolves an env-aware default (`OLLAMA_BASE_URL`; bare origins get `/v1`
+  appended), `docker-compose.yml` maps `host.docker.internal` to the host
+  gateway (covering Linux Engine, not just Docker Desktop) and defaults
+  `OLLAMA_BASE_URL` to it, and the LLM service form gains an optional
+  **Endpoint base URL** field so the target is visible and editable per
+  service. Transport errors now name the endpoint they tried, with a
+  container-vs-host hint when it's `localhost`. See the new "Ollama on the
+  host" section in [`docs/docker.md`](./docs/docker.md).
+
+- **Mock workspaces ingest out of the box.** New workspaces — including
+  `kind: "mock"` — were seeded with only the NVIDIA embedding service with no
+  credential attached, so a mock workspace's first ingest failed with
+  `400 embedding_unavailable`. Mock workspaces now seed the credential-free
+  mock embedder, which the mock vector driver accepts, so the
+  zero-credential demo flow works end to end.
+
 ## [0.5.3] — 2026-06-04
 
 **Security tooling + dependency maintenance.** No HTTP wire-contract change and
@@ -1366,7 +1429,10 @@ These were scoped for 0.1.0 but deferred to keep the release focused:
   flow.
 - Discoverability tooltips + "What's new in 0.1.0" modal in the web UI.
 
-[Unreleased]: https://github.com/datastax/ai-workbench/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/datastax/ai-workbench/compare/v0.5.4...HEAD
+[0.5.4]: https://github.com/datastax/ai-workbench/compare/v0.5.3...v0.5.4
+[0.5.3]: https://github.com/datastax/ai-workbench/compare/v0.5.2...v0.5.3
+[0.5.2]: https://github.com/datastax/ai-workbench/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/datastax/ai-workbench/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/datastax/ai-workbench/compare/v0.4.3...v0.5.0
 [0.3.0]: https://github.com/datastax/ai-workbench/compare/v0.2.1...v0.3.0
