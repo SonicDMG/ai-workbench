@@ -185,16 +185,20 @@ need to know the runtime finished startup.
 AI_WORKBENCH_PORT=9090 docker compose up -d
 ```
 
-**Volume permission denied on Linux.** Named volumes inherit container
-user perms on first use; if you reused a volume that was created with
-a different uid, fix it with:
+**Volume permission denied.** The image pre-creates
+`/var/lib/workbench` owned by `node` (uid 1000), so a *fresh* named
+volume initializes writable on first use. If your volume was created
+by an image older than 0.5.4 (which left the mount point root-owned)
+or with a different uid, workspace creation fails with permission
+errors until you fix the ownership:
 
 ```bash
 docker run --rm -v ai-workbench_workbench-data:/data alpine \
   chown -R 1000:1000 /data
 ```
 
-(The image runs as `node` = uid 1000.)
+(The image runs as `node` = uid 1000. Prefer this one-time chown over
+running the container as root via a `user: "0:0"` compose override.)
 
 **View logs.**
 

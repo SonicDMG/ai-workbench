@@ -84,6 +84,14 @@ ENV APP_VERSION=${APP_VERSION} \
     APP_BUILD_TIME=${APP_BUILD_TIME} \
     WORKBENCH_CONFIG=/app/examples/workbench.memory.yaml
 
+# Pre-create the data dir owned by `node` (uid 1000). Named volumes
+# copy ownership from the image's mount point on first use, so a fresh
+# `workbench-data` volume mounted at /var/lib/workbench (compose
+# default) comes up writable by the non-root runtime user instead of
+# the Docker default root:root — see docs/docker.md troubleshooting
+# for volumes created by older images.
+RUN mkdir -p /var/lib/workbench && chown node:node /var/lib/workbench
+
 EXPOSE 8080
 USER node
 
