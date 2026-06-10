@@ -3836,6 +3836,68 @@ export interface paths {
 		};
 		trace?: never;
 	};
+	"/api/v1/workspaces/{workspaceId}/knowledge-bases/{knowledgeBaseId}/documents/bulk-delete": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Bulk-delete KB documents (cascades chunks per document, best-effort)
+		 * @description Deletes up to 100 documents in one call. Each document runs the same RLAC check and chunk-cascade as the single DELETE; per-document failures (not found, policy denied, driver error) are reported in `failed` without aborting the rest of the batch.
+		 */
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					workspaceId: string;
+					knowledgeBaseId: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": components["schemas"]["KbDocumentsBulkDeleteInput"];
+				};
+			};
+			responses: {
+				/** @description Per-document outcomes — `deleted` ids plus `failed` entries with a code and message */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["KbDocumentsBulkDeleteResponse"];
+					};
+				};
+				400: components["responses"]["BadRequest"];
+				401: components["responses"]["Unauthorized"];
+				403: components["responses"]["Forbidden"];
+				/** @description Workspace or knowledge base not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorEnvelope"];
+					};
+				};
+				409: components["responses"]["Conflict"];
+				422: components["responses"]["UnprocessableEntity"];
+				429: components["responses"]["TooManyRequests"];
+				500: components["responses"]["InternalServerError"];
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/api/v1/workspaces/{workspaceId}/playground/execute": {
 		parameters: {
 			query?: never;
@@ -5973,6 +6035,21 @@ export interface components {
 			};
 			visibleTo?: string[] | null;
 			ownerPrincipalId?: string | null;
+		};
+		KbDocumentsBulkDeleteResponse: {
+			deleted: string[];
+			failed: {
+				documentId: string;
+				/**
+				 * @description `not_found`, `policy_denied`, or `delete_failed` (driver/cascade error).
+				 * @example not_found
+				 */
+				code: string;
+				message: string;
+			}[];
+		};
+		KbDocumentsBulkDeleteInput: {
+			documentIds: string[];
 		};
 		ExecutePlaygroundCommandResponse: {
 			/** @enum {boolean} */
