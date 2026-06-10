@@ -559,6 +559,22 @@ export const RagDocumentRecordSchema = z.object({
 export type RagDocumentRecord = z.infer<typeof RagDocumentRecordSchema>;
 export const RagDocumentPageSchema = paginatedSchema(RagDocumentRecordSchema);
 
+/** Response of POST .../documents/bulk-delete — per-document outcomes,
+ * best-effort: failures don't abort the rest of the batch. */
+export const KbDocumentsBulkDeleteResponseSchema = z.object({
+	deleted: z.array(z.string()),
+	failed: z.array(
+		z.object({
+			documentId: z.string(),
+			code: z.string(),
+			message: z.string(),
+		}),
+	),
+});
+export type KbDocumentsBulkDeleteResponse = z.infer<
+	typeof KbDocumentsBulkDeleteResponseSchema
+>;
+
 export const DocumentChunkSchema = z.object({
 	id: z.string(),
 	chunkIndex: z.number().int().nonnegative().nullable(),

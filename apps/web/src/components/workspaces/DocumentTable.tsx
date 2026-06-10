@@ -30,8 +30,11 @@ const STATUS_ORDER: Record<DocumentStatus, number> = {
 /**
  * Knowledge Base explorer table — sortable column heads, an inline search
  * over filename / source-doc-id, and a clickable row that opens the
- * document detail drawer. Empty states for the no-docs and
- * no-matches cases keep the page from looking broken before the
+ * document detail drawer. When the parent provides selection props, a
+ * checkbox column renders with a select-all header (scoped to the
+ * visible/filtered rows) so bulk actions like "Delete selected" don't
+ * require one click per document (#359). Empty states for the no-docs
+ * and no-matches cases keep the page from looking broken before the
  * user has ingested anything.
  */
 export function DocumentTable({
@@ -40,6 +43,8 @@ export function DocumentTable({
 	onEdit,
 	onDelete,
 	deletingDocumentId,
+	selectedIds,
+	onSelectionChange,
 }: {
 	docs: readonly RagDocumentRecord[];
 	onSelect?: (doc: RagDocumentRecord) => void;
@@ -52,6 +57,12 @@ export function DocumentTable({
 	/** documentId currently being deleted — disables that row's
 	 * trash button to prevent double-clicks during the round trip. */
 	deletingDocumentId?: string | null;
+	/** Multi-select state, owned by the parent so it can drive bulk
+	 * actions (e.g. "Delete selected"). When both `selectedIds` and
+	 * `onSelectionChange` are provided, a checkbox column renders with
+	 * a select-all header scoped to the *visible* (filtered) rows. */
+	selectedIds?: ReadonlySet<string>;
+	onSelectionChange?: (next: ReadonlySet<string>) => void;
 }) {
 	const [sortKey, setSortKey] = useState<SortKey>("ingestedAt");
 	const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -73,6 +84,34 @@ export function DocumentTable({
 		copy.sort((a, b) => compare(a, b, sortKey));
 		return sortDir === "asc" ? copy : copy.reverse();
 	}, [filtered, sortKey, sortDir]);
+
+	const selectable = selectedIds !== undefined && Boolean(onSelectionChange);
+	const visibleSelectedCount = selectable
+		? sorted.filter((d) => selectedIds?.has(d.documentId)).length
+		: 0;
+	const allVisibleSelected =
+		selectable && sorted.length > 0 && visibleSelectedCount === sorted.length;
+
+	function toggleOne(documentId: string): void {
+		if (!selectedIds || !onSelectionChange) return;
+		const next = new Set(selectedIds);
+		if (next.has(documentId)) next.delete(documentId);
+		else next.add(documentId);
+		onSelectionChange(next);
+	}
+
+	// Select-all toggles the *visible* rows only, so a filter narrows
+	// the blast radius instead of silently selecting hidden documents.
+	function toggleAllVisible(): void {
+		if (!selectedIds || !onSelectionChange) return;
+		const next = new Set(selectedIds);
+		if (allVisibleSelected) {
+			for (const d of sorted) next.delete(d.documentId);
+		} else {
+			for (const d of sorted) next.add(d.documentId);
+		}
+		onSelectionChange(next);
+	}
 
 	function toggleSort(key: SortKey): void {
 		if (sortKey === key) {
@@ -113,6 +152,16 @@ export function DocumentTable({
 				<table className="min-w-full text-sm">
 					<thead className="bg-slate-50 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
 						<tr>
+							{selectable ? (
+								<th className="w-8 px-3 py-2">
+									<input
+										type="checkbox"
+										aria-label="Select all visible documents"
+										checked={allVisibleSelected}
+										onChange={toggleAllVisible}
+									/>
+								</th>
+							) : null}
 							<SortHead
 								active={sortKey === "name"}
 								dir={sortDir}
@@ -160,7 +209,9 @@ export function DocumentTable({
 						{sorted.length === 0 ? (
 							<tr>
 								<td
-									colSpan={6 + (onEdit || onDelete ? 1 : 0)}
+									colSpan={
+										6 + (onEdit || onDelete ? 1 : 0) + (selectable ? 1 : 0)
+									}
 									className="px-3 py-6 text-center text-xs text-slate-500 dark:text-slate-400"
 								>
 									No documents match “{filter}”.
@@ -175,8 +226,27 @@ export function DocumentTable({
 										"border-t border-slate-100 dark:border-slate-800",
 										onSelect &&
 											"cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800",
+										selectable &&
+											selectedIds?.has(d.documentId) &&
+											"bg-slate-50 dark:bg-slate-800/60",
 									)}
 								>
+									{selectable ? (
+										<td className="px-3 py-2">
+											<input
+												type="checkbox"
+												aria-label={`Select ${d.sourceFilename ?? d.documentId}`}
+												checked={selectedIds?.has(d.documentId) ?? false}
+												onChange={() => toggleOne(d.documentId)}
+												onClick={(e) => {
+													// Don't let the row-level click pop the
+													// detail dialog while the user is just
+													// building a selection.
+													e.stopPropagation();
+												}}
+											/>
+										</td>
+									) : null}
 									<td className="px-3 py-2 max-w-0">
 										<div className="truncate font-medium text-slate-900 dark:text-slate-100">
 											{d.sourceFilename ?? (
@@ -262,6 +332,9 @@ export function DocumentTable({
 				{sorted.length === docs.length
 					? `${docs.length} document${docs.length === 1 ? "" : "s"}`
 					: `${sorted.length} of ${docs.length} document${docs.length === 1 ? "" : "s"}`}
+				{selectable && (selectedIds?.size ?? 0) > 0
+					? ` — ${selectedIds?.size} selected`
+					: ""}
 			</p>
 		</div>
 	);

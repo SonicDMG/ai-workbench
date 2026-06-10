@@ -56,6 +56,8 @@ import {
 	HealthDetailsSchema,
 	type JobRecord,
 	JobRecordSchema,
+	type KbDocumentsBulkDeleteResponse,
+	KbDocumentsBulkDeleteResponseSchema,
 	type KbIngestAsyncOrDuplicate,
 	KbIngestAsyncOrDuplicateSchema,
 	type KbIngestRequest,
@@ -1166,6 +1168,21 @@ export const api = {
 			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents/${documentId}`,
 			{ method: "DELETE" },
 			null,
+		),
+
+	bulkDeleteKbDocuments: (
+		workspaceId: string,
+		kbId: string,
+		documentIds: readonly string[],
+	): Promise<KbDocumentsBulkDeleteResponse> =>
+		request(
+			`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents/bulk-delete`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ documentIds }),
+			},
+			KbDocumentsBulkDeleteResponseSchema,
 		),
 
 	updateKbDocument: (

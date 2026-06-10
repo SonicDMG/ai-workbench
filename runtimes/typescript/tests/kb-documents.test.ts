@@ -547,6 +547,118 @@ describe("kb-documents routes", () => {
 		expect(chunksAfter.status).toBe(404);
 	});
 
+	test("POST .../documents/bulk-delete cascades several documents in one call (#359)", async () => {
+		const harness = makeApp();
+		const { ws, kbId } = await setupKb(harness);
+
+		// Ingest three small docs so each has chunk rows to cascade.
+		const docIds: string[] = [];
+		for (const name of ["a.txt", "b.txt", "c.txt"]) {
+			const ingest = await json(
+				await harness.app.request(
+					`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest`,
+					{
+						method: "POST",
+						headers: { "content-type": "application/json" },
+						body: JSON.stringify({
+							text: `body for ${name} with enough text to chunk.`,
+							sourceFilename: name,
+						}),
+					},
+				),
+			);
+			docIds.push(ingest.document.documentId as string);
+		}
+
+		// Bulk-delete the first two; the third survives.
+		const res = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents/bulk-delete`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ documentIds: [docIds[0], docIds[1]] }),
+			},
+		);
+		expect(res.status, await res.clone().text()).toBe(200);
+		const body = await json(res);
+		expect(body.deleted.sort()).toEqual([docIds[0], docIds[1]].sort());
+		expect(body.failed).toEqual([]);
+
+		// Deleted rows and their chunks are gone; the survivor remains.
+		for (const gone of [docIds[0], docIds[1]]) {
+			const after = await harness.app.request(
+				`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents/${gone}`,
+			);
+			expect(after.status).toBe(404);
+		}
+		const survivor = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents/${docIds[2]}`,
+		);
+		expect(survivor.status).toBe(200);
+		const survivorChunks = await json(
+			await harness.app.request(
+				`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents/${docIds[2]}/chunks`,
+			),
+		);
+		expect(survivorChunks.length).toBeGreaterThan(0);
+	});
+
+	test("bulk-delete is best-effort: unknown ids land in failed without aborting the batch", async () => {
+		const harness = makeApp();
+		const { ws, kbId } = await setupKb(harness);
+
+		const ingest = await json(
+			await harness.app.request(
+				`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/ingest`,
+				{
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({
+						text: "only real document in this batch.",
+						sourceFilename: "real.txt",
+					}),
+				},
+			),
+		);
+		const realId = ingest.document.documentId as string;
+		const ghostId = randomUUID();
+
+		const res = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents/bulk-delete`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				// Duplicate the real id too: the route dedupes so it can't
+				// double-cascade or report a phantom second failure.
+				body: JSON.stringify({ documentIds: [realId, ghostId, realId] }),
+			},
+		);
+		expect(res.status).toBe(200);
+		const body = await json(res);
+		expect(body.deleted).toEqual([realId]);
+		expect(body.failed).toEqual([
+			{
+				documentId: ghostId,
+				code: "not_found",
+				message: "document not found",
+			},
+		]);
+	});
+
+	test("bulk-delete validates the id list: empty array is a 400", async () => {
+		const harness = makeApp();
+		const { ws, kbId } = await setupKb(harness);
+		const res = await harness.app.request(
+			`/api/v1/workspaces/${ws}/knowledge-bases/${kbId}/documents/bulk-delete`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ documentIds: [] }),
+			},
+		);
+		expect(res.status).toBe(400);
+	});
+
 	test("GET .../documents/{id} for unknown document returns 404", async () => {
 		const harness = makeApp();
 		const { ws, kbId } = await setupKb(harness);

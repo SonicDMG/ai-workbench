@@ -17,6 +17,7 @@ vi.mock("@/hooks/useKnowledgeBases", () => ({
 vi.mock("@/hooks/useDocuments", () => ({
 	useDocuments: vi.fn(),
 	useDeleteDocument: vi.fn(),
+	useDeleteDocuments: vi.fn(),
 }));
 vi.mock("@/components/workspaces/DocumentTable", () => ({
 	DocumentTable: () => <div data-testid="document-table" />,
@@ -28,7 +29,11 @@ vi.mock("@/components/workspaces/DocumentViewerDialog", () => ({
 	DocumentViewerDialog: () => null,
 }));
 
-import { useDeleteDocument, useDocuments } from "@/hooks/useDocuments";
+import {
+	useDeleteDocument,
+	useDeleteDocuments,
+	useDocuments,
+} from "@/hooks/useDocuments";
 import { useKnowledgeBase } from "@/hooks/useKnowledgeBases";
 import { useWorkspace } from "@/hooks/useWorkspaces";
 import { KnowledgeBaseExplorerPage } from "./KnowledgeBaseExplorerPage";
@@ -38,6 +43,7 @@ afterEach(() => {
 	vi.mocked(useKnowledgeBase).mockReset();
 	vi.mocked(useDocuments).mockReset();
 	vi.mocked(useDeleteDocument).mockReset();
+	vi.mocked(useDeleteDocuments).mockReset();
 });
 
 function renderAt(path = "/workspaces/ws-1/knowledge-bases/kb-1") {
@@ -46,6 +52,11 @@ function renderAt(path = "/workspaces/ws-1/knowledge-bases/kb-1") {
 		mutateAsync: vi.fn(),
 		isPending: false,
 	} as unknown as ReturnType<typeof useDeleteDocument>);
+	vi.mocked(useDeleteDocuments).mockReturnValue({
+		mutate: vi.fn(),
+		mutateAsync: vi.fn(),
+		isPending: false,
+	} as unknown as ReturnType<typeof useDeleteDocuments>);
 	return render(
 		<MemoryRouter initialEntries={[path]}>
 			<Routes>

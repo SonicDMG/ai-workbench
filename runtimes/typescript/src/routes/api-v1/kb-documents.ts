@@ -30,12 +30,15 @@ import { applyDataApiFilterInMemory } from "../../lib/data-api-filter.js";
 import { ApiError } from "../../lib/errors.js";
 import { errorResponse, makeOpenApi } from "../../lib/openapi.js";
 import { paginate } from "../../lib/pagination.js";
+import { safeErrorMessage } from "../../lib/safe-error.js";
 import type { AppEnv } from "../../lib/types.js";
 import {
 	CreateRagDocumentInputSchema,
 	DocumentChunkSchema,
 	DocumentIdParamSchema,
 	KbAsyncIngestResponseSchema,
+	KbDocumentsBulkDeleteInputSchema,
+	KbDocumentsBulkDeleteResponseSchema,
 	KbIngestNonCreateResponseSchema,
 	KbIngestRequestSchema,
 	KbIngestResponseSchema,
@@ -897,6 +900,140 @@ export function kbDocumentRoutes(
 				details: { knowledgeBaseId, documentId },
 			});
 			return c.body(null, 204);
+		},
+	);
+
+	app.openapi(
+		createRoute({
+			method: "post",
+			path: "/{workspaceId}/knowledge-bases/{knowledgeBaseId}/documents/bulk-delete",
+			tags: ["knowledge-bases"],
+			summary:
+				"Bulk-delete KB documents (cascades chunks per document, best-effort)",
+			description:
+				"Deletes up to 100 documents in one call. Each document runs the same RLAC check and chunk-cascade as the single DELETE; per-document failures (not found, policy denied, driver error) are reported in `failed` without aborting the rest of the batch.",
+			request: {
+				params: z.object({
+					workspaceId: WorkspaceIdParamSchema,
+					knowledgeBaseId: KnowledgeBaseIdParamSchema,
+				}),
+				body: {
+					content: {
+						"application/json": { schema: KbDocumentsBulkDeleteInputSchema },
+					},
+				},
+			},
+			responses: {
+				200: {
+					content: {
+						"application/json": {
+							schema: KbDocumentsBulkDeleteResponseSchema,
+						},
+					},
+					description:
+						"Per-document outcomes — `deleted` ids plus `failed` entries with a code and message",
+				},
+				...errorResponse(404, "Workspace or knowledge base not found"),
+			},
+		}),
+		async (c) => {
+			const { workspaceId, knowledgeBaseId } = c.req.valid("param");
+			const { documentIds } = c.req.valid("json");
+
+			const kbForDelete = await store.getKnowledgeBase(
+				workspaceId,
+				knowledgeBaseId,
+			);
+			if (!kbForDelete)
+				throw new ControlPlaneNotFoundError("knowledge base", knowledgeBaseId);
+			const wsForDelete = await store.getWorkspace(workspaceId);
+			// Resolve the KB → driver descriptor once for the whole batch;
+			// only the per-document policy check and cascade run in the loop.
+			const resolved = await resolveKb(store, workspaceId, knowledgeBaseId);
+			const principal = getRequestPrincipal(c);
+
+			const deleted: string[] = [];
+			const failed: {
+				documentId: string;
+				code: string;
+				message: string;
+			}[] = [];
+			// Dedupe so a repeated id can't double-run the cascade (the
+			// second pass would land in `failed` as not_found and make a
+			// clean batch look partially broken).
+			for (const documentId of new Set(documentIds)) {
+				const existing = await store.getRagDocument(
+					workspaceId,
+					knowledgeBaseId,
+					documentId,
+				);
+				if (!existing) {
+					failed.push({
+						documentId,
+						code: "not_found",
+						message: "document not found",
+					});
+					continue;
+				}
+				// RLAC: same per-document gate as the single DELETE — a bulk
+				// call must not become a side door around row-level policy.
+				try {
+					await assertPolicyAllowsMutation({
+						workspace: workspaceId,
+						workspaceRlacEnabled: wsForDelete?.rlacEnabled ?? false,
+						knowledgeBase: kbForDelete,
+						principal,
+						action: "delete",
+						document: existing,
+						audit: store,
+					});
+				} catch (err) {
+					if (err instanceof PolicyDeniedError) {
+						failed.push({
+							documentId,
+							code: "policy_denied",
+							message: err.reason,
+						});
+						continue;
+					}
+					throw err;
+				}
+				try {
+					const { deleted: ok } = await cascadeDeleteRagDocument({
+						store,
+						drivers,
+						workspace: resolved.workspace,
+						knowledgeBase: resolved.knowledgeBase,
+						descriptor: resolved.descriptor,
+						documentId,
+					});
+					if (!ok) {
+						failed.push({
+							documentId,
+							code: "not_found",
+							message: "document disappeared before the cascade ran",
+						});
+						continue;
+					}
+					deleted.push(documentId);
+					// Same audit action as the single DELETE so trail consumers
+					// see one shape per deleted document either way.
+					audit(c, {
+						action: "document.delete",
+						outcome: "success",
+						workspaceId,
+						details: { knowledgeBaseId, documentId },
+					});
+				} catch (err) {
+					failed.push({
+						documentId,
+						code: "delete_failed",
+						message: safeErrorMessage(err, "cascade delete failed"),
+					});
+				}
+			}
+
+			return c.json({ deleted, failed }, 200);
 		},
 	);
 

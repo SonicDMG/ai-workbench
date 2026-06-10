@@ -1,4 +1,4 @@
-import { ArrowLeft, Database, RefreshCw, Upload } from "lucide-react";
+import { ArrowLeft, Database, RefreshCw, Trash2, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -26,7 +26,11 @@ import { EditDocumentDialog } from "@/components/workspaces/EditDocumentDialog";
 import { FileTypeBadge } from "@/components/workspaces/FileTypeBadge";
 import { IngestQueueDialog } from "@/components/workspaces/IngestQueueDialog";
 import { ViewAsControl } from "@/components/workspaces/ViewAsControl";
-import { useDeleteDocument, useDocuments } from "@/hooks/useDocuments";
+import {
+	useDeleteDocument,
+	useDeleteDocuments,
+	useDocuments,
+} from "@/hooks/useDocuments";
 import { useKnowledgeBase } from "@/hooks/useKnowledgeBases";
 import { useWorkspace } from "@/hooks/useWorkspaces";
 import { formatApiError } from "@/lib/api";
@@ -62,6 +66,17 @@ export function KnowledgeBaseExplorerPage() {
 	const [toEdit, setToEdit] = useState<RagDocumentRecord | null>(null);
 	const [toDelete, setToDelete] = useState<RagDocumentRecord | null>(null);
 	const deleteDoc = useDeleteDocument(workspaceId ?? "", knowledgeBaseId ?? "");
+	// Bulk selection (#359): checkbox state lives here so the table
+	// stays presentational and the delete button + confirm dialog can
+	// share it. Cleared after a bulk delete completes.
+	const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
+		new Set(),
+	);
+	const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+	const deleteDocs = useDeleteDocuments(
+		workspaceId ?? "",
+		knowledgeBaseId ?? "",
+	);
 
 	// Deep-link from chat citations: `?document=<id>&chunk=<id>` lands
 	// here, auto-opens the matching document detail dialog, and the
@@ -77,6 +92,18 @@ export function KnowledgeBaseExplorerPage() {
 		);
 		if (match) setDetail(match);
 	}, [wantedDocumentId, docs.data, detail?.documentId]);
+
+	// Prune the selection when the document list changes (refetch,
+	// single delete, ingest) so stale ids can't linger in the set and
+	// inflate the "Delete selected (N)" count.
+	useEffect(() => {
+		if (!docs.data) return;
+		const present = new Set(docs.data.map((d) => d.documentId));
+		setSelectedIds((cur) => {
+			const next = new Set([...cur].filter((id) => present.has(id)));
+			return next.size === cur.size ? cur : next;
+		});
+	}, [docs.data]);
 
 	const onDetailOpenChange = (open: boolean) => {
 		if (open) return;
@@ -213,15 +240,46 @@ export function KnowledgeBaseExplorerPage() {
 							}
 						/>
 					) : (
-						<DocumentTable
-							docs={docs.data ?? []}
-							onSelect={(d) => setDetail(d)}
-							onEdit={(d) => setToEdit(d)}
-							onDelete={(d) => setToDelete(d)}
-							deletingDocumentId={
-								deleteDoc.isPending ? (deleteDoc.variables ?? null) : null
-							}
-						/>
+						<div className="flex flex-col gap-3">
+							{selectedIds.size > 0 ? (
+								<div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+									<span className="text-slate-700 dark:text-slate-300">
+										{selectedIds.size} document
+										{selectedIds.size === 1 ? "" : "s"} selected
+									</span>
+									<div className="flex items-center gap-2">
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => setSelectedIds(new Set())}
+											disabled={deleteDocs.isPending}
+										>
+											Clear selection
+										</Button>
+										<Button
+											variant="destructive"
+											size="sm"
+											onClick={() => setBulkConfirmOpen(true)}
+											disabled={deleteDocs.isPending}
+										>
+											<Trash2 className="h-4 w-4" /> Delete selected (
+											{selectedIds.size})
+										</Button>
+									</div>
+								</div>
+							) : null}
+							<DocumentTable
+								docs={docs.data ?? []}
+								onSelect={(d) => setDetail(d)}
+								onEdit={(d) => setToEdit(d)}
+								onDelete={(d) => setToDelete(d)}
+								deletingDocumentId={
+									deleteDoc.isPending ? (deleteDoc.variables ?? null) : null
+								}
+								selectedIds={selectedIds}
+								onSelectionChange={setSelectedIds}
+							/>
+						</div>
 					)}
 				</CardContent>
 			</Card>
@@ -246,6 +304,56 @@ export function KnowledgeBaseExplorerPage() {
 				doc={toEdit}
 				onOpenChange={(open) => {
 					if (!open) setToEdit(null);
+				}}
+			/>
+
+			<BulkDeleteDocumentsDialog
+				open={bulkConfirmOpen}
+				count={selectedIds.size}
+				submitting={deleteDocs.isPending}
+				onOpenChange={(o) => {
+					if (!deleteDocs.isPending) setBulkConfirmOpen(o);
+				}}
+				onConfirm={async () => {
+					// The server caps each call at 100 ids; page bigger
+					// selections client-side so "select all" on a large KB
+					// still works in one confirm.
+					const ids = [...selectedIds];
+					const deleted: string[] = [];
+					const failed: { documentId: string; message: string }[] = [];
+					try {
+						for (let i = 0; i < ids.length; i += 100) {
+							const res = await deleteDocs.mutateAsync(ids.slice(i, i + 100));
+							deleted.push(...res.deleted);
+							failed.push(...res.failed);
+						}
+					} catch (err) {
+						toast.error("Couldn't delete the selection", {
+							description: formatApiError(err),
+						});
+						return;
+					}
+					if (failed.length > 0) {
+						toast.warning(
+							`Deleted ${deleted.length} of ${ids.length} documents`,
+							{
+								description: failed
+									.slice(0, 5)
+									.map((f) => `${f.documentId}: ${f.message}`)
+									.join("\n"),
+							},
+						);
+					} else {
+						toast.success(
+							`Deleted ${deleted.length} document${deleted.length === 1 ? "" : "s"}`,
+							{
+								description:
+									"Documents and their chunks were removed from the knowledge base.",
+							},
+						);
+					}
+					setSelectedIds(new Set());
+					setBulkConfirmOpen(false);
 				}}
 			/>
 
@@ -311,6 +419,62 @@ function previewDeleteSnapshots(args: {
 			filter: { documentId: doc.documentId },
 		},
 	];
+}
+
+/**
+ * Confirm dialog for the bulk path (#359). Mirrors the single-delete
+ * dialog's framing but speaks in counts: each selected document runs
+ * the same chunk-cascade the single DELETE does, server-side and
+ * best-effort (per-document failures are reported, not batch-fatal).
+ */
+function BulkDeleteDocumentsDialog({
+	open,
+	count,
+	submitting,
+	onOpenChange,
+	onConfirm,
+}: {
+	open: boolean;
+	count: number;
+	submitting: boolean;
+	onOpenChange: (open: boolean) => void;
+	onConfirm: () => void;
+}) {
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>
+						Delete {count} document{count === 1 ? "" : "s"}
+					</DialogTitle>
+					<DialogDescription>
+						Removes each selected document row{" "}
+						<strong>and all of its chunks</strong> from the KB's vector
+						collection. The original files are not deleted from your computer;
+						re-uploading them will re-create the documents.
+					</DialogDescription>
+				</DialogHeader>
+				<DialogFooter>
+					<Button
+						variant="ghost"
+						onClick={() => onOpenChange(false)}
+						disabled={submitting}
+					>
+						Cancel
+					</Button>
+					<Button
+						variant="destructive"
+						onClick={onConfirm}
+						disabled={submitting || count === 0}
+					>
+						{submitting
+							? "Deleting…"
+							: `Delete ${count} document${count === 1 ? "" : "s"}`}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
 }
 
 function DeleteDocumentDialog({

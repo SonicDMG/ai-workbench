@@ -6,7 +6,11 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { DocumentChunk, RagDocumentRecord } from "@/lib/schemas";
+import type {
+	DocumentChunk,
+	KbDocumentsBulkDeleteResponse,
+	RagDocumentRecord,
+} from "@/lib/schemas";
 
 const keys = {
 	all: (workspaceId: string, kbId: string) =>
@@ -127,6 +131,32 @@ export function useDeleteDocument(
 			qc.invalidateQueries({
 				queryKey: keys.chunks(workspaceId, kbId, documentId),
 			});
+		},
+	});
+}
+
+/**
+ * Bulk variant of {@link useDeleteDocument} — one POST for a whole
+ * selection (#359). The server response is best-effort
+ * (`{ deleted, failed }`); the caller decides how to surface partial
+ * failures. Invalidates the document list either way since any subset
+ * may have been removed.
+ */
+export function useDeleteDocuments(
+	workspaceId: string,
+	kbId: string,
+): UseMutationResult<KbDocumentsBulkDeleteResponse, Error, readonly string[]> {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (documentIds) =>
+			api.bulkDeleteKbDocuments(workspaceId, kbId, documentIds),
+		onSuccess: (_res, documentIds) => {
+			qc.invalidateQueries({ queryKey: keys.all(workspaceId, kbId) });
+			for (const documentId of documentIds) {
+				qc.invalidateQueries({
+					queryKey: keys.chunks(workspaceId, kbId, documentId),
+				});
+			}
 		},
 	});
 }

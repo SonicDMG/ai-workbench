@@ -1923,6 +1923,41 @@ export const UpdateRagDocumentInputSchema =
 		.openapi("UpdateRagDocumentInput");
 
 /**
+ * Bulk document delete (POST .../documents/bulk-delete). Capped at
+ * 100 ids per call — each id costs a vector-store cascade, so an
+ * unbounded list would turn one HTTP request into an unbounded
+ * data-plane fan-out; clients page larger selections.
+ */
+export const KbDocumentsBulkDeleteInputSchema = z
+	.object({
+		documentIds: z.array(z.string().uuid()).min(1).max(100),
+	})
+	.openapi("KbDocumentsBulkDeleteInput");
+
+/**
+ * Per-document outcome envelope for bulk delete. Best-effort: a
+ * not-found or policy-denied id lands in `failed` with a code +
+ * message while the rest of the batch proceeds, so one stale row
+ * can't abort a 50-document cleanup.
+ */
+export const KbDocumentsBulkDeleteResponseSchema = z
+	.object({
+		deleted: z.array(z.string()),
+		failed: z.array(
+			z.object({
+				documentId: z.string(),
+				code: z.string().openapi({
+					example: "not_found",
+					description:
+						"`not_found`, `policy_denied`, or `delete_failed` (driver/cascade error).",
+				}),
+				message: z.string(),
+			}),
+		),
+	})
+	.openapi("KbDocumentsBulkDeleteResponse");
+
+/**
  * KB-scoped ingest request. `metadata` reserves `knowledgeBaseId` /
  * `documentId` (the runtime overrides any caller-supplied values
  * with the path-resolved KB and the freshly created document row).

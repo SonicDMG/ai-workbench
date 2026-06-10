@@ -154,4 +154,69 @@ describe("DocumentTable", () => {
 			screen.queryByRole("button", { name: /Delete alpha\.md/ }),
 		).not.toBeInTheDocument();
 	});
+
+	it("omits the checkbox column unless both selection props are provided", () => {
+		render(<DocumentTable docs={[makeDoc({ sourceFilename: "alpha.md" })]} />);
+		expect(
+			screen.queryByLabelText(/Select all visible documents/),
+		).not.toBeInTheDocument();
+		expect(screen.queryByLabelText(/Select alpha\.md/)).not.toBeInTheDocument();
+	});
+
+	it("toggling a row checkbox reports the updated selection without opening the detail row (#359)", async () => {
+		const user = userEvent.setup();
+		const onSelect = vi.fn();
+		const onSelectionChange = vi.fn();
+		const doc = makeDoc({ sourceFilename: "alpha.md" });
+		render(
+			<DocumentTable
+				docs={[doc, makeDoc({ sourceFilename: "bravo.json" })]}
+				onSelect={onSelect}
+				selectedIds={new Set()}
+				onSelectionChange={onSelectionChange}
+			/>,
+		);
+
+		await user.click(screen.getByLabelText(/Select alpha\.md/));
+		expect(onSelectionChange).toHaveBeenCalledWith(new Set([doc.documentId]));
+		// Building a selection must not pop the detail dialog.
+		expect(onSelect).not.toHaveBeenCalled();
+	});
+
+	it("select-all targets only the visible (filtered) rows (#359)", async () => {
+		const user = userEvent.setup();
+		const onSelectionChange = vi.fn();
+		const alpha = makeDoc({ sourceFilename: "alpha.md" });
+		const bravo = makeDoc({ sourceFilename: "bravo.json" });
+		render(
+			<DocumentTable
+				docs={[alpha, bravo]}
+				selectedIds={new Set()}
+				onSelectionChange={onSelectionChange}
+			/>,
+		);
+
+		// Narrow to one row, then select-all: only the visible row is
+		// selected — a filter shrinks the blast radius, never widens it.
+		await user.type(screen.getByLabelText(/Filter documents/), "alpha");
+		await user.click(screen.getByLabelText(/Select all visible documents/));
+		expect(onSelectionChange).toHaveBeenCalledWith(new Set([alpha.documentId]));
+	});
+
+	it("select-all unchecks the visible rows when everything visible is already selected", async () => {
+		const user = userEvent.setup();
+		const onSelectionChange = vi.fn();
+		const alpha = makeDoc({ sourceFilename: "alpha.md" });
+		const bravo = makeDoc({ sourceFilename: "bravo.json" });
+		render(
+			<DocumentTable
+				docs={[alpha, bravo]}
+				selectedIds={new Set([alpha.documentId, bravo.documentId])}
+				onSelectionChange={onSelectionChange}
+			/>,
+		);
+
+		await user.click(screen.getByLabelText(/Select all visible documents/));
+		expect(onSelectionChange).toHaveBeenCalledWith(new Set());
+	});
 });
