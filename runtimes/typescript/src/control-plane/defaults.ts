@@ -66,10 +66,10 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT =
 	"`[chunk-uuid]`. If the context does not support an answer, decline " +
 	"rather than inventing one.\n\n" +
 	"When using tools to answer questions:\n" +
-	"1. If you need to search knowledge bases, first call `list_kbs` to discover available knowledge bases\n" +
-	"2. Then call `search_kb` with the appropriate knowledge base ID and query\n" +
-	"3. After gathering sufficient information (typically 1-2 searches), synthesize your answer\n" +
-	"4. Avoid repeatedly calling the same tool - if you have enough context, provide your final answer";
+	"1. If you need to search knowledge bases, first call `list_kbs` to discover available knowledge bases and their IDs.\n" +
+	"2. Then call `search_kb` with the appropriate `knowledgeBaseId` and `query`.\n" +
+	"3. After gathering sufficient information (typically 1-2 searches), synthesize your answer.\n" +
+	"4. Avoid repeatedly calling the same tool; if you have enough context, provide your final answer.";
 
 /**
  * Starter agents auto-seeded into every freshly created workspace by the
