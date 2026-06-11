@@ -126,7 +126,7 @@ const listKbs: AgentTool = {
 	definition: {
 		name: "list_kbs",
 		description:
-			"List the knowledge bases available in this workspace. Use this when the user asks what data sources exist, or before deciding which knowledge base to search.",
+			"List the knowledge bases available in this workspace. ALWAYS call this FIRST before using search_kb to discover which knowledge bases exist and their IDs. This helps you choose the right KB to search.",
 		parameters: {
 			type: "object",
 			properties: {},
@@ -403,7 +403,7 @@ const searchKb: AgentTool = {
 	definition: {
 		name: "search_kb",
 		description:
-			"Semantic search across the workspace's knowledge bases. Returns the top matching chunks with a short content preview. Use this when the user asks a content question that requires looking inside the documents (not just listing them). Pass `knowledgeBaseId` to scope to one KB; omit to search every KB.",
+			"Semantic search across the workspace's knowledge bases. Returns the top matching chunks with a short content preview. Use this when the user asks a content question that requires looking inside the documents (not just listing them). IMPORTANT: Call list_kbs first to discover available knowledge bases, then pass the appropriate `knowledgeBaseId` to search a specific KB. You can omit `knowledgeBaseId` to search all KBs, but calling list_kbs first is still recommended to understand what you're searching.",
 		parameters: {
 			type: "object",
 			required: ["query"],
