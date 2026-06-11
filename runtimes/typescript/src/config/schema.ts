@@ -606,8 +606,10 @@ const ChatSchema = z.object({
 	 */
 	allowDataCollection: z.boolean().default(false),
 	/**
-	 * Override the runtime's default agent persona. `null` keeps
-	 * `DEFAULT_AGENT_SYSTEM_PROMPT` from control-plane/defaults.ts;
+	 * Override the runtime's default agent persona. `null` keeps the
+	 * defaults from control-plane/defaults.ts —
+	 * `DEFAULT_AGENT_SYSTEM_PROMPT_WITH_TOOLS` on the tool-loop dispatch
+	 * path, the bare `DEFAULT_AGENT_SYSTEM_PROMPT` on MCP run-agent;
 	 * per-agent prompts on `agent.systemPrompt` always take precedence
 	 * over this fallback.
 	 */

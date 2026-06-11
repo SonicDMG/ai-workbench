@@ -5,6 +5,7 @@
  */
 
 import {
+	DEFAULT_AGENT_TOOL_GUIDANCE,
 	defaultOnNewWorkspaceTemplates,
 	templateToCreateAgentInput,
 } from "./agent-templates.js";
@@ -20,7 +21,7 @@ import type {
 // Re-export so existing import sites for DEFAULT_AGENT_TOOL_GUIDANCE
 // (this file's prior home for it) keep resolving. The canonical home
 // is now the template catalog.
-export { DEFAULT_AGENT_TOOL_GUIDANCE } from "./agent-templates.js";
+export { DEFAULT_AGENT_TOOL_GUIDANCE };
 
 /* ---- Knowledge-Base schema defaults (issue #98) ---- */
 
@@ -59,17 +60,26 @@ export function nowIso(): string {
  * dispatcher only when both `agent.systemPrompt` and
  * `chatConfig.systemPrompt` are null. Deliberately persona-agnostic
  * so the runtime never imposes a hard-coded persona on a user agent.
+ *
+ * Deliberately carries no tool instructions: the MCP `run-agent` path
+ * pre-retrieves context and runs no tool loop, so naming tools here
+ * would invite phantom tool-call text from smaller models. Tool-loop
+ * callers use {@link DEFAULT_AGENT_SYSTEM_PROMPT_WITH_TOOLS}.
  */
 export const DEFAULT_AGENT_SYSTEM_PROMPT =
 	"You are a helpful assistant grounded in the provided knowledge base " +
 	"context. When you draw on a context passage, cite it inline as " +
 	"`[chunk-uuid]`. If the context does not support an answer, decline " +
-	"rather than inventing one.\n\n" +
-	"When using tools to answer questions:\n" +
-	"1. If you need to search knowledge bases, first call `list_kbs` to discover available knowledge bases and their IDs.\n" +
-	"2. Then call `search_kb` with the appropriate `knowledgeBaseId` and `query`.\n" +
-	"3. After gathering sufficient information (typically 1-2 searches), synthesize your answer.\n" +
-	"4. Avoid repeatedly calling the same tool; if you have enough context, provide your final answer.";
+	"rather than inventing one.";
+
+/**
+ * Fallback system prompt for the chat dispatch path, where the model
+ * does have the workspace tool loop. Composes the bare prompt with the
+ * same `DEFAULT_AGENT_TOOL_GUIDANCE` the starter-agent templates embed,
+ * so default and seeded agents follow a single tool-calling playbook.
+ */
+export const DEFAULT_AGENT_SYSTEM_PROMPT_WITH_TOOLS =
+	DEFAULT_AGENT_SYSTEM_PROMPT + "\n\n" + DEFAULT_AGENT_TOOL_GUIDANCE;
 
 /**
  * Starter agents auto-seeded into every freshly created workspace by the

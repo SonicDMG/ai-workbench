@@ -40,6 +40,12 @@ export const DEFAULT_AGENT_TOOL_GUIDANCE =
 	"  - any specific content question (definitions, lookups, " +
 	"explanations) → call `search_kb` with the user's phrasing.\n" +
 	"  - asked about one specific document → call `get_document`.\n" +
+	"If you don't know which knowledge bases exist, call `list_kbs` " +
+	"first and pass the relevant `knowledgeBaseId` to `search_kb`; " +
+	"omitting `knowledgeBaseId` searches every KB, which is fine when " +
+	"the workspace has only one. Once your searches return enough " +
+	"context (typically 1-2 calls), stop calling tools and answer — " +
+	"never repeat a call with identical arguments.\n" +
 	"After a tool returns, weave its output into the answer in your " +
 	"own voice; cite individual chunks inline as `[chunk-uuid]` when " +
 	"`search_kb` results inform the reply. If a tool returns no " +

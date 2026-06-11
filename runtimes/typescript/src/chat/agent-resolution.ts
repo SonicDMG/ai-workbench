@@ -9,7 +9,8 @@
  *
  * Resolution order (mirrors `dispatchAgentSend`'s contract):
  *   - **System prompt**: `agent.systemPrompt` ?? `chatConfig.systemPrompt`
- *     ?? `DEFAULT_AGENT_SYSTEM_PROMPT`.
+ *     ?? `DEFAULT_AGENT_SYSTEM_PROMPT_WITH_TOOLS` (the tool-guidance
+ *     variant — this path runs the tool loop, unlike MCP `run-agent`).
  *   - **KB scope**: `conversation.knowledgeBaseIds` if non-empty, else
  *     `agent.knowledgeBaseIds` if non-empty, else `[]` (the retrieval
  *     layer interprets `[]` as "all KBs in the workspace").
@@ -20,7 +21,7 @@
 
 import type { ResolvedPrincipal } from "../auth/types.js";
 import type { ChatConfig } from "../config/schema.js";
-import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../control-plane/defaults.js";
+import { DEFAULT_AGENT_SYSTEM_PROMPT_WITH_TOOLS } from "../control-plane/defaults.js";
 import { ControlPlaneNotFoundError } from "../control-plane/errors.js";
 import type { ControlPlaneStore } from "../control-plane/store.js";
 import type {
@@ -124,7 +125,7 @@ export async function resolveAgentChat(
 	const systemPrompt =
 		agent.systemPrompt ??
 		chatConfig?.systemPrompt ??
-		DEFAULT_AGENT_SYSTEM_PROMPT;
+		DEFAULT_AGENT_SYSTEM_PROMPT_WITH_TOOLS;
 
 	// KB-scope resolution: per-conversation > per-agent > workspace-wide
 	// (the empty list is what tools see when they default to "all KBs").

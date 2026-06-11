@@ -13,7 +13,7 @@ import { describe, expect, test } from "vitest";
 import { resolveAgentChat } from "../../src/chat/agent-resolution.js";
 import { OpenAIChatService } from "../../src/chat/openai.js";
 import type { ChatService } from "../../src/chat/types.js";
-import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../../src/control-plane/defaults.js";
+import { DEFAULT_AGENT_SYSTEM_PROMPT_WITH_TOOLS } from "../../src/control-plane/defaults.js";
 import { MemoryControlPlaneStore } from "../../src/control-plane/memory/store.js";
 import { MockVectorStoreDriver } from "../../src/drivers/mock/store.js";
 import { VectorStoreDriverRegistry } from "../../src/drivers/registry.js";
@@ -296,14 +296,14 @@ describe("resolveAgentChat — system prompt precedence", () => {
 		expect(resolved.systemPrompt).toBe("runtime-level");
 	});
 
-	test("falls back to DEFAULT_AGENT_SYSTEM_PROMPT when neither agent nor runtime set one", async () => {
+	test("falls back to DEFAULT_AGENT_SYSTEM_PROMPT_WITH_TOOLS when neither agent nor runtime set one", async () => {
 		const f = await buildFixture();
 		const resolved = await resolveAgentChat(f.deps, {
 			workspaceId: f.workspaceId,
 			agent: f.agent,
 			conversation: f.conversation,
 		});
-		expect(resolved.systemPrompt).toBe(DEFAULT_AGENT_SYSTEM_PROMPT);
+		expect(resolved.systemPrompt).toBe(DEFAULT_AGENT_SYSTEM_PROMPT_WITH_TOOLS);
 	});
 });
 
